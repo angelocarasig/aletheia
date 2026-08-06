@@ -1,0 +1,177 @@
+//
+//  EntryView.swift
+//  aletheia
+//
+//  Created by Angelo Carasig on 4/8/2026.
+//
+
+import Foundation
+import GRDB
+
+/// Lightweight view for displaying series entries in lists with unread counts.
+/// Uses BestChapterView to efficiently calculate deduplicated chapter counts.
+internal struct EntryView: ViewRecord {
+    let seriesId: Int64
+    let sourceId: Int64?
+    let slug: String
+    let title: String
+    let cover: URL?
+    let inLibrary: Bool
+    let unreadCount: Int
+
+    // date fields for sorting
+    let addedDate: Date
+    let updatedDate: Date
+    let lastReadDate: Date
+    let lastFetchedDate: Date
+}
+
+// MARK: - ViewRecord
+
+extension EntryView {
+    static var databaseTableName: String {
+        "entry_view"
+    }
+
+    enum Columns {
+        static let seriesId = Column(CodingKeys.seriesId)
+        static let sourceId = Column(CodingKeys.sourceId)
+        static let slug = Column(CodingKeys.slug)
+        static let title = Column(CodingKeys.title)
+        static let cover = Column(CodingKeys.cover)
+        static let inLibrary = Column(CodingKeys.inLibrary)
+        static let unreadCount = Column(CodingKeys.unreadCount)
+        static let addedDate = Column(CodingKeys.addedDate)
+        static let updatedDate = Column(CodingKeys.updatedDate)
+        static let lastReadDate = Column(CodingKeys.lastReadDate)
+        static let lastFetchedDate = Column(CodingKeys.lastFetchedDate)
+    }
+
+    static let dependsOn: [any DatabaseRecord.Type] = [
+        SeriesRecord.self,
+        OriginRecord.self,
+        SourceRecord.self,
+        CoverRecord.self,
+        TitleRecord.self
+    ]
+
+    static let dependsOnViews: [any ViewRecord.Type] = [
+        BestChapterView.self
+    ]
+
+    static var viewDefinition: SQLRequest<EntryView> {
+        SQLRequest(sql: """
+            SELECT
+                m.id as seriesId,
+                po.sourceId as sourceId,
+                COALESCE(po.slug, '') as slug,
+
+                -- title: the user's pick, else what the primary origin calls it,
+                -- else any title in the pool
+                COALESCE(
+                    (SELECT t.\(TitleRecord.Columns.value.name)
+                     FROM \(TitleRecord.databaseTableName) t
+                     WHERE t.id = m.\(SeriesRecord.Columns.preferredTitleId.name)),
+                    (SELECT t.\(TitleRecord.Columns.value.name)
+                     FROM \(TitleRecord.databaseTableName) t
+                     WHERE t.seriesId = m.id AND t.originId = po.id
+                     ORDER BY t.id ASC LIMIT 1),
+                    (SELECT t.\(TitleRecord.Columns.value.name)
+                     FROM \(TitleRecord.databaseTableName) t
+                     WHERE t.seriesId = m.id
+                     ORDER BY t.id ASC LIMIT 1),
+                    ''
+                ) as title,
+
+                -- cover: same resolution order as title
+                COALESCE(
+                    (SELECT c.url FROM \(CoverRecord.databaseTableName) c
+                     WHERE c.id = m.\(SeriesRecord.Columns.preferredCoverId.name)),
+                    (SELECT c.url FROM \(CoverRecord.databaseTableName) c
+                     WHERE c.seriesId = m.id AND c.originId = po.id
+                     ORDER BY c.id ASC LIMIT 1),
+                    (SELECT c.url FROM \(CoverRecord.databaseTableName) c
+                     WHERE c.seriesId = m.id
+                     ORDER BY c.id ASC LIMIT 1)
+                ) as cover,
+
+                m.inLibrary,
+
+                -- unread count from best chapters (rank = 1 only)
+                -- respects showHalfChapters preference
+                COALESCE(
+                    (SELECT COUNT(*)
+                     FROM \(BestChapterView.databaseTableName) bc
+                     WHERE bc.seriesId = m.id
+                       AND bc.rank = 1  -- only best version of each chapter
+                       AND bc.progress < 1.0  -- unread
+                       AND (bc.showHalfChapters = 1 OR bc.number = CAST(bc.number AS INTEGER))
+                    ), 0
+                ) as unreadCount,
+
+                -- date fields for sorting
+                m.addedDate,
+                m.updatedDate,
+                m.lastReadDate,
+                m.lastFetchedDate
+
+            FROM \(SeriesRecord.databaseTableName) m
+
+            -- primary origin: available sources first, then by priority.
+            -- unavailable means disconnected (null sourceId) or disabled - both
+            -- sort last so a dead source stops supplying the displayed metadata.
+            -- matched on id so ties never duplicate the row.
+            LEFT JOIN \(OriginRecord.databaseTableName) po
+                ON po.id = (
+                    SELECT o2.id
+                    FROM \(OriginRecord.databaseTableName) o2
+                    LEFT JOIN \(SourceRecord.databaseTableName) s2 ON o2.sourceId = s2.id
+                    WHERE o2.seriesId = m.id
+                    ORDER BY
+                        (s2.id IS NULL OR s2.\(SourceRecord.Columns.disabled.name) = 1) ASC,
+                        o2.priority ASC,
+                        o2.id ASC
+                    LIMIT 1
+                )
+            """)
+    }
+
+    static func createIndexes(db: Database) throws {
+        // covering index for the per-origin cover lookup
+        try db.create(
+            index: "idx_cover_seriesId_originId_id",
+            on: CoverRecord.databaseTableName,
+            columns: [
+                CoverRecord.Columns.seriesId.name,
+                CoverRecord.Columns.originId.name,
+                CoverRecord.Columns.id.name
+            ],
+            ifNotExists: true
+        )
+
+        // covering index for the per-origin title lookup
+        try db.create(
+            index: "idx_title_seriesId_originId_id",
+            on: TitleRecord.databaseTableName,
+            columns: [
+                TitleRecord.Columns.seriesId.name,
+                TitleRecord.Columns.originId.name,
+                TitleRecord.Columns.id.name
+            ],
+            ifNotExists: true
+        )
+
+        // covering index for primary origin resolution
+        try db.create(
+            index: "idx_origin_series_priority_covering",
+            on: OriginRecord.databaseTableName,
+            columns: [
+                OriginRecord.Columns.seriesId.name,
+                OriginRecord.Columns.priority.name,
+                OriginRecord.Columns.sourceId.name,
+                OriginRecord.Columns.slug.name
+            ],
+            ifNotExists: true
+        )
+    }
+}
