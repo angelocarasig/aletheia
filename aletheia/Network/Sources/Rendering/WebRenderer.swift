@@ -144,6 +144,7 @@ final class WebRenderer {
         _ url: URL,
         credential: SourceCredential,
         installing preload: String? = nil,
+        seeding storage: [String: String] = [:],
         waitingFor selector: String? = nil,
         script: String,
         arguments: [String: Any] = [:],
@@ -152,7 +153,13 @@ final class WebRenderer {
         let clock = ContinuousClock()
         let started = clock.now
 
-        let session = await Session(url: url, credential: credential, capturing: "__run__", preload: preload)
+        let session = await Session(
+            url: url,
+            credential: credential,
+            capturing: "__run__",
+            preload: preload,
+            storage: storage
+        )
         let built = clock.now
         // the script's result is only reachable while the page is - releasing it
         // mid-call destroys the completion handler (WKErrorDomain 4). every other
