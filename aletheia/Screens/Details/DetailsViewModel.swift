@@ -11,170 +11,446 @@ import GRDB
 import Tagged
 import Observation
 
-// what the screen needs before a view model can exist. a sourced entry carries
-// both already; a library entry has to resolve them from its primary origin
-struct DetailsRoute {
-    let source: Source
-    let stub: SeriesStub
-}
-
-extension DetailsViewModel {
-    static func route(
-        for entry: SeriesEntry,
-        registry: Compositor.Registry,
-        database: DatabaseClient = .client
-    ) async -> DetailsRoute? {
-        switch entry {
-        case .source(let slug, let stub):
-            guard let source = registry.source(slug: slug) else { return nil }
-            return DetailsRoute(source: source, stub: stub)
-
-        case .library(let id):
-            // entry_view already picks the primary origin - available sources
-            // first, then by priority - so its slug is the one that source knows
-            let resolved = try? await database.reader.read { db -> (EntryView, String)? in
-                guard let row = try EntryView
-                    .filter(EntryView.Columns.seriesId == id.rawValue)
-                    .fetchOne(db),
-                    let sourceId = row.sourceId,
-                    let source = try SourceRecord.fetchOne(db, key: sourceId)
-                else { return nil }
-
-                return (row, source.slug)
-            }
-
-            guard let (row, slug) = resolved ?? nil,
-                  let source = registry.source(slug: slug)
-            else { return nil }
-
-            return DetailsRoute(
-                source: source,
-                stub: SeriesStub(
-                    slug: row.slug,
-                    title: row.title,
-                    cover: row.cover,
-                    latestChapterNumber: nil,
-                    latestChapterDate: nil
-                )
-            )
-        }
-    }
-}
-
 @MainActor
 @Observable
 final class DetailsViewModel {
-    private let source: Source
-    private let stub: SeriesStub
+    private let entry: SeriesEntry
     private let database: DatabaseClient
     private let registry: Compositor.Registry
+    private let assets: Compositor.Assets
 
-    private(set) var detail: SeriesDetail?
-    private(set) var chapters: [ChapterEntry] = []
-    private(set) var match: SeriesMatch?
-    private(set) var inLibrary = false
-    private(set) var status: Status = .planning
-    private(set) var isLoading = false
-    private(set) var isSaving = false
-    private(set) var errorMessage: String?
-    private(set) var stored: [DetailsChapters.Chapter] = []
-    private(set) var covers: [DetailsCovers.Cover] = []
-    private(set) var origins: [DetailsSources.Origin] = []
+    // a cover swapping from its remote url to its downloaded file changes the
+    // kingfisher cache key, which replays the fade. first answer wins for the life
+    // of this screen, so the local file is picked up on the next open instead
+    @ObservationIgnored private var resolved: [String: URL] = [:]
+
+    private(set) var snapshot: Snapshot?
     private(set) var candidates: [DetailsDisambiguation.Candidate] = []
-    private(set) var resolved = false
+    private(set) var failure: Failure?
+    private(set) var isSaving = false
     private(set) var isFetchingChapters = false
-    private(set) var chaptersFetchedDate: Date = .distantPast
-    private(set) var metadataFetchedDate: Date = .distantPast
+    private(set) var isRefreshing = false
+    private(set) var errorMessage: String?
 
-    var lastMetadataFetch: Date? { metadataFetchedDate > .distantPast ? metadataFetchedDate : nil }
-
-    // an empty chapter list only means "none" once a fetch has actually landed
-    var hasFetchedChapters: Bool { chaptersFetchedDate > .distantPast }
-
-    // observed, not ignored: isReady and canToggleLibrary are computed from
-    // these, so a view reading them has to be invalidated when they land
     private var seriesId: SeriesRecord.ID?
-    private var originId: OriginRecord.ID?
+    private var held: SeriesRecord.ID?
+    private var started = false
+    private var stream: Task<Void, Never>?
 
-    var title: String { detail?.title ?? stub.title }
-    var canToggleLibrary: Bool { seriesId != nil && !isSaving }
-
-    // shown until the user either attaches to one of them or keeps this separate
-    var needsDisambiguation: Bool { !candidates.isEmpty && !resolved }
-
-    // nothing real renders until the series is settled - matching can land on a
-    // different series than the stub that opened it, and the title would change
-    var isReady: Bool { detail != nil && seriesId != nil && !needsDisambiguation }
-
-    var authors: [String] { detail?.authors ?? [] }
-    // sources return tags in their own order, so sort for display. localized
-    // standard compare is case insensitive and orders any numbers naturally
-    var tags: [String] {
-        (detail?.tags ?? []).sorted { $0.localizedStandardCompare($1) == .orderedAscending }
-    }
-    // the stored preference wins once it is known, so picking a new primary cover
-    // updates the header and backdrop straight away
-    var cover: URL? {
-        covers.first { $0.isPreferred }?.url ?? detail?.covers.first ?? stub.cover
+    // the source that opened this screen, nil for a library entry - which resolves
+    // its source from the primary origin once the first snapshot lands instead
+    private var opener: Source? {
+        guard case .source(let slug, _) = entry else { return nil }
+        return registry.source(slug: slug)
     }
 
-
-    var collections: [DetailsCollections.Item] { [] }
-
-    // the stored list is deduplicated across origins and carries read progress.
-    // the fetched list stands in only until the first write lands
-    var chapterDisplays: [DetailsChapters.Chapter] {
-        stored.isEmpty ? fetched : stored
-    }
-
-    private var fetched: [DetailsChapters.Chapter] {
-        chapters.map {
-            DetailsChapters.Chapter(
-                id: $0.slug,
-                number: $0.number,
-                title: $0.title,
-                scanlator: $0.scanlator,
-                language: $0.language,
-                publishedDate: $0.publishedDate,
-                progress: 0,
-                sourceIcon: source.descriptor.icon
-            )
-        }
+    private var openerStub: SeriesStub? {
+        guard case .source(_, let stub) = entry else { return nil }
+        return stub
     }
 
     init(
-        source: Source,
-        stub: SeriesStub,
+        entry: SeriesEntry,
         registry: Compositor.Registry,
-        database: DatabaseClient = .client
+        assets: Compositor.Assets,
+        database: DatabaseClient
     ) {
-        self.source = source
-        self.stub = stub
+        self.entry = entry
         self.registry = registry
+        self.assets = assets
         self.database = database
     }
 
-    // chapters fetch alongside the series and land later. nothing about the
-    // series - including add to library - waits on them
-    func load() async {
-        guard detail == nil else { return }
+    private func artwork(_ remote: URL?, path: String?) -> URL? {
+        guard let remote else { return assets.local(for: path) }
+        if let seen = resolved[remote.absoluteString] { return seen }
 
-        isLoading = true
-        async let chapterList: Void = fetchChapters()
-
-        await fetchDetail()
-        await store()
-        await refresh()
-        // anything already stored renders before the chapter fetch returns, so a
-        // known series is readable straight away
-        await loadStoredChapters()
-        await loadOrigins()
-        await loadCovers()
-        isLoading = false
-
-        await chapterList
-        await storeChapters()
+        let url = assets.local(for: path) ?? remote
+        resolved[remote.absoluteString] = url
+        return url
     }
+
+    // MARK: - Presentation
+
+    var title: String { snapshot?.title ?? openerStub?.title ?? "" }
+    var cover: URL? { snapshot?.cover ?? openerStub?.cover }
+    var synopsis: String? { snapshot?.synopsis }
+    var authors: [String] { snapshot?.authors ?? [] }
+    var tags: [String] { snapshot?.tags ?? [] }
+    var classification: Classification? { snapshot?.classification }
+    var publication: Publication? { snapshot?.publication }
+    var inLibrary: Bool { snapshot?.inLibrary ?? false }
+    var status: Status { snapshot?.status ?? .planning }
+    var chapters: [DetailsChapters.Chapter] { snapshot?.chapters ?? [] }
+    var origins: [DetailsSources.Origin] { snapshot?.origins ?? [] }
+    var covers: [DetailsCovers.Cover] { snapshot?.covers ?? [] }
+    var readCount: Int { snapshot?.readCount ?? 0 }
+    var lastReadDate: Date? { snapshot.flatMap { $0.lastReadDate > .distantPast ? $0.lastReadDate : nil } }
+    var lastMetadataFetch: Date? { snapshot.flatMap { $0.metadataFetchedDate > .distantPast ? $0.metadataFetchedDate : nil } }
+
+    // an empty chapter list only means "none" once a fetch has actually landed
+    var hasFetchedChapters: Bool { (snapshot?.chaptersFetchedDate ?? .distantPast) > .distantPast }
+
+    var canToggleLibrary: Bool { seriesId != nil && !isSaving }
+    var needsDisambiguation: Bool { !candidates.isEmpty }
+    var canRefresh: Bool { refreshTarget != nil && !isRefreshing }
+
+    // the screen renders from the database alone, so a row is all it waits on
+    var isReady: Bool { snapshot != nil && !needsDisambiguation }
+
+    // every cover request has to carry the referer of the site that served it or
+    // the host 403s. taken from the stored origin, so it still resolves for a
+    // series whose source is no longer installed
+    var referer: URL? { snapshot?.referer ?? opener?.descriptor.referer }
+
+    var collections: [DetailsCollections.Item] { [] }
+
+    // MARK: - Entry
+
+    func load() async {
+        guard !started else { return }
+        started = true
+
+        switch entry {
+        case .library(let id):
+            observe(id)
+
+        case .source:
+            await resolve()
+        }
+    }
+
+    // tier one then tier two, both against the database and both before anything
+    // reaches the network
+    private func resolve() async {
+        guard let source = opener, let stub = openerStub else {
+            failure = .unavailable
+            return
+        }
+
+        let match = try? await database.reader.read { db in
+            try SeriesRecord.match(stub, from: source.descriptor.slug, in: db)
+        }
+
+        held = match?.existing
+
+        switch match?.outcome {
+        case .inLibrary(let id):
+            observe(id)
+
+        case .candidates(let ids):
+            await loadCandidates(ids)
+
+        case .unmatched, nil:
+            await settle()
+        }
+    }
+
+    // where the flow lands once no library series claims this one: the row tier
+    // one held if there was one, otherwise a series that does not exist yet
+    private func settle() async {
+        if let held {
+            observe(held)
+        } else {
+            await create(into: nil)
+        }
+    }
+
+    // MARK: - Disambiguation
+
+    func attach(to target: Int64) async {
+        let id = SeriesRecord.ID(rawValue: target)
+        candidates = []
+
+        // the held row already owns an origin for this source, so it moves rather
+        // than being fetched a second time
+        guard let held else {
+            await create(into: id)
+            return
+        }
+
+        isSaving = true
+        defer { isSaving = false }
+
+        do {
+            try await database.writer.write { db in
+                try Self.reparent(from: held, to: id, in: db)
+            }
+            self.held = nil
+            observe(id)
+        } catch {
+            errorMessage = String(describing: error)
+            failure = .fetch(String(describing: error))
+        }
+    }
+
+    func keepSeparate() async {
+        candidates = []
+        await settle()
+    }
+
+    private func loadCandidates(_ ids: [SeriesRecord.ID]) async {
+        do {
+            let rows = try await database.reader.read { db in
+                try Self.candidates(for: ids, in: db)
+            }
+
+            candidates = rows.map { row in
+                DetailsDisambiguation.Candidate(
+                    id: row.id,
+                    title: row.title,
+                    cover: artwork(row.cover, path: row.path),
+                    referer: row.sourceSlug.flatMap { registry.source(slug: $0) }?.descriptor.referer,
+                    authors: row.authors,
+                    sourceCount: row.sourceCount,
+                    chapterCount: row.chapterCount
+                )
+            }
+        } catch {
+            errorMessage = String(describing: error)
+            await settle()
+        }
+    }
+
+    // MARK: - Create
+
+    // the only path that fetches. everything else on this screen reads rows that
+    // are already there
+    private func create(into existing: SeriesRecord.ID?) async {
+        guard let source = opener, let stub = openerStub else {
+            // a library entry always carries its row id, so it never arrives here
+            failure = .unavailable
+            return
+        }
+
+        do {
+            let detail = try await source.details(seriesSlug: stub.slug)
+            let sourceSlug = source.descriptor.slug
+            let cover = stub.cover
+
+            let ids = try await database.writer.write { db -> (SeriesRecord.ID, OriginRecord.ID) in
+                guard let sourceId = try SourceRecord
+                    .select(SourceRecord.Columns.id, as: SourceRecord.ID.self)
+                    .filter(SourceRecord.Columns.slug == sourceSlug)
+                    .fetchOne(db)
+                else { throw DetailsError.missingIdentifier }
+
+                // the details response carries the canonical slug, and the stub may
+                // have been opened under an older one - both have to be checked or
+                // a series already stored is created a second time
+                let known = try OriginRecord
+                    .filter(OriginRecord.Columns.sourceId == sourceId)
+                    .filter([detail.slug, stub.slug].contains(OriginRecord.Columns.slug))
+                    .fetchOne(db)
+
+                if let known, let originId = known.id {
+                    return (known.seriesId, originId)
+                }
+
+                return try Self.create(
+                    from: detail,
+                    sourceId: sourceId,
+                    matching: cover,
+                    into: existing,
+                    in: db
+                )
+            }
+
+            observe(ids.0)
+            assets.enqueue(series: ids.0)
+            await fetchChapters(source: source, seriesSlug: stub.slug, originId: ids.1)
+        } catch {
+            failure = .fetch(String(describing: error))
+        }
+    }
+
+    // MARK: - Observation
+
+    // one observation feeds the whole screen. every write below lands here rather
+    // than being read back by hand, so nothing reloads itself after a change
+    private func observe(_ id: SeriesRecord.ID) {
+        seriesId = id
+        failure = nil
+        stream?.cancel()
+
+        // weak, so the screen going away releases the view model rather than the
+        // observation holding it open. the loop then ends on its next emission
+        stream = Task { [weak self, database, registry] in
+            let observation = ValueObservation.tracking { db -> Stored? in
+                guard
+                    let series = try SeriesRecord.fetchOne(db, key: id.rawValue),
+                    let entry = try RichfulEntryView
+                        .filter(RichfulEntryView.Columns.seriesId == id.rawValue)
+                        .fetchOne(db)
+                else { return nil }
+
+                return Stored(
+                    series: series,
+                    entry: entry,
+                    chapters: try Self.chapters(for: id, in: db),
+                    origins: try Self.origins(for: id, in: db),
+                    covers: try Self.covers(for: id, in: db)
+                )
+            }
+
+            do {
+                for try await stored in observation.values(in: database.reader) {
+                    guard let self, !Task.isCancelled else { break }
+                    guard let stored else { continue }
+                    self.snapshot = Snapshot(stored, registry: registry) { remote, path in
+                        self.artwork(remote, path: path)
+                    }
+                }
+            } catch {
+                self?.errorMessage = String(describing: error)
+            }
+        }
+    }
+
+    // MARK: - Refresh
+
+    // which source speaks for this series, and under what slug. a sourced entry
+    // knows already; a library one takes its highest priority available origin
+    private var refreshTarget: (source: Source, slug: String)? {
+        if let source = opener, let stub = openerStub {
+            return (source, stub.slug)
+        }
+
+        guard let primary = snapshot?.refreshable else { return nil }
+        guard let source = registry.source(slug: primary.sourceSlug) else { return nil }
+        return (source, primary.slug)
+    }
+
+    func refresh() async {
+        guard let target = refreshTarget, !isRefreshing else { return }
+        guard let originId = snapshot?.refreshable?.originId else { return }
+        let origin = OriginRecord.ID(rawValue: originId)
+
+        isRefreshing = true
+        defer { isRefreshing = false }
+
+        do {
+            let detail = try await target.source.details(seriesSlug: target.slug)
+            try await database.writer.write { db in
+                try Self.update(originId: origin, from: detail, in: db)
+            }
+            // covers are add-only on refresh, so a refresh can introduce new ones
+            if let seriesId { assets.enqueue(series: seriesId) }
+        } catch {
+            // metadata failing is not a reason to skip chapters - they are fetched
+            // separately and are the half a refresh is usually reaching for
+            errorMessage = String(describing: error)
+        }
+
+        await fetchChapters(source: target.source, seriesSlug: target.slug, originId: origin)
+    }
+
+    func refreshChapters() async {
+        guard let target = refreshTarget else { return }
+        guard let originId = snapshot?.refreshable?.originId else { return }
+
+        await fetchChapters(
+            source: target.source,
+            seriesSlug: target.slug,
+            originId: OriginRecord.ID(rawValue: originId)
+        )
+    }
+
+    private func fetchChapters(
+        source: Source,
+        seriesSlug: String,
+        originId: OriginRecord.ID
+    ) async {
+        isFetchingChapters = true
+        defer { isFetchingChapters = false }
+
+        let have = snapshot?.origins.first { $0.id == originId.rawValue }?.chapterCount ?? 0
+
+        do {
+            // nil means the source checked and nothing changed, so the stored list
+            // stands and there is nothing to write
+            guard let entries = try await source.chapters(seriesSlug: seriesSlug, have: have) else { return }
+            guard !entries.isEmpty else { return }
+
+            let fetched = Date.now
+            try await database.writer.write { db in
+                try Self.upsert(entries, for: originId, in: db)
+                // stamped only on a write that landed, so a failed fetch leaves the
+                // origin looking unfetched rather than empty
+                _ = try OriginRecord
+                    .filter(key: originId.rawValue)
+                    .updateAll(db, OriginRecord.Columns.chaptersFetchedDate.set(to: fetched))
+            }
+        } catch {
+            errorMessage = String(describing: error)
+        }
+    }
+
+    // MARK: - Reading
+
+    // what the reader needs for one chapter. resolved per chapter rather than from
+    // the screen's own source: a merged series serves chapters from every origin,
+    // and each of them belongs to a different site
+    func read(_ chapter: DetailsChapters.Chapter) -> ReaderTarget? {
+        guard let row = snapshot?.row(for: chapter.id) else { return nil }
+        guard let slug = row.sourceSlug, let source = registry.source(slug: slug) else { return nil }
+
+        return ReaderTarget(
+            source: source,
+            sourceSlug: slug,
+            seriesSlug: row.originSlug,
+            chapterSlug: row.slug,
+            title: "Ch. \(chapter.number.formatted())"
+        )
+    }
+
+    // opening is what marks a series as read, and clean() spares anything with a
+    // read date. progress itself is written by the reader
+    func open(_ chapter: DetailsChapters.Chapter) async {
+        guard let seriesId else { return }
+        let opened = Date.now
+
+        do {
+            try await database.writer.write { db in
+                _ = try ChapterRecord
+                    .filter(key: chapter.id)
+                    .updateAll(db, ChapterRecord.Columns.lastReadDate.set(to: opened))
+
+                _ = try SeriesRecord
+                    .filter(key: seriesId.rawValue)
+                    .updateAll(db, SeriesRecord.Columns.lastReadDate.set(to: opened))
+            }
+        } catch {
+            errorMessage = String(describing: error)
+        }
+    }
+
+    func markAll(read: Bool) async {
+        guard let seriesId else { return }
+        let ids = chapters.map(\.id)
+        guard !ids.isEmpty else { return }
+
+        isSaving = true
+        defer { isSaving = false }
+
+        do {
+            try await database.writer.write { db in
+                _ = try ChapterRecord
+                    .filter(ids.contains(ChapterRecord.Columns.id))
+                    .updateAll(db, ChapterRecord.Columns.progress.set(to: read ? 1.0 : 0.0))
+
+                if read {
+                    _ = try SeriesRecord
+                        .filter(key: seriesId.rawValue)
+                        .updateAll(db, SeriesRecord.Columns.lastReadDate.set(to: Date.now))
+                }
+            }
+        } catch {
+            errorMessage = String(describing: error)
+        }
+    }
+
+    // MARK: - Writes
 
     // nil clears the pick, handing the choice back to origin priority
     func setPreferredCover(_ id: Int64?) async {
@@ -189,7 +465,6 @@ final class DetailsViewModel {
                     .filter(key: seriesId.rawValue)
                     .updateAll(db, SeriesRecord.Columns.preferredCoverId.set(to: id))
             }
-            await loadCovers()
         } catch {
             errorMessage = String(describing: error)
         }
@@ -207,7 +482,6 @@ final class DetailsViewModel {
                     .filter(key: seriesId.rawValue)
                     .updateAll(db, SeriesRecord.Columns.status.set(to: value.rawValue))
             }
-            status = value
         } catch {
             errorMessage = String(describing: error)
         }
@@ -224,319 +498,325 @@ final class DetailsViewModel {
             try await database.writer.write { db in
                 try Self.setInLibrary(value, for: seriesId, in: db)
             }
-            await refresh()
         } catch {
             errorMessage = String(describing: error)
         }
     }
+}
 
-    // MARK: - Network
+// MARK: - Types
 
-    private func fetchDetail() async {
-        do { detail = try await source.details(seriesSlug: stub.slug) }
-        catch { errorMessage = String(describing: error) }
+extension DetailsViewModel {
+    enum Failure: Equatable {
+        case unavailable
+        case fetch(String)
     }
 
-    private func fetchChapters() async {
-        isFetchingChapters = true
-        defer { isFetchingChapters = false }
+    // the source is not itself hashable, so identity comes from the slugs that
+    // resolved it - which is what a navigation value has to compare on anyway
+    struct ReaderTarget: Hashable, Identifiable {
+        let source: Source
+        let sourceSlug: String
+        let seriesSlug: String
+        let chapterSlug: String
+        let title: String
 
-        // this runs alongside store(), so originId is not set yet - resolve the
-        // count straight from the source's own slug instead of waiting for it
-        let have = await knownChapterCount()
+        var id: String { "\(sourceSlug)/\(seriesSlug)/\(chapterSlug)" }
 
-        do {
-            // nil means the source checked and nothing changed, so the stored
-            // list stands and there is nothing to write
-            if let fetched = try await source.chapters(seriesSlug: stub.slug, have: have) {
-                chapters = fetched
-            }
-        } catch {
-            errorMessage = String(describing: error)
-        }
+        static func == (lhs: Self, rhs: Self) -> Bool { lhs.id == rhs.id }
+        func hash(into hasher: inout Hasher) { hasher.combine(id) }
     }
 
-    private func knownChapterCount() async -> Int {
-        let sourceSlug = source.descriptor.slug
-        let seriesSlug = stub.slug
+    struct Snapshot {
+        let title: String
+        let cover: URL?
+        let synopsis: String?
+        let authors: [String]
+        let tags: [String]
+        let classification: Classification?
+        let publication: Publication?
+        let inLibrary: Bool
+        let status: Status
+        let readCount: Int
+        let lastReadDate: Date
+        let metadataFetchedDate: Date
+        let chaptersFetchedDate: Date
+        let referer: URL?
+        let chapters: [DetailsChapters.Chapter]
+        let origins: [DetailsSources.Origin]
+        let covers: [DetailsCovers.Cover]
+        let refreshable: Refreshable?
 
-        let count = try? await database.reader.read { db -> Int in
-            guard let sourceId = try SourceRecord
-                .select(SourceRecord.Columns.id, as: SourceRecord.ID.self)
-                .filter(SourceRecord.Columns.slug == sourceSlug)
-                .fetchOne(db),
-                let origin = try OriginRecord
-                    .select(OriginRecord.Columns.id, as: OriginRecord.ID.self)
-                    .filter(OriginRecord.Columns.sourceId == sourceId)
-                    .filter(OriginRecord.Columns.slug == seriesSlug)
-                    .fetchOne(db)
-            else { return 0 }
+        fileprivate let rows: [StoredChapter]
 
-            return try ChapterRecord
-                .filter(ChapterRecord.Columns.originId == origin)
-                .fetchCount(db)
-        }
-        return count ?? 0
-    }
-
-    // MARK: - Persistence
-
-    private func refresh() async {
-        let stub = stub
-        let sourceSlug = source.descriptor.slug
-        let id = seriesId
-
-        let state = try? await database.reader.read { db -> (SeriesMatch, SeriesRecord?) in
-            let match = try SeriesRecord.match(stub, from: sourceSlug, in: db)
-            let saved = try id.flatMap { try SeriesRecord.fetchOne(db, key: $0.rawValue) }
-            return (match, saved)
+        struct Refreshable {
+            let originId: Int64
+            let slug: String
+            let sourceSlug: String
         }
 
-        match = state?.0
-        inLibrary = state?.1?.inLibrary ?? false
-        status = state?.1?.status ?? .planning
-
-        // a series opened again already knows whether its chapters ever landed,
-        // so it never falls back to claiming it has none
-        if let originId {
-            let origin = try? await database.reader.read { db in
-                try OriginRecord.fetchOne(db, key: originId.rawValue)
-            }
-            chaptersFetchedDate = origin?.chaptersFetchedDate ?? .distantPast
-            metadataFetchedDate = origin?.metadataFetchedDate ?? .distantPast
-        }
-
-        await loadCandidates()
-    }
-
-    private func loadCandidates() async {
-        guard case .candidates(let ids) = match?.outcome else {
-            candidates = []
-            return
-        }
-
-        do {
-            let rows = try await database.reader.read { db in
-                try Self.candidates(for: ids, in: db)
-            }
-
-            candidates = rows.map { row in
-                let referer = row.sourceSlug
-                    .flatMap { registry.source(slug: $0) }?
-                    .descriptor.referer
-
-                return DetailsDisambiguation.Candidate(
-                    id: row.id,
-                    title: row.title,
-                    cover: row.cover,
-                    referer: referer,
-                    authors: row.authors,
-                    sourceCount: row.sourceCount,
-                    chapterCount: row.chapterCount
-                )
-            }
-        } catch {
-            errorMessage = String(describing: error)
+        fileprivate func row(for id: Int64) -> StoredChapter? {
+            rows.first { $0.id == id }
         }
     }
+}
 
-    // reparents this source's origin onto the chosen series and drops the row
-    // that was created for it, so the two never both sit in the library
-    func attach(to target: Int64) async {
-        guard let seriesId, let originId, seriesId.rawValue != target else { return }
+private extension DetailsViewModel.Snapshot {
+    init(
+        _ stored: Stored,
+        registry: Compositor.Registry,
+        artwork: (URL?, String?) -> URL?
+    ) {
+        let entry = stored.entry
 
-        isSaving = true
-        defer { isSaving = false }
+        title = entry.title
+        cover = artwork(entry.cover, entry.path)
+        synopsis = entry.synopsis?.isEmpty == false ? entry.synopsis : nil
+        authors = Self.split(entry.authors)
+        // sources return tags in their own order, so sort for display. localized
+        // standard compare is case insensitive and orders any numbers naturally
+        tags = Self.split(entry.tags).sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+        classification = entry.classification
+        publication = entry.publication
+        inLibrary = entry.inLibrary
+        status = stored.series.status
+        readCount = entry.readChapterCount
+        lastReadDate = entry.lastReadDate
+        rows = stored.chapters
 
-        do {
-            try await database.writer.write { db in
-                try Self.reparent(originId: originId, from: seriesId, to: SeriesRecord.ID(rawValue: target), in: db)
-            }
-
-            self.seriesId = SeriesRecord.ID(rawValue: target)
-            resolved = true
-
-            await refresh()
-            await loadStoredChapters()
-            await loadOrigins()
-            await loadCovers()
-        } catch {
-            errorMessage = String(describing: error)
-        }
-    }
-
-    func keepSeparate() {
-        resolved = true
-    }
-
-    // eager: the series lands in the database as soon as its details arrive,
-    // out of library
-    private func store() async {
-        guard let detail, seriesId == nil else { return }
-
-        let cover = stub.cover
-        let sourceSlug = source.descriptor.slug
-
-        do {
-            let stored = try await database.writer.write { db -> (SeriesRecord.ID, OriginRecord.ID) in
-                guard let sourceId = try SourceRecord
-                    .select(SourceRecord.Columns.id, as: SourceRecord.ID.self)
-                    .filter(SourceRecord.Columns.slug == sourceSlug)
-                    .fetchOne(db)
-                else { throw DetailsError.missingIdentifier }
-
-                // the details response carries the canonical slug, which can differ
-                // from the one the stub was opened with
-                let known = try OriginRecord
-                    .filter(OriginRecord.Columns.sourceId == sourceId)
-                    .filter(OriginRecord.Columns.slug == detail.slug)
-                    .fetchOne(db)
-
-                let seriesId = try known?.seriesId ?? Self.create(
-                    from: detail,
-                    sourceId: sourceId,
-                    matching: cover,
-                    in: db
-                )
-
-                guard let originId = try OriginRecord
-                    .select(OriginRecord.Columns.id, as: OriginRecord.ID.self)
-                    .filter(OriginRecord.Columns.sourceId == sourceId)
-                    .filter(OriginRecord.Columns.slug == detail.slug)
-                    .fetchOne(db)
-                else { throw DetailsError.missingIdentifier }
-
-                return (seriesId, originId)
-            }
-
-            seriesId = stored.0
-            originId = stored.1
-        } catch {
-            errorMessage = String(describing: error)
-        }
-    }
-
-    private func storeChapters() async {
-        guard !chapters.isEmpty else { return }
-        guard let originId else {
-            AppLog.shared.log("skipped storing \(chapters.count) chapter(s) — no origin yet", category: "details")
-            return
-        }
-        let entries = chapters
-
-        do {
-            let fetched = Date.now
-            try await database.writer.write { db in
-                try Self.upsert(entries, for: originId, in: db)
-                // stamped only on a write that landed, so a failed fetch leaves
-                // the origin looking unfetched rather than empty
-                _ = try OriginRecord
-                    .filter(key: originId.rawValue)
-                    .updateAll(db, OriginRecord.Columns.chaptersFetchedDate.set(to: fetched))
-            }
-            chaptersFetchedDate = fetched
-            await loadStoredChapters()
-        } catch {
-            errorMessage = String(describing: error)
-        }
-    }
-
-    private func loadOrigins() async {
-        guard let seriesId else { return }
-
-        do {
-            let rows = try await database.reader.read { db in
-                try Self.origins(for: seriesId, in: db)
-            }
-
-            origins = rows.map { row in
-                // three different unavailabilities, and they need different
-                // answers from the user: re-enable it, re-attach it, or accept
-                // the source no longer ships with the app
-                let source = row.sourceSlug.flatMap { registry.source(slug: $0) }
-                let availability: DetailsSources.Origin.Availability =
-                    if row.disconnected { .disconnected }
-                    else if source == nil { .missing }
-                    else if row.disabled { .disabled }
-                    else { .available }
-
-                return DetailsSources.Origin(
-                    id: row.id,
-                    name: source?.descriptor.name ?? row.sourceSlug ?? "Unknown Source",
-                    host: source?.descriptor.baseURL.host() ?? row.sourceSlug ?? "",
-                    icon: source?.descriptor.icon,
-                    priority: row.priority,
-                    chapterCount: row.chapterCount,
-                    fetchedDate: row.chaptersFetchedDate > .distantPast ? row.chaptersFetchedDate : nil,
-                    availability: availability
-                )
-            }
-        } catch {
-            errorMessage = String(describing: error)
-        }
-    }
-
-    private func loadCovers() async {
-        guard let seriesId else { return }
-
-        do {
-            let rows = try await database.reader.read { db in
-                try Self.covers(for: seriesId, in: db)
-            }
-
-            covers = rows.map { row in
-                let source = row.sourceSlug.flatMap { registry.source(slug: $0) }
-                return DetailsCovers.Cover(
-                    id: row.id,
-                    url: row.url,
-                    sourceName: source?.descriptor.name,
-                    sourceIcon: source?.descriptor.icon,
-                    isPreferred: row.isPreferred
-                )
-            }
-        } catch {
-            errorMessage = String(describing: error)
-        }
-    }
-
-    private func loadStoredChapters() async {
-        guard let seriesId else { return }
-
-        do {
-            let rows = try await database.reader.read { db in
-                try Self.chapters(for: seriesId, in: db)
-            }
-
+        chapters = stored.chapters.map { row in
             // the icon resolves through the registry, so a source that is no longer
             // compiled in yields nil and the row renders a placeholder
-            stored = rows.map { row in
-                DetailsChapters.Chapter(
-                    id: row.slug,
-                    number: row.number,
-                    title: row.title,
-                    scanlator: row.scanlator,
-                    language: row.language,
-                    publishedDate: row.publishedDate,
-                    progress: row.progress,
-                    sourceIcon: row.sourceSlug.flatMap { registry.source(slug: $0)?.descriptor.icon }
-                )
-            }
-        } catch {
-            errorMessage = String(describing: error)
+            let source = row.sourceSlug.flatMap { registry.source(slug: $0) }
+            return DetailsChapters.Chapter(
+                id: row.id,
+                number: row.number,
+                title: row.title,
+                scanlator: row.scanlator,
+                language: row.language,
+                publishedDate: row.publishedDate,
+                progress: row.progress,
+                sourceIcon: source?.descriptor.icon,
+                canRead: source != nil
+            )
         }
+
+        origins = stored.origins.map { row in
+            // three different unavailabilities, and they need different answers from
+            // the user: re-enable it, re-attach it, or accept the source no longer
+            // ships with the app. the source row survives all three, so only the
+            // icon needs the registry - it is a compiled asset, not stored data
+            let availability: DetailsSources.Origin.Availability =
+                if row.disconnected { .disconnected }
+                else if !row.installed { .missing }
+                else if row.disabled { .disabled }
+                else { .available }
+
+            return DetailsSources.Origin(
+                id: row.id,
+                name: row.sourceName ?? row.sourceSlug ?? "Unknown Source",
+                host: row.sourceBaseURL?.host() ?? row.sourceSlug ?? "",
+                icon: row.sourceSlug.flatMap { registry.source(slug: $0) }?.descriptor.icon,
+                priority: row.priority,
+                chapterCount: row.chapterCount,
+                fetchedDate: row.chaptersFetchedDate > .distantPast ? row.chaptersFetchedDate : nil,
+                availability: availability
+            )
+        }
+
+        covers = stored.covers.map { row in
+            DetailsCovers.Cover(
+                id: row.id,
+                url: row.url,
+                local: artwork(nil, row.path),
+                sourceName: row.sourceName,
+                sourceIcon: row.sourceSlug.flatMap { registry.source(slug: $0) }?.descriptor.icon,
+                isPreferred: row.isPreferred
+            )
+        }
+
+        // origins are already ordered available first, so the first one still backed
+        // by installed code is the one refresh speaks to
+        let usable = stored.origins.first { row in
+            guard row.installed, !row.disconnected, !row.disabled else { return false }
+            return row.sourceSlug.flatMap { registry.source(slug: $0) } != nil
+        }
+        refreshable = usable.flatMap { row in
+            row.sourceSlug.map { Refreshable(originId: row.id, slug: row.slug, sourceSlug: $0) }
+        }
+
+        // whichever origin heads the list supplies the displayed cover, so its
+        // referer is the one image requests have to carry - stored, so it outlives
+        // the source being uninstalled
+        referer = stored.origins.first?.sourceReferer
+
+        let primary = usable ?? stored.origins.first
+        metadataFetchedDate = primary?.metadataFetchedDate ?? .distantPast
+        chaptersFetchedDate = primary?.chaptersFetchedDate ?? .distantPast
     }
 
-    // MARK: - Writes
+    // group_concat joins with ", " and yields null rather than an empty string
+    static func split(_ value: String?) -> [String] {
+        guard let value, !value.isEmpty else { return [] }
+        return value.components(separatedBy: ", ").filter { !$0.isEmpty }
+    }
+}
 
-    nonisolated private static func create(
+// MARK: - Queries
+
+extension DetailsViewModel {
+    nonisolated fileprivate static func chapters(
+        for seriesId: SeriesRecord.ID,
+        in db: Database
+    ) throws -> [StoredChapter] {
+        let sql = """
+            SELECT
+                c.id AS id,
+                c.\(ChapterRecord.Columns.slug.name) AS slug,
+                c.\(ChapterRecord.Columns.title.name) AS title,
+                c.\(ChapterRecord.Columns.number.name) AS number,
+                c.\(ChapterRecord.Columns.language.name) AS language,
+                c.\(ChapterRecord.Columns.progress.name) AS progress,
+                c.\(ChapterRecord.Columns.publishedDate.name) AS publishedDate,
+                s.\(ScanlatorRecord.Columns.name.name) AS scanlator,
+                o.\(OriginRecord.Columns.slug.name) AS originSlug,
+                src.\(SourceRecord.Columns.slug.name) AS sourceSlug
+            FROM \(ChapterRecord.databaseTableName) c
+            JOIN \(BestChapterView.databaseTableName) bc ON bc.chapterId = c.id
+            JOIN \(ScanlatorRecord.databaseTableName) s ON s.id = c.\(ChapterRecord.Columns.scanlatorId.name)
+            JOIN \(OriginRecord.databaseTableName) o ON o.id = c.\(ChapterRecord.Columns.originId.name)
+            LEFT JOIN \(SourceRecord.databaseTableName) src ON src.id = o.\(OriginRecord.Columns.sourceId.name)
+            WHERE bc.seriesId = ?
+              AND bc.rank = 1
+              AND bc.isVisible = 1
+            ORDER BY bc.number ASC
+            """
+
+        return try StoredChapter.fetchAll(db, sql: sql, arguments: [seriesId])
+    }
+
+    // ordered the way best_chapter ranks them: priority first, id as the
+    // deterministic tiebreak, unavailable sources last
+    nonisolated fileprivate static func origins(
+        for seriesId: SeriesRecord.ID,
+        in db: Database
+    ) throws -> [StoredOrigin] {
+        let sql = """
+            SELECT
+                o.id AS id,
+                o.\(OriginRecord.Columns.slug.name) AS slug,
+                o.\(OriginRecord.Columns.priority.name) AS priority,
+                o.\(OriginRecord.Columns.chaptersFetchedDate.name) AS chaptersFetchedDate,
+                o.\(OriginRecord.Columns.metadataFetchedDate.name) AS metadataFetchedDate,
+                src.\(SourceRecord.Columns.slug.name) AS sourceSlug,
+                src.\(SourceRecord.Columns.name.name) AS sourceName,
+                src.\(SourceRecord.Columns.baseURL.name) AS sourceBaseURL,
+                src.\(SourceRecord.Columns.referer.name) AS sourceReferer,
+                (o.\(OriginRecord.Columns.sourceId.name) IS NULL) AS disconnected,
+                COALESCE(src.\(SourceRecord.Columns.disabled.name), 0) AS disabled,
+                COALESCE(src.\(SourceRecord.Columns.installed.name), 0) AS installed,
+                (
+                    SELECT COUNT(*)
+                    FROM \(ChapterRecord.databaseTableName) c
+                    WHERE c.\(ChapterRecord.Columns.originId.name) = o.id
+                ) AS chapterCount
+            FROM \(OriginRecord.databaseTableName) o
+            LEFT JOIN \(SourceRecord.databaseTableName) src ON src.id = o.\(OriginRecord.Columns.sourceId.name)
+            WHERE o.\(OriginRecord.Columns.seriesId.name) = ?
+            ORDER BY
+                (o.\(OriginRecord.Columns.sourceId.name) IS NULL OR COALESCE(src.\(SourceRecord.Columns.disabled.name), 0)) ASC,
+                o.\(OriginRecord.Columns.priority.name) ASC,
+                o.id ASC
+            """
+
+        return try StoredOrigin.fetchAll(db, sql: sql, arguments: [seriesId])
+    }
+
+    nonisolated fileprivate static func covers(
+        for seriesId: SeriesRecord.ID,
+        in db: Database
+    ) throws -> [StoredCover] {
+        let sql = """
+            SELECT
+                c.id AS id,
+                c.\(CoverRecord.Columns.url.name) AS url,
+                c.\(CoverRecord.Columns.path.name) AS path,
+                src.\(SourceRecord.Columns.slug.name) AS sourceSlug,
+                src.\(SourceRecord.Columns.name.name) AS sourceName,
+                (c.id = s.\(SeriesRecord.Columns.preferredCoverId.name)) AS isPreferred
+            FROM \(CoverRecord.databaseTableName) c
+            JOIN \(SeriesRecord.databaseTableName) s ON s.id = c.\(CoverRecord.Columns.seriesId.name)
+            LEFT JOIN \(OriginRecord.databaseTableName) o ON o.id = c.\(CoverRecord.Columns.originId.name)
+            LEFT JOIN \(SourceRecord.databaseTableName) src ON src.id = o.\(OriginRecord.Columns.sourceId.name)
+            WHERE c.\(CoverRecord.Columns.seriesId.name) = ?
+            ORDER BY c.id ASC
+            """
+
+        return try StoredCover.fetchAll(db, sql: sql, arguments: [seriesId])
+    }
+
+    nonisolated fileprivate static func candidates(
+        for ids: [SeriesRecord.ID],
+        in db: Database
+    ) throws -> [StoredCandidate] {
+        guard !ids.isEmpty else { return [] }
+
+        let placeholders = ids.map { _ in "?" }.joined(separator: ", ")
+        let sql = """
+            SELECT
+                v.\(RichfulEntryView.Columns.seriesId.name) AS id,
+                v.\(RichfulEntryView.Columns.title.name) AS title,
+                v.\(RichfulEntryView.Columns.cover.name) AS cover,
+                v.\(RichfulEntryView.Columns.path.name) AS path,
+                v.\(RichfulEntryView.Columns.authors.name) AS authors,
+                v.\(RichfulEntryView.Columns.totalChapterCount.name) AS chapterCount,
+                (SELECT COUNT(*) FROM \(OriginRecord.databaseTableName) o
+                  WHERE o.\(OriginRecord.Columns.seriesId.name) = v.\(RichfulEntryView.Columns.seriesId.name)) AS sourceCount,
+                (SELECT src.\(SourceRecord.Columns.slug.name)
+                   FROM \(OriginRecord.databaseTableName) o
+                   JOIN \(SourceRecord.databaseTableName) src ON src.id = o.\(OriginRecord.Columns.sourceId.name)
+                  WHERE o.\(OriginRecord.Columns.seriesId.name) = v.\(RichfulEntryView.Columns.seriesId.name)
+                  ORDER BY o.\(OriginRecord.Columns.priority.name) ASC LIMIT 1) AS sourceSlug
+            FROM \(RichfulEntryView.databaseTableName) v
+            WHERE v.\(RichfulEntryView.Columns.seriesId.name) IN (\(placeholders))
+            """
+
+        return try StoredCandidate.fetchAll(db, sql: sql, arguments: StatementArguments(ids.map(\.rawValue)))
+    }
+}
+
+// MARK: - Writes
+
+extension DetailsViewModel {
+    // into nil creates the series this origin belongs to. into an id attaches the
+    // origin to a series that already exists, which is what confirming a match does
+    nonisolated fileprivate static func create(
         from detail: SeriesDetail,
         sourceId: SourceRecord.ID,
         matching stubCover: URL?,
+        into existing: SeriesRecord.ID?,
         in db: Database
-    ) throws -> SeriesRecord.ID {
+    ) throws -> (SeriesRecord.ID, OriginRecord.ID) {
         var series = SeriesRecord()
-        try series.insert(db)
-        guard let seriesId = series.id else { throw DetailsError.missingIdentifier }
+        let seriesId: SeriesRecord.ID
+
+        if let existing {
+            seriesId = existing
+        } else {
+            try series.insert(db)
+            guard let inserted = series.id else { throw DetailsError.missingIdentifier }
+            seriesId = inserted
+        }
+
+        let priority = try Int.fetchOne(
+            db,
+            sql: """
+                SELECT COALESCE(MAX(\(OriginRecord.Columns.priority.name)), -1) + 1
+                FROM \(OriginRecord.databaseTableName)
+                WHERE \(OriginRecord.Columns.seriesId.name) = ?
+                """,
+            arguments: [seriesId]
+        ) ?? 0
 
         var origin = OriginRecord(
             id: nil,
@@ -545,7 +825,7 @@ final class DetailsViewModel {
             slug: detail.slug,
             url: detail.url.absoluteString,
             synopsis: detail.synopsis,
-            priority: 0,
+            priority: priority,
             classification: detail.classification,
             publication: detail.publication,
             // this origin exists because a details response just arrived
@@ -591,19 +871,53 @@ final class DetailsViewModel {
             try link.insert(db, onConflict: .ignore)
         }
 
-        // the creating origin is the only one there is, so it supplies everything
+        // an attached origin joins a series that already has its preferences set,
+        // and taking them over would swap the display out from under the user
+        guard existing == nil else { return (seriesId, originId) }
+
         series.preferredTitleId = preferredTitleId
         series.preferredCoverId = preferredCoverId
         series.preferredSynopsisOriginId = originId
         series.preferredMetadataOriginId = originId
         try series.update(db)
 
-        return seriesId
+        return (seriesId, originId)
+    }
+
+    // metadata a refresh is allowed to overwrite. titles and covers are add-only,
+    // so a pick the user made can never be taken away by a later fetch
+    nonisolated fileprivate static func update(
+        originId: OriginRecord.ID,
+        from detail: SeriesDetail,
+        in db: Database
+    ) throws {
+        guard var origin = try OriginRecord.fetchOne(db, key: originId.rawValue) else { return }
+
+        _ = try origin.updateChanges(db) {
+            $0.synopsis = detail.synopsis
+            $0.classification = detail.classification
+            $0.publication = detail.publication
+            $0.metadataFetchedDate = .now
+        }
+
+        for value in [detail.title] + detail.altTitles {
+            _ = try TitleRecord.findOrCreate(
+                TitleRecord(id: nil, seriesId: origin.seriesId, originId: originId, value: value),
+                in: db
+            )
+        }
+
+        for url in detail.covers {
+            _ = try CoverRecord.findOrCreate(
+                CoverRecord(id: nil, seriesId: origin.seriesId, originId: originId, url: url, path: nil),
+                in: db
+            )
+        }
     }
 
     // chapters arrive independently of the rest of a series, so this runs on its
     // own and is safe to repeat. progress and lastReadDate are never overwritten
-    nonisolated private static func upsert(
+    nonisolated fileprivate static func upsert(
         _ entries: [ChapterEntry],
         for originId: OriginRecord.ID,
         in db: Database
@@ -667,125 +981,15 @@ final class DetailsViewModel {
         }
     }
 
-    // best_chapter already picks one row per chapter number across every available
-    // origin, and its isVisible column folds in the half-chapter preference
-    nonisolated private static func chapters(
-        for seriesId: SeriesRecord.ID,
-        in db: Database
-    ) throws -> [StoredChapter] {
-        let sql = """
-            SELECT
-                c.\(ChapterRecord.Columns.slug.name) AS slug,
-                c.\(ChapterRecord.Columns.title.name) AS title,
-                c.\(ChapterRecord.Columns.number.name) AS number,
-                c.\(ChapterRecord.Columns.language.name) AS language,
-                c.\(ChapterRecord.Columns.progress.name) AS progress,
-                c.\(ChapterRecord.Columns.publishedDate.name) AS publishedDate,
-                s.\(ScanlatorRecord.Columns.name.name) AS scanlator,
-                src.\(SourceRecord.Columns.slug.name) AS sourceSlug
-            FROM \(ChapterRecord.databaseTableName) c
-            JOIN \(BestChapterView.databaseTableName) bc ON bc.chapterId = c.id
-            JOIN \(ScanlatorRecord.databaseTableName) s ON s.id = c.\(ChapterRecord.Columns.scanlatorId.name)
-            JOIN \(OriginRecord.databaseTableName) o ON o.id = c.\(ChapterRecord.Columns.originId.name)
-            LEFT JOIN \(SourceRecord.databaseTableName) src ON src.id = o.\(OriginRecord.Columns.sourceId.name)
-            WHERE bc.seriesId = ?
-              AND bc.rank = 1
-              AND bc.isVisible = 1
-            ORDER BY bc.number ASC
-            """
-
-        return try StoredChapter.fetchAll(db, sql: sql, arguments: [seriesId])
-    }
-
-    // ordered the way best_chapter ranks them: priority first, id as the
-    // deterministic tiebreak, unavailable sources last
-    nonisolated private static func origins(
-        for seriesId: SeriesRecord.ID,
-        in db: Database
-    ) throws -> [StoredOrigin] {
-        let sql = """
-            SELECT
-                o.id AS id,
-                o.\(OriginRecord.Columns.priority.name) AS priority,
-                o.\(OriginRecord.Columns.chaptersFetchedDate.name) AS chaptersFetchedDate,
-                src.\(SourceRecord.Columns.slug.name) AS sourceSlug,
-                (o.\(OriginRecord.Columns.sourceId.name) IS NULL) AS disconnected,
-                COALESCE(src.\(SourceRecord.Columns.disabled.name), 0) AS disabled,
-                (
-                    SELECT COUNT(*)
-                    FROM \(ChapterRecord.databaseTableName) c
-                    WHERE c.\(ChapterRecord.Columns.originId.name) = o.id
-                ) AS chapterCount
-            FROM \(OriginRecord.databaseTableName) o
-            LEFT JOIN \(SourceRecord.databaseTableName) src ON src.id = o.\(OriginRecord.Columns.sourceId.name)
-            WHERE o.\(OriginRecord.Columns.seriesId.name) = ?
-            ORDER BY
-                (o.\(OriginRecord.Columns.sourceId.name) IS NULL OR COALESCE(src.\(SourceRecord.Columns.disabled.name), 0)) ASC,
-                o.\(OriginRecord.Columns.priority.name) ASC,
-                o.id ASC
-            """
-
-        return try StoredOrigin.fetchAll(db, sql: sql, arguments: [seriesId])
-    }
-
-    nonisolated private static func covers(
-        for seriesId: SeriesRecord.ID,
-        in db: Database
-    ) throws -> [StoredCover] {
-        let sql = """
-            SELECT
-                c.id AS id,
-                c.\(CoverRecord.Columns.url.name) AS url,
-                src.\(SourceRecord.Columns.slug.name) AS sourceSlug,
-                (c.id = s.\(SeriesRecord.Columns.preferredCoverId.name)) AS isPreferred
-            FROM \(CoverRecord.databaseTableName) c
-            JOIN \(SeriesRecord.databaseTableName) s ON s.id = c.\(CoverRecord.Columns.seriesId.name)
-            LEFT JOIN \(OriginRecord.databaseTableName) o ON o.id = c.\(CoverRecord.Columns.originId.name)
-            LEFT JOIN \(SourceRecord.databaseTableName) src ON src.id = o.\(OriginRecord.Columns.sourceId.name)
-            WHERE c.\(CoverRecord.Columns.seriesId.name) = ?
-            ORDER BY c.id ASC
-            """
-
-        return try StoredCover.fetchAll(db, sql: sql, arguments: [seriesId])
-    }
-
-    nonisolated private static func candidates(
-        for ids: [SeriesRecord.ID],
-        in db: Database
-    ) throws -> [StoredCandidate] {
-        guard !ids.isEmpty else { return [] }
-
-        let placeholders = ids.map { _ in "?" }.joined(separator: ", ")
-        let sql = """
-            SELECT
-                v.\(RichfulEntryView.Columns.seriesId.name) AS id,
-                v.\(RichfulEntryView.Columns.title.name) AS title,
-                v.\(RichfulEntryView.Columns.cover.name) AS cover,
-                v.\(RichfulEntryView.Columns.authors.name) AS authors,
-                v.\(RichfulEntryView.Columns.totalChapterCount.name) AS chapterCount,
-                (SELECT COUNT(*) FROM \(OriginRecord.databaseTableName) o
-                  WHERE o.\(OriginRecord.Columns.seriesId.name) = v.\(RichfulEntryView.Columns.seriesId.name)) AS sourceCount,
-                (SELECT src.\(SourceRecord.Columns.slug.name)
-                   FROM \(OriginRecord.databaseTableName) o
-                   JOIN \(SourceRecord.databaseTableName) src ON src.id = o.\(OriginRecord.Columns.sourceId.name)
-                  WHERE o.\(OriginRecord.Columns.seriesId.name) = v.\(RichfulEntryView.Columns.seriesId.name)
-                  ORDER BY o.\(OriginRecord.Columns.priority.name) ASC LIMIT 1) AS sourceSlug
-            FROM \(RichfulEntryView.databaseTableName) v
-            WHERE v.\(RichfulEntryView.Columns.seriesId.name) IN (\(placeholders))
-            """
-
-        return try StoredCandidate.fetchAll(db, sql: sql, arguments: StatementArguments(ids.map(\.rawValue)))
-    }
-
-    // titles and covers carry the origin, so they move with it. UPDATE OR IGNORE
+    // every origin the held row owns moves across, then the row itself goes. titles
+    // and covers carry their origin, so they travel with it. UPDATE OR IGNORE
     // because the target may already hold an identical title or cover url
-    nonisolated private static func reparent(
-        originId: OriginRecord.ID,
+    nonisolated fileprivate static func reparent(
         from series: SeriesRecord.ID,
         to target: SeriesRecord.ID,
         in db: Database
     ) throws {
-        let next = try Int.fetchOne(
+        var next = try Int.fetchOne(
             db,
             sql: """
                 SELECT COALESCE(MAX(\(OriginRecord.Columns.priority.name)), -1) + 1
@@ -795,20 +999,30 @@ final class DetailsViewModel {
             arguments: [target]
         ) ?? 0
 
-        try db.execute(
-            sql: """
-                UPDATE \(OriginRecord.databaseTableName)
-                SET \(OriginRecord.Columns.seriesId.name) = ?, \(OriginRecord.Columns.priority.name) = ?
-                WHERE id = ?
-                """,
-            arguments: [target, next, originId]
-        )
+        let origins = try OriginRecord
+            .filter(OriginRecord.Columns.seriesId == series)
+            .order(OriginRecord.Columns.priority.asc, OriginRecord.Columns.id.asc)
+            .fetchAll(db)
 
-        for table in [TitleRecord.databaseTableName, CoverRecord.databaseTableName] {
+        for origin in origins {
+            guard let originId = origin.id else { continue }
+
             try db.execute(
-                sql: "UPDATE OR IGNORE \(table) SET seriesId = ? WHERE originId = ?",
-                arguments: [target, originId]
+                sql: """
+                    UPDATE \(OriginRecord.databaseTableName)
+                    SET \(OriginRecord.Columns.seriesId.name) = ?, \(OriginRecord.Columns.priority.name) = ?
+                    WHERE id = ?
+                    """,
+                arguments: [target, next, originId]
             )
+            next += 1
+
+            for table in [TitleRecord.databaseTableName, CoverRecord.databaseTableName] {
+                try db.execute(
+                    sql: "UPDATE OR IGNORE \(table) SET seriesId = ? WHERE originId = ?",
+                    arguments: [target, originId]
+                )
+            }
         }
 
         try db.execute(
@@ -818,7 +1032,7 @@ final class DetailsViewModel {
     }
 
     // removing resets addedDate, so a series re-added later takes a fresh date
-    nonisolated private static func setInLibrary(
+    nonisolated fileprivate static func setInLibrary(
         _ inLibrary: Bool,
         for id: SeriesRecord.ID,
         in db: Database
@@ -833,7 +1047,7 @@ final class DetailsViewModel {
     }
 
     // exact url, else the same filename ignoring extension, else the first listed
-    nonisolated private static func primaryCover(among covers: [URL], matching stub: URL?) -> URL? {
+    nonisolated fileprivate static func primaryCover(among covers: [URL], matching stub: URL?) -> URL? {
         guard let stub else { return covers.first }
         if let exact = covers.first(where: { $0 == stub }) { return exact }
 
@@ -841,7 +1055,7 @@ final class DetailsViewModel {
         return covers.first { $0.deletingPathExtension().lastPathComponent == stem } ?? covers.first
     }
 
-    nonisolated private static func sanitised(_ tag: String) -> String {
+    nonisolated fileprivate static func sanitised(_ tag: String) -> String {
         tag.lowercased().replacingOccurrences(of: " ", with: "")
     }
 }
@@ -850,34 +1064,52 @@ private enum DetailsError: Error {
     case missingIdentifier
 }
 
-private struct StoredCandidate: Decodable, FetchableRecord {
+private struct Stored: Sendable {
+    let series: SeriesRecord
+    let entry: RichfulEntryView
+    let chapters: [StoredChapter]
+    let origins: [StoredOrigin]
+    let covers: [StoredCover]
+}
+
+private struct StoredCandidate: Decodable, FetchableRecord, Sendable {
     let id: Int64
     let title: String
     let cover: URL?
+    let path: String?
     let authors: String?
     let chapterCount: Int
     let sourceCount: Int
     let sourceSlug: String?
 }
 
-private struct StoredOrigin: Decodable, FetchableRecord {
+private struct StoredOrigin: Decodable, FetchableRecord, Sendable {
     let id: Int64
+    let slug: String
     let priority: Int
     let chapterCount: Int
     let chaptersFetchedDate: Date
+    let metadataFetchedDate: Date
     let sourceSlug: String?
+    let sourceName: String?
+    let sourceBaseURL: URL?
+    let sourceReferer: URL?
     let disconnected: Bool
     let disabled: Bool
+    let installed: Bool
 }
 
-private struct StoredCover: Decodable, FetchableRecord {
+private struct StoredCover: Decodable, FetchableRecord, Sendable {
     let id: Int64
     let url: URL
+    let path: String?
     let sourceSlug: String?
+    let sourceName: String?
     let isPreferred: Bool
 }
 
-private struct StoredChapter: Decodable, FetchableRecord {
+private struct StoredChapter: Decodable, FetchableRecord, Sendable {
+    let id: Int64
     let slug: String
     let title: String
     let number: Double
@@ -885,5 +1117,6 @@ private struct StoredChapter: Decodable, FetchableRecord {
     let progress: Double
     let publishedDate: Date
     let scanlator: String
+    let originSlug: String
     let sourceSlug: String?
 }

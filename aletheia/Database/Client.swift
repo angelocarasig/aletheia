@@ -9,7 +9,9 @@ import Foundation
 import GRDB
 
 final class DatabaseClient: Sendable {
-    static let client = DatabaseClient()
+    // only here to satisfy the @Entry defaults in AppEnvironment, which the
+    // bootstrapped tree never reads. the app path goes through open()
+    static let client = try! DatabaseClient()
 
     let reader: DatabaseReader
     let writer: DatabaseWriter
@@ -64,27 +66,24 @@ final class DatabaseClient: Sendable {
         return config
     }
 
-    private init() {
-        do {
-            let pool = try DatabasePool(
-                path: DatabaseClient.path.path(),
-                configuration: DatabaseClient.configuration
-            )
+    // throws rather than traps - a launch while the device is locked surfaces as
+    // SQLITE_IOERR, and that has to reach the user as a retry, not a crash
+    init() throws {
+        let pool = try DatabasePool(
+            path: DatabaseClient.path.path(),
+            configuration: DatabaseClient.configuration
+        )
 
-            var migrator = DatabaseMigrator()
-            #if DEBUG
-            // schema (v1.0.0) and indexes (v1.0.1) are edited in place during dev;
-            // erase-on-change so those edits take effect without a manual wipe
-            migrator.eraseDatabaseOnSchemaChange = true
-            #endif
-            Migrations.register(with: &migrator, records: DatabaseClient.allRecords, views: DatabaseClient.allViews)
-            try migrator.migrate(pool)
+        var migrator = DatabaseMigrator()
+        #if DEBUG
+        // schema (v1.0.0) and indexes (v1.0.1) are edited in place during dev;
+        // erase-on-change so those edits take effect without a manual wipe
+        migrator.eraseDatabaseOnSchemaChange = true
+        #endif
+        Migrations.register(with: &migrator, records: DatabaseClient.allRecords, views: DatabaseClient.allViews)
+        try migrator.migrate(pool)
 
-            self.reader = pool
-            self.writer = pool
-        }
-        catch {
-            fatalError("Failed to initialize database: \(error)")
-        }
+        self.reader = pool
+        self.writer = pool
     }
 }

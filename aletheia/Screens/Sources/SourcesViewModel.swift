@@ -86,8 +86,11 @@ final class SourcesViewModel {
         let reader = database.reader
         
         return AsyncStream { continuation in
+            // uninstalled rows are kept so a series can still name the source it
+            // came from, but there is nothing here to browse or pin
             let observation = ValueObservation.tracking { db in
                 try SourceRecord
+                    .filter(SourceRecord.Columns.installed == true)
                     .order(SourceRecord.Columns.slug)
                     .fetchAll(db)
             }

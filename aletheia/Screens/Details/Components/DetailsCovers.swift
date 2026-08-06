@@ -98,7 +98,7 @@ struct DetailsCovers: View {
     }
 
     private func Page(_ cover: Cover) -> some View {
-        KFImage(cover.url)
+        KFImage(cover.artwork)
             .requestModifier(AnyModifier.referer(referer))
             .resizable()
             .placeholder { Rectangle().fill(.primary.opacity(Layout.fillOpacity)).shimmer() }
@@ -116,7 +116,7 @@ struct DetailsCovers: View {
     @ViewBuilder
     private var Backdrop: some View {
         if let focused {
-            KFImage(focused.url)
+            KFImage(focused.artwork)
                 .requestModifier(AnyModifier.referer(referer))
                 .resizable()
                 .placeholder { Color.clear }
@@ -240,7 +240,7 @@ struct DetailsCovers: View {
     private func save(_ cover: Cover) {
         let options: KingfisherOptionsInfo = [.requestModifier(AnyModifier.referer(referer))]
 
-        KingfisherManager.shared.retrieveImage(with: cover.url, options: options) { result in
+        KingfisherManager.shared.retrieveImage(with: cover.artwork, options: options) { result in
             guard case .success(let value) = result else { return }
             UIImageWriteToSavedPhotosAlbum(value.image, nil, nil, nil)
         }
@@ -269,7 +269,7 @@ private struct CoverPreview: View {
             Color.black
                 .ignoresSafeArea()
 
-            KFImage(cover.url)
+            KFImage(cover.artwork)
                 .requestModifier(AnyModifier.referer(referer))
                 .resizable()
                 .placeholder { ProgressView().tint(.white) }
@@ -331,11 +331,16 @@ private struct CoverPreview: View {
 extension DetailsCovers {
     struct Cover: Identifiable, Hashable {
         let id: Int64
+        // the remote url stays the identity, and stays what Share offers - handing
+        // out a file inside the app group container is a different action entirely
         let url: URL
+        let local: URL?
         let sourceName: String?
         // nil when the contributing source is no longer installed. qualified
         // because Kingfisher declares an ImageResource of its own
         let sourceIcon: SwiftUI.ImageResource?
         let isPreferred: Bool
+
+        var artwork: URL { local ?? url }
     }
 }

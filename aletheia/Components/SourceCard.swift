@@ -90,7 +90,7 @@ struct SourceCard: View {
     private var Badge: some View {
         switch match?.outcome {
         case .inLibrary:
-            Marker(systemImage: "checkmark.circle", tint: .success)
+            Marker(systemImage: "checkmark.circle.fill", tint: .success)
         case .candidates:
             Marker(systemImage: "circle.lefthalf.filled", tint: .brand)
         case .unmatched, nil:
@@ -98,13 +98,15 @@ struct SourceCard: View {
         }
     }
 
+    // the scrim carries the state at a glance and the corner mark says which one,
+    // so the artwork stays readable underneath instead of hosting a centred icon
     private func Marker(systemImage: String, tint: Color) -> some View {
         Color.black.opacity(Layout.scrimOpacity)
-            .overlay {
+            .overlay(alignment: .topTrailing) {
                 Image(systemName: systemImage)
-                    .font(.title)
-                    .fontWeight(.bold)
+                    .font(.title2)
                     .foregroundStyle(tint)
+                    .padding(dimensions.spacing.space8)
             }
     }
 

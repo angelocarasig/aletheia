@@ -15,17 +15,12 @@ struct DetailsScreen: View {
     @Environment(\.compositor) private var compositor
 
     @State private var vm: DetailsViewModel?
-    @State private var reading: DetailsChapters.Chapter?
+    @State private var reading: DetailsViewModel.ReaderTarget?
     @State private var showingCovers = false
     @State private var showingDisambiguation = false
     // written here, read only inside the backdrop - reading it in this body
     // would re-evaluate the whole chapter list on every scroll step
     @State private var scroll = DetailsScroll()
-
-    // resolved rather than computed: a library entry has to look up its primary
-    // origin before there is a source to read from
-    @State private var route: DetailsRoute?
-    @State private var unresolved = false
 
     private enum Layout {
         // the skeleton mirrors the real layout, so a crossfade reads as the
@@ -41,34 +36,10 @@ struct DetailsScreen: View {
                 .ignoresSafeArea()
 
             if let vm, vm.isReady {
-                DetailsBackdrop(cover: vm.cover, referer: route?.source.descriptor.referer, scroll: scroll)
+                Loaded(vm)
+            } else if let vm, let failure = vm.failure {
+                Unavailable(failure)
                     .transition(.opacity)
-
-                ScrollView(.vertical, showsIndicators: false) {
-                    Content(vm)
-                }
-                .transition(.opacity)
-                // clamped inside the transform, not after: the callback only
-                // fires when its value changes, so clamping stops it entirely
-                // past the ramp rather than firing for another 149,000 points of
-                // chapter list. rounding bounds the ramp itself to a few updates
-                .onScrollGeometryChange(for: CGFloat.self) { geometry in
-                    let scrolled = geometry.contentOffset.y + geometry.contentInsets.top
-                    let ramped = min(max(scrolled, 0), DetailsBackdrop.rampDistance)
-                    return (ramped / DetailsBackdrop.rampStep).rounded() * DetailsBackdrop.rampStep
-                } action: { _, offset in
-                    scroll.offset = offset
-                }
-                .scrollEdgeEffectStyle(.soft, for: .top)
-            } else if unresolved {
-                // no installed source can serve this series - the rows are still
-                // in the database, but nothing can fetch or read from them
-                ContentUnavailableView(
-                    "Source Unavailable",
-                    systemImage: "questionmark.circle",
-                    description: Text("No installed source can open this series")
-                )
-                .transition(.opacity)
             } else {
                 DetailsSkeleton()
                     .transition(.opacity)
@@ -76,21 +47,19 @@ struct DetailsScreen: View {
         }
         .animation(Layout.settle, value: vm?.isReady ?? false)
         .navigationBarTitleDisplayMode(.inline)
-        .navigationDestination(item: $reading) { chapter in
-            if let route {
-                ReaderScreen(
-                    source: route.source,
-                    seriesSlug: route.stub.slug,
-                    chapterSlug: chapter.id,
-                    title: "Ch. \(chapter.number.formatted())"
-                )
-            }
+        .navigationDestination(item: $reading) { target in
+            ReaderScreen(
+                source: target.source,
+                seriesSlug: target.seriesSlug,
+                chapterSlug: target.chapterSlug,
+                title: target.title
+            )
         }
         .sheet(isPresented: $showingDisambiguation) {
-            if let vm, let route {
+            if let vm {
                 DetailsDisambiguation(
                     title: vm.title,
-                    sourceName: route.source.descriptor.name,
+                    sourceName: sourceName,
                     candidates: vm.candidates,
                     onAttach: { id in
                         showingDisambiguation = false
@@ -98,7 +67,7 @@ struct DetailsScreen: View {
                     },
                     onKeepSeparate: {
                         showingDisambiguation = false
-                        vm.keepSeparate()
+                        Task { await vm.keepSeparate() }
                     }
                 )
                 .interactiveDismissDisabled()
@@ -111,7 +80,7 @@ struct DetailsScreen: View {
             if let vm {
                 DetailsCovers(
                     covers: vm.covers,
-                    referer: route?.source.descriptor.referer,
+                    referer: vm.referer,
                     isSaving: vm.isSaving,
                     onSetPreferred: { id in Task { await vm.setPreferredCover(id) } }
                 )
@@ -120,25 +89,64 @@ struct DetailsScreen: View {
         .task {
             guard vm == nil else { return }
 
-            guard let route = await DetailsViewModel.route(
-                for: entry,
-                registry: compositor.registry,
-                database: database
-            ) else {
-                unresolved = true
-                return
-            }
-
-            self.route = route
-
             let vm = DetailsViewModel(
-                source: route.source,
-                stub: route.stub,
+                entry: entry,
                 registry: compositor.registry,
+                assets: compositor.assets,
                 database: database
             )
             self.vm = vm
             await vm.load()
+        }
+    }
+
+    private var sourceName: String {
+        guard case .source(let slug, _) = entry else { return "" }
+        return compositor.registry.source(slug: slug)?.descriptor.name ?? slug
+    }
+
+    @ViewBuilder
+    private func Loaded(_ vm: DetailsViewModel) -> some View {
+        DetailsBackdrop(cover: vm.cover, referer: vm.referer, scroll: scroll)
+            .transition(.opacity)
+
+        ScrollView(.vertical, showsIndicators: false) {
+            Content(vm)
+        }
+        .transition(.opacity)
+        // clamped inside the transform, not after: the callback only
+        // fires when its value changes, so clamping stops it entirely
+        // past the ramp rather than firing for another 149,000 points of
+        // chapter list. rounding bounds the ramp itself to a few updates
+        .onScrollGeometryChange(for: CGFloat.self) { geometry in
+            let scrolled = geometry.contentOffset.y + geometry.contentInsets.top
+            let ramped = min(max(scrolled, 0), DetailsBackdrop.rampDistance)
+            return (ramped / DetailsBackdrop.rampStep).rounded() * DetailsBackdrop.rampStep
+        } action: { _, offset in
+            scroll.offset = offset
+        }
+        .scrollEdgeEffectStyle(.soft, for: .top)
+        .refreshable { await vm.refresh() }
+    }
+
+    @ViewBuilder
+    private func Unavailable(_ failure: DetailsViewModel.Failure) -> some View {
+        switch failure {
+        case .unavailable:
+            // the rows may well be in the database, but no installed source can
+            // fetch this series or read a page from it
+            ContentUnavailableView(
+                "Source Unavailable",
+                systemImage: "questionmark.circle",
+                description: Text("No installed source can open this series")
+            )
+
+        case .fetch(let message):
+            ContentUnavailableView(
+                "Couldn't Load Series",
+                systemImage: "exclamationmark.triangle",
+                description: Text(message)
+            )
         }
     }
 
@@ -151,11 +159,11 @@ struct DetailsScreen: View {
 
             DetailsHeader(
                 cover: vm.cover,
-                referer: route?.source.descriptor.referer,
+                referer: vm.referer,
                 title: vm.title,
                 authors: vm.authors,
                 onOpenCovers: { showingCovers = true },
-                onOpenTitles: { fatalError("not implemented") }
+                onOpenTitles: { }
             )
 
             DetailsActions(
@@ -167,7 +175,7 @@ struct DetailsScreen: View {
                 onSetStatus: { status in Task { await vm.setStatus(status) } }
             )
 
-            if let synopsis = vm.detail?.synopsis, !synopsis.isEmpty {
+            if let synopsis = vm.synopsis, !synopsis.isEmpty {
                 DetailsSynopsis(synopsis: synopsis)
             }
 
@@ -182,20 +190,25 @@ struct DetailsScreen: View {
             DetailsCollections(collections: vm.collections)
 
             DetailsMetadata(
-                classification: vm.detail?.classification,
-                publication: vm.detail?.publication,
-                readCount: 0,
-                totalCount: vm.chapterDisplays.count,
+                classification: vm.classification,
+                publication: vm.publication,
+                readCount: vm.readCount,
+                totalCount: vm.chapters.count,
                 lastFetchedDate: vm.lastMetadataFetch,
-                lastReadDate: nil
+                lastReadDate: vm.lastReadDate
             )
 
             DetailsChapters(
-                chapters: vm.chapterDisplays,
+                chapters: vm.chapters,
                 isFetching: vm.isFetchingChapters,
-                hasFetched: vm.hasFetchedChapters
+                hasFetched: vm.hasFetchedChapters,
+                canRefresh: vm.canRefresh,
+                onRefresh: { Task { await vm.refreshChapters() } },
+                onMarkAll: { read in Task { await vm.markAll(read: read) } }
             ) { chapter in
-                reading = chapter
+                guard let target = vm.read(chapter) else { return }
+                Task { await vm.open(chapter) }
+                reading = target
             }
         }
         .padding(.horizontal, dimensions.spacing.space8)

@@ -1,0 +1,193 @@
+//
+//  Compositor+Assets.swift
+//  aletheia
+//
+//  Created by Angelo Carasig on 6/8/2026.
+//
+
+import Foundation
+import GRDB
+
+extension Compositor {
+    struct Assets: Sendable {
+        private let downloader: CoverDownloader
+        private let store: any AssetStoring
+
+        init(database: DatabaseClient, network: NetworkConfiguration, log: AppLog = .shared) {
+            let store = AssetStore(network: network, log: log)
+            self.store = store
+            self.downloader = CoverDownloader(database: database, store: store, log: log)
+        }
+
+        // the work is owned by the actor, not by whoever asked for it - a screen
+        // that goes away two seconds after opening must not cancel its downloads
+        func enqueue(series: SeriesRecord.ID) {
+            guard !Constants.App.isPreview else { return }
+            Task { await downloader.enqueue(series) }
+        }
+
+        func sweep() {
+            guard !Constants.App.isPreview else { return }
+            Task { await downloader.sweep() }
+        }
+
+        func local(for path: String?) -> URL? {
+            store.resolve(path)
+        }
+    }
+}
+
+actor CoverDownloader {
+    private let database: DatabaseClient
+    private let store: any AssetStoring
+    private let log: AppLog
+
+    private var inFlight: Set<Int64> = []
+    private var failures: [Int64: Int] = [:]
+
+    init(database: DatabaseClient, store: any AssetStoring, log: AppLog) {
+        self.database = database
+        self.store = store
+        self.log = log
+    }
+
+    private enum Limits {
+        static let attempts = 3
+        static let backlog = 200
+    }
+
+    func enqueue(_ series: SeriesRecord.ID) async {
+        let pending = (try? await database.reader.read { db in
+            try Self.pending(for: series, in: db)
+        }) ?? []
+
+        await download(pending)
+    }
+
+    // launch order matters: clean() has already cascaded away disposable series,
+    // and that cascade is what manufactures the orphans this collects
+    func sweep() async {
+        do {
+            let live = try await database.reader.read { db in
+                try CoverRecord.stored(in: db)
+            }
+
+            let removed = try store.sweep(CoverRecord.storage, keeping: live)
+            log.log("swept \(removed) orphaned cover file(s)", category: "assets")
+
+            let missing = live.filter { store.resolve($0) == nil }
+            if !missing.isEmpty {
+                try await database.writer.write { db in
+                    try CoverRecord.forget(Array(missing), in: db)
+                }
+                log.log("cleared \(missing.count) cover path(s) with no file", category: "assets")
+            }
+        } catch {
+            // a failed read must never be mistaken for an empty keep set - that
+            // would delete every downloaded cover the user has
+            log.log("sweep ABORTED — \(error)", category: "assets")
+            return
+        }
+
+        let backlog = (try? await database.reader.read { db in
+            try Self.backlog(limit: Limits.backlog, in: db)
+        }) ?? []
+
+        await download(backlog)
+    }
+
+    private func download(_ rows: [Pending]) async {
+        let queued = rows.filter { row in
+            !inFlight.contains(row.id) && (failures[row.id] ?? 0) < Limits.attempts
+        }
+        guard !queued.isEmpty else { return }
+
+        queued.forEach { inFlight.insert($0.id) }
+        defer { queued.forEach { inFlight.remove($0.id) } }
+
+        var written: [Int64: String] = [:]
+
+        for row in queued {
+            let asset = Asset(
+                key: row.url.absoluteString,
+                parts: [row.url],
+                folder: CoverRecord.storage,
+                referer: row.referer
+            )
+
+            do {
+                written[row.id] = try await store.store(asset)
+            } catch {
+                failures[row.id, default: 0] += 1
+                log.log("cover \(row.id) failed — \(error)", category: "assets")
+            }
+        }
+
+        guard !written.isEmpty else { return }
+
+        // one transaction, not one per cover: each write wakes the details
+        // observation and both entry views
+        do {
+            try await database.writer.write { db in
+                for (id, path) in written {
+                    _ = try CoverRecord
+                        .filter(key: id)
+                        .updateAll(db, CoverRecord.Columns.path.set(to: path))
+                }
+            }
+        } catch {
+            log.log("could not record \(written.count) cover path(s) — \(error)", category: "assets")
+        }
+    }
+}
+
+extension CoverDownloader {
+    fileprivate struct Pending: Decodable, FetchableRecord, Sendable {
+        let id: Int64
+        let url: URL
+        let referer: URL?
+    }
+
+    // both joins are LEFT: originId and sourceId are each ON DELETE SET NULL, so
+    // a disconnected origin yields no referer and is downloaded without one
+    fileprivate static func pending(for series: SeriesRecord.ID, in db: Database) throws -> [Pending] {
+        let sql = """
+            SELECT
+                c.id AS id,
+                c.\(CoverRecord.Columns.url.name) AS url,
+                src.\(SourceRecord.Columns.referer.name) AS referer
+            FROM \(CoverRecord.databaseTableName) c
+            JOIN \(SeriesRecord.databaseTableName) s ON s.id = c.\(CoverRecord.Columns.seriesId.name)
+            LEFT JOIN \(OriginRecord.databaseTableName) o ON o.id = c.\(CoverRecord.Columns.originId.name)
+            LEFT JOIN \(SourceRecord.databaseTableName) src ON src.id = o.\(OriginRecord.Columns.sourceId.name)
+            WHERE c.\(CoverRecord.Columns.seriesId.name) = ?
+              AND c.\(CoverRecord.Columns.path.name) IS NULL
+            ORDER BY (c.id = s.\(SeriesRecord.Columns.preferredCoverId.name)) DESC, c.id ASC
+            """
+
+        return try Pending.fetchAll(db, sql: sql, arguments: [series])
+    }
+
+    // the backstop for whatever the write path missed, so it is bounded and
+    // ordered by what the user is most likely to look at
+    fileprivate static func backlog(limit: Int, in db: Database) throws -> [Pending] {
+        let sql = """
+            SELECT
+                c.id AS id,
+                c.\(CoverRecord.Columns.url.name) AS url,
+                src.\(SourceRecord.Columns.referer.name) AS referer
+            FROM \(CoverRecord.databaseTableName) c
+            JOIN \(SeriesRecord.databaseTableName) s ON s.id = c.\(CoverRecord.Columns.seriesId.name)
+            LEFT JOIN \(OriginRecord.databaseTableName) o ON o.id = c.\(CoverRecord.Columns.originId.name)
+            LEFT JOIN \(SourceRecord.databaseTableName) src ON src.id = o.\(OriginRecord.Columns.sourceId.name)
+            WHERE c.\(CoverRecord.Columns.path.name) IS NULL
+            ORDER BY
+                s.\(SeriesRecord.Columns.inLibrary.name) DESC,
+                s.\(SeriesRecord.Columns.lastReadDate.name) DESC,
+                c.id ASC
+            LIMIT ?
+            """
+
+        return try Pending.fetchAll(db, sql: sql, arguments: [limit])
+    }
+}

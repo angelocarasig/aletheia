@@ -16,9 +16,9 @@ extension Compositor {
             self.database = database
         }
         
-        func clean() {
+        func clean() async {
             do {
-                let deleted = try database.writer.write { db in
+                let deleted = try await database.writer.write { db in
                     // a series never opened in the reader still holds lastReadDate's
                     // .distantPast default, which is what marks it as disposable
                     try SeriesRecord

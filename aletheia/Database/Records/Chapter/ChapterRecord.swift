@@ -9,7 +9,7 @@ import Foundation
 import GRDB
 import Tagged
 
-struct ChapterRecord: Codable, DatabaseRecord {
+struct ChapterRecord: Codable, DatabaseRecord, StorableRecord {
     typealias ID = Tagged<Self, Int64>
     private(set) var id: ID?
 
@@ -25,11 +25,18 @@ struct ChapterRecord: Codable, DatabaseRecord {
     var lastReadDate: Date?
 
     var url: URL
-    var path: URL?
+    var path: String?
 
     var finished: Bool {
         progress >= 1
     }
+}
+
+// MARK: - StorableRecord
+
+extension ChapterRecord {
+    static var storage: URL { Constants.Paths.downloads }
+    static var pathColumn: Column { Columns.path }
 }
 
 // MARK: - DatabaseRecord

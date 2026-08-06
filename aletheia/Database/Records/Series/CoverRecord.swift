@@ -9,7 +9,7 @@ import Foundation
 import GRDB
 import Tagged
 
-struct CoverRecord: Codable, DatabaseRecord, UniqueRecord {
+struct CoverRecord: Codable, DatabaseRecord, UniqueRecord, StorableRecord {
     typealias ID = Tagged<Self, Int64>
     private(set) var id: ID?
 
@@ -17,7 +17,14 @@ struct CoverRecord: Codable, DatabaseRecord, UniqueRecord {
     private(set) var originId: OriginRecord.ID?
 
     var url: URL
-    var path: URL?
+    var path: String?
+}
+
+// MARK: - StorableRecord
+
+extension CoverRecord {
+    static var storage: URL { Constants.Paths.covers }
+    static var pathColumn: Column { Columns.path }
 }
 
 // MARK: - DatabaseRecord

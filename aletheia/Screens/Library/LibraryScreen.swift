@@ -10,6 +10,7 @@ import SwiftUI
 struct LibraryScreen: View {
     @Environment(\.database) private var database
     @Environment(\.dimensions) private var dimensions
+    @Environment(\.compositor) private var compositor
 
     @AppStorage("gridColumns") private var gridColumns = 3
     @State private var vm: LibraryViewModel?
@@ -37,7 +38,7 @@ struct LibraryScreen: View {
             .navigationTitle("Library")
             .navigationDestination(for: SeriesEntry.self) { DetailsScreen(entry: $0) }
             .task {
-                let vm = vm ?? LibraryViewModel(database: database)
+                let vm = vm ?? LibraryViewModel(database: database, assets: compositor.assets)
                 self.vm = vm
                 await vm.load()
             }

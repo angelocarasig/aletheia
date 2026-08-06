@@ -6,7 +6,6 @@
 //
 
 import Foundation
-import CryptoKit
 import struct SwiftUI.ImageResource
 
 struct SourceDescriptor: Sendable, Hashable {
@@ -33,10 +32,6 @@ extension SourceDescriptor {
             supportedSorts.map(\.fingerprint).joined(separator: "|")
         ]
 
-        let canonical = parts.joined(separator: "\u{1F}")
-
-        return SHA256.hash(data: Data(canonical.utf8))
-            .map { String(format: "%02x", $0) }
-            .joined()
+        return Checksum.hex(parts.joined(separator: "\u{1F}"))
     }
 }

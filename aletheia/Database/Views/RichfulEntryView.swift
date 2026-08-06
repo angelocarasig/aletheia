@@ -16,6 +16,8 @@ internal struct RichfulEntryView: ViewRecord {
     let slug: String
     let title: String
     let cover: URL?
+    // the displayed cover's downloaded location, container-relative
+    let path: String?
     let inLibrary: Bool
     let unreadCount: Int
 
@@ -53,6 +55,7 @@ extension RichfulEntryView {
         static let slug = Column(CodingKeys.slug)
         static let title = Column(CodingKeys.title)
         static let cover = Column(CodingKeys.cover)
+        static let path = Column(CodingKeys.path)
         static let inLibrary = Column(CodingKeys.inLibrary)
         static let unreadCount = Column(CodingKeys.unreadCount)
         static let authors = Column(CodingKeys.authors)
@@ -109,17 +112,11 @@ extension RichfulEntryView {
                     ''
                 ) as title,
 
-                -- cover: same resolution order as title
-                COALESCE(
-                    (SELECT c.url FROM \(CoverRecord.databaseTableName) c
-                     WHERE c.id = m.\(SeriesRecord.Columns.preferredCoverId.name)),
-                    (SELECT c.url FROM \(CoverRecord.databaseTableName) c
-                     WHERE c.seriesId = m.id AND c.originId = po.id
-                     ORDER BY c.id ASC LIMIT 1),
-                    (SELECT c.url FROM \(CoverRecord.databaseTableName) c
-                     WHERE c.seriesId = m.id
-                     ORDER BY c.id ASC LIMIT 1)
-                ) as cover,
+                -- cover: same resolution order as title. resolved by joining the
+                -- row itself rather than selecting each column separately, so the
+                -- downloaded path can never belong to a different cover than the url
+                pc.\(CoverRecord.Columns.url.name) as cover,
+                pc.\(CoverRecord.Columns.path.name) as path,
 
                 m.inLibrary,
 
@@ -226,6 +223,19 @@ extension RichfulEntryView {
                         o2.priority ASC,
                         o2.id ASC
                     LIMIT 1
+                )
+
+            -- the displayed cover: the user's pick, else the primary origin's
+            -- first, else any
+            LEFT JOIN \(CoverRecord.databaseTableName) pc
+                ON pc.id = COALESCE(
+                    m.\(SeriesRecord.Columns.preferredCoverId.name),
+                    (SELECT c.id FROM \(CoverRecord.databaseTableName) c
+                     WHERE c.seriesId = m.id AND c.originId = po.id
+                     ORDER BY c.id ASC LIMIT 1),
+                    (SELECT c.id FROM \(CoverRecord.databaseTableName) c
+                     WHERE c.seriesId = m.id
+                     ORDER BY c.id ASC LIMIT 1)
                 )
             """)
     }

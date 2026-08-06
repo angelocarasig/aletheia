@@ -12,6 +12,9 @@ struct DetailsChapters: View {
     let chapters: [Chapter]
     var isFetching: Bool = false
     var hasFetched: Bool = true
+    var canRefresh: Bool = false
+    var onRefresh: () -> Void
+    var onMarkAll: (Bool) -> Void
     var onOpen: (Chapter) -> Void
 
     @Environment(\.dimensions) private var dimensions
@@ -101,22 +104,21 @@ extension DetailsChapters {
 
     private var Overflow: some View {
         Menu {
-            Button {
-                fatalError("not implemented")
-            } label: {
+            Button(action: onRefresh) {
                 Label("Refresh Chapters", systemImage: "arrow.clockwise")
             }
+            .disabled(!canRefresh)
 
             Divider()
 
             Button {
-                fatalError("not implemented")
+                onMarkAll(true)
             } label: {
                 Label("Mark All as Read", systemImage: "checkmark.circle.fill")
             }
 
             Button {
-                fatalError("not implemented")
+                onMarkAll(false)
             } label: {
                 Label("Mark All as Unread", systemImage: "x.circle.fill")
             }
@@ -306,9 +308,10 @@ extension DetailsChapters {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.vertical, dimensions.spacing.space12)
-        .opacity(chapter.finished ? Layout.finishedOpacity : 1)
+        .opacity(chapter.finished || !chapter.canRead ? Layout.finishedOpacity : 1)
         .contentShape(.rect)
         .tappable { onOpen(chapter) }
+        .disabled(!chapter.canRead)
     }
 
     private func Meta(_ chapter: Chapter) -> some View {
@@ -349,16 +352,20 @@ extension DetailsChapters {
 
 extension DetailsChapters {
     struct Chapter: Identifiable, Hashable {
-        let id: String
+        let id: Int64
         let number: Double
         let title: String
         let scanlator: String
         let language: LanguageCode
         let publishedDate: Date
         let progress: Double
-    
+
         // nil when the origin's source is no longer installed
         let sourceIcon: ImageResource?
+
+        // an uninstalled or disabled source can still show its chapters, but
+        // nothing can fetch pages for them
+        let canRead: Bool
 
         var finished: Bool { progress >= 1 }
     }

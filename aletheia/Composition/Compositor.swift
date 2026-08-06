@@ -8,12 +8,16 @@
 import Foundation
 
 struct Compositor: Sendable {
+    let database: DatabaseClient
     let registry: Registry
     let db: Persistence
+    let assets: Assets
     let requester: AuthRequester
     let presenter: AuthPresenter
 
-    init(database: DatabaseClient = .client) {
+    // no default - resolving the singleton opens the pool and runs migrations,
+    // and that has to happen off the main actor during bootstrap
+    init(database: DatabaseClient) {
         let network = NetworkService()
         let presenter = AuthPresenter()
         let requester = AuthRequester(
@@ -27,9 +31,11 @@ struct Compositor: Sendable {
             ComixSource(requester: requester, renderer: renderer)
         ]
 
+        self.database = database
         self.presenter = presenter
         self.requester = requester
         self.registry = Registry(sources: sources, database: database)
+        self.assets = Assets(database: database, network: network)
         self.db = Persistence(database: database)
     }
 }

@@ -25,10 +25,10 @@ extension Compositor {
             sourcesBySlug[slug]
         }
         
-        func seed() {
+        func seed() async {
             let records = sources.map { SourceRecord(descriptor: $0.descriptor) }
             do {
-                try database.writer.write { db in
+                try await database.writer.write { db in
                     try SourceRecord.reconcile(with: records, in: db)
                 }
                 AppLog.shared.log("seeded \(records.count) source(s) into DB", category: "seed")

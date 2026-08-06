@@ -14,12 +14,14 @@ import Observation
 @Observable
 final class LibraryViewModel {
     private let database: DatabaseClient
+    private let assets: Compositor.Assets
 
     private(set) var entries: [Entry] = []
     private(set) var isLoading = false
 
-    init(database: DatabaseClient = .client) {
+    init(database: DatabaseClient, assets: Compositor.Assets) {
         self.database = database
+        self.assets = assets
     }
 
     func load() async {
@@ -34,7 +36,12 @@ final class LibraryViewModel {
         }
 
         entries = (rows ?? []).map {
-            Entry(id: SeriesRecord.ID(rawValue: $0.seriesId), title: $0.title, cover: $0.cover, unreadCount: $0.unreadCount)
+            Entry(
+                id: SeriesRecord.ID(rawValue: $0.seriesId),
+                title: $0.title,
+                cover: assets.local(for: $0.path) ?? $0.cover,
+                unreadCount: $0.unreadCount
+            )
         }
     }
 }
