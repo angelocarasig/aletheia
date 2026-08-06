@@ -22,8 +22,10 @@ actor AuthRequester {
     func credential(for source: any AuthenticatingSource) async throws -> SourceCredential {
         let slug = source.descriptor.slug
 
+        // deliberately silent. this is the steady state and fires once per
+        // request, which buried everything worth reading under five identical
+        // lines at a time. the refresh below is the state change worth logging
         if let cached = try? Keychain.sources.load(SourceCredential.self, account: slug), cached.isValid() {
-            log.log("[\(slug)] using cached credential (valid, \(cached.cookies.count) cookie(s))", category: "auth")
             return cached
         }
 

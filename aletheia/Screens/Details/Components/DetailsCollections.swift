@@ -9,6 +9,12 @@ import SwiftUI
 
 struct DetailsCollections: View {
     let collections: [Item]
+    // whether any collection exists at all, which decides what an empty section
+    // is telling you: nothing to join, or joined nothing
+    let hasAny: Bool
+    var onToggle: (Int64) -> Void
+    var onPick: () -> Void
+    var onCreate: () -> Void
 
     @Environment(\.dimensions) private var dimensions
 
@@ -19,6 +25,7 @@ struct DetailsCollections: View {
         static let idleFillOpacity: Double = 0.05
         static let newFillOpacity: Double = 0.1
         static let newSubtitleOpacity: Double = 0.6
+        static let settle: Animation = .smooth(duration: 0.3)
     }
 
     var body: some View {
@@ -27,10 +34,15 @@ struct DetailsCollections: View {
 
             if collections.isEmpty {
                 EmptyState
+                    .transition(.opacity)
             } else {
                 Cards
+                    .transition(.opacity)
             }
         }
+        // membership is written elsewhere and arrives through the observation, so
+        // the tap's own transaction is closed by the time a card appears
+        .animation(Layout.settle, value: collections)
     }
 
     private var AddButton: some View {
@@ -40,7 +52,9 @@ struct DetailsCollections: View {
             .foregroundStyle(.muted)
             .frame(width: dimensions.size.control, height: dimensions.size.control)
             .contentShape(.rect)
-            .tappable { fatalError("not implemented") }
+            // the full list, not the create form - the cards are a shortcut for
+            // the few you can see, this is for the rest
+            .tappable(action: onPick)
     }
 
     private var Cards: some View {
@@ -48,9 +62,10 @@ struct DetailsCollections: View {
             HStack(spacing: dimensions.spacing.space12) {
                 ForEach(collections) { collection in
                     Card(collection)
+                        .transition(.scale.combined(with: .opacity))
                 }
 
-                NewCard
+                AddCard
             }
         }
     }
@@ -70,22 +85,22 @@ struct DetailsCollections: View {
         .padding(dimensions.spacing.space12)
         .background(fill(for: collection), in: .rect(cornerRadius: dimensions.radius.radius8))
         .contentShape(.rect)
-        .tappable { fatalError("not implemented") }
+        .tappable { onToggle(collection.id) }
     }
 
-    private var NewCard: some View {
+    private var AddCard: some View {
         VStack(alignment: .leading, spacing: dimensions.spacing.space2) {
             HStack(spacing: dimensions.spacing.space4) {
                 Image(systemName: "plus.circle")
                     .font(.subheadline)
 
-                Text("New")
+                Text("Add")
                     .font(.subheadline)
                     .fontWeight(.medium)
             }
             .foregroundStyle(.brand)
 
-            Text("Create collection")
+            Text(hasAny ? "Pick a collection" : "Create collection")
                 .font(.caption2)
                 .foregroundStyle(.brand.opacity(Layout.newSubtitleOpacity))
         }
@@ -93,17 +108,19 @@ struct DetailsCollections: View {
         .padding(dimensions.spacing.space12)
         .background(.brand.opacity(Layout.newFillOpacity), in: .rect(cornerRadius: dimensions.radius.radius8))
         .contentShape(.rect)
-        .tappable { fatalError("not implemented") }
+        .tappable(action: hasAny ? onPick : onCreate)
     }
 
     private var EmptyState: some View {
         ContentUnavailableView {
             Label("No Collections", systemImage: "rectangle.stack")
         } description: {
-            Text("Create a collection to organise your library")
+            Text(hasAny
+                 ? "Add this series to one of your collections"
+                 : "Create a collection to organise your library")
         } actions: {
-            Button("Create Collection") { fatalError("not implemented") }
-                .buttonStyle(.borderedProminent)
+            Button(hasAny ? "Add to Collection" : "Create Collection", action: hasAny ? onPick : onCreate)
+                .buttonStyle(.glassProminent)
         }
         .frame(height: Layout.emptyStateHeight)
     }

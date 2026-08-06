@@ -53,29 +53,46 @@ struct DetailsMetadata: View {
                 value: progress,
                 subtitle: progressSubtitle
             )
-            Cell(
-                label: "Fetched",
-                value: relative(lastFetchedDate),
-                subtitle: "Up to date"
-            )
-            Cell(
-                label: "Last Read",
-                value: relative(lastReadDate),
-                subtitle: "—"
-            )
+            Cell(label: "Fetched", subtitle: "Up to date") {
+                Elapsed(lastFetchedDate)
+            }
+            Cell(label: "Last Read", subtitle: "—") {
+                Elapsed(lastReadDate)
+            }
+        }
+    }
+
+    // ticks rather than freezing at whatever it said when the row was built
+    @ViewBuilder
+    private func Elapsed(_ date: Date?) -> some View {
+        if let date {
+            LiveRelativeText(date: date)
+        } else {
+            Text("Never")
         }
     }
 
     // maxWidth infinity on every cell splits the row into equal thirds
-    private func Cell(label: String, value: String, subtitle: String) -> some View {
+    private func Cell(
+        label: String,
+        value: String? = nil,
+        subtitle: String,
+        @ViewBuilder content: () -> some View = { EmptyView() }
+    ) -> some View {
         VStack(alignment: .leading, spacing: dimensions.spacing.space2) {
             Text(label)
                 .font(.caption)
                 .foregroundStyle(.muted)
 
-            Text(value)
-                .font(.subheadline)
-                .fontWeight(.semibold)
+            Group {
+                if let value {
+                    Text(value)
+                } else {
+                    content()
+                }
+            }
+            .font(.subheadline)
+            .fontWeight(.semibold)
 
             Text(subtitle)
                 .font(.caption2)

@@ -11,9 +11,13 @@ struct DetailsActions: View {
     let inLibrary: Bool
     let isSaving: Bool
     let canToggle: Bool
+    let canRefresh: Bool
     let status: Status
     var onToggleLibrary: () -> Void
     var onSetStatus: (Status) -> Void
+    var onRefreshChapters: () -> Void
+    var onMarkAll: (Bool) -> Void
+    var onEditDetails: () -> Void
 
     @Environment(\.dimensions) private var dimensions
     @Environment(\.colorScheme) private var colorScheme
@@ -93,19 +97,22 @@ struct DetailsActions: View {
 
     private var Overflow: some View {
         Menu {
-            Button { fatalError("not implemented") } label: {
+            Button(action: onEditDetails) {
                 Label("Edit Details", systemImage: "pencil")
             }
 
-            Button { fatalError("not implemented") } label: {
+            Button(action: onRefreshChapters) {
                 Label("Refresh Chapters", systemImage: "arrow.clockwise")
             }
+            .disabled(!canRefresh)
 
-            Button { fatalError("not implemented") } label: {
+            Divider()
+
+            Button { onMarkAll(true) } label: {
                 Label("Mark All as Read", systemImage: "checkmark.circle.fill")
             }
 
-            Button { fatalError("not implemented") } label: {
+            Button { onMarkAll(false) } label: {
                 Label("Mark All as Unread", systemImage: "x.circle.fill")
             }
         } label: {

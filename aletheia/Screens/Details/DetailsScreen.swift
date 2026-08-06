@@ -13,10 +13,16 @@ struct DetailsScreen: View {
     @Environment(\.database) private var database
     @Environment(\.dimensions) private var dimensions
     @Environment(\.compositor) private var compositor
+    @Environment(\.dismiss) private var dismiss
 
     @State private var vm: DetailsViewModel?
     @State private var reading: DetailsViewModel.ReaderTarget?
     @State private var showingCovers = false
+    @State private var showingTitles = false
+    @State private var showingEdit = false
+    @State private var showingCollection = false
+    @State private var showingCollections = false
+    @State private var removing: DetailsSources.Origin?
     @State private var showingDisambiguation = false
     // written here, read only inside the backdrop - reading it in this body
     // would re-evaluate the whole chapter list on every scroll step
@@ -58,8 +64,6 @@ struct DetailsScreen: View {
         .sheet(isPresented: $showingDisambiguation) {
             if let vm {
                 DetailsDisambiguation(
-                    title: vm.title,
-                    sourceName: sourceName,
                     candidates: vm.candidates,
                     onAttach: { id in
                         showingDisambiguation = false
@@ -68,6 +72,13 @@ struct DetailsScreen: View {
                     onKeepSeparate: {
                         showingDisambiguation = false
                         Task { await vm.keepSeparate() }
+                    },
+                    // there is no series to fall back to, so backing out of the
+                    // choice leaves the screen with nothing to show
+                    onCancel: {
+                        showingDisambiguation = false
+                        vm.cancel()
+                        dismiss()
                     }
                 )
                 .interactiveDismissDisabled()
@@ -75,6 +86,61 @@ struct DetailsScreen: View {
         }
         .onChange(of: vm?.needsDisambiguation ?? false) { _, needs in
             showingDisambiguation = needs
+        }
+        .confirmationDialog(
+            "Remove \(removing?.name ?? "this source")?",
+            isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } }),
+            titleVisibility: .visible
+        ) {
+            Button("Remove Source", role: .destructive) {
+                guard let id = removing?.id else { return }
+                removing = nil
+                Task { await vm?.removeOrigin(id) }
+            }
+            Button("Cancel", role: .cancel) { removing = nil }
+        } message: {
+            Text("Its chapters are removed with it. Your reading progress on chapters from other sources is kept.")
+        }
+        .sheet(isPresented: $showingCollections) {
+            if let vm {
+                CollectionPicker(
+                    collections: vm.availableCollections,
+                    isSaving: vm.isSaving,
+                    onToggle: { id in Task { await vm.toggleCollection(id) } },
+                    // stacked over the picker, so dismissing the form returns to
+                    // the list with the new collection already joined
+                    onCreate: { showingCollection = true }
+                )
+            }
+        }
+        .sheet(isPresented: $showingCollection) {
+            if let vm {
+                CollectionForm(isSaving: vm.isSaving) { name, description in
+                    Task { await vm.createCollection(name: name, description: description) }
+                }
+            }
+        }
+        .sheet(isPresented: $showingEdit) {
+            if let vm {
+                DetailsEdit(
+                    titles: vm.titles,
+                    synopses: vm.synopses,
+                    metadata: vm.metadataChoices,
+                    isSaving: vm.isSaving,
+                    onSetTitle: { id in Task { await vm.setPreferredTitle(id) } },
+                    onSetSynopsis: { id in Task { await vm.setPreferredSynopsis(id) } },
+                    onSetMetadata: { id in Task { await vm.setPreferredMetadata(id) } }
+                )
+            }
+        }
+        .sheet(isPresented: $showingTitles) {
+            if let vm {
+                DetailsTitles(
+                    titles: vm.titles,
+                    isSaving: vm.isSaving,
+                    onSetPreferred: { id in Task { await vm.setPreferredTitle(id) } }
+                )
+            }
         }
         .sheet(isPresented: $showingCovers) {
             if let vm {
@@ -127,6 +193,65 @@ struct DetailsScreen: View {
         }
         .scrollEdgeEffectStyle(.soft, for: .top)
         .refreshable { await vm.refresh() }
+        // floats over the content rather than displacing it - a refresh runs over
+        // a list that already renders, so nothing below should move
+        .overlay(alignment: .bottomTrailing) {
+            if vm.refreshState != .idle {
+                Refreshing(vm.refreshState)
+                    .transition(.move(edge: .trailing).combined(with: .opacity))
+            }
+        }
+        .animation(Layout.settle, value: vm.refreshState)
+    }
+
+    // one pill for the whole sequence: the spinner becomes the outcome in place,
+    // and the capsule grows to whatever the answer needs
+    private func Refreshing(_ state: DetailsViewModel.RefreshState) -> some View {
+        HStack(spacing: dimensions.spacing.space8) {
+            Icon(state)
+            Message(state)
+                .font(.subheadline)
+                .fontWeight(.medium)
+        }
+        .padding(.horizontal, dimensions.spacing.space16)
+        .padding(.vertical, dimensions.spacing.space12)
+        .glassEffect(.regular, in: .capsule)
+        .padding(dimensions.screenMargin)
+    }
+
+    @ViewBuilder
+    private func Icon(_ state: DetailsViewModel.RefreshState) -> some View {
+        switch state {
+        case .checking:
+            ProgressView()
+                .controlSize(.small)
+
+        case .added:
+            Image(systemName: "arrow.down.circle.fill")
+                .foregroundStyle(.success)
+
+        case .unchanged:
+            Image(systemName: "checkmark.circle.fill")
+                .foregroundStyle(.muted)
+
+        case .failed:
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.warning)
+
+        case .idle:
+            EmptyView()
+        }
+    }
+
+    @ViewBuilder
+    private func Message(_ state: DetailsViewModel.RefreshState) -> some View {
+        switch state {
+        case .checking: Text("Checking for chapters")
+        case .added(let count): Text("^[\(count) new chapter](inflect: true)")
+        case .unchanged: Text("No new chapters")
+        case .failed: Text("Couldn't refresh")
+        case .idle: EmptyView()
+        }
     }
 
     @ViewBuilder
@@ -163,16 +288,20 @@ struct DetailsScreen: View {
                 title: vm.title,
                 authors: vm.authors,
                 onOpenCovers: { showingCovers = true },
-                onOpenTitles: { }
+                onOpenTitles: { showingTitles = true }
             )
 
             DetailsActions(
                 inLibrary: vm.inLibrary,
                 isSaving: vm.isSaving,
                 canToggle: vm.canToggleLibrary,
+                canRefresh: vm.canRefresh,
                 status: vm.status,
                 onToggleLibrary: { Task { await vm.toggleLibrary() } },
-                onSetStatus: { status in Task { await vm.setStatus(status) } }
+                onSetStatus: { status in Task { await vm.setStatus(status) } },
+                onRefreshChapters: { Task { await vm.refreshChapters() } },
+                onMarkAll: { read in Task { await vm.markAll(read: read) } },
+                onEditDetails: { showingEdit = true }
             )
 
             if let synopsis = vm.synopsis, !synopsis.isEmpty {
@@ -184,10 +313,22 @@ struct DetailsScreen: View {
             }
 
             if !vm.origins.isEmpty {
-                DetailsSources(origins: vm.origins)
+                DetailsSources(
+                    origins: vm.origins,
+                    onSetPrimary: { id in Task { await vm.setPrimary(id) } },
+                    onReorder: { ids in Task { await vm.reorderOrigins(ids) } },
+                    // its chapters go with it, so this one asks first
+                    onRemove: { id in removing = vm.origins.first { $0.id == id } }
+                )
             }
 
-            DetailsCollections(collections: vm.collections)
+            DetailsCollections(
+                collections: vm.collections,
+                hasAny: !vm.availableCollections.isEmpty,
+                onToggle: { id in Task { await vm.toggleCollection(id) } },
+                onPick: { showingCollections = true },
+                onCreate: { showingCollection = true }
+            )
 
             DetailsMetadata(
                 classification: vm.classification,

@@ -54,6 +54,13 @@ final class SourcePresetViewModel {
             let page = try await source.search(preset.query())
             phase = .loaded(page.items)
             resume()
+        } catch is CancellationError {
+            // navigating away cancels every in-flight preset, which is ordinary
+            // and not worth a line each. it arrives as either type - urlsession
+            // maps its own cancellation onto NetworkError
+            phase = .failed
+        } catch NetworkError.cancelled {
+            phase = .failed
         } catch {
             AppLog.shared.log("preset '\(preset.id)' load failed — \(error)", category: "sources")
             phase = .failed

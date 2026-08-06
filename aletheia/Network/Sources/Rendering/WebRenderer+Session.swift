@@ -68,10 +68,18 @@ extension WebRenderer {
         
         // a fresh web view starts on an empty document that already reports
         // 'complete', so readyState alone says yes before the real page exists -
-        // running a script there dies the moment the navigation commits
+        // running a script there dies the moment the navigation commits.
+        //
+        // 'interactive' is enough: the dom is parsed and deferred scripts have
+        // run, which is everything a scrape or an in-page api call needs.
+        // 'complete' additionally waits on every image and font, and a series
+        // page is mostly cover art we never look at
         private func settled() async throws -> Bool {
             try await bridge.bool(
-                "return document.readyState === 'complete' && location.href.indexOf(origin) === 0",
+                """
+                return (document.readyState === 'interactive' || document.readyState === 'complete')
+                    && location.href.indexOf(origin) === 0
+                """,
                 ["origin": origin]
             )
         }

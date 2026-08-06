@@ -8,7 +8,7 @@
          BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
          <BreakpointContent
             uuid = "FCB9F5C6-4146-4F94-ADB7-832AEF57AD02"
-            shouldBeEnabled = "Yes"
+            shouldBeEnabled = "No"
             ignoreCount = "0"
             continueAfterRunningActions = "No"
             filePath = "aletheia/Screens/Details/DetailsViewModel.swift"
@@ -16,7 +16,7 @@
             endingColumnNumber = "9223372036854775807"
             startingLineNumber = "215"
             endingLineNumber = "215"
-            landmarkName = "create(into:)"
+            landmarkName = "loadCandidates(_:)"
             landmarkType = "7">
          </BreakpointContent>
       </BreakpointProxy>

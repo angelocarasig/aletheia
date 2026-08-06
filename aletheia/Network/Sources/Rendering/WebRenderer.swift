@@ -149,7 +149,11 @@ final class WebRenderer {
         arguments: [String: Any] = [:],
         timeout: Duration = .seconds(60)
     ) async throws -> String {
+        let clock = ContinuousClock()
+        let started = clock.now
+
         let session = await Session(url: url, credential: credential, capturing: "__run__", preload: preload)
+        let built = clock.now
         // the script's result is only reachable while the page is - releasing it
         // mid-call destroys the completion handler (WKErrorDomain 4). every other
         // method here touches the page in a loop and never notices; this one
@@ -160,6 +164,7 @@ final class WebRenderer {
             log.log("run: \(selector ?? "document") never settled", category: "render")
             throw RenderError.noContent
         }
+        let settled = clock.now
 
         // callJavaScript has no timeout of its own: a wedged web content process
         // never settles the promise and the await hangs forever
@@ -174,8 +179,17 @@ final class WebRenderer {
             throw RenderError.noContent
         }
 
-        log.log("run returned \(json.count) bytes", category: "render")
+        // split three ways because they fail for different reasons: build is
+        // process launch, settle is the site booting, script is the work itself
+        log.log(
+            "run: build \(Self.ms(built - started))ms · settle \(Self.ms(settled - built))ms · script \(Self.ms(clock.now - settled))ms · \(json.count) bytes",
+            category: "render"
+        )
         return json
+    }
+
+    private static func ms(_ duration: Duration) -> Int {
+        Int(duration.components.seconds * 1000 + duration.components.attoseconds / 1_000_000_000_000_000)
     }
 
     private func waitRendered(_ bridge: Bridge, selector: String, timeout: Duration) async throws -> String? {

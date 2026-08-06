@@ -194,7 +194,7 @@ extension ComixSource {
             SeriesStub(
                 slug: item.hid,
                 title: item.title,
-                cover: (item.poster.large ?? item.poster.medium).flatMap { URL(string: $0) },
+                cover: (item.poster?.large ?? item.poster?.medium).flatMap { URL(string: $0) },
                 latestChapterNumber: item.latestChapter,
                 latestChapterDate: RelativeDate.parse(item.chapterUpdatedAtFormatted)
             )
@@ -213,7 +213,9 @@ extension ComixSource {
         struct Item: Decodable {
             let hid: String
             let title: String
-            let poster: Poster
+            // null on some entries, and a non-optional here failed the whole page
+            // rather than the one item that had no artwork
+            let poster: Poster?
             let latestChapter: Double?
             let chapterUpdatedAtFormatted: String?
         }
@@ -298,7 +300,7 @@ extension ComixSource {
         var authors: [String] = []
         authors += (detail.authors ?? []).map(\.title)
         authors += (detail.artists ?? []).map(\.title)
-        let cover = (detail.poster.large ?? detail.poster.medium).flatMap { URL(string: $0) }
+        let cover = (detail.poster?.large ?? detail.poster?.medium).flatMap { URL(string: $0) }
 
         return SeriesDetail(
             slug: detail.hid,
@@ -339,7 +341,7 @@ extension ComixSource {
         let contentRating: String?
         let synopsisHtml: String?
         let altTitles: [String]?
-        let poster: Poster
+        let poster: Poster?
         let genres: [Tag]?
         let formats: [Tag]?
         let demographics: [Tag]?

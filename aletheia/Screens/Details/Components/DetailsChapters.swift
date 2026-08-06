@@ -43,6 +43,9 @@ struct DetailsChapters: View {
         static let emptyStateHeight: CGFloat = 200
         static let finishedOpacity: Double = 0.5
         static let fillOpacity: Double = 0.1
+        // the skeleton mirrors the real rows, so a crossfade reads as the
+        // placeholder resolving rather than one view replacing another
+        static let settle: Animation = .smooth(duration: 0.35)
     }
 
     var body: some View {
@@ -50,6 +53,9 @@ struct DetailsChapters: View {
             Header
             Chapters
         }
+        // has to sit on an ancestor that survives the swap - on the Group itself
+        // it is replaced along with the branch, so nothing drives the transition
+        .animation(Layout.settle, value: phase)
     }
 
     private var sorted: [Chapter] {
@@ -74,6 +80,21 @@ struct DetailsChapters: View {
     private var isPending: Bool {
         chapters.isEmpty && (isFetching || !hasFetched)
     }
+
+    // one value for the whole section to animate on. switching on the two
+    // booleans separately would let the skeleton and the list cross-dissolve
+    // through the empty state on the way
+    fileprivate enum Phase {
+        case pending
+        case empty
+        case list
+    }
+
+    fileprivate var phase: Phase {
+        if !chapters.isEmpty { .list }
+        else if isPending { .pending }
+        else { .empty }
+    }
 }
 
 extension DetailsChapters {
@@ -91,15 +112,17 @@ extension DetailsChapters {
 
     @ViewBuilder
     private var Count: some View {
-        if isPending {
-            Text("Loading chapters")
-                .font(.subheadline)
-                .foregroundStyle(.muted)
-        } else {
-            Text("^[\(chapters.count) chapter](inflect: true)")
-                .font(.subheadline)
-                .foregroundStyle(.muted)
+        Group {
+            if isPending {
+                Text("Loading chapters")
+            } else {
+                Text("^[\(chapters.count) chapter](inflect: true)")
+            }
         }
+        .font(.subheadline)
+        .foregroundStyle(.muted)
+        .contentTransition(.numericText())
+        .animation(Layout.settle, value: phase)
     }
 
     private var Overflow: some View {
@@ -163,26 +186,31 @@ extension DetailsChapters {
 }
 
 extension DetailsChapters {
-    @ViewBuilder
     private var Chapters: some View {
-        if chapters.isEmpty {
+        Group {
+            switch phase {
             // "none" is only true once a fetch has landed - before that the list
             // is unknown, not empty, and saying otherwise is a lie for a minute
-            if isPending {
+            case .pending:
                 Skeleton
-            } else {
-                EmptyState
-            }
-        } else {
-            LazyVStack(spacing: 0) {
-                ForEach(displayed) { chapter in
-                    Divider()
-                    Row(chapter)
-                }
+                    .transition(.opacity)
 
-                if hasMore {
-                    ExpandToggle
+            case .empty:
+                EmptyState
+                    .transition(.opacity)
+
+            case .list:
+                LazyVStack(spacing: 0) {
+                    ForEach(displayed) { chapter in
+                        Divider()
+                        Row(chapter)
+                    }
+
+                    if hasMore {
+                        ExpandToggle
+                    }
                 }
+                .transition(.opacity)
             }
         }
     }

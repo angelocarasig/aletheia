@@ -29,13 +29,17 @@ final class DetailsViewModel {
     private(set) var failure: Failure?
     private(set) var isSaving = false
     private(set) var isFetchingChapters = false
-    private(set) var isRefreshing = false
+    private(set) var refreshState: RefreshState = .idle
     private(set) var errorMessage: String?
 
     private var seriesId: SeriesRecord.ID?
     private var held: SeriesRecord.ID?
     private var started = false
+    private var primed = false
     private var stream: Task<Void, Never>?
+    private var dismissal: Task<Void, Never>?
+
+    private static let outcomeDuration: Duration = .seconds(3)
 
     // the source that opened this screen, nil for a library entry - which resolves
     // its source from the primary origin once the first snapshot lands instead
@@ -84,6 +88,9 @@ final class DetailsViewModel {
     var chapters: [DetailsChapters.Chapter] { snapshot?.chapters ?? [] }
     var origins: [DetailsSources.Origin] { snapshot?.origins ?? [] }
     var covers: [DetailsCovers.Cover] { snapshot?.covers ?? [] }
+    var titles: [DetailsTitles.Title] { snapshot?.titles ?? [] }
+    var synopses: [DetailsEdit.Synopsis] { snapshot?.synopses ?? [] }
+    var metadataChoices: [DetailsEdit.Metadata] { snapshot?.choices ?? [] }
     var readCount: Int { snapshot?.readCount ?? 0 }
     var lastReadDate: Date? { snapshot.flatMap { $0.lastReadDate > .distantPast ? $0.lastReadDate : nil } }
     var lastMetadataFetch: Date? { snapshot.flatMap { $0.metadataFetchedDate > .distantPast ? $0.metadataFetchedDate : nil } }
@@ -93,6 +100,7 @@ final class DetailsViewModel {
 
     var canToggleLibrary: Bool { seriesId != nil && !isSaving }
     var needsDisambiguation: Bool { !candidates.isEmpty }
+    var isRefreshing: Bool { refreshState == .checking }
     var canRefresh: Bool { refreshTarget != nil && !isRefreshing }
 
     // the screen renders from the database alone, so a row is all it waits on
@@ -103,7 +111,10 @@ final class DetailsViewModel {
     // series whose source is no longer installed
     var referer: URL? { snapshot?.referer ?? opener?.descriptor.referer }
 
-    var collections: [DetailsCollections.Item] { [] }
+    // the section lists what this series is in; the picker needs every collection
+    // so there is something to add it to
+    var collections: [DetailsCollections.Item] { (snapshot?.collections ?? []).filter(\.contains) }
+    var availableCollections: [DetailsCollections.Item] { snapshot?.collections ?? [] }
 
     // MARK: - Entry
 
@@ -189,6 +200,15 @@ final class DetailsViewModel {
         await settle()
     }
 
+    // backing out of the choice entirely. nothing has been written at this point -
+    // matching runs before anything reaches the network - so there is nothing to
+    // undo, only work to stop
+    func cancel() {
+        candidates = []
+        stream?.cancel()
+        stream = nil
+    }
+
     private func loadCandidates(_ ids: [SeriesRecord.ID]) async {
         do {
             let rows = try await database.reader.read { db in
@@ -199,11 +219,14 @@ final class DetailsViewModel {
                 DetailsDisambiguation.Candidate(
                     id: row.id,
                     title: row.title,
+                    authors: row.authors,
+                    synopsis: row.synopsis,
                     cover: artwork(row.cover, path: row.path),
                     referer: row.sourceSlug.flatMap { registry.source(slug: $0) }?.descriptor.referer,
-                    authors: row.authors,
-                    sourceCount: row.sourceCount,
-                    chapterCount: row.chapterCount
+                    read: row.read,
+                    total: row.total,
+                    lastReadDate: row.lastReadDate > .distantPast ? row.lastReadDate : nil,
+                    addedDate: row.addedDate
                 )
             }
         } catch {
@@ -289,7 +312,9 @@ final class DetailsViewModel {
                     entry: entry,
                     chapters: try Self.chapters(for: id, in: db),
                     origins: try Self.origins(for: id, in: db),
-                    covers: try Self.covers(for: id, in: db)
+                    covers: try Self.covers(for: id, in: db),
+                    titles: try Self.titles(for: id, in: db),
+                    collections: try Self.collections(for: id, in: db)
                 )
             }
 
@@ -300,6 +325,7 @@ final class DetailsViewModel {
                     self.snapshot = Snapshot(stored, registry: registry) { remote, path in
                         self.artwork(remote, path: path)
                     }
+                    await self.prime()
                 }
             } catch {
                 self?.errorMessage = String(describing: error)
@@ -326,8 +352,7 @@ final class DetailsViewModel {
         guard let originId = snapshot?.refreshable?.originId else { return }
         let origin = OriginRecord.ID(rawValue: originId)
 
-        isRefreshing = true
-        defer { isRefreshing = false }
+        refreshState = .checking
 
         do {
             let detail = try await target.source.details(seriesSlug: target.slug)
@@ -342,48 +367,104 @@ final class DetailsViewModel {
             errorMessage = String(describing: error)
         }
 
-        await fetchChapters(source: target.source, seriesSlug: target.slug, originId: origin)
+        let added = await fetchChapters(source: target.source, seriesSlug: target.slug, originId: origin)
+        report(added)
     }
 
     func refreshChapters() async {
-        guard let target = refreshTarget else { return }
+        guard let target = refreshTarget, !isRefreshing else { return }
         guard let originId = snapshot?.refreshable?.originId else { return }
 
-        await fetchChapters(
+        refreshState = .checking
+        let added = await fetchChapters(
             source: target.source,
             seriesSlug: target.slug,
             originId: OriginRecord.ID(rawValue: originId)
         )
+        report(added)
     }
 
+    // the outcome replaces the spinner in place, then clears itself. cancelling
+    // the previous dismissal means a second refresh restarts the three seconds
+    // rather than inheriting whatever was left of the last one
+    private func report(_ added: Int?) {
+        guard let added else {
+            refreshState = .failed
+            return schedule()
+        }
+        refreshState = added > 0 ? .added(added) : .unchanged
+        schedule()
+    }
+
+    private func schedule() {
+        dismissal?.cancel()
+        dismissal = Task { [weak self] in
+            try? await Task.sleep(for: Self.outcomeDuration)
+            guard !Task.isCancelled else { return }
+            self?.refreshState = .idle
+        }
+    }
+
+    // the count of chapters that did not already exist, or nil when the fetch
+    // threw - the outcome pill needs to tell "nothing new" from "could not check"
+    @discardableResult
     private func fetchChapters(
         source: Source,
         seriesSlug: String,
         originId: OriginRecord.ID
-    ) async {
+    ) async -> Int? {
         isFetchingChapters = true
         defer { isFetchingChapters = false }
 
         let have = snapshot?.origins.first { $0.id == originId.rawValue }?.chapterCount ?? 0
 
         do {
-            // nil means the source checked and nothing changed, so the stored list
-            // stands and there is nothing to write
-            guard let entries = try await source.chapters(seriesSlug: seriesSlug, have: have) else { return }
-            guard !entries.isEmpty else { return }
-
+            // nil means the source checked and nothing changed, empty means it
+            // genuinely has none. both are answers, so both stamp - only a thrown
+            // error leaves the list unknown, and only then does the skeleton stay
+            let entries = try await source.chapters(seriesSlug: seriesSlug, have: have)
             let fetched = Date.now
-            try await database.writer.write { db in
-                try Self.upsert(entries, for: originId, in: db)
-                // stamped only on a write that landed, so a failed fetch leaves the
-                // origin looking unfetched rather than empty
+
+            let added = try await database.writer.write { db -> Int in
+                var inserted = 0
+                if let entries, !entries.isEmpty {
+                    inserted = try Self.upsert(entries, for: originId, in: db)
+                }
+
                 _ = try OriginRecord
                     .filter(key: originId.rawValue)
                     .updateAll(db, OriginRecord.Columns.chaptersFetchedDate.set(to: fetched))
+
+                return inserted
             }
+
+            AppLog.shared.log(
+                "origin \(originId.rawValue) fetched \(entries?.count.description ?? "no") chapter(s), \(added) new, had \(have)",
+                category: "details"
+            )
+            return added
         } catch {
             errorMessage = String(describing: error)
+            AppLog.shared.log("origin \(originId.rawValue) chapter fetch FAILED — \(error)", category: "details")
+            return nil
         }
+    }
+
+    // a series whose row exists but whose chapters never landed would otherwise
+    // never try again - matching short-circuits before create(), which is the only
+    // other caller. this is not a refresh: it fires once, and only for an origin
+    // that has never been fetched at all
+    private func prime() async {
+        guard !primed, !isFetchingChapters else { return }
+        guard let snapshot, snapshot.chaptersFetchedDate == .distantPast else { return }
+        guard let origin = snapshot.refreshable, let target = refreshTarget else { return }
+
+        primed = true
+        await fetchChapters(
+            source: target.source,
+            seriesSlug: target.slug,
+            originId: OriginRecord.ID(rawValue: origin.originId)
+        )
     }
 
     // MARK: - Reading
@@ -425,8 +506,10 @@ final class DetailsViewModel {
         }
     }
 
+    // deliberately leaves lastReadDate alone - marking is bookkeeping, not
+    // reading, and the date is what tells a browsed series apart from one you
+    // actually opened
     func markAll(read: Bool) async {
-        guard let seriesId else { return }
         let ids = chapters.map(\.id)
         guard !ids.isEmpty else { return }
 
@@ -438,12 +521,6 @@ final class DetailsViewModel {
                 _ = try ChapterRecord
                     .filter(ids.contains(ChapterRecord.Columns.id))
                     .updateAll(db, ChapterRecord.Columns.progress.set(to: read ? 1.0 : 0.0))
-
-                if read {
-                    _ = try SeriesRecord
-                        .filter(key: seriesId.rawValue)
-                        .updateAll(db, SeriesRecord.Columns.lastReadDate.set(to: Date.now))
-                }
             }
         } catch {
             errorMessage = String(describing: error)
@@ -467,6 +544,184 @@ final class DetailsViewModel {
             }
         } catch {
             errorMessage = String(describing: error)
+        }
+    }
+
+    // not optional, unlike the cover: a series always displays under some title,
+    // so the pick can move but never be cleared
+    func setPreferredTitle(_ id: Int64) async {
+        guard let seriesId else { return }
+
+        isSaving = true
+        defer { isSaving = false }
+
+        do {
+            try await database.writer.write { db in
+                _ = try SeriesRecord
+                    .filter(key: seriesId.rawValue)
+                    .updateAll(db, SeriesRecord.Columns.preferredTitleId.set(to: id))
+            }
+        } catch {
+            errorMessage = String(describing: error)
+        }
+    }
+
+    func setPreferredSynopsis(_ originId: Int64) async {
+        await setPreference(SeriesRecord.Columns.preferredSynopsisOriginId, to: originId)
+    }
+
+    func setPreferredMetadata(_ originId: Int64) async {
+        await setPreference(SeriesRecord.Columns.preferredMetadataOriginId, to: originId)
+    }
+
+    private func setPreference(_ column: Column, to originId: Int64) async {
+        guard let seriesId else { return }
+
+        isSaving = true
+        defer { isSaving = false }
+
+        do {
+            try await database.writer.write { db in
+                _ = try SeriesRecord
+                    .filter(key: seriesId.rawValue)
+                    .updateAll(db, column.set(to: originId))
+            }
+        } catch {
+            errorMessage = String(describing: error)
+        }
+    }
+
+    // membership is a toggle rather than a staged edit - the section doubles as
+    // the picker, and the observation reflects the write immediately
+    func toggleCollection(_ id: Int64) async {
+        guard let seriesId else {
+            AppLog.shared.log("collection \(id) toggle skipped — no series yet", category: "details")
+            return
+        }
+        let collectionId = CollectionRecord.ID(rawValue: id)
+
+        isSaving = true
+        defer { isSaving = false }
+
+        do {
+            try await database.writer.write { db in
+                let existing = try SeriesCollectionRecord
+                    .filter(SeriesCollectionRecord.Columns.seriesId == seriesId)
+                    .filter(SeriesCollectionRecord.Columns.collectionId == collectionId)
+                    .fetchOne(db)
+
+                if let existing {
+                    try existing.delete(db)
+                    return
+                }
+
+                // appended, so a collection keeps the order the user added things
+                // in. query interface rather than raw sql because "order" is a
+                // reserved keyword and needs escaping
+                let highest = try SeriesCollectionRecord
+                    .filter(SeriesCollectionRecord.Columns.collectionId == collectionId)
+                    .select(max(SeriesCollectionRecord.Columns.order), as: Int.self)
+                    .fetchOne(db) ?? nil
+
+                let next = (highest ?? -1) + 1
+
+                var link = SeriesCollectionRecord(
+                    id: nil,
+                    seriesId: seriesId,
+                    collectionId: collectionId,
+                    order: next
+                )
+                try link.insert(db)
+            }
+            AppLog.shared.log("collection \(id) toggled for series \(seriesId.rawValue)", category: "details")
+        } catch {
+            errorMessage = String(describing: error)
+            AppLog.shared.log("collection \(id) toggle FAILED — \(error)", category: "details")
+        }
+    }
+
+    // created empty, then joined - so the sheet closes on a collection that
+    // already exists rather than one pending a second write
+    func createCollection(name: String, description: String?, joining: Bool = true) async {
+        isSaving = true
+        defer { isSaving = false }
+
+        do {
+            let id = try await database.writer.write { db -> Int64 in
+                var collection = CollectionRecord(name: name, description: description)
+                try collection.insert(db)
+                guard let id = collection.id else { throw DetailsError.missingIdentifier }
+                return id.rawValue
+            }
+
+            if joining { await toggleCollection(id) }
+        } catch {
+            errorMessage = String(describing: error)
+        }
+    }
+
+    // moved to the front and everything behind it shifts down, rather than parking
+    // it at a negative and leaving gaps. priority has no unique constraint, but
+    // keeping it dense means (priority, id) always sorts the way the list reads
+    func setPrimary(_ originId: Int64) async {
+        guard let seriesId else { return }
+        let target = OriginRecord.ID(rawValue: originId)
+
+        await reorder(seriesId) { ordered in
+            guard let index = ordered.firstIndex(of: target) else { return ordered }
+            var moved = ordered
+            moved.insert(moved.remove(at: index), at: 0)
+            return moved
+        }
+    }
+
+    // the sheet hands back the whole arrangement, so this trusts it rather than
+    // diffing - any origin it left out keeps its place at the end
+    func reorderOrigins(_ ids: [Int64]) async {
+        guard let seriesId else { return }
+        let arranged = ids.map { OriginRecord.ID(rawValue: $0) }
+
+        await reorder(seriesId) { ordered in
+            arranged + ordered.filter { !arranged.contains($0) }
+        }
+    }
+
+    // the chapters go with it by cascade, and its titles and covers stay in the
+    // pool with a null originId - a name the user picked is not theirs to take
+    func removeOrigin(_ originId: Int64) async {
+        guard let seriesId, origins.count > 1 else { return }
+        let target = OriginRecord.ID(rawValue: originId)
+
+        isSaving = true
+        defer { isSaving = false }
+
+        do {
+            try await database.writer.write { db in
+                _ = try OriginRecord.filter(key: target.rawValue).deleteAll(db)
+                try Self.renumber(seriesId, in: db)
+            }
+            AppLog.shared.log("origin \(originId) removed", category: "details")
+        } catch {
+            errorMessage = String(describing: error)
+            AppLog.shared.log("origin \(originId) remove FAILED — \(error)", category: "details")
+        }
+    }
+
+    private func reorder(
+        _ seriesId: SeriesRecord.ID,
+        _ arrange: @escaping ([OriginRecord.ID]) -> [OriginRecord.ID]
+    ) async {
+        isSaving = true
+        defer { isSaving = false }
+
+        do {
+            try await database.writer.write { db in
+                let ordered = try Self.ordered(seriesId, in: db)
+                try Self.assign(arrange(ordered), in: db)
+            }
+        } catch {
+            errorMessage = String(describing: error)
+            AppLog.shared.log("origin reorder FAILED — \(error)", category: "details")
         }
     }
 
@@ -512,6 +767,14 @@ extension DetailsViewModel {
         case fetch(String)
     }
 
+    enum RefreshState: Equatable {
+        case idle
+        case checking
+        case added(Int)
+        case unchanged
+        case failed
+    }
+
     // the source is not itself hashable, so identity comes from the slugs that
     // resolved it - which is what a navigation value has to compare on anyway
     struct ReaderTarget: Hashable, Identifiable {
@@ -545,6 +808,10 @@ extension DetailsViewModel {
         let chapters: [DetailsChapters.Chapter]
         let origins: [DetailsSources.Origin]
         let covers: [DetailsCovers.Cover]
+        let titles: [DetailsTitles.Title]
+        let synopses: [DetailsEdit.Synopsis]
+        let choices: [DetailsEdit.Metadata]
+        let collections: [DetailsCollections.Item]
         let refreshable: Refreshable?
 
         fileprivate let rows: [StoredChapter]
@@ -616,11 +883,49 @@ private extension DetailsViewModel.Snapshot {
                 id: row.id,
                 name: row.sourceName ?? row.sourceSlug ?? "Unknown Source",
                 host: row.sourceBaseURL?.host() ?? row.sourceSlug ?? "",
+                url: URL(string: row.url),
                 icon: row.sourceSlug.flatMap { registry.source(slug: $0) }?.descriptor.icon,
                 priority: row.priority,
                 chapterCount: row.chapterCount,
                 fetchedDate: row.chaptersFetchedDate > .distantPast ? row.chaptersFetchedDate : nil,
                 availability: availability
+            )
+        }
+
+        titles = stored.titles.map { row in
+            DetailsTitles.Title(
+                id: row.id,
+                value: row.value,
+                sourceName: row.sourceName,
+                sourceIcon: row.sourceSlug.flatMap { registry.source(slug: $0) }?.descriptor.icon,
+                isPreferred: row.isPreferred
+            )
+        }
+
+        collections = stored.collections.map {
+            DetailsCollections.Item(id: $0.id, name: $0.name, count: $0.count, contains: $0.contains)
+        }
+
+        // an origin with no synopsis has nothing to offer, so it is not a choice
+        synopses = stored.origins.compactMap { row in
+            guard !row.synopsis.isEmpty else { return nil }
+            return DetailsEdit.Synopsis(
+                id: row.id,
+                sourceName: row.sourceName ?? row.sourceSlug,
+                sourceIcon: row.sourceSlug.flatMap { registry.source(slug: $0) }?.descriptor.icon,
+                text: row.synopsis,
+                isPreferred: row.isSynopsis
+            )
+        }
+
+        choices = stored.origins.map { row in
+            DetailsEdit.Metadata(
+                id: row.id,
+                sourceName: row.sourceName ?? row.sourceSlug,
+                sourceIcon: row.sourceSlug.flatMap { registry.source(slug: $0) }?.descriptor.icon,
+                classification: row.classification,
+                publication: row.publication,
+                isPreferred: row.isMetadata
             )
         }
 
@@ -705,9 +1010,15 @@ extension DetailsViewModel {
             SELECT
                 o.id AS id,
                 o.\(OriginRecord.Columns.slug.name) AS slug,
+                o.\(OriginRecord.Columns.url.name) AS url,
                 o.\(OriginRecord.Columns.priority.name) AS priority,
                 o.\(OriginRecord.Columns.chaptersFetchedDate.name) AS chaptersFetchedDate,
                 o.\(OriginRecord.Columns.metadataFetchedDate.name) AS metadataFetchedDate,
+                o.\(OriginRecord.Columns.synopsis.name) AS synopsis,
+                o.\(OriginRecord.Columns.classification.name) AS classification,
+                o.\(OriginRecord.Columns.publication.name) AS publication,
+                (o.id = s.\(SeriesRecord.Columns.preferredSynopsisOriginId.name)) AS isSynopsis,
+                (o.id = s.\(SeriesRecord.Columns.preferredMetadataOriginId.name)) AS isMetadata,
                 src.\(SourceRecord.Columns.slug.name) AS sourceSlug,
                 src.\(SourceRecord.Columns.name.name) AS sourceName,
                 src.\(SourceRecord.Columns.baseURL.name) AS sourceBaseURL,
@@ -721,6 +1032,7 @@ extension DetailsViewModel {
                     WHERE c.\(ChapterRecord.Columns.originId.name) = o.id
                 ) AS chapterCount
             FROM \(OriginRecord.databaseTableName) o
+            JOIN \(SeriesRecord.databaseTableName) s ON s.id = o.\(OriginRecord.Columns.seriesId.name)
             LEFT JOIN \(SourceRecord.databaseTableName) src ON src.id = o.\(OriginRecord.Columns.sourceId.name)
             WHERE o.\(OriginRecord.Columns.seriesId.name) = ?
             ORDER BY
@@ -730,6 +1042,52 @@ extension DetailsViewModel {
             """
 
         return try StoredOrigin.fetchAll(db, sql: sql, arguments: [seriesId])
+    }
+
+    // every collection, not just this series' - the section doubles as the picker,
+    // so a row has to know both its size and whether this series is in it
+    nonisolated fileprivate static func collections(
+        for seriesId: SeriesRecord.ID,
+        in db: Database
+    ) throws -> [StoredCollection] {
+        let sql = """
+            SELECT
+                c.id AS id,
+                c.\(CollectionRecord.Columns.name.name) AS name,
+                (SELECT COUNT(*)
+                   FROM \(SeriesCollectionRecord.databaseTableName) sc
+                  WHERE sc.\(SeriesCollectionRecord.Columns.collectionId.name) = c.id) AS count,
+                EXISTS(SELECT 1
+                         FROM \(SeriesCollectionRecord.databaseTableName) sc
+                        WHERE sc.\(SeriesCollectionRecord.Columns.collectionId.name) = c.id
+                          AND sc.\(SeriesCollectionRecord.Columns.seriesId.name) = ?) AS contains
+            FROM \(CollectionRecord.databaseTableName) c
+            ORDER BY c.\(CollectionRecord.Columns.name.name) ASC
+            """
+
+        return try StoredCollection.fetchAll(db, sql: sql, arguments: [seriesId])
+    }
+
+    nonisolated fileprivate static func titles(
+        for seriesId: SeriesRecord.ID,
+        in db: Database
+    ) throws -> [StoredTitle] {
+        let sql = """
+            SELECT
+                t.id AS id,
+                t.\(TitleRecord.Columns.value.name) AS value,
+                src.\(SourceRecord.Columns.slug.name) AS sourceSlug,
+                src.\(SourceRecord.Columns.name.name) AS sourceName,
+                (t.id = s.\(SeriesRecord.Columns.preferredTitleId.name)) AS isPreferred
+            FROM \(TitleRecord.databaseTableName) t
+            JOIN \(SeriesRecord.databaseTableName) s ON s.id = t.\(TitleRecord.Columns.seriesId.name)
+            LEFT JOIN \(OriginRecord.databaseTableName) o ON o.id = t.\(TitleRecord.Columns.originId.name)
+            LEFT JOIN \(SourceRecord.databaseTableName) src ON src.id = o.\(OriginRecord.Columns.sourceId.name)
+            WHERE t.\(TitleRecord.Columns.seriesId.name) = ?
+            ORDER BY t.id ASC
+            """
+
+        return try StoredTitle.fetchAll(db, sql: sql, arguments: [seriesId])
     }
 
     nonisolated fileprivate static func covers(
@@ -766,12 +1124,14 @@ extension DetailsViewModel {
             SELECT
                 v.\(RichfulEntryView.Columns.seriesId.name) AS id,
                 v.\(RichfulEntryView.Columns.title.name) AS title,
+                v.\(RichfulEntryView.Columns.authors.name) AS authors,
+                v.\(RichfulEntryView.Columns.synopsis.name) AS synopsis,
                 v.\(RichfulEntryView.Columns.cover.name) AS cover,
                 v.\(RichfulEntryView.Columns.path.name) AS path,
-                v.\(RichfulEntryView.Columns.authors.name) AS authors,
-                v.\(RichfulEntryView.Columns.totalChapterCount.name) AS chapterCount,
-                (SELECT COUNT(*) FROM \(OriginRecord.databaseTableName) o
-                  WHERE o.\(OriginRecord.Columns.seriesId.name) = v.\(RichfulEntryView.Columns.seriesId.name)) AS sourceCount,
+                v.\(RichfulEntryView.Columns.readChapterCount.name) AS read,
+                v.\(RichfulEntryView.Columns.totalChapterCount.name) AS total,
+                v.\(RichfulEntryView.Columns.lastReadDate.name) AS lastReadDate,
+                v.\(RichfulEntryView.Columns.addedDate.name) AS addedDate,
                 (SELECT src.\(SourceRecord.Columns.slug.name)
                    FROM \(OriginRecord.databaseTableName) o
                    JOIN \(SourceRecord.databaseTableName) src ON src.id = o.\(OriginRecord.Columns.sourceId.name)
@@ -917,12 +1277,14 @@ extension DetailsViewModel {
 
     // chapters arrive independently of the rest of a series, so this runs on its
     // own and is safe to repeat. progress and lastReadDate are never overwritten
+    @discardableResult
     nonisolated fileprivate static func upsert(
         _ entries: [ChapterEntry],
         for originId: OriginRecord.ID,
         in db: Database
-    ) throws {
-        guard !entries.isEmpty else { return }
+    ) throws -> Int {
+        guard !entries.isEmpty else { return 0 }
+        var inserted = 0
 
         var scanlators: [String: ScanlatorRecord.ID] = [:]
         for entry in entries where scanlators[entry.scanlator] == nil {
@@ -977,8 +1339,11 @@ extension DetailsViewModel {
                     path: nil
                 )
                 try chapter.insert(db)
+                inserted += 1
             }
         }
+
+        return inserted
     }
 
     // every origin the held row owns moves across, then the row itself goes. titles
@@ -1031,6 +1396,38 @@ extension DetailsViewModel {
         )
     }
 
+    // the same order the list renders in, so an index here means what it looks
+    // like it means on screen
+    nonisolated fileprivate static func ordered(
+        _ seriesId: SeriesRecord.ID,
+        in db: Database
+    ) throws -> [OriginRecord.ID] {
+        try OriginRecord
+            .select(OriginRecord.Columns.id, as: OriginRecord.ID.self)
+            .filter(OriginRecord.Columns.seriesId == seriesId)
+            .order(OriginRecord.Columns.priority.asc, OriginRecord.Columns.id.asc)
+            .fetchAll(db)
+    }
+
+    nonisolated fileprivate static func assign(
+        _ ordered: [OriginRecord.ID],
+        in db: Database
+    ) throws {
+        for (position, id) in ordered.enumerated() {
+            _ = try OriginRecord
+                .filter(key: id.rawValue)
+                .updateAll(db, OriginRecord.Columns.priority.set(to: position))
+        }
+    }
+
+    // closes whatever gap a removal left, so priorities stay 0..n-1
+    nonisolated fileprivate static func renumber(
+        _ seriesId: SeriesRecord.ID,
+        in db: Database
+    ) throws {
+        try assign(try ordered(seriesId, in: db), in: db)
+    }
+
     // removing resets addedDate, so a series re-added later takes a fresh date
     nonisolated fileprivate static func setInLibrary(
         _ inLibrary: Bool,
@@ -1070,26 +1467,37 @@ private struct Stored: Sendable {
     let chapters: [StoredChapter]
     let origins: [StoredOrigin]
     let covers: [StoredCover]
+    let titles: [StoredTitle]
+    let collections: [StoredCollection]
 }
 
 private struct StoredCandidate: Decodable, FetchableRecord, Sendable {
     let id: Int64
     let title: String
+    let authors: String?
+    let synopsis: String?
     let cover: URL?
     let path: String?
-    let authors: String?
-    let chapterCount: Int
-    let sourceCount: Int
+    let read: Int
+    let total: Int
+    let lastReadDate: Date
+    let addedDate: Date
     let sourceSlug: String?
 }
 
 private struct StoredOrigin: Decodable, FetchableRecord, Sendable {
     let id: Int64
     let slug: String
+    let url: String
     let priority: Int
     let chapterCount: Int
     let chaptersFetchedDate: Date
     let metadataFetchedDate: Date
+    let synopsis: String
+    let classification: Classification
+    let publication: Publication
+    let isSynopsis: Bool
+    let isMetadata: Bool
     let sourceSlug: String?
     let sourceName: String?
     let sourceBaseURL: URL?
@@ -1097,6 +1505,21 @@ private struct StoredOrigin: Decodable, FetchableRecord, Sendable {
     let disconnected: Bool
     let disabled: Bool
     let installed: Bool
+}
+
+private struct StoredCollection: Decodable, FetchableRecord, Sendable {
+    let id: Int64
+    let name: String
+    let count: Int
+    let contains: Bool
+}
+
+private struct StoredTitle: Decodable, FetchableRecord, Sendable {
+    let id: Int64
+    let value: String
+    let sourceSlug: String?
+    let sourceName: String?
+    let isPreferred: Bool
 }
 
 private struct StoredCover: Decodable, FetchableRecord, Sendable {
