@@ -18,6 +18,12 @@ struct MangaDexSource: SourceService {
     private static let feedLimit = 500
     private static let feedCap = 20
 
+    // the api's own ceiling for one cover page, then what we keep of it. every
+    // kept cover becomes a row the downloader fetches to disk, so the second
+    // number is a storage decision rather than a display one
+    private static let coverPageLimit = 100
+    private static let coverLimit = 20
+
     let descriptor = SourceDescriptor(
         slug: "mangadex",
         name: "MangaDex",
@@ -244,6 +250,11 @@ extension MangaDexSource {
             .init(name: "includes[]", value: "artist")
         ]
 
+        // the manga entity carries exactly one cover_art relationship no matter
+        // what is included, so the rest of the set needs its own request. it is
+        // independent of the entity, so it runs alongside rather than after
+        async let listing = coverListing(for: seriesSlug)
+
         let response: MangaEnvelope = try await network.get(url: Self.url("manga/\(seriesSlug)", items))
         let entry = response.data
         let attributes = entry.attributes
@@ -260,7 +271,11 @@ extension MangaDexSource {
             url: descriptor.baseURL.appendingPathComponent("title").appendingPathComponent(entry.id),
             classification: Self.classification(attributes.contentRating),
             publication: Self.publication(attributes.status),
-            covers: [Self.cover(for: entry)].compactMap { $0 },
+            covers: Self.covers(
+                from: await listing,
+                for: entry,
+                language: attributes.originalLanguage
+            ),
             tags: attributes.tags.compactMap { Self.text(from: $0.attributes.name) },
             authors: entry.relationships
                 .filter { $0.type == "author" || $0.type == "artist" }
@@ -400,16 +415,62 @@ extension MangaDexSource {
         return "Untitled"
     }
 
+    private static func coverURL(_ manga: String, _ file: String) -> URL {
+        uploads
+            .appendingPathComponent("covers")
+            .appendingPathComponent(manga)
+            .appendingPathComponent(file)
+    }
+
     private static func cover(for entry: Manga) -> URL? {
         guard let file = entry.relationships
             .first(where: { $0.type == "cover_art" })?
             .attributes?.fileName
         else { return nil }
 
-        return uploads
-            .appendingPathComponent("covers")
-            .appendingPathComponent(entry.id)
-            .appendingPathComponent(file)
+        return coverURL(entry.id, file)
+    }
+
+    // a failed listing is not a failed details - the entity's own cover still
+    // stands, and a series with one cover is what every other source gives
+    private func coverListing(for id: String) async -> [CoverArt] {
+        let items: [URLQueryItem] = [
+            .init(name: "manga[]", value: id),
+            .init(name: "limit", value: String(Self.coverPageLimit)),
+            .init(name: "order[volume]", value: "asc")
+        ]
+
+        let response: CoverList? = try? await network.get(url: Self.url("cover", items))
+        return response?.data ?? []
+    }
+
+    // covers are filed per volume per language, and a long-running series carries
+    // several editions of the same volume - 85 japanese files across 43 volumes is
+    // ordinary. the picker wants one of each volume in the language it was drawn
+    // in, not every reprint, and every row here is an image downloaded to disk
+    private static func covers(from listing: [CoverArt], for entry: Manga, language: String?) -> [URL] {
+        let native = listing.filter { $0.attributes.locale == language }
+        let pool = native.isEmpty ? listing : native
+
+        // alternate editions are filed as 1.1, 1.2 against the same volume, so
+        // keying on the whole number spends the budget on twenty different
+        // volumes rather than seven of them three times over
+        var volumes: Set<Substring> = []
+        var urls: [URL] = []
+        for art in pool {
+            let volume = art.attributes.volume ?? ""
+            guard volumes.insert(volume.prefix { $0 != "." }).inserted else { continue }
+            urls.append(coverURL(entry.id, art.attributes.fileName))
+        }
+
+        // the search result carries the entity's cover, and the preferred pick is
+        // resolved by matching against it - so it has to be present, and first
+        if let primary = cover(for: entry) {
+            urls.removeAll { $0 == primary }
+            urls.insert(primary, at: 0)
+        }
+
+        return Array(urls.prefix(coverLimit))
     }
 
     private static func classification(_ rating: String?) -> Classification {
@@ -469,6 +530,7 @@ extension MangaDexSource {
             let description: [String: String]?
             let status: String?
             let contentRating: String?
+            let originalLanguage: String?
             let tags: [Tag]
         }
 
@@ -510,6 +572,20 @@ extension MangaDexSource {
         struct Attributes: Decodable {
             let name: String?
             let fileName: String?
+        }
+    }
+
+    private struct CoverList: Decodable {
+        let data: [CoverArt]
+    }
+
+    private struct CoverArt: Decodable {
+        let attributes: Attributes
+
+        struct Attributes: Decodable {
+            let fileName: String
+            let volume: String?
+            let locale: String?
         }
     }
 
