@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import CoreGraphics
 
 /// lightweight search result.
 struct SeriesStub: Sendable, Hashable {
@@ -45,4 +46,38 @@ struct ChapterEntry: Sendable {
 struct PageURL: Sendable {
     let index: Int
     let url: URL
+    let size: PageSize?
+
+    init(index: Int, url: URL, size: PageSize? = nil) {
+        self.index = index
+        self.url = url
+        self.size = size
+    }
+}
+
+// a hint, never ground truth - only the bytes decide. it exists so a reader can
+// lay a page out before its image arrives, and no source is ever required to
+// make an extra request to fill it in.
+//
+// dimensions describe the file `url` serves, after any EXIF orientation. a
+// quality variant is a different file with different dimensions, so a hint
+// never transfers between them
+struct PageSize: Sendable, Equatable {
+    let width: Int
+    let height: Int
+    let exactness: Exactness
+
+    // scraped attributes are routinely normalised for a site's own viewer -
+    // Webtoons stamps width="700" with a float height - so the ratio survives
+    // where the pixels do not. only `.exact` may drive splitting or texture
+    // decisions; `.ratio` is good for layout and nothing else
+    enum Exactness: Sendable {
+        case exact
+        case ratio
+    }
+
+    var aspectRatio: CGFloat? {
+        guard width > 0, height > 0 else { return nil }
+        return CGFloat(height) / CGFloat(width)
+    }
 }

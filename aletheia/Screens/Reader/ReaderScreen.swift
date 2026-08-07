@@ -6,48 +6,165 @@
 //
 
 import SwiftUI
-import Kingfisher
 
 struct ReaderScreen: View {
-    let source: Source
-    let seriesSlug: String
-    let chapterSlug: String
-    let title: String
+    let seriesId: SeriesRecord.ID
+    let chapterId: ChapterRecord.ID
 
-    @State private var pages: [PageURL] = []
-    @State private var isLoading = false
-    @State private var errorText: String?
+    @Environment(\.compositor) private var compositor
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.dimensions) private var dimensions
 
-    var body: some View {
-        ScrollView {
-            LazyVStack(spacing: 2) {
-                if let errorText {
-                    Text(errorText).font(.footnote).foregroundStyle(.red).padding()
-                }
-                ForEach(pages, id: \.index) { page in
-                    KFImage(page.url)
-                        .requestModifier(AnyModifier.referer(source.descriptor.referer))
-                        .resizable()
-                        .placeholder {
-                            Color.gray.opacity(0.1).frame(height: 300).overlay(ProgressView())
-                        }
-                        .scaledToFit()
-                        .frame(maxWidth: .infinity)
-                }
-            }
-        }
-        .overlay { if isLoading { ProgressView() } }
-        .navigationTitle(title)
-        .navigationBarTitleDisplayMode(.inline)
-        .task { await load() }
+    @State private var vm: ReaderViewModel?
+    @State private var showingTapZones = false
+
+    private enum Layout {
+        static let settle: Animation = .easeOut(duration: 0.2)
+        static let flash: Duration = .milliseconds(700)
     }
 
+    var body: some View {
+        ZStack {
+            Color.black
+                .ignoresSafeArea()
 
-    private func load() async {
-        guard pages.isEmpty else { return }
-        isLoading = true
-        defer { isLoading = false }
-        do { pages = try await source.content(seriesSlug: seriesSlug, chapterSlug: chapterSlug) }
-        catch { errorText = String(describing: error) }
+            if let vm, let engine = vm.engine {
+                Reading(vm, engine)
+            } else if let vm, let failure = vm.failure {
+                Unavailable(failure)
+            } else {
+                // a whole screen of content is about to land, so it gets the
+                // shape it will take rather than a spinner over nothing
+                ReaderSkeleton()
+                    .transition(.opacity)
+            }
+        }
+        .statusBarHidden(!(vm?.isOverlayVisible ?? true))
+        .toolbarVisibility(.hidden, for: .navigationBar)
+        .toolbarVisibility(.hidden, for: .tabBar)
+        .animation(Layout.settle, value: vm?.isOverlayVisible ?? true)
+        .task {
+            guard vm == nil else { return }
+            let model = ReaderViewModel(
+                seriesId: seriesId,
+                chapterId: chapterId,
+                database: compositor.database,
+                registry: compositor.registry
+            )
+            vm = model
+            await model.load()
+            await flashTapZones()
+        }
+        .onDisappear {
+            guard let vm else { return }
+            Task { await vm.close() }
+        }
+    }
+}
+
+private extension ReaderScreen {
+    @ViewBuilder
+    func Reading(_ vm: ReaderViewModel, _ engine: ReaderEngine) -> some View {
+        GeometryReader { proxy in
+            ZStack {
+                ReaderSurface(engine: engine)
+                    .ignoresSafeArea()
+
+                if engine.configuration.dim > 0 {
+                    Color.black
+                        .opacity(engine.configuration.dim)
+                        .ignoresSafeArea()
+                        .allowsHitTesting(false)
+                }
+
+                if showingTapZones {
+                    ReaderTapZoneOverlay(
+                        layout: ReaderSettings.tapZone,
+                        reversed: ReaderSettings.tapZonesReversed
+                    )
+                    .ignoresSafeArea()
+                    .transition(.opacity)
+                }
+
+                if let error = engine.error {
+                    Failed(error, engine: engine)
+                }
+
+                if vm.isOverlayVisible {
+                    ReaderOverlay(
+                        engine: engine,
+                        sourceIcon: vm.sourceIcon(for: engine.current?.id),
+                        onPreviousChapter: { Task { await engine.previousChapter() } },
+                        onNextChapter: { Task { await engine.nextChapter() } },
+                        onSeek: { engine.goToPage($0) },
+                        onModeChange: { mode in
+                            vm.setMode(mode)
+                            Task { await flashTapZones() }
+                        },
+                        onDimChange: { vm.setDim($0) },
+                        onSpeedChange: { vm.setAutoScrollSpeed($0) },
+                        // deferred screens. present as real controls so the
+                        // chrome is laid out for them, and say so when tapped
+                        onChapters: { AppLog.shared.log("TODO chapter list", category: "reader") },
+                        onSources: { AppLog.shared.log("TODO source switcher", category: "reader") },
+                        onSettings: { AppLog.shared.log("TODO reader settings", category: "reader") },
+                        onTapZones: { Task { await flashTapZones() } },
+                        onDismiss: { dismiss() }
+                    )
+                    .transition(.opacity)
+                }
+            }
+            // taps arrive from UIKit in window space and are handled the moment
+            // they land. keeping the frame in step here is all the conversion
+            // needs, and avoids routing a tap through observable state
+            .onGeometryChange(for: CGRect.self) { proxy in
+                proxy.frame(in: .global)
+            } action: { frame in
+                vm.surfaceFrame = frame
+            }
+        }
+        .overlay(alignment: .top) {
+            if engine.isLoading {
+                ProgressView()
+                    .tint(.brand)
+                    .padding(dimensions.spacing.space16)
+                    .background(.ultraThinMaterial, in: .circle)
+                    .padding(.top, dimensions.spacing.space48)
+            }
+        }
+    }
+
+    func Failed(_ error: ReaderError, engine: ReaderEngine) -> some View {
+        ContentUnavailableView {
+            Label(error.errorDescription ?? "Something Went Wrong", systemImage: "exclamationmark.triangle")
+        } description: {
+            Text(error.failureReason ?? "")
+        } actions: {
+            if error.isRetryable {
+                Button("Try Again") {
+                    Task { await engine.retry() }
+                }
+                .buttonStyle(.borderedProminent)
+            }
+            Button("Go Back") { dismiss() }
+        }
+        .background(.ultraThinMaterial)
+    }
+
+    func Unavailable(_ message: String) -> some View {
+        ContentUnavailableView {
+            Label("Can't Open This Series", systemImage: "book.closed")
+        } description: {
+            Text(message)
+        } actions: {
+            Button("Go Back") { dismiss() }
+        }
+    }
+
+    func flashTapZones() async {
+        guard ReaderSettings.tapZonesEnabled else { return }
+        withAnimation(Layout.settle) { showingTapZones = true }
+        try? await Task.sleep(for: Layout.flash)
+        withAnimation(Layout.settle) { showingTapZones = false }
     }
 }

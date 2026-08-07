@@ -1,0 +1,105 @@
+//
+//  ReaderConfiguration.swift
+//  aletheia
+//
+//  Created by Angelo Carasig on 7/8/2026.
+//
+
+import Foundation
+
+struct ReaderConfiguration: Equatable, Sendable {
+    var mode: Orientation = .leftToRight
+    var dim: Double = 0
+    var chromeTint: Double = Defaults.chromeTint
+    var horizontalPadding: CGFloat = 0
+    var autoScrollSpeed: CGFloat = Defaults.autoScrollSpeed
+    var prefetchCount: Int = Defaults.prefetchCount
+    var windowSize: Int = Defaults.windowSize
+    var preloadThreshold: CGFloat = Defaults.preloadThreshold
+
+    enum Defaults {
+        // clear glass is permanently transparent by design, so chrome over a
+        // busy page has nothing to separate it from the art. a tint on the glass
+        // is what Apple prescribes instead of a second scrim view
+        static let chromeTint: Double = 0.4
+        static let maxChromeTint: Double = 0.7
+
+        static let autoScrollSpeed: CGFloat = 100
+        static let minAutoScrollSpeed: CGFloat = 20
+        static let maxAutoScrollSpeed: CGFloat = 500
+        static let prefetchCount = 3
+        static let windowSize = 3
+        static let preloadThreshold: CGFloat = 500
+        static let maxDim: Double = 0.6
+
+        // pages are laid out before their image lands, so the first pass uses a
+        // ratio rather than a measurement. corrected per page on load.
+        //
+        // height/width, not width/height - a webtoon slice is far taller than
+        // an ISO page and one constant for both is wrong for the mode that
+        // needs it most
+        static let pagedPageRatio: CGFloat = 1414.0 / 1000.0
+        static let stripPageRatio: CGFloat = 1.435
+
+        // how many real measurements a chapter needs before its own median
+        // replaces the static guess, and where sampling stops paying for itself
+        static let ratioSampleMinimum = 4
+        static let ratioSampleCap = 12
+    }
+}
+
+extension Orientation {
+    // the engine is never handed .unknown - the host resolves it first - but
+    // treating it as a definite mode keeps every switch exhaustive without an
+    // unreachable default
+    var resolved: Orientation {
+        self == .unknown ? .leftToRight : self
+    }
+
+    var isVertical: Bool {
+        resolved == .infinite || resolved == .vertical
+    }
+
+    var isHorizontal: Bool {
+        !isVertical
+    }
+
+    // continuous scroll, one long strip. everything else snaps page to page
+    var isContinuous: Bool {
+        resolved == .infinite
+    }
+
+    var isPaged: Bool {
+        !isContinuous
+    }
+
+    var isRightToLeft: Bool {
+        resolved == .rightToLeft
+    }
+
+    var fallbackPageRatio: CGFloat {
+        isContinuous
+            ? ReaderConfiguration.Defaults.stripPageRatio
+            : ReaderConfiguration.Defaults.pagedPageRatio
+    }
+
+    var label: String {
+        switch resolved {
+        case .infinite: "Infinite Scroll"
+        case .vertical: "Vertical"
+        case .leftToRight: "Left to Right"
+        case .rightToLeft: "Right to Left"
+        case .unknown: "Left to Right"
+        }
+    }
+
+    var summary: String {
+        switch resolved {
+        case .infinite: "Continuous strip, best for webtoons"
+        case .vertical: "One page at a time, top to bottom"
+        case .leftToRight: "One page at a time, western order"
+        case .rightToLeft: "One page at a time, manga order"
+        case .unknown: "One page at a time, western order"
+        }
+    }
+}

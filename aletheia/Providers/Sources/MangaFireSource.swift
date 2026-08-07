@@ -466,8 +466,19 @@ extension MangaFireSource {
         let json = try await renderer.sniff(readerURL, credential: credential, matching: "/api/chapters/\(chapterSlug)")
         let pages = try JSONDecoder().decode(ChapterContentResponse.self, from: Data(json.utf8)).data.pages
 
+        // the sniffed payload carries dimensions per page, so the reader can
+        // size a chapter before a single image lands. note this is richer than
+        // the vrf-signed API's page DTO - moving to that would lose them
         return pages.enumerated().compactMap { index, page in
-            URL(string: page.url).map { PageURL(index: index, url: $0) }
+            URL(string: page.url).map {
+                PageURL(
+                    index: index,
+                    url: $0,
+                    size: page.width > 0 && page.height > 0
+                        ? PageSize(width: page.width, height: page.height, exactness: .exact)
+                        : nil
+                )
+            }
         }
     }
 

@@ -55,10 +55,8 @@ struct DetailsScreen: View {
         .navigationBarTitleDisplayMode(.inline)
         .navigationDestination(item: $reading) { target in
             ReaderScreen(
-                source: target.source,
-                seriesSlug: target.seriesSlug,
-                chapterSlug: target.chapterSlug,
-                title: target.title
+                seriesId: target.seriesId,
+                chapterId: target.chapterId
             )
         }
         .sheet(isPresented: $showingDisambiguation) {

@@ -473,15 +473,12 @@ final class DetailsViewModel {
     // the screen's own source: a merged series serves chapters from every origin,
     // and each of them belongs to a different site
     func read(_ chapter: DetailsChapters.Chapter) -> ReaderTarget? {
-        guard let row = snapshot?.row(for: chapter.id) else { return nil }
-        guard let slug = row.sourceSlug, let source = registry.source(slug: slug) else { return nil }
+        guard let seriesId else { return nil }
+        guard snapshot?.row(for: chapter.id) != nil else { return nil }
 
         return ReaderTarget(
-            source: source,
-            sourceSlug: slug,
-            seriesSlug: row.originSlug,
-            chapterSlug: row.slug,
-            title: "Ch. \(chapter.number.formatted())"
+            seriesId: seriesId,
+            chapterId: ChapterRecord.ID(rawValue: chapter.id)
         )
     }
 
@@ -777,17 +774,13 @@ extension DetailsViewModel {
 
     // the source is not itself hashable, so identity comes from the slugs that
     // resolved it - which is what a navigation value has to compare on anyway
+    // the reader resolves its own chapter list and page urls, so opening one
+    // only needs to say which series and where to start
     struct ReaderTarget: Hashable, Identifiable {
-        let source: Source
-        let sourceSlug: String
-        let seriesSlug: String
-        let chapterSlug: String
-        let title: String
+        let seriesId: SeriesRecord.ID
+        let chapterId: ChapterRecord.ID
 
-        var id: String { "\(sourceSlug)/\(seriesSlug)/\(chapterSlug)" }
-
-        static func == (lhs: Self, rhs: Self) -> Bool { lhs.id == rhs.id }
-        func hash(into hasher: inout Hasher) { hasher.combine(id) }
+        var id: Int64 { chapterId.rawValue }
     }
 
     struct Snapshot {
