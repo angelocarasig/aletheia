@@ -42,42 +42,6 @@ final class WebRenderer {
         throw RenderError.noContent
     }
 
-    // polls `progress` (a JS expression returning a count) until it stops rising
-    // (loading settled — tolerant of a stuck page), then evaluates `script` (a JS
-    // array expression) and returns it
-    func renderExtracting(
-        _ url: URL,
-        credential: SourceCredential,
-        storage: [String: String] = [:],
-        progress: String,
-        extracting script: String,
-        timeout: Duration = .seconds(45),
-        stableTicks: Int = 4
-    ) async throws -> [String] {
-        let session = await Session(url: url, credential: credential, capturing: "__render__", storage: storage)
-        let bridge = session.bridge
-
-        var waited: Duration = .zero
-        let delay: Duration = .milliseconds(400)
-        var last = -1
-        var stable = 0
-        while waited < timeout {
-            try await Task.sleep(for: delay)
-            waited += delay
-            let count = try await bridge.number("return \(progress)")
-            if count >= 0, count == last {
-                stable += 1
-                if last > 0, stable >= stableTicks { break }
-            } else {
-                last = count
-                stable = 0
-            }
-        }
-        log.log("renderExtracting settled at \(last) after \(waited)", category: "render")
-
-        return try await bridge.strings("return \(script)")
-    }
-
     func sniffPaged(
         _ url: URL,
         credential: SourceCredential,
@@ -152,6 +116,7 @@ final class WebRenderer {
     ) async throws -> String {
         let clock = ContinuousClock()
         let started = clock.now
+        log.log("run: opening \(url.absoluteString)", category: "render")
 
         let session = await Session(
             url: url,
@@ -173,18 +138,7 @@ final class WebRenderer {
         }
         let settled = clock.now
 
-        // callJavaScript has no timeout of its own: a wedged web content process
-        // never settles the promise and the await hangs forever
-        let watchdog = Task { @MainActor in
-            try await Task.sleep(for: timeout)
-            log.log("run: script overran \(timeout), tearing the page down", category: "render")
-            session.discard()
-        }
-        defer { watchdog.cancel() }
-
-        guard let json = try await session.bridge.string(script, arguments) else {
-            throw RenderError.noContent
-        }
+        let json = try await bounded(session, script: script, arguments: arguments, timeout: timeout)
 
         // split three ways because they fail for different reasons: build is
         // process launch, settle is the site booting, script is the work itself
@@ -193,6 +147,53 @@ final class WebRenderer {
             category: "render"
         )
         return json
+    }
+
+    // callJavaScript has no timeout of its own, and discarding the page does not
+    // reliably resume a pending call - WebKit drops the handler outright when the
+    // content process is torn down, stranding the await forever. so the timeout
+    // has to win the race rather than be trusted to unstick the loser
+    private func bounded(
+        _ session: Session,
+        script: String,
+        arguments: [String: Any],
+        timeout: Duration
+    ) async throws -> String {
+        enum Outcome: Sendable {
+            case answered(String?)
+            case overran
+        }
+
+        let (stream, continuation) = AsyncStream<Outcome>.makeStream()
+
+        let work = Task { @MainActor in
+            let json = try? await session.bridge.string(script, arguments)
+            continuation.yield(.answered(json))
+        }
+        let watchdog = Task { @MainActor in
+            try? await Task.sleep(for: timeout)
+            continuation.yield(.overran)
+        }
+        defer {
+            work.cancel()
+            watchdog.cancel()
+        }
+
+        var outcomes = stream.makeAsyncIterator()
+        switch await outcomes.next() {
+        case .answered(let json?):
+            return json
+
+        case .overran:
+            log.log("run: script overran \(timeout), abandoning the page", category: "render")
+            // best effort - the stuck call may never notice, but a fresh session
+            // is cheaper than a wedged one held open
+            session.discard()
+            throw RenderError.noContent
+
+        case .answered(nil), nil:
+            throw RenderError.noContent
+        }
     }
 
     private static func ms(_ duration: Duration) -> Int {

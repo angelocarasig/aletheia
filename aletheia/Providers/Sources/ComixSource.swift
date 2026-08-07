@@ -553,10 +553,12 @@ extension ComixSource {
     private static let walkGrace = 30_000
     private static let pageCap = 500
 
-    // content asks one method and waits for one answer, so it needs nothing like
-    // the chapter walk's budget
+    // the tap leads and the dom backstops it, so the deadline is split rather
+    // than spent: whatever the tap does not use is what the dom has left to
+    // settle in. both are ceilings - a chapter that answers returns immediately
     private static let contentDeadline = 15_000
     private static let contentGrace = 15_000
+    private static let tapBudget = 9_000
 
     // installed at documentStart, before the site's bundle runs - the only
     // moment a native can still be wrapped without the page noticing. every
@@ -861,33 +863,72 @@ extension ComixSource {
       window.__pageTapInstalled = true;
 
       var queue = [];
+      var rejected = [];
       var raw = JSON.parse;
+
+      // an image reference rather than a named field: the row shape is the
+      // site's to change, but a page always carries something that looks like
+      // an image, and a chapter row's relative /title/… url never does
+      var reference = function (value) {
+        if (typeof value !== 'string' || value.length < 5) return false;
+        return (/^https?:\\/\\//).test(value) || (/\\.(jpe?g|png|webp|gif|avif)(\\?|$)/i).test(value);
+      };
 
       var usable = function (row) {
         if (!row || typeof row !== 'object') return false;
-        var keys = ['url', 'src', 'image', 'link', 'b2key'];
-        for (var i = 0; i < keys.length; i++) {
-          var value = row[keys[i]];
-          if (typeof value === 'string' && value.length > 4) return true;
+        for (var key in row) {
+          if (reference(row[key])) return true;
         }
         return false;
+      };
+
+      // the rows are not always at the top: an envelope may wrap them a couple of
+      // levels down under names we have never seen. usable() is what decides, so
+      // descending costs nothing but finds shapes a fixed key list cannot
+      var arrayOf = function (value, depth) {
+        if (!value || typeof value !== 'object') return null;
+        if (Array.isArray(value)) {
+          return (value.length && value[0] && typeof value[0] === 'object') ? value : null;
+        }
+        var nested = [];
+        for (var key in value) {
+          var inner = value[key];
+          if (!inner || typeof inner !== 'object') continue;
+          if (Array.isArray(inner)) {
+            if (inner.length && inner[0] && typeof inner[0] === 'object') return inner;
+          } else {
+            nested.push(inner);
+          }
+        }
+        if (depth <= 0) return null;
+        for (var i = 0; i < nested.length; i++) {
+          var found = arrayOf(nested[i], depth - 1);
+          if (found) return found;
+        }
+        return null;
       };
 
       var listOf = function (value) {
         if (!value || typeof value !== 'object') return null;
         var result = (value.result && typeof value.result === 'object') ? value.result : value;
-        if (Array.isArray(result)) return result;
-        if (Array.isArray(result.pages)) return result.pages;
-        if (Array.isArray(result.images)) return result.images;
-        if (Array.isArray(result.items)) return result.items;
-        return null;
+        return arrayOf(result, 2) || arrayOf(value, 2);
       };
 
+      // a discarded payload is the one thing worth keeping: without its shape a
+      // miss is indistinguishable from having seen nothing at all
       var harvest = function (value) {
         try {
           var list = listOf(value);
           if (!list || !list.length) return;
-          if (!usable(list[0])) return;
+          if (!usable(list[0])) {
+            if (rejected.length < 5) {
+              rejected.push({
+                top: Object.keys(value).slice(0, 12),
+                rows: Object.keys(list[0]).slice(0, 20)
+              });
+            }
+            return;
+          }
           for (var i = 0; i < list.length; i++) queue.push(list[i]);
         } catch (e) {}
       };
@@ -906,94 +947,105 @@ extension ComixSource {
         return batch;
       };
 
+      window.__pageRejected = function () { return rejected; };
+
     })();
     """
 
-    // the module owns both the request signer and the response decryptor, and an
-    // es module import returns the live warm instance rather than a second copy.
-    // handles are found by shape because export names rotate every deploy
+    // the module was enumerated and exposes no page method - only `chapters` and
+    // generic http verbs, so the reader fetches its pages through get(). there is
+    // nothing to call, which makes the tap the data path rather than a fallback
     private static let pageScript = """
     const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+    // one wall clock bounds the whole script so it always resolves - an
+    // unresolved promise here strands the native caller
+    const until = Date.now() + deadline;
+    const left = () => Math.max(0, until - Date.now());
+
+    const reference = (value) =>
+      typeof value === 'string' && value.length > 4 &&
+      ((/^https?:\\/\\//).test(value) || (/\\.(jpe?g|png|webp|gif|avif)(\\?|$)/i).test(value));
+
     const pick = (row) => {
       if (!row || typeof row !== 'object') return null;
-      for (const key of ['url', 'src', 'image', 'link', 'b2key']) {
-        const value = row[key];
-        if (typeof value === 'string' && value.length > 4) return value;
+      for (const key of Object.keys(row)) {
+        if (reference(row[key])) return row[key];
       }
       return null;
     };
 
-    const listOf = (value) => {
-      if (!value || typeof value !== 'object') return null;
-      const result = (value.result && typeof value.result === 'object') ? value.result : value;
-      const list = Array.isArray(result) ? result
-        : Array.isArray(result.pages) ? result.pages
-        : Array.isArray(result.images) ? result.images
-        : Array.isArray(result.items) ? result.items
-        : null;
-      if (!list || !list.length) return null;
-      return pick(list[0]) ? list : null;
-    };
-
-    const client = async () => {
-      for (let waited = 0; waited < deadline; waited += poll) {
-        const url = performance.getEntriesByType('resource')
-          .map((entry) => entry.name)
-          .find((name) => name.indexOf('/env-') !== -1 && name.indexOf('.js') !== -1);
-
-        if (url) {
-          const loaded = await import(url);
-          const handles = [loaded.c, loaded.default].concat(Object.values(loaded));
-          for (const handle of handles) {
-            if (handle && typeof handle.pages === 'function') return handle;
-          }
-          return null;
-        }
+    // whatever the reader fetched for itself, caught after the site decrypted it.
+    // the budget is a ceiling, not a cost - the tap returns the moment rows land,
+    // and only a reader that never requests them spends it
+    const tapped = async (budget) => {
+      const end = Date.now() + Math.min(budget, left());
+      while (Date.now() < end) {
+        const batch = window.__pageTake ? window.__pageTake() : [];
+        if (batch.length) return batch;
         await pause(poll);
       }
       return null;
     };
 
-    // keys travel back so a shape change is readable from the log rather than
-    // guessed at - pick() only knows the names we have seen
-    const envelope = (source, list) => JSON.stringify({
+    // containers mount with the chapter and their images fill in behind them, so
+    // equality is a completeness signal. "the count stopped rising" never was -
+    // it only ever meant the count paused
+    const CONTAINER = 'main.rpage-main .rpage-page';
+    const IMAGE = 'main.rpage-main .rpage-page .rpage-page__img';
+    const counted = (selector) => document.querySelectorAll(selector).length;
+
+    const rendered = async () => {
+      while (left() > 0) {
+        const containers = counted(CONTAINER);
+        if (containers > 0 && counted(IMAGE) >= containers) break;
+        await pause(poll);
+      }
+
+      const sources = Array.from(document.querySelectorAll(IMAGE)).map((element) => {
+        if (element.tagName === 'IMG') return element.currentSrc || element.src;
+        if (element.tagName === 'CANVAS') {
+          try { return element.toDataURL('image/jpeg', 0.9); } catch (error) { return null; }
+        }
+        return null;
+      }).filter((value) => value);
+
+      return { containers: counted(CONTAINER), sources: sources };
+    };
+
+    const report = (source, rows, sources, containers) => JSON.stringify({
       source: source,
-      keys: list.length ? Object.keys(list[0]).slice(0, 20) : [],
-      pages: list.map(pick).filter((value) => value)
+      rejected: window.__pageRejected ? window.__pageRejected() : [],
+      keys: rows.length ? Object.keys(rows[0]).slice(0, 20) : [],
+      containers: containers,
+      pages: sources
     });
 
     try {
-      const api = await client();
-      if (api) {
-        // the single argument's shape is not pinned down, so offer what the route
-        // has and take the first that answers with rows
-        for (const argument of [id, slug, { id: id }, { hid: slug }, { chapter: id }]) {
-          try {
-            const list = listOf(await api.pages(argument));
-            if (list) return envelope('module', list);
-          } catch (error) {}
-        }
-      }
+      const batch = await tapped(tapBudget);
+      if (batch) return report('tap', batch, batch.map(pick).filter((value) => value), 0);
     } catch (error) {}
 
-    // whatever the reader fetched for itself, caught after the site decrypted it
-    for (let waited = 0; waited < deadline; waited += poll) {
-      const batch = window.__pageTake ? window.__pageTake() : [];
-      if (batch.length) return envelope('tap', batch);
-      await pause(poll);
-    }
-
-    return envelope('none', []);
+    const dom = await rendered();
+    return report('dom', [], dom.sources, dom.containers);
     """
 
     private struct ComixPages: Decodable {
         let source: String
+        let rejected: [Shape]
         let keys: [String]
+        let containers: Int
         let pages: [String]
+
+        struct Shape: Decodable {
+            let top: [String]
+            let rows: [String]
+        }
     }
 
     func content(seriesSlug: String, chapterSlug: String) async throws -> [PageURL] {
+        AppLog.shared.log("content(\(seriesSlug), \(chapterSlug)) — resolving title", category: "comix")
+
         // the reader path needs the FULL series slug; resolve it from the SSR cache.
         let titleURL = descriptor.baseURL
             .appendingPathComponent("title")
@@ -1007,72 +1059,74 @@ extension ComixSource {
         }
 
         let credential = try await requester.credential(for: self)
+        AppLog.shared.log("reader url \(readerURL.absoluteString)", category: "comix")
 
-        // the reader route names a chapter by the leading number of its slug
-        let id = Int(chapterSlug.prefix { $0.isNumber }) ?? 0
-
-        do {
-            let json = try await renderer.run(
-                readerURL,
-                credential: credential,
-                installing: Self.pageTap,
-                // the reader only requests pages once its prefs exist, so the tap
-                // has nothing to catch without these
-                seeding: [
-                    "reader.default.v3": Self.readerConfig,
-                    "read_settings_ver": "3"
-                ],
-                script: Self.pageScript,
-                arguments: [
-                    "id": id,
-                    "slug": chapterSlug,
-                    "poll": Self.pollInterval,
-                    "deadline": Self.contentDeadline
-                ],
-                timeout: .milliseconds(Self.contentDeadline + Self.contentGrace)
-            )
-
-            let harvest = try JSONDecoder().decode(ComixPages.self, from: Data(json.utf8))
-            let pages = harvest.pages.compactMap { URL(string: $0) }.filter { $0.scheme?.hasPrefix("http") == true }
-
-            AppLog.shared.log(
-                "\(harvest.source): \(harvest.pages.count) page(s) -> \(pages.count) usable, row keys [\(harvest.keys.joined(separator: ", "))]",
-                category: "comix"
-            )
-
-            if !pages.isEmpty {
-                return pages.enumerated().map { PageURL(index: $0.offset, url: $0.element) }
-            }
-        } catch {
-            AppLog.shared.log("page fetch failed, falling back to the reader — \(error)", category: "comix")
-        }
-
-        return try await pagesFromReader(readerURL, credential: credential)
-    }
-
-    // the floor beneath the data path. reads what the reader rendered, which only
-    // ever covers the pages it has mounted - kept because this site breaks often
-    // and a short chapter beats no chapter
-    private func pagesFromReader(_ readerURL: URL, credential: SourceCredential) async throws -> [PageURL] {
-        let progress = "document.querySelectorAll('main.rpage-main .rpage-page__img').length"
-        let extract = "Array.from(document.querySelectorAll('main.rpage-main .rpage-page .rpage-page__img')).map(function(el){if(el.tagName==='IMG'){return el.currentSrc||el.src;}if(el.tagName==='CANVAS'){try{return el.toDataURL('image/jpeg',0.9);}catch(e){return null;}}return null;}).filter(function(u){return u;})"
-
-        let srcs = try await renderer.renderExtracting(
+        // one page, one script, one wall clock: the tap and the dom are both
+        // reachable from the same session, and whichever answers first wins
+        let json = try await renderer.run(
             readerURL,
             credential: credential,
-            storage: [
+            installing: Self.pageTap,
+            // the reader only requests pages once its prefs exist, so the tap
+            // has nothing to catch without these
+            seeding: [
                 "reader.default.v3": Self.readerConfig,
                 "read_settings_ver": "3"
             ],
-            progress: progress,
-            extracting: extract
+            script: Self.pageScript,
+            arguments: [
+                "poll": Self.pollInterval,
+                "deadline": Self.contentDeadline,
+                "tapBudget": Self.tapBudget
+            ],
+            timeout: .milliseconds(Self.contentDeadline + Self.contentGrace)
         )
 
-        AppLog.shared.log("reader fallback returned \(srcs.count) page(s)", category: "comix")
+        let harvest = try JSONDecoder().decode(ComixPages.self, from: Data(json.utf8))
+        let pages = harvest.pages.compactMap { Self.page($0, on: Self.origin(of: detail)) }
 
-        return srcs.enumerated().compactMap { index, src in
-            URL(string: src).map { PageURL(index: index, url: $0) }
+        AppLog.shared.log(
+            "\(harvest.source): \(harvest.pages.count) page(s) -> \(pages.count) usable",
+            category: "comix"
+        )
+        if !harvest.keys.isEmpty {
+            AppLog.shared.log("row keys [\(harvest.keys.joined(separator: ", "))]", category: "comix")
         }
+        for shape in harvest.rejected {
+            AppLog.shared.log(
+                "tap rejected top[\(shape.top.joined(separator: ", "))] rows[\(shape.rows.joined(separator: ", "))]",
+                category: "comix"
+            )
+        }
+        // the count the reader itself laid out is the only total available, so a
+        // short answer says so rather than passing for a whole chapter
+        if harvest.containers > 0, pages.count < harvest.containers {
+            AppLog.shared.log("SHORT — \(pages.count) of \(harvest.containers) page(s)", category: "comix")
+        }
+
+        return pages.enumerated().map { PageURL(index: $0.offset, url: $0.element) }
+    }
+
+    // a module row can name a page by storage key rather than by url. the poster
+    // on the same payload is served from the image host, so it supplies the
+    // origin to resolve against without a hardcoded cdn anywhere
+    private static func origin(of detail: ComixDetail) -> URL? {
+        guard let poster = detail.poster?.large ?? detail.poster?.medium,
+              let components = URLComponents(string: poster),
+              let scheme = components.scheme,
+              let host = components.host
+        else { return nil }
+        return URL(string: "\(scheme)://\(host)")
+    }
+
+    // anything already absolute stands. a bare key resolves against the image
+    // host. a data: or blob: url is neither - the reader cannot load one, so it
+    // is dropped rather than passed off as a page
+    private static func page(_ value: String, on origin: URL?) -> URL? {
+        guard let url = URL(string: value) else { return nil }
+        if url.scheme?.hasPrefix("http") == true { return url }
+        guard url.scheme == nil, let origin else { return nil }
+        return URL(string: value, relativeTo: origin)?.absoluteURL
     }
 
     // zustand-persist envelope: the reader store expects {"state":{…},"version":…}
