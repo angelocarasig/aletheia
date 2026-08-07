@@ -90,6 +90,7 @@ final class ReaderViewModel {
                 chapters: loaded.map {
                     ReaderChapter(id: $0.id, number: $0.number, title: $0.title)
                 },
+                boundaries: Self.boundaries(across: loaded),
                 source: SeriesPageSource(database: database, registry: registry),
                 configuration: configuration
             )
@@ -183,6 +184,32 @@ final class ReaderViewModel {
 
     // MARK: Private
 
+    // what a boundary means before anything is loaded: what changed between the
+    // two chapters, and whether any are missing between them. static, so it is
+    // computed once rather than on every approach
+    nonisolated private static func boundaries(
+        across chapters: [StoredChapter]
+    ) -> [ReaderChapter.ID: ReaderBoundaryInfo] {
+        var result: [ReaderChapter.ID: ReaderBoundaryInfo] = [:]
+
+        for (previous, next) in zip(chapters, chapters.dropFirst()) {
+            var continuity = ReaderSeparatorModel.Continuity()
+            if previous.sourceName != next.sourceName { continuity.source = next.sourceName }
+            if previous.scanlator != next.scanlator { continuity.scanlator = next.scanlator }
+            if previous.language != next.language { continuity.language = next.language.rawValue }
+
+            let gap = ReaderSeparatorModel.Gap.between(previous.number, next.number)
+            guard !continuity.isEmpty || gap != nil else { continue }
+
+            result[previous.id] = ReaderBoundaryInfo(
+                continuity: continuity.isEmpty ? nil : continuity,
+                gap: gap
+            )
+        }
+
+        return result
+    }
+
     private func bind(_ engine: ReaderEngine) {
         engine.onPageChanged = { [weak self] chapter, index, total in
             self?.track(chapter: chapter, page: index, total: total)
@@ -199,9 +226,11 @@ final class ReaderViewModel {
                 "chapter changed to \(chapter.number.formatted()) (explicit: \(explicit))",
                 category: "reader"
             )
-            AppLog.shared.log("TODO transition banner", category: "reader")
-            if !explicit { AppLog.shared.log("TODO chapter-gap warning check", category: "reader") }
             AppLog.shared.log("TODO session addChapter", category: "reader")
+        }
+
+        engine.onChapterFinished = { [weak self] chapter in
+            Task { await self?.complete(chapter) }
         }
 
         engine.onSingleTap = { [weak self] point in
@@ -219,11 +248,21 @@ final class ReaderViewModel {
         let best = max(reached[id]?.page ?? 0, page)
         reached[id] = (best, total)
 
-        if page == total - 1 {
-            AppLog.shared.log("TODO tracker sync on last page", category: "reader")
-        }
-
         Task { await save(id, throttled: true) }
+    }
+
+    // reaching the boundary is what finishes a chapter, not landing on its last
+    // page - a page can be the last one on screen without ever being read past
+    private func complete(_ chapter: ReaderChapter) async {
+        let id = ChapterRecord.ID(rawValue: chapter.id)
+        guard let entry = reached[id], entry.total > 0 else { return }
+
+        reached[id] = (entry.total - 1, entry.total)
+        await save(id, throttled: false)
+        AppLog.shared.log(
+            "finished chapter \(chapter.number.formatted()) — TODO tracker sync",
+            category: "reader"
+        )
     }
 
     private func flush() async {
@@ -273,7 +312,10 @@ final class ReaderViewModel {
         let number: Double
         let title: String
         let progress: Double
+        let language: LanguageCode
+        let scanlator: String
         let sourceSlug: String?
+        let sourceName: String?
     }
 
     nonisolated private static func chapters(
@@ -286,10 +328,14 @@ final class ReaderViewModel {
                 c.\(ChapterRecord.Columns.number.name) AS number,
                 c.\(ChapterRecord.Columns.title.name) AS title,
                 c.\(ChapterRecord.Columns.progress.name) AS progress,
-                src.\(SourceRecord.Columns.slug.name) AS sourceSlug
+                c.\(ChapterRecord.Columns.language.name) AS language,
+                sc.\(ScanlatorRecord.Columns.name.name) AS scanlator,
+                src.\(SourceRecord.Columns.slug.name) AS sourceSlug,
+                src.\(SourceRecord.Columns.name.name) AS sourceName
             FROM \(ChapterRecord.databaseTableName) c
             JOIN \(BestChapterView.databaseTableName) bc ON bc.chapterId = c.id
             JOIN \(OriginRecord.databaseTableName) o ON o.id = c.\(ChapterRecord.Columns.originId.name)
+            JOIN \(ScanlatorRecord.databaseTableName) sc ON sc.id = c.\(ChapterRecord.Columns.scanlatorId.name)
             LEFT JOIN \(SourceRecord.databaseTableName) src ON src.id = o.\(OriginRecord.Columns.sourceId.name)
             WHERE bc.seriesId = ?
               AND bc.rank = 1

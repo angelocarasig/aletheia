@@ -35,6 +35,7 @@ struct ReaderOverlay: View {
         static let disabledOpacity: Double = 0.35
         static let tintOpacity: Double = 0.2
         static let settle: Animation = .snappy(duration: 0.25)
+        static let identity: Animation = .snappy(duration: 0.3)
     }
 
     // clear glass has no adaptive behaviour, so it never flips to suit what is
@@ -113,11 +114,19 @@ private extension ReaderOverlay {
                 .font(.subheadline)
                 .fontWeight(.semibold)
                 .lineLimit(1)
+                // the number carries the direction on its own: forward rolls the
+                // digits up, back rolls them down. nothing has to track which way
+                // the chapter moved
+                .contentTransition(.numericText(value: engine.current?.number ?? 0))
 
             if let subtitle {
                 Text(subtitle)
                     .font(.caption2)
                     .lineLimit(1)
+                    // arbitrary text, so it crossfades rather than rolls - keyed
+                    // on the string so a change swaps it, not only nil <-> value
+                    .id(subtitle)
+                    .transition(.opacity)
             }
         }
         .padding(.horizontal, dimensions.spacing.space12)
@@ -127,6 +136,9 @@ private extension ReaderOverlay {
         .glassEffect(surface, in: .capsule)
         .contentShape(.rect)
         .tappable(action: onChapters)
+        // the capsule resizes to whatever the new chapter is called, so the
+        // transaction has to sit above the text rather than on it
+        .animation(Layout.identity, value: engine.current?.id)
     }
 
     var title: String {

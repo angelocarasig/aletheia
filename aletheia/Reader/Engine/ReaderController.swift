@@ -13,8 +13,8 @@ import UIKit
 // for double-page spreads landed on the wrong side of an appended chapter
 @MainActor
 final class ReaderController: UIViewController {
-    typealias DataSource = UICollectionViewDiffableDataSource<ReaderChapter.ID, ReaderPage>
-    typealias Snapshot = NSDiffableDataSourceSnapshot<ReaderChapter.ID, ReaderPage>
+    typealias DataSource = UICollectionViewDiffableDataSource<ReaderChapter.ID, ReaderItem>
+    typealias Snapshot = NSDiffableDataSourceSnapshot<ReaderChapter.ID, ReaderItem>
 
     enum Position {
         case start
@@ -42,6 +42,16 @@ final class ReaderController: UIViewController {
     // page under the reader still while content above it changes height
     private var pendingOffsetAdjustment: CGFloat = 0
 
+    // separator heights are cached rather than recomputed, because extent() runs
+    // inside every geometry walk
+    private var separatorExtents: [ReaderBoundary: CGFloat] = [:]
+    private var separatorDirections: [ReaderBoundary: ReadingDirection] = [:]
+
+    // reading order decides direction, so the last position is kept rather than
+    // the last offset - coordinates cannot answer this under right-to-left
+    private var lastPosition: ReadingPosition?
+    private(set) var lastDirection: ReadingDirection = .forward
+
     private var pendingInvalidation = false
     private var isZoomed = false
     private var requestedNext = false
@@ -49,6 +59,10 @@ final class ReaderController: UIViewController {
     private var lastReportedPage: ReaderPage?
 
     var onVisiblePageChanged: ((ReaderPage, Int, Int) -> Void)?
+    // the engine owns what a boundary means; the controller only renders it
+    var separatorModel: ((ReaderBoundary, ReadingDirection) -> ReaderSeparatorModel)?
+    var onSeparatorReached: ((ReaderBoundary, ReadingDirection) -> Void)?
+    var onSeparatorRetry: ((ReaderBoundary) -> Void)?
     var onNeedsChapter: ((Position) -> Void)?
     var onSingleTap: ((CGPoint) -> Void)?
     var onZoomChanged: ((Bool) -> Void)?
@@ -116,11 +130,17 @@ final class ReaderController: UIViewController {
         let size = collectionView.contentSize
         let measured = chapterPages.filter { sizes[$0] != nil }.count
 
+        // extents first, or the boundaries this insert creates are counted at
+        // a fallback height
+        refreshSeparatorExtents()
+
         // summed rather than read back off contentSize: the layout is a plain
         // stack, so this is exact, and it cannot absorb an unrelated height
-        // change that slipped in across the await below
-        let inserted = chapterPages.reduce(CGFloat.zero) {
-            $0 + height(for: $1, width: pageWidth)
+        // change that slipped in across the await below. counts the separators
+        // the insert brings with it, and uses the scroll-axis extent rather
+        // than an image ratio - the latter was wrong in every paged mode
+        let inserted = items(for: chapter).reduce(CGFloat.zero) {
+            $0 + extent(of: $1, width: pageWidth)
         }
 
         await applySnapshot(animated: false)
@@ -158,14 +178,61 @@ final class ReaderController: UIViewController {
         guard pages[chapter] != nil else { return }
         flushInvalidation()
 
+        // hold the item under the reader BY IDENTITY, not by index - the index
+        // space is about to lose a whole chapter. evicting one that sits above
+        // the reader shrinks everything above it, and without this the reader
+        // is thrown forward by the entire evicted chapter
+        let width = pageWidth
+        let vertical = configuration.mode.isVertical
+        let before = flatItems()
+        let anchored = vertical ? collectionView.contentOffset.y : collectionView.contentOffset.x
+        let held = anchor(at: anchored, in: before, width: width)
+        let heldItem = held.map { before[$0.index] }
+
         pages[chapter]?.forEach { sizes[$0] = nil }
         pages[chapter] = nil
         loaded.removeAll { $0 == chapter }
+        separatorExtents[.after(chapter)] = nil
+        separatorDirections[.after(chapter)] = nil
+        refreshSeparatorExtents()
 
         // ratios survive eviction on purpose. a chapter that comes back gets
         // its 70-odd estimates right on the first layout pass, so the prepend
         // delta is correct and the correction run never happens
         await applySnapshot(animated: false)
+
+        let after = flatItems()
+        // nil means the reader was inside the chapter that just went, which
+        // eviction protects against - leave the offset alone rather than guess
+        guard let held,
+              let heldItem,
+              let index = after.firstIndex(of: heldItem)
+        else {
+            AppLog.shared.log(
+                "evict ch\(chapter): anchor lost, offset untouched",
+                category: "reader.layout"
+            )
+            return
+        }
+
+        let restored = max(0, position(
+            of: Anchor(index: index, fraction: held.fraction),
+            in: after,
+            width: width
+        ))
+
+        var point = collectionView.contentOffset
+        if vertical { point.y = restored } else { point.x = restored }
+        setOffsetWithoutAnimation(point)
+
+        AppLog.shared.log(
+            """
+            evict ch\(chapter): size \(Int(collectionView.contentSize.height)), \
+            offset \(Int(anchored))→\(Int(restored)), \
+            settled at \(Int(vertical ? collectionView.contentOffset.y : collectionView.contentOffset.x))
+            """,
+            category: "reader.layout"
+        )
     }
 
     func clear() async {
@@ -177,6 +244,8 @@ final class ReaderController: UIViewController {
         ratios.removeAll()
         samples.removeAll()
         loaded.removeAll()
+        separatorExtents.removeAll()
+        separatorDirections.removeAll()
         await applySnapshot(animated: false)
     }
 
@@ -185,7 +254,7 @@ final class ReaderController: UIViewController {
     func scroll(to chapter: ReaderChapter.ID, page index: Int, animated: Bool) {
         guard let chapterPages = pages[chapter], !chapterPages.isEmpty else { return }
         let clamped = min(max(0, index), chapterPages.count - 1)
-        guard let path = dataSource.indexPath(for: chapterPages[clamped]) else { return }
+        guard let path = dataSource.indexPath(for: .page(chapterPages[clamped])) else { return }
 
         collectionView.scrollToItem(
             at: path,
@@ -196,7 +265,7 @@ final class ReaderController: UIViewController {
 
     func advance(by pages: Int) {
         guard let current = lastReportedPage,
-              let path = dataSource.indexPath(for: current) else { return }
+              let path = dataSource.indexPath(for: .page(current)) else { return }
 
         if configuration.mode.isContinuous {
             scrollByViewport(forward: pages > 0)
@@ -205,7 +274,8 @@ final class ReaderController: UIViewController {
 
         let flat = flatIndex(of: path)
         let target = flat + pages
-        guard let next = page(atFlat: target), let path = dataSource.indexPath(for: next) else { return }
+        guard let next = item(atFlat: target),
+              let path = dataSource.indexPath(for: next) else { return }
 
         collectionView.scrollToItem(at: path, at: scrollAnchor, animated: true)
     }
@@ -227,6 +297,9 @@ final class ReaderController: UIViewController {
         // so drain what is pending and drop the rest
         flushInvalidation()
         pendingOffsetAdjustment = 0
+        // separator extent is the one item size that flips wholesale on a mode
+        // change, so a stale cache would lay the band out at the wrong height
+        refreshSeparatorExtents()
 
         // hold the page being read across the relayout. querying it first, then
         // restoring after the new layout settles, is the whole trick - reading
@@ -238,7 +311,7 @@ final class ReaderController: UIViewController {
         collectionView.isPagingEnabled = configuration.mode.isPaged
         collectionView.layoutIfNeeded()
 
-        if let anchor, let path = dataSource.indexPath(for: anchor) {
+        if let anchor, let path = dataSource.indexPath(for: .page(anchor)) {
             collectionView.scrollToItem(at: path, at: scrollAnchor, animated: false)
         }
     }
@@ -289,6 +362,7 @@ final class ReaderController: UIViewController {
         collectionView.isPagingEnabled = configuration.mode.isPaged
         collectionView.delegate = self
         collectionView.register(PageCell.self, forCellWithReuseIdentifier: PageCell.reuseIdentifier)
+        collectionView.register(SeparatorCell.self, forCellWithReuseIdentifier: SeparatorCell.reuseIdentifier)
         applySemantics()
 
         let tap = UITapGestureRecognizer(target: self, action: #selector(handleTap))
@@ -307,27 +381,47 @@ final class ReaderController: UIViewController {
     }
 
     private func buildDataSource() {
-        dataSource = DataSource(collectionView: collectionView) { [weak self] collectionView, indexPath, page in
-            let cell = collectionView.dequeueReusableCell(
-                withReuseIdentifier: PageCell.reuseIdentifier,
-                for: indexPath
-            )
-            guard let cell = cell as? PageCell, let self else { return cell }
-
-            cell.onZoomChanged = { [weak self] zoomed in
-                self?.setZoomed(zoomed)
-            }
-            cell.onSized = { [weak self] page, size in
-                self?.record(size: size, for: page)
-            }
-            cell.onRetry = { page in
-                AppLog.shared.log(
-                    "retrying ch\(page.chapter) p\(page.index)",
-                    category: "reader"
+        dataSource = DataSource(collectionView: collectionView) { [weak self] collectionView, indexPath, item in
+            switch item {
+            case let .page(page):
+                let cell = collectionView.dequeueReusableCell(
+                    withReuseIdentifier: PageCell.reuseIdentifier,
+                    for: indexPath
                 )
+                guard let cell = cell as? PageCell, let self else { return cell }
+
+                cell.onZoomChanged = { [weak self] zoomed in
+                    self?.setZoomed(zoomed)
+                }
+                cell.onSized = { [weak self] page, size in
+                    self?.record(size: size, for: page)
+                }
+                cell.onRetry = { page in
+                    AppLog.shared.log(
+                        "retrying ch\(page.chapter) p\(page.index)",
+                        category: "reader"
+                    )
+                }
+                cell.configure(with: page, width: self.pageWidth)
+                return cell
+
+            case let .separator(boundary):
+                let cell = collectionView.dequeueReusableCell(
+                    withReuseIdentifier: SeparatorCell.reuseIdentifier,
+                    for: indexPath
+                )
+                guard let cell = cell as? SeparatorCell, let self else { return cell }
+
+                // configured properly in willDisplay, once the approach
+                // direction is known. this is just so it is never blank
+                if let model = self.separatorModel?(boundary, self.separatorDirections[boundary] ?? .forward) {
+                    cell.configure(with: model)
+                }
+                cell.onRetry = { [weak self] in
+                    self?.onSeparatorRetry?(boundary)
+                }
+                return cell
             }
-            cell.configure(with: page, width: self.pageWidth)
-            return cell
         }
     }
 
@@ -335,9 +429,24 @@ final class ReaderController: UIViewController {
         var snapshot = Snapshot()
         snapshot.appendSections(loaded)
         for chapter in loaded {
-            snapshot.appendItems(pages[chapter] ?? [], toSection: chapter)
+            snapshot.appendItems(items(for: chapter), toSection: chapter)
         }
         await dataSource.apply(snapshot, animatingDifferences: animated)
+    }
+
+    // separators are derived, never stored, so eviction cleans up after itself.
+    // the trailing one exists whether or not the next chapter is loaded - that
+    // is what carries loading, failure and end-of-series
+    private func items(for chapter: ReaderChapter.ID) -> [ReaderItem] {
+        var items: [ReaderItem] = []
+
+        if chapter == loaded.first, chapter == order.first {
+            items.append(.separator(.start))
+        }
+
+        items.append(contentsOf: (pages[chapter] ?? []).map(ReaderItem.page))
+        items.append(.separator(.after(chapter)))
+        return items
     }
 
     private func setOffsetWithoutAnimation(_ offset: CGPoint) {
@@ -374,7 +483,7 @@ final class ReaderController: UIViewController {
         }
 
         let width = pageWidth
-        let flat = flatPages()
+        let flat = flatItems()
 
         // measured against where the reader will BE once the pending batch
         // flushes, not where it is now - sizes already holds this batch's
@@ -383,10 +492,10 @@ final class ReaderController: UIViewController {
         let target = collectionView.contentOffset.y + pendingOffsetAdjustment
         let held = anchor(at: target, in: flat, width: width)
 
-        let estimated = height(for: page, width: width)
+        let estimated = extent(of: .page(page), width: width)
         sizes[page] = size
         learn(ratio: size.height / size.width, for: page.chapter)
-        let actual = height(for: page, width: width)
+        let actual = extent(of: .page(page), width: width)
 
         if let held {
             let moved = position(of: held, in: flat, width: width) - target
@@ -462,6 +571,18 @@ final class ReaderController: UIViewController {
         )
     }
 
+    // recomputed whenever the set of boundaries or the mode changes. cheap:
+    // one model build per boundary, and there are at most windowSize + 1
+    private func refreshSeparatorExtents() {
+        var extents: [ReaderBoundary: CGFloat] = [:]
+        for item in flatItems() {
+            guard case let .separator(boundary) = item else { continue }
+            extents[boundary] = separatorModel?(boundary, .forward).height
+                ?? ReaderSeparatorModel.Metrics.destination
+        }
+        separatorExtents = extents
+    }
+
     private func learn(ratio: CGFloat, for chapter: ReaderChapter.ID) {
         guard ratio.isFinite, ratio > 0 else { return }
 
@@ -476,11 +597,86 @@ final class ReaderController: UIViewController {
         ratios[chapter] = sorted[sorted.count / 2]
     }
 
+    // the only extent function in the controller. the layout, the prepend sum
+    // and the compensation walk all go through it, so contentSize and the walk
+    // cannot disagree - that disagreement IS the scroll-jump bug.
+    //
+    // paged modes size every cell to the viewport along the scroll axis, so an
+    // image ratio was never the extent there. a separator has no ratio at all,
+    // which is what forced this to become explicit
+    private func extent(of item: ReaderItem, width: CGFloat) -> CGFloat {
+        guard configuration.mode.isContinuous else {
+            return configuration.mode.isVertical
+                ? collectionView.bounds.height
+                : collectionView.bounds.width
+        }
+
+        switch item {
+        case let .page(page):
+            return height(for: page, width: width)
+        case let .separator(boundary):
+            // declared by the model, never measured from the rendered view -
+            // a height discovered after layout is the bug this reader just fixed
+            return separatorExtents[boundary] ?? ReaderSeparatorModel.Metrics.destination
+        }
+    }
+
     private func height(for page: ReaderPage, width: CGFloat) -> CGFloat {
         if let size = sizes[page], size.width > 0 {
             return width * (size.height / size.width)
         }
         return width * (ratios[page.chapter] ?? configuration.mode.fallbackPageRatio)
+    }
+
+    // MARK: Direction
+
+    // (slot in `order`, index within the chapter). `order` is the full chapter
+    // list, so a slot never moves when a chapter is prepended or evicted - flat
+    // item indices do, which is exactly why they cannot be used here
+    private struct ReadingPosition: Comparable {
+        let slot: Int
+        let index: Int
+
+        static func < (lhs: Self, rhs: Self) -> Bool {
+            lhs.slot == rhs.slot ? lhs.index < rhs.index : lhs.slot < rhs.slot
+        }
+    }
+
+    private func readingPosition(of item: ReaderItem) -> ReadingPosition? {
+        switch item {
+        case let .page(page):
+            return order.firstIndex(of: page.chapter)
+                .map { ReadingPosition(slot: $0, index: page.index) }
+        case .separator(.start):
+            return ReadingPosition(slot: -1, index: .max)
+        case let .separator(.after(chapter)):
+            // sits after every page of the chapter it trails
+            return order.firstIndex(of: chapter)
+                .map { ReadingPosition(slot: $0, index: .max) }
+        }
+    }
+
+    private func travelDirection(to boundary: ReaderBoundary) -> ReadingDirection {
+        guard let from = lastReportedPage,
+              let origin = readingPosition(of: .page(from)),
+              let target = readingPosition(of: .separator(boundary))
+        else { return .forward }
+        return target < origin ? .backward : .forward
+    }
+
+    // re-renders visible separators without touching the snapshot or the
+    // layout. the engine calls this when a destination resolves while the
+    // reader is sitting on the boundary - willDisplay has already fired and
+    // would never fire again. safe only because slot presence, and therefore
+    // height, is independent of state
+    func reloadSeparators() {
+        for path in collectionView.indexPathsForVisibleItems {
+            guard case let .separator(boundary) = dataSource.itemIdentifier(for: path),
+                  let cell = collectionView.cellForItem(at: path) as? SeparatorCell,
+                  let model = separatorModel?(boundary, separatorDirections[boundary] ?? .forward)
+            else { continue }
+            cell.configure(with: model)
+        }
     }
 
     // MARK: Geometry
@@ -494,16 +690,18 @@ final class ReaderController: UIViewController {
         let fraction: CGFloat
     }
 
-    private func flatPages() -> [ReaderPage] {
-        loaded.flatMap { pages[$0] ?? [] }
+    // every geometry walk goes through this. a height that exists outside
+    // height(for:width:) would make the offset compensation drift
+    private func flatItems() -> [ReaderItem] {
+        loaded.flatMap { items(for: $0) }
     }
 
-    private func anchor(at y: CGFloat, in flat: [ReaderPage], width: CGFloat) -> Anchor? {
+    private func anchor(at y: CGFloat, in flat: [ReaderItem], width: CGFloat) -> Anchor? {
         guard !flat.isEmpty else { return nil }
 
         var top: CGFloat = 0
-        for (index, page) in flat.enumerated() {
-            let extent = height(for: page, width: width)
+        for (index, item) in flat.enumerated() {
+            let extent = extent(of: item, width: width)
             if y < top + extent || index == flat.count - 1 {
                 let fraction = extent > 0 ? (y - top) / extent : 0
                 return Anchor(index: index, fraction: min(max(0, fraction), 1))
@@ -513,28 +711,30 @@ final class ReaderController: UIViewController {
         return Anchor(index: flat.count - 1, fraction: 1)
     }
 
-    private func position(of anchor: Anchor, in flat: [ReaderPage], width: CGFloat) -> CGFloat {
+    private func position(of anchor: Anchor, in flat: [ReaderItem], width: CGFloat) -> CGFloat {
         guard anchor.index < flat.count else { return 0 }
 
         var top: CGFloat = 0
-        for page in flat.prefix(anchor.index) {
-            top += height(for: page, width: width)
+        for item in flat.prefix(anchor.index) {
+            top += extent(of: item, width: width)
         }
-        return top + height(for: flat[anchor.index], width: width) * anchor.fraction
+        return top + extent(of: flat[anchor.index], width: width) * anchor.fraction
     }
 
+    // counts ITEMS, not pages - a section carries its trailing separator, and
+    // the first one may carry the opening separator too
     private func flatIndex(of path: IndexPath) -> Int {
-        let before = loaded.prefix(path.section).reduce(0) { $0 + (pages[$1]?.count ?? 0) }
+        let before = loaded.prefix(path.section).reduce(0) { $0 + items(for: $1).count }
         return before + path.item
     }
 
-    private func page(atFlat index: Int) -> ReaderPage? {
+    private func item(atFlat index: Int) -> ReaderItem? {
         guard index >= 0 else { return nil }
         var remaining = index
         for chapter in loaded {
-            let chapterPages = pages[chapter] ?? []
-            if remaining < chapterPages.count { return chapterPages[remaining] }
-            remaining -= chapterPages.count
+            let sectionItems = items(for: chapter)
+            if remaining < sectionItems.count { return sectionItems[remaining] }
+            remaining -= sectionItems.count
         }
         return nil
     }
@@ -573,15 +773,15 @@ final class ReaderController: UIViewController {
             sectionProvider: { [weak self] index, environment in
                 guard let self, index < self.loaded.count else { return nil }
                 let chapter = self.loaded[index]
-                let chapterPages = self.pages[chapter] ?? []
-                guard !chapterPages.isEmpty else { return nil }
+                let sectionItems = self.items(for: chapter)
+                guard !sectionItems.isEmpty else { return nil }
 
                 if mode.isPaged {
-                    return Self.pagedSection(count: chapterPages.count, environment: environment)
+                    return Self.pagedSection(count: sectionItems.count, environment: environment)
                 }
 
                 return self.continuousSection(
-                    pages: chapterPages,
+                    items: sectionItems,
                     padding: padding,
                     environment: environment
                 )
@@ -606,13 +806,13 @@ final class ReaderController: UIViewController {
     // exact frames rather than estimates. the content size is therefore always
     // correct, which is what lets a prepend be compensated by a size delta
     private func continuousSection(
-        pages chapterPages: [ReaderPage],
+        items sectionItems: [ReaderItem],
         padding: CGFloat,
         environment: NSCollectionLayoutEnvironment
     ) -> NSCollectionLayoutSection {
         let containerWidth = environment.container.effectiveContentSize.width
         let width = max(1, containerWidth - padding * 2)
-        let heights = chapterPages.map { height(for: $0, width: width) }
+        let heights = sectionItems.map { extent(of: $0, width: width) }
         let total = heights.reduce(0, +)
 
         let group = NSCollectionLayoutGroup.custom(
@@ -622,8 +822,17 @@ final class ReaderController: UIViewController {
             )
         ) { _ in
             var y: CGFloat = 0
-            return heights.map { height in
-                let frame = CGRect(x: padding, y: y, width: width, height: height)
+            return zip(sectionItems, heights).map { item, height in
+                // a separator spans the container; only pages take the reading
+                // padding. heights come from the same extent either way, so the
+                // walk stays exact
+                let inset: CGFloat = item.page == nil ? 0 : padding
+                let frame = CGRect(
+                    x: inset,
+                    y: y,
+                    width: containerWidth - inset * 2,
+                    height: height
+                )
                 y += height
                 return NSCollectionLayoutGroupCustomItem(frame: frame)
             }
@@ -636,6 +845,25 @@ final class ReaderController: UIViewController {
 // MARK: - UICollectionViewDelegate
 
 extension ReaderController: UICollectionViewDelegate {
+    // direction is latched here and only here: the cell was dequeued before the
+    // reader's approach was known, so this is the refresh the boundary needs
+    func collectionView(
+        _ collectionView: UICollectionView,
+        willDisplay cell: UICollectionViewCell,
+        forItemAt indexPath: IndexPath
+    ) {
+        guard case let .separator(boundary) = dataSource.itemIdentifier(for: indexPath) else { return }
+
+        let direction = travelDirection(to: boundary)
+        separatorDirections[boundary] = direction
+        lastDirection = direction
+
+        if let model = separatorModel?(boundary, direction) {
+            (cell as? SeparatorCell)?.configure(with: model)
+        }
+        onSeparatorReached?(boundary, direction)
+    }
+
     func scrollViewDidScroll(_ scrollView: UIScrollView) {
         reportVisiblePage()
         checkProximity()
@@ -693,7 +921,9 @@ extension ReaderController: UICollectionViewDelegate {
         }
 
         guard let best else { return nil }
-        return dataSource.itemIdentifier(for: best.path)
+        // a separator centre-screen reports nothing, so the scrubber and the
+        // page counter hold on the last real page instead of blanking
+        return dataSource.itemIdentifier(for: best.path)?.page
     }
 
     // state-driven rather than debounced on a clock: the request fires when the
@@ -732,9 +962,16 @@ extension ReaderController: UICollectionViewDelegate {
         let flat = loaded.flatMap { pages[$0] ?? [] }
         guard !flat.isEmpty else { return }
 
-        let visible = collectionView.indexPathsForVisibleItems
-            .compactMap { dataSource.itemIdentifier(for: $0) }
+        var visible = collectionView.indexPathsForVisibleItems
+            .compactMap { dataSource.itemIdentifier(for: $0)?.page }
             .compactMap { flat.firstIndex(of: $0) }
+
+        // in paged mode the separator can be the only thing on screen, which is
+        // exactly when the next chapter's first pages are wanted. anchor on the
+        // last real page so warming carries across the boundary
+        if visible.isEmpty, let last = lastReportedPage, let index = flat.firstIndex(of: last) {
+            visible = [index]
+        }
 
         guard let lower = visible.min(), let upper = visible.max() else { return }
         prefetcher.update(visible: lower..<(upper + 1), in: flat)

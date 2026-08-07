@@ -50,6 +50,36 @@ extension ReaderPage {
     }
 }
 
+// everything the reader lays out. a separator is a real item rather than a
+// floating overlay, so it scrolls with the content and takes part in the same
+// geometry as the pages either side of it
+enum ReaderItem: Hashable, Sendable {
+    case page(ReaderPage)
+    case separator(ReaderBoundary)
+
+    var page: ReaderPage? {
+        guard case let .page(page) = self else { return nil }
+        return page
+    }
+}
+
+// identity is the boundary itself, never the direction of travel or anything
+// else that changes. the same reasoning as ReaderPage.size above: a separator
+// whose identity moved would diff as a remove plus an insert every time you
+// approached it from the other side
+enum ReaderBoundary: Hashable, Sendable {
+    case start
+    case after(ReaderChapter.ID)
+}
+
+// which way the reader is travelling through the chapter list. derived from
+// reading order rather than screen coordinates - right-to-left mirrors the
+// layout and each mode has its own axis, so coordinates cannot answer this
+enum ReadingDirection: Sendable {
+    case forward
+    case backward
+}
+
 // the host's single obligation. everything else the engine does is local.
 protocol ReaderPageSource: Sendable {
     func pages(for chapter: ReaderChapter.ID) async throws -> [ReaderPage]

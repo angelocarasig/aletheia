@@ -19,7 +19,18 @@ import Observation
 final class ReaderEngine {
     private let window: ChapterWindow
     private let chapters: [ReaderChapter]
+    private let boundaries: [ReaderChapter.ID: ReaderBoundaryInfo]
     private var loading: Set<ReaderChapter.ID> = []
+
+    // what the destination slot reads. resident mirrors the controller's loaded
+    // set; failures makes a preload error visible instead of only logged
+    private var resident: Set<ReaderChapter.ID> = []
+    private var failures: [ReaderChapter.ID: ReaderError] = [:]
+
+    // one-way, per chapter, per session. scrolling backward across a boundary
+    // is a re-read, and an explicit jump clears the collection view rather than
+    // scrolling across anything, so neither can mark a chapter finished
+    private var completed: Set<ReaderChapter.ID> = []
 
     @ObservationIgnored private weak var controller: ReaderController?
 
@@ -37,6 +48,8 @@ final class ReaderEngine {
     // the reader jumped deliberately or simply scrolled into it
     var onChapterChanged: ((ReaderChapter, Bool) -> Void)?
     var onPageChanged: ((ReaderChapter, Int, Int) -> Void)?
+    // fired once per chapter, forward only. where tracker sync will hang
+    var onChapterFinished: ((ReaderChapter) -> Void)?
     var onSingleTap: ((CGPoint) -> Void)?
 
     var chapterList: [ReaderChapter] { chapters }
@@ -53,12 +66,18 @@ final class ReaderEngine {
 
     init(
         chapters: [ReaderChapter],
+        boundaries: [ReaderChapter.ID: ReaderBoundaryInfo] = [:],
         source: any ReaderPageSource,
         configuration: ReaderConfiguration
     ) {
         self.chapters = chapters
+        self.boundaries = boundaries
         self.configuration = configuration
-        self.window = ChapterWindow(source: source, limit: configuration.windowSize)
+        self.window = ChapterWindow(
+            source: source,
+            order: chapters.map(\.id),
+            limit: configuration.windowSize
+        )
     }
 
     // MARK: Lifecycle
@@ -85,6 +104,17 @@ final class ReaderEngine {
         controller.onAutoScrollEnded = { [weak self] in
             self?.isAutoScrolling = false
         }
+        controller.separatorModel = { [weak self] boundary, direction in
+            self?.separator(for: boundary, direction: direction)
+                ?? ReaderSeparatorModel(boundary: boundary, direction: direction, destination: .caughtUp)
+        }
+        controller.onSeparatorReached = { [weak self] boundary, direction in
+            self?.reachedBoundary(boundary, direction: direction)
+        }
+        controller.onSeparatorRetry = { [weak self] boundary in
+            guard case let .after(chapter) = boundary else { return }
+            Task { await self?.retryNext(after: chapter) }
+        }
     }
 
     func open(_ chapter: ReaderChapter.ID, progress: Double?) async {
@@ -99,6 +129,7 @@ final class ReaderEngine {
         do {
             let load = try await window.load(chapter)
             await controller?.apply(load.pages, for: chapter)
+            resident.insert(chapter)
 
             current = target
             pageCount = load.pages.count
@@ -128,7 +159,9 @@ final class ReaderEngine {
             let load = try await window.load(chapter)
             await window.clear(keeping: chapter)
             await controller?.clear()
+            resident = []
             await controller?.apply(load.pages, for: chapter)
+            resident.insert(chapter)
 
             let previous = current
             current = target
@@ -213,6 +246,81 @@ final class ReaderEngine {
         }
     }
 
+    // MARK: Boundaries
+
+    // assembled entirely from what the engine already knows plus the static
+    // facts the host computed once. slot PRESENCE never varies with direction
+    // or load state - only what the slots say does - because the controller
+    // sizes the band off this
+    private func separator(
+        for boundary: ReaderBoundary,
+        direction: ReadingDirection
+    ) -> ReaderSeparatorModel {
+        switch boundary {
+        case .start:
+            return ReaderSeparatorModel(
+                boundary: boundary,
+                direction: direction,
+                destination: .startOfSeries
+            )
+
+        case let .after(id):
+            let info = boundaries[id] ?? .none
+            let chapter = chapters.first { $0.id == id }
+            let terminal = chapter.map {
+                ReaderSeparatorModel.Terminal(number: $0.number, title: $0.title)
+            }
+
+            return ReaderSeparatorModel(
+                boundary: boundary,
+                direction: direction,
+                terminal: terminal,
+                continuity: info.continuity,
+                gap: info.gap,
+                destination: destination(after: id)
+            )
+        }
+    }
+
+    private func destination(after id: ReaderChapter.ID) -> ReaderSeparatorModel.Destination {
+        guard let slot = chapters.firstIndex(where: { $0.id == id }),
+              slot < chapters.count - 1
+        else { return .caughtUp }
+
+        let next = chapters[slot + 1]
+
+        if let failure = failures[next.id] { return .failed(failure) }
+        if resident.contains(next.id) {
+            return .chapter(number: next.number, title: next.title)
+        }
+        return .loading(number: next.number)
+    }
+
+    private func reachedBoundary(_ boundary: ReaderBoundary, direction: ReadingDirection) {
+        // reaching the boundary is what finishes a chapter - a last page can be
+        // on screen without ever being read past
+        if case let .after(id) = boundary,
+           direction == .forward,
+           completed.insert(id).inserted,
+           let chapter = chapters.first(where: { $0.id == id }) {
+            onChapterFinished?(chapter)
+        }
+
+        // the boundary is the last item while its destination has not landed,
+        // so proximity may already have re-armed. asking again is idempotent
+        preload(direction == .forward ? .end : .start)
+    }
+
+    private func retryNext(after id: ReaderChapter.ID) async {
+        guard let slot = chapters.firstIndex(where: { $0.id == id }),
+              slot < chapters.count - 1
+        else { return }
+
+        failures[chapters[slot + 1].id] = nil
+        controller?.reloadSeparators()
+        preload(.end)
+    }
+
     private func preload(_ position: ReaderController.Position) {
         guard let current, let index = chapters.firstIndex(where: { $0.id == current.id }) else { return }
 
@@ -236,10 +344,18 @@ final class ReaderEngine {
             do {
                 let load = try await self.window.load(target.id)
                 await self.controller?.apply(load.pages, for: target.id)
+                self.resident.insert(target.id)
+                self.failures[target.id] = nil
                 if let evicted = load.evicted {
                     await self.controller?.remove(evicted)
+                    self.resident.remove(evicted)
                 }
+                self.controller?.reloadSeparators()
             } catch {
+                // recorded, not just logged - otherwise the boundary can only
+                // ever say "loading" and never "this failed, try again"
+                self.failures[target.id] = Self.reason(from: error, chapter: target.id)
+                self.controller?.reloadSeparators()
                 AppLog.shared.log(
                     "preload failed for chapter \(target.id) — \(error)",
                     category: "reader"

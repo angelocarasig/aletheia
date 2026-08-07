@@ -123,15 +123,6 @@ private extension ReaderScreen {
                 vm.surfaceFrame = frame
             }
         }
-        .overlay(alignment: .top) {
-            if engine.isLoading {
-                ProgressView()
-                    .tint(.brand)
-                    .padding(dimensions.spacing.space16)
-                    .background(.ultraThinMaterial, in: .circle)
-                    .padding(.top, dimensions.spacing.space48)
-            }
-        }
     }
 
     func Failed(_ error: ReaderError, engine: ReaderEngine) -> some View {

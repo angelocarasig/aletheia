@@ -18,8 +18,12 @@ actor ChapterWindow {
     private let source: any ReaderPageSource
     private let limit: Int
 
+    // reading order, so eviction can pick by distance from where the reader
+    // actually is rather than by how long ago something was touched
+    private let slots: [ReaderChapter.ID: Int]
+
     private var pages: [ReaderChapter.ID: [ReaderPage]] = [:]
-    private var recency: [ReaderChapter.ID] = []
+    private var current: ReaderChapter.ID?
     private var inFlight: [ReaderChapter.ID: Task<[ReaderPage], Error>] = [:]
 
     struct Load: Sendable {
@@ -27,9 +31,12 @@ actor ChapterWindow {
         let evicted: ReaderChapter.ID?
     }
 
-    init(source: any ReaderPageSource, limit: Int) {
+    init(source: any ReaderPageSource, order: [ReaderChapter.ID], limit: Int) {
         self.source = source
         self.limit = max(1, limit)
+        self.slots = Dictionary(
+            uniqueKeysWithValues: order.enumerated().map { ($0.element, $0.offset) }
+        )
     }
 
     func load(_ id: ReaderChapter.ID) async throws -> Load {
@@ -70,23 +77,20 @@ actor ChapterWindow {
         pages[id] != nil
     }
 
-    // in eviction order, oldest first
     func loaded() -> [ReaderChapter.ID] {
-        recency
+        pages.keys.sorted { (slots[$0] ?? 0) < (slots[$1] ?? 0) }
     }
 
-    // the chapter being read is not necessarily the one most recently loaded -
-    // preloading a neighbour makes it look older than it is. v2 never did this,
-    // so reading backwards could evict the page on screen
+    // says which chapter is being read, which is what eviction measures from.
+    // not the most recently loaded - preloading a neighbour would claim that
     func touch(_ id: ReaderChapter.ID) {
         guard pages[id] != nil else { return }
-        recency.removeAll { $0 == id }
-        recency.append(id)
+        current = id
     }
 
     func evict(_ id: ReaderChapter.ID) {
         pages[id] = nil
-        recency.removeAll { $0 == id }
+        if current == id { current = nil }
     }
 
     func clear(keeping keep: ReaderChapter.ID? = nil) {
@@ -94,19 +98,38 @@ actor ChapterWindow {
         inFlight.values.forEach { $0.cancel() }
         inFlight.removeAll()
         pages.removeAll()
-        recency.removeAll()
+        current = nil
 
         if let survivor {
             pages[survivor.0] = survivor.1
-            recency = [survivor.0]
+            current = survivor.0
         }
     }
 
     // MARK: Private
 
+    // the chapter furthest from the one being read goes. recency only picked
+    // the right victim by accident: touch fires on chapter change, so scrolling
+    // back and forth scrambled it, and it never knew about reading distance.
+    //
+    // reading forward this still evicts behind the reader; reading backward it
+    // now evicts ahead, where removal shifts nothing on screen
     private func evictIfNeeded(protecting keep: ReaderChapter.ID) -> ReaderChapter.ID? {
-        guard recency.count > limit else { return nil }
-        guard let victim = recency.first(where: { $0 != keep }) else { return nil }
+        guard pages.count > limit else { return nil }
+
+        let anchor = slots[current ?? keep] ?? 0
+        let victim = pages.keys
+            .filter { $0 != keep && $0 != current }
+            .sorted { a, b in
+                let da = abs((slots[a] ?? 0) - anchor)
+                let db = abs((slots[b] ?? 0) - anchor)
+                // on a tie prefer the one behind: forward is the common
+                // direction of travel, so what is ahead is worth more
+                return da == db ? (slots[a] ?? 0) < (slots[b] ?? 0) : da > db
+            }
+            .first
+
+        guard let victim else { return nil }
         evict(victim)
         return victim
     }
