@@ -22,8 +22,11 @@ struct DetailsCovers: View {
     @Namespace private var glass
 
     private enum Layout {
-        // fraction of the sheet width the artwork occupies
-        static let coverWidthFactor: CGFloat = 0.67
+        // fraction of the sheet width a page occupies - the remainder is what
+        // lets the neighbouring covers peek in from the edges
+        static let pageWidthFactor: CGFloat = 0.7
+        static let peekScale: CGFloat = 0.75
+        static let peekOpacity: Double = 0.45
         static let controlHeight: CGFloat = 65
         static let backdropBlur: CGFloat = 60
         static let backdropScale: CGFloat = 1.4
@@ -79,21 +82,44 @@ struct DetailsCovers: View {
         }
     }
 
-    // one cover per page, each inset so its neighbours peek - which is what tells
-    // you the thing is swipeable without a separate strip below
+    // pages span a fraction of the container, so with more than one cover the
+    // neighbours visibly poke in from the edges - the swipeability is shown, not
+    // told. viewAligned snaps the fractional pages where .paging (which strides
+    // by container width) cannot
+    // a GeometryReader rather than onGeometryChange: the margins must be right
+    // on the very first layout pass, or the initial scroll lands against stale
+    // margins and the opening cover sits off-centre
     private var Pager: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            LazyHStack(spacing: 0) {
-                ForEach(covers) { cover in
-                    Page(cover)
-                        .containerRelativeFrame([.horizontal, .vertical])
-                        .id(cover.id)
+        GeometryReader { proxy in
+            ScrollView(.horizontal, showsIndicators: false) {
+                LazyHStack(spacing: dimensions.spacing.space16) {
+                    ForEach(covers) { cover in
+                        Page(cover)
+                            .containerRelativeFrame([.horizontal, .vertical]) { length, axis in
+                                axis == .horizontal ? length * Layout.pageWidthFactor : length
+                            }
+                            // the focused page at full presence, its neighbours
+                            // firmly receded - the size gap is what says "active"
+                            .scrollTransition(.interactive, axis: .horizontal) { content, phase in
+                                content
+                                    .scaleEffect(phase.isIdentity ? 1 : Layout.peekScale)
+                                    .opacity(phase.isIdentity ? 1 : Layout.peekOpacity)
+                            }
+                            .id(cover.id)
+                    }
                 }
+                .scrollTargetLayout()
             }
-            .scrollTargetLayout()
+            // margins centre the first and last page; without them viewAligned
+            // pins the ends to the edge and the affordance dies exactly there
+            .contentMargins(
+                .horizontal,
+                proxy.size.width * (1 - Layout.pageWidthFactor) / 2,
+                for: .scrollContent
+            )
+            .scrollTargetBehavior(.viewAligned)
+            .scrollPosition(id: $selected, anchor: .center)
         }
-        .scrollTargetBehavior(.paging)
-        .scrollPosition(id: $selected, anchor: .center)
         .onAppear { selected = focused?.id }
     }
 
@@ -104,7 +130,6 @@ struct DetailsCovers: View {
             .placeholder { Rectangle().fill(.primary.opacity(Layout.fillOpacity)).shimmer() }
             .fade(duration: 0.25)
             .scaledToFit()
-            .containerRelativeFrame(.horizontal) { width, _ in width * Layout.coverWidthFactor }
             .clipShape(.rect(cornerRadius: dimensions.radius.radius28, style: .continuous))
             .shadow(color: .black.opacity(0.5), radius: Layout.shadow, y: dimensions.spacing.space8)
             .frame(maxWidth: .infinity, maxHeight: .infinity)

@@ -416,18 +416,27 @@ final class DetailsViewModel {
         isFetchingChapters = true
         defer { isFetchingChapters = false }
 
-        let have = snapshot?.origins.first { $0.id == originId.rawValue }?.chapterCount ?? 0
+        let stored = snapshot?.origins.first { $0.id == originId.rawValue }?.chapterCount
 
         do {
-            // nil means the source checked and nothing changed, empty means it
-            // genuinely has none. both are answers, so both stamp - only a thrown
-            // error leaves the list unknown, and only then does the skeleton stay
-            let entries = try await source.chapters(seriesSlug: seriesSlug, have: have)
+            // a source that can tell cheaply whether anything moved gets asked
+            // that instead. everyone else is asked for the list, which is the
+            // whole of the base contract.
+            //
+            // either way the source answered, so either way the date is stamped -
+            // only a throw leaves the stored list unknown, and only then does the
+            // skeleton stay up
+            let listing: ChapterRevalidation
+            if let revalidating = source as? any RevalidatingSource, let stored {
+                listing = try await revalidating.chapters(seriesSlug: seriesSlug, stored: stored)
+            } else {
+                listing = .changed(try await source.chapters(seriesSlug: seriesSlug))
+            }
             let fetched = Date.now
 
             let added = try await database.writer.write { db -> Int in
                 var inserted = 0
-                if let entries, !entries.isEmpty {
+                if case let .changed(entries) = listing, !entries.isEmpty {
                     inserted = try Self.upsert(entries, for: originId, in: db)
                 }
 
@@ -439,7 +448,7 @@ final class DetailsViewModel {
             }
 
             AppLog.shared.log(
-                "origin \(originId.rawValue) fetched \(entries?.count.description ?? "no") chapter(s), \(added) new, had \(have)",
+                "origin \(originId.rawValue) \(listing.summary), \(added) new, had \(stored?.description ?? "none")",
                 category: "details"
             )
             return added
@@ -490,9 +499,14 @@ final class DetailsViewModel {
 
         do {
             try await database.writer.write { db in
-                _ = try ChapterRecord
-                    .filter(key: chapter.id)
-                    .updateAll(db, ChapterRecord.Columns.lastReadDate.set(to: opened))
+                // by number, so opening a chapter marks it opened whichever source
+                // ends up serving it
+                try ChapterRecord.apply(
+                    readDate: opened,
+                    toNumbers: [chapter.number],
+                    in: seriesId,
+                    db: db
+                )
 
                 _ = try SeriesRecord
                     .filter(key: seriesId.rawValue)
@@ -507,17 +521,24 @@ final class DetailsViewModel {
     // reading, and the date is what tells a browsed series apart from one you
     // actually opened
     func markAll(read: Bool) async {
-        let ids = chapters.map(\.id)
-        guard !ids.isEmpty else { return }
+        guard let seriesId else { return }
+        let numbers = Array(Set(chapters.map(\.number)))
+        guard !numbers.isEmpty else { return }
 
         isSaving = true
         defer { isSaving = false }
 
         do {
             try await database.writer.write { db in
-                _ = try ChapterRecord
-                    .filter(ids.contains(ChapterRecord.Columns.id))
-                    .updateAll(db, ChapterRecord.Columns.progress.set(to: read ? 1.0 : 0.0))
+                // clearing is the one write allowed to move progress backwards -
+                // marking unread has to actually reach rows that were read
+                try ChapterRecord.apply(
+                    progress: read ? 1.0 : 0.0,
+                    toNumbers: numbers,
+                    in: seriesId,
+                    monotonic: read,
+                    db: db
+                )
             }
         } catch {
             errorMessage = String(describing: error)

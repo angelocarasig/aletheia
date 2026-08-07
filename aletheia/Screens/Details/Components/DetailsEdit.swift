@@ -282,7 +282,7 @@ private enum Sample {
             sourceIcon: .mangaFire,
             isPreferred: true
         ),
-        .init(id: 2, value: "I Exiled Myself Before the Villains Could", sourceName: "Comix", sourceIcon: .comix, isPreferred: false),
+        .init(id: 2, value: "I Exiled Myself Before the Villains Could", sourceName: "MangaDex", sourceIcon: .mangaDex, isPreferred: false),
         .init(id: 3, value: "追放系の悪役パーティーのリーダーに転生した", sourceName: nil, sourceIcon: nil, isPreferred: false)
     ]
 
@@ -300,8 +300,8 @@ private enum Sample {
         ),
         .init(
             id: 11,
-            sourceName: "Comix",
-            sourceIcon: .comix,
+            sourceName: "MangaDex",
+            sourceIcon: .mangaDex,
             text: "He was born into the party destined to lose. So he left first.",
             isPreferred: false
         )
@@ -309,7 +309,7 @@ private enum Sample {
 
     static let metadata: [DetailsEdit.Metadata] = [
         .init(id: 10, sourceName: "MangaFire", sourceIcon: .mangaFire, classification: .Safe, publication: .Ongoing, isPreferred: true),
-        .init(id: 11, sourceName: "Comix", sourceIcon: .comix, classification: .Suggestive, publication: .Hiatus, isPreferred: false)
+        .init(id: 11, sourceName: "MangaDex", sourceIcon: .mangaDex, classification: .Suggestive, publication: .Hiatus, isPreferred: false)
     ]
 }
 

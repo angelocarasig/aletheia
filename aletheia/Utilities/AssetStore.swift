@@ -37,6 +37,13 @@ struct AssetStore: AssetStoring {
 
         var written: URL?
 
+        // one asset, one set of headers - and a let, because the request closure
+        // is sendable and cannot capture something still being mutated
+        let headers = [
+            "User-Agent": Constants.Network.userAgent,
+            "Referer": asset.referer?.absoluteString
+        ].compactMapValues { $0 }
+
         for (index, remote) in asset.parts.enumerated() {
             try Task.checkCancellation()
 
@@ -47,11 +54,6 @@ struct AssetStore: AssetStoring {
                 written = existing
                 progress?(index + 1, asset.parts.count)
                 continue
-            }
-
-            var headers = ["User-Agent": Constants.Network.userAgent]
-            if let referer = asset.referer {
-                headers["Referer"] = referer.absoluteString
             }
 
             let data: Data = try await throttler.execute { [network] in

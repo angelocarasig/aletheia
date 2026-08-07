@@ -82,7 +82,11 @@ final class PageCell: UICollectionViewCell {
 
         imageView.kf.setImage(
             with: page.url,
-            options: ReaderImage.options(referer: page.referer, width: width)
+            options: ReaderImage.options(
+                headers: page.headers,
+                width: width,
+                scale: traitCollection.displayScale
+            )
         ) { [weak self] result in
             guard let self, self.token == page.url else { return }
 

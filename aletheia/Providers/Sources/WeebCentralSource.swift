@@ -216,10 +216,7 @@ extension WeebCentralSource {
             return SeriesStub(
                 slug: slug,
                 title: title,
-                cover: cover(for: slug),
-                // the fragment carries no chapter or date information at all
-                latestChapterNumber: nil,
-                latestChapterDate: nil
+                cover: cover(for: slug)
             )
         }
     }
@@ -323,7 +320,7 @@ extension WeebCentralSource {
 // MARK: - Chapters
 
 extension WeebCentralSource {
-    func chapters(seriesSlug: String, have: Int) async throws -> [ChapterEntry]? {
+    func chapters(seriesSlug: String) async throws -> [ChapterEntry] {
         let url = descriptor.baseURL
             .appendingPathComponent("series")
             .appendingPathComponent(seriesSlug)
@@ -334,15 +331,21 @@ extension WeebCentralSource {
 
         let rows = try document.select("a[href*=/chapters/]")
 
-        // no total is stated, so the row count is the only thing to compare - the
-        // request has already happened either way, this just skips the write
-        if have > 0, rows.count == have { return nil }
-
+        // deliberately no count shortcut. the response is already in hand, so
+        // the only thing skipping saves is an upsert that updateChanges makes a
+        // no-op anyway - and a matching count would have pinned every row that
+        // was parsed wrong to the wrong values permanently
         return try rows.compactMap { row -> ChapterEntry? in
             let href = try row.attr("href")
             guard let slug = href.split(separator: "/").last.map(String.init), !slug.isEmpty else { return nil }
 
-            let label = try row.select("span").first()?.text() ?? ""
+            // the row's first span holds the badge image, and the one after it
+            // only wraps more spans - the label sits nested inside. taking the
+            // first span that owns text rather than the first span at all is
+            // what stops every chapter parsing as "" and numbering itself 0
+            let label = try row.select("span")
+                .map { $0.ownText() }
+                .first { !$0.isEmpty } ?? ""
             let published = try row.select("time[datetime]").first()?.attr("datetime")
 
             return ChapterEntry(

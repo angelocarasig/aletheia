@@ -17,10 +17,14 @@ final class PagePrefetcher {
 
     private let count: Int
     private let width: CGFloat
+    // the cell and this must derive the same downsample size or they key into
+    // different cache entries and every warmed page is wasted
+    private let scale: CGFloat
 
-    init(count: Int, width: CGFloat) {
+    init(count: Int, width: CGFloat, scale: CGFloat) {
         self.count = max(0, count)
         self.width = width
+        self.scale = scale
     }
 
     func update(visible: Range<Int>, in pages: [ReaderPage]) {
@@ -37,11 +41,11 @@ final class PagePrefetcher {
         warmed = urls
         prefetcher?.stop()
 
-        // a page's referer is per-source, and one band can straddle a chapter
-        // boundary, so the band is grouped rather than warmed with one header
-        let resources = Dictionary(grouping: band, by: \.referer)
-        let sources = resources.map { referer, pages in
-            (referer: referer, urls: pages.map(\.url))
+        // a page's headers are per-source, and one band can straddle a chapter
+        // boundary, so the band is grouped rather than warmed with one set
+        let resources = Dictionary(grouping: band, by: \.headers)
+        let sources = resources.map { headers, pages in
+            (headers: headers, urls: pages.map(\.url))
         }
 
         guard let first = sources.first else { return }
@@ -51,7 +55,7 @@ final class PagePrefetcher {
         // warms the dominant side - the rest arrives through the cells
         let prefetcher = ImagePrefetcher(
             urls: sources.count == 1 ? first.urls : urls,
-            options: ReaderImage.options(referer: first.referer, width: width)
+            options: ReaderImage.options(headers: first.headers, width: width, scale: scale)
         )
         prefetcher.start()
         self.prefetcher = prefetcher

@@ -1,0 +1,531 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "" : {
+
+    },
+    "%@ · ^[%lld chapter](inflect: true)%@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ · ^[%2$lld chapter](inflect: true)%3$@"
+          }
+        }
+      }
+    },
+    "%lld" : {
+
+    },
+    "%lld of %lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld of %2$lld"
+          }
+        }
+      }
+    },
+    "%lld+" : {
+
+    },
+    "%lldms" : {
+
+    },
+    "•" : {
+
+    },
+    "^[%lld chapter](inflect: true)" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "^[%1$lld chapter](inflect: true)"
+          }
+        }
+      }
+    },
+    "^[%lld chapter](inflect: true) · on %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "^[%1$lld chapter](inflect: true) · on %2$@"
+          }
+        }
+      }
+    },
+    "^[%lld character](inflect: true) left" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "^[%1$lld character](inflect: true) left"
+          }
+        }
+      }
+    },
+    "^[%lld collection](inflect: true) joined" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "^[%1$lld collection](inflect: true) joined"
+          }
+        }
+      }
+    },
+    "^[%lld cover](inflect: true) · ^[%lld source](inflect: true)" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "^[%1$lld cover](inflect: true) · ^[%2$lld source](inflect: true)"
+          }
+        }
+      }
+    },
+    "^[%lld item](inflect: true)" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "^[%1$lld item](inflect: true)"
+          }
+        }
+      }
+    },
+    "^[%lld new chapter](inflect: true)" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "^[%1$lld new chapter](inflect: true)"
+          }
+        }
+      }
+    },
+    "^[%lld scanlator](inflect: true)" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "^[%1$lld scanlator](inflect: true)"
+          }
+        }
+      }
+    },
+    "^[%lld series](inflect: true)" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "^[%1$lld series](inflect: true)"
+          }
+        }
+      }
+    },
+    "^[%lld source](inflect: true)" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "^[%1$lld source](inflect: true)"
+          }
+        }
+      }
+    },
+    "^[%lld title](inflect: true) · ^[%lld source](inflect: true)" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "^[%1$lld title](inflect: true) · ^[%2$lld source](inflect: true)"
+          }
+        }
+      }
+    },
+    "18+" : {
+
+    },
+    "Active" : {
+
+    },
+    "Activity" : {
+
+    },
+    "Add" : {
+
+    },
+    "Add as new" : {
+
+    },
+    "Add this series to one of your collections" : {
+
+    },
+    "Add to Collection" : {
+
+    },
+    "Add to Library" : {
+
+    },
+    "Any" : {
+
+    },
+    "Back" : {
+
+    },
+    "Back to" : {
+
+    },
+    "Back to Chapter %@" : {
+
+    },
+    "Can't Open This Series" : {
+
+    },
+    "Cancel" : {
+
+    },
+    "Change Priority" : {
+
+    },
+    "Chapter %@" : {
+
+    },
+    "Chapter %@ · ^[%lld source](inflect: true)" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chapter %1$@ · ^[%2$lld source](inflect: true)"
+          }
+        }
+      }
+    },
+    "Chapter number" : {
+
+    },
+    "Chapters" : {
+
+    },
+    "Checking for chapters" : {
+
+    },
+    "Clear All" : {
+
+    },
+    "Close" : {
+
+    },
+    "Collections" : {
+
+    },
+    "Copy Title" : {
+
+    },
+    "Copy URL" : {
+
+    },
+    "Couldn't Load" : {
+
+    },
+    "Couldn't Load Series" : {
+
+    },
+    "Couldn't refresh" : {
+
+    },
+    "Cover" : {
+
+    },
+    "Cover from %@" : {
+
+    },
+    "Covers" : {
+
+    },
+    "Create" : {
+
+    },
+    "Create a collection to organise your library" : {
+
+    },
+    "Create collection" : {
+
+    },
+    "Create Collection" : {
+
+    },
+    "Description" : {
+
+    },
+    "Dim" : {
+
+    },
+    "Disable" : {
+
+    },
+    "Done" : {
+
+    },
+    "Edit Details" : {
+
+    },
+    "Enable" : {
+
+    },
+    "Field" : {
+
+    },
+    "Finished" : {
+
+    },
+    "Flip Sides" : {
+
+    },
+    "Go Back" : {
+
+    },
+    "High" : {
+
+    },
+    "History" : {
+
+    },
+    "Home" : {
+
+    },
+    "In Library" : {
+
+    },
+    "Its chapters are removed with it. Your reading progress on chapters from other sources is kept." : {
+
+    },
+    "Library" : {
+
+    },
+    "Library Empty" : {
+
+    },
+    "Loading" : {
+
+    },
+    "Loading Chapter %@" : {
+
+    },
+    "Loading chapters" : {
+
+    },
+    "Low" : {
+
+    },
+    "Mark All as Read" : {
+
+    },
+    "Mark All as Unread" : {
+
+    },
+    "Medium" : {
+
+    },
+    "Menu Darkness" : {
+      "comment" : "A slider that adjusts the darkness of the menu glass.",
+      "isCommentAutoGenerated" : true
+    },
+    "Merge with selected series" : {
+
+    },
+    "More actions" : {
+
+    },
+    "Name" : {
+
+    },
+    "Never" : {
+
+    },
+    "New Collection" : {
+
+    },
+    "No chapters" : {
+
+    },
+    "No Chapters" : {
+
+    },
+    "No chapters available" : {
+
+    },
+    "No Collections" : {
+
+    },
+    "No Covers" : {
+
+    },
+    "No installed source can open this series" : {
+
+    },
+    "No new chapters" : {
+
+    },
+    "No other source has this chapter. Add another source to the series to read it from elsewhere." : {
+
+    },
+    "No Results" : {
+
+    },
+    "No Titles" : {
+
+    },
+    "Nothing matched your search." : {
+
+    },
+    "Nothing readable was found for this series." : {
+
+    },
+    "Off" : {
+
+    },
+    "Only One Source" : {
+
+    },
+    "Optional" : {
+
+    },
+    "Pick a collection" : {
+
+    },
+    "Pin" : {
+
+    },
+    "Read From" : {
+
+    },
+    "Reading Mode" : {
+
+    },
+    "Refine" : {
+
+    },
+    "Refine (%lld)" : {
+
+    },
+    "Refresh Chapters" : {
+
+    },
+    "Release date" : {
+
+    },
+    "Remove" : {
+
+    },
+    "Remove %@?" : {
+
+    },
+    "Remove as primary cover" : {
+
+    },
+    "Remove Source" : {
+
+    },
+    "Retry" : {
+
+    },
+    "Returning from" : {
+
+    },
+    "Save to Photos" : {
+
+    },
+    "Saved across all your series" : {
+
+    },
+    "Search" : {
+
+    },
+    "Series you add from a source appear here" : {
+
+    },
+    "Set as Primary" : {
+
+    },
+    "Set as primary cover" : {
+
+    },
+    "Settings" : {
+      "comment" : "A title for a settings screen.",
+      "isCommentAutoGenerated" : true
+    },
+    "Share" : {
+
+    },
+    "Show All %lld Chapters" : {
+
+    },
+    "Show Less" : {
+
+    },
+    "Show More" : {
+
+    },
+    "Side Padding" : {
+      "comment" : "A label displayed above the slider.",
+      "isCommentAutoGenerated" : true
+    },
+    "Source Priority" : {
+
+    },
+    "Source Unavailable" : {
+
+    },
+    "Sources" : {
+
+    },
+    "Start of series" : {
+
+    },
+    "Status" : {
+
+    },
+    "Tap Zones" : {
+
+    },
+    "The one you pick is shown everywhere — your library, search results, and this screen." : {
+
+    },
+    "The source at the top supplies the displayed title, cover and description. Chapters are merged from every source, preferring the highest one." : {
+
+    },
+    "This series has no alternative titles stored yet" : {
+
+    },
+    "This series has no covers stored yet" : {
+
+    },
+    "Titles" : {
+
+    },
+    "Try Again" : {
+
+    },
+    "Unpin" : {
+
+    },
+    "Up next" : {
+
+    },
+    "Verify" : {
+
+    },
+    "View Fullscreen" : {
+
+    },
+    "You're all caught up" : {
+
+    }
+  },
+  "version" : "1.1"
+}

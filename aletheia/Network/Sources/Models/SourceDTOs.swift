@@ -13,8 +13,6 @@ struct SeriesStub: Sendable, Hashable {
     let slug: String
     let title: String
     let cover: URL?
-    let latestChapterNumber: Double?
-    let latestChapterDate: Date?
 }
 
 /// full series metadata from a source.

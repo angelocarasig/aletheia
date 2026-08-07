@@ -15,9 +15,9 @@ enum ReaderSettings {
         static let chromeTint = "reader.chromeTint"
         static let horizontalPadding = "reader.horizontalPadding"
         static let autoScrollSpeed = "reader.autoScrollSpeed"
+        static let autoAdvanceInterval = "reader.autoAdvanceInterval"
         static let tapZone = "reader.tapZone"
         static let tapZonesReversed = "reader.tapZonesReversed"
-        static let tapZonesEnabled = "reader.tapZonesEnabled"
     }
 
     private static let defaults = UserDefaults.standard
@@ -48,21 +48,29 @@ enum ReaderSettings {
         set { defaults.set(newValue, forKey: Key.autoScrollSpeed) }
     }
 
+    static var autoAdvanceInterval: TimeInterval {
+        get {
+            defaults.object(forKey: Key.autoAdvanceInterval) as? TimeInterval
+                ?? ReaderConfiguration.Defaults.autoAdvanceInterval
+        }
+        set { defaults.set(newValue, forKey: Key.autoAdvanceInterval) }
+    }
+
+    // an unknown id resolves rather than throwing the choice away - the layout
+    // names changed once already, and a stored value from before that should
+    // land somewhere sensible instead of on whatever case happens to be first
     static var tapZone: ReaderTapZones.Layout {
         get {
             defaults.string(forKey: Key.tapZone)
-                .flatMap(ReaderTapZones.Layout.init(rawValue:)) ?? .leftRight
+                .flatMap(ReaderTapZones.Layout.init(rawValue:)) ?? .edge
         }
         set { defaults.set(newValue.rawValue, forKey: Key.tapZone) }
     }
 
+    // the reader's own toggle. what the zones actually do also depends on the
+    // reading direction - see ReaderTapZones.reversed(for:manual:)
     static var tapZonesReversed: Bool {
         get { defaults.bool(forKey: Key.tapZonesReversed) }
         set { defaults.set(newValue, forKey: Key.tapZonesReversed) }
-    }
-
-    static var tapZonesEnabled: Bool {
-        get { defaults.object(forKey: Key.tapZonesEnabled) as? Bool ?? true }
-        set { defaults.set(newValue, forKey: Key.tapZonesEnabled) }
     }
 }

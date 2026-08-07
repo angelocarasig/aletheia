@@ -21,11 +21,16 @@ final class ReaderController: UIViewController {
         case end
     }
 
+    private enum Nudge {
+        static let factor: CGFloat = 0.9
+    }
+
     private(set) var configuration: ReaderConfiguration
 
     private var collectionView: UICollectionView!
     private var dataSource: DataSource!
     private var autoScroller: AutoScroller?
+    private var autoAdvancer: AutoAdvancer?
     private var prefetcher: PagePrefetcher
 
     private var order: [ReaderChapter.ID] = []
@@ -68,10 +73,16 @@ final class ReaderController: UIViewController {
     var onZoomChanged: ((Bool) -> Void)?
     var onScrollingChanged: ((Bool) -> Void)?
     var onAutoScrollEnded: (() -> Void)?
+    var onAutoAdvanceProgress: ((Double) -> Void)?
+    // whether there is a chapter after this one at all, which the controller
+    // cannot know - it only ever sees what is loaded
+    var onCanContinue: (() -> Bool)?
 
     init(configuration: ReaderConfiguration) {
         self.configuration = configuration
-        self.prefetcher = PagePrefetcher(count: configuration.prefetchCount, width: .zero)
+        // width is zero until there is a view, so this one never warms anything
+        // and its scale is immaterial - it is replaced the moment layout lands
+        self.prefetcher = PagePrefetcher(count: configuration.prefetchCount, width: .zero, scale: 1)
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -263,21 +274,30 @@ final class ReaderController: UIViewController {
         )
     }
 
-    func advance(by pages: Int) {
-        guard let current = lastReportedPage,
-              let path = dataSource.indexPath(for: .page(current)) else { return }
+    // false means there was nothing to move to. the caller decides what that
+    // means - the end of the series and a chapter still loading look identical
+    // from here
+    @discardableResult
+    func advance(by pages: Int) -> Bool {
+        // where the reader is, not where it last reported being. the reported
+        // page is nil until something scrolls - a chapter opened at page 0 never
+        // does - and it is also nil while a separator holds the screen
+        guard let path = centremostPath()
+            ?? lastReportedPage.flatMap({ dataSource.indexPath(for: .page($0)) })
+        else { return false }
 
         if configuration.mode.isContinuous {
             scrollByViewport(forward: pages > 0)
-            return
+            return true
         }
 
         let flat = flatIndex(of: path)
         let target = flat + pages
         guard let next = item(atFlat: target),
-              let path = dataSource.indexPath(for: next) else { return }
+              let path = dataSource.indexPath(for: next) else { return false }
 
         collectionView.scrollToItem(at: path, at: scrollAnchor, animated: true)
+        return true
     }
 
     // MARK: Configuration
@@ -289,7 +309,17 @@ final class ReaderController: UIViewController {
         configuration = value
         autoScroller?.setSpeed(value.autoScrollSpeed)
         autoScroller?.setMode(value.mode)
-        prefetcher = PagePrefetcher(count: value.prefetchCount, width: pageWidth)
+        // changing the dwell restarts it - the bar would otherwise finish the
+        // cycle it was already part-way through at the old duration
+        autoAdvancer?.setInterval(value.autoAdvanceInterval)
+        prefetcher = PagePrefetcher(count: value.prefetchCount, width: pageWidth, scale: pageScale)
+
+        // the two drivers do not survive being handed each other's mode, and a
+        // mode change is already a full relayout
+        if modeChanged, isAutoScrolling {
+            stopAutoScroll()
+            onAutoScrollEnded?()
+        }
 
         guard modeChanged || paddingChanged else { return }
 
@@ -318,8 +348,35 @@ final class ReaderController: UIViewController {
 
     // MARK: Auto-scroll
 
+    // a strip creeps, a paged mode dwells and then slides. the two are different
+    // enough that they are different drivers rather than a branch inside one
     func startAutoScroll() {
-        guard autoScroller == nil else { return }
+        guard autoScroller == nil, autoAdvancer == nil else { return }
+
+        guard configuration.mode.isContinuous else {
+            let advancer = AutoAdvancer(
+                view: collectionView,
+                interval: configuration.autoAdvanceInterval
+            )
+            advancer.onFire = { [weak self] in
+                guard let self else { return false }
+                // failing to move only ends the session when there is genuinely
+                // nothing after this - otherwise the countdown simply runs again
+                // while the next chapter finishes loading
+                return advance(by: 1) || onCanContinue?() == true
+            }
+            advancer.onProgress = { [weak self] progress in
+                self?.onAutoAdvanceProgress?(progress)
+            }
+            advancer.onReachedEnd = { [weak self] in
+                AppLog.shared.log("auto-advance ended: nothing after this page", category: "reader")
+                self?.stopAutoScroll()
+                self?.onAutoScrollEnded?()
+            }
+            advancer.start()
+            autoAdvancer = advancer
+            return
+        }
 
         let scroller = AutoScroller(
             scrollView: collectionView,
@@ -337,16 +394,31 @@ final class ReaderController: UIViewController {
     func stopAutoScroll() {
         autoScroller?.stop()
         autoScroller = nil
+        autoAdvancer?.stop()
+        autoAdvancer = nil
+    }
+
+    func resetAutoAdvance() {
+        autoAdvancer?.reset()
     }
 
     var isAutoScrolling: Bool {
-        autoScroller?.isRunning ?? false
+        autoScroller?.isRunning ?? autoAdvancer?.isRunning ?? false
+    }
+
+    func pageCount(for chapter: ReaderChapter.ID) -> Int {
+        pages[chapter]?.count ?? 0
     }
 
     // MARK: Private
 
     private var pageWidth: CGFloat {
         max(1, view.bounds.width - configuration.horizontalPadding * 2)
+    }
+
+    // the display this reader is on, not the one UIScreen.main used to assume
+    private var pageScale: CGFloat {
+        max(1, traitCollection.displayScale)
     }
 
     private var scrollAnchor: UICollectionView.ScrollPosition {
@@ -369,7 +441,7 @@ final class ReaderController: UIViewController {
         collectionView.addGestureRecognizer(tap)
 
         view.addSubview(collectionView)
-        prefetcher = PagePrefetcher(count: configuration.prefetchCount, width: pageWidth)
+        prefetcher = PagePrefetcher(count: configuration.prefetchCount, width: pageWidth, scale: pageScale)
     }
 
     private func applySemantics() {
@@ -547,17 +619,10 @@ final class ReaderController: UIViewController {
         layout.invalidateLayout(with: context)
         collectionView.layoutIfNeeded()
 
-        // if the context is honoured this is zero. a hard offset set would kill
-        // an in-flight fling, so mid-deceleration we accept the drift instead
+        // zero whenever the context is honoured, which device logs show it always
+        // is. kept as the diagnostic - a non-zero value means the adjustment was
+        // dropped and the reader drifted by that much
         let residual = (offset.y + adjustment) - collectionView.contentOffset.y
-        if abs(residual) > 1, !collectionView.isDecelerating {
-            setOffsetWithoutAnimation(
-                CGPoint(
-                    x: collectionView.contentOffset.x,
-                    y: max(0, collectionView.contentOffset.y + residual)
-                )
-            )
-        }
 
         let after = collectionView.contentSize
         let settled = collectionView.contentOffset
@@ -740,7 +805,13 @@ final class ReaderController: UIViewController {
     }
 
     private func scrollByViewport(forward: Bool) {
-        let step = collectionView.bounds.height * 0.9
+        // clamped to the page under the reader, not just the viewport: a webtoon
+        // slice shorter than the screen would otherwise be jumped clean over
+        let viewport = collectionView.bounds.height
+        let page = centremostPath()
+            .flatMap { dataSource.itemIdentifier(for: $0) }
+            .map { extent(of: $0, width: pageWidth) } ?? viewport
+        let step = min(page, viewport) * Nudge.factor
         var offset = collectionView.contentOffset
         offset.y += forward ? step : -step
         offset.y = min(
@@ -871,8 +942,16 @@ extension ReaderController: UICollectionViewDelegate {
     }
 
     func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
-        // any touch beats the machine. auto-scroll never fights the user
-        stopAutoScroll()
+        // a creeping strip fights the finger, so any touch ends it. a dwelling
+        // page does not - a touch there reads as "not yet", so the countdown
+        // starts over and the session carries on
+        if autoAdvancer != nil {
+            resetAutoAdvance()
+        } else if autoScroller != nil {
+            stopAutoScroll()
+            onAutoScrollEnded?()
+        }
+
         onScrollingChanged?(true)
     }
 
@@ -902,6 +981,12 @@ extension ReaderController: UICollectionViewDelegate {
     }
 
     private func centremostPage() -> ReaderPage? {
+        // a separator centre-screen reports nothing, so the scrubber and the
+        // page counter hold on the last real page instead of blanking
+        centremostPath().flatMap { dataSource.itemIdentifier(for: $0)?.page }
+    }
+
+    private func centremostPath() -> IndexPath? {
         let visible = collectionView.indexPathsForVisibleItems
         guard !visible.isEmpty else { return nil }
 
@@ -920,10 +1005,7 @@ extension ReaderController: UICollectionViewDelegate {
             }
         }
 
-        guard let best else { return nil }
-        // a separator centre-screen reports nothing, so the scrubber and the
-        // page counter hold on the last real page instead of blanking
-        return dataSource.itemIdentifier(for: best.path)?.page
+        return best?.path
     }
 
     // state-driven rather than debounced on a clock: the request fires when the

@@ -16,20 +16,19 @@ protocol SourceService: Sendable {
 
     func details(seriesSlug: String) async throws -> SeriesDetail
 
-    // nil means the source knows nothing changed and the stored list still
-    // stands - `have` is what the caller already holds, so a source that can
-    // check cheaply can skip refetching the rest
-    func chapters(seriesSlug: String, have: Int) async throws -> [ChapterEntry]?
+    // an empty list means the series has none. throwing is the only way to say
+    // nothing at all, and the only answer that leaves the stored list unknown.
+    // a source that can check cheaply whether anything changed conforms to
+    // RevalidatingSource as well
+    func chapters(seriesSlug: String) async throws -> [ChapterEntry]
 
-    func content(seriesSlug:String, chapterSlug: String) async throws -> [PageURL]
+    func content(seriesSlug: String, chapterSlug: String) async throws -> [PageURL]
 }
 
 extension SourceService {
+    // a source with nothing to show on its home screen is the normal case, so
+    // it is the default rather than something every source has to write out
     var presets: [SourcePreset] { [] }
-
-    func chapters(seriesSlug: String) async throws -> [ChapterEntry]? {
-        try await chapters(seriesSlug: seriesSlug, have: 0)
-    }
 }
 
 typealias Source = any SourceService

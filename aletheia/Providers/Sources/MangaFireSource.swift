@@ -257,9 +257,7 @@ extension MangaFireSource {
             SeriesStub(
                 slug: item.hid,
                 title: item.title,
-                cover: item.poster.medium.flatMap { URL(string: $0) },
-                latestChapterNumber: item.latestChapter,
-                latestChapterDate: RelativeDate.parse(item.chapterUpdatedAt)
+                cover: item.poster.medium.flatMap { URL(string: $0) }
             )
         }
         return SearchPage(items: items, next: response.meta.hasNext ? response.meta.page + 1 : nil)
@@ -273,8 +271,6 @@ extension MangaFireSource {
             let hid: String
             let title: String
             let poster: Poster
-            let latestChapter: Double?
-            let chapterUpdatedAt: String?
         }
         struct Poster: Decodable {
             let small: String?
@@ -408,7 +404,7 @@ extension MangaFireSource {
 
 extension MangaFireSource {
     // no cheap change check here - mangafire always returns the full list
-    func chapters(seriesSlug: String, have: Int) async throws -> [ChapterEntry]? {
+    func chapters(seriesSlug: String) async throws -> [ChapterEntry] {
         let pageURL = detailsURL(for: seriesSlug)
         let credential = try await requester.credential(for: self)
         let pages = try await renderer.sniffPaged(

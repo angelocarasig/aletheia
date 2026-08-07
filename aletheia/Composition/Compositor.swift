@@ -28,7 +28,6 @@ struct Compositor: Sendable {
         let renderer = WebRenderer(log: .shared)
         let sources: [Source] = [
             MangaFireSource(requester: requester, renderer: renderer),
-            ComixSource(requester: requester, renderer: renderer),
             MangaDexSource(network: network),
             WeebCentralSource(network: network)
         ]

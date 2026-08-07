@@ -9,7 +9,7 @@ import Foundation
 
 // the only source with a documented public api, so it needs neither the renderer
 // nor a credential - every call here is plain json
-struct MangaDexSource: SourceService {
+struct MangaDexSource: RevalidatingSource {
     let network: NetworkConfiguration
 
     private static let api = URL(string: "https://api.mangadex.org")!
@@ -233,9 +233,7 @@ extension MangaDexSource {
         SeriesStub(
             slug: entry.id,
             title: title(from: entry.attributes.title, falling: entry.attributes.altTitles),
-            cover: cover(for: entry),
-            latestChapterNumber: nil,
-            latestChapterDate: nil
+            cover: cover(for: entry)
         )
     }
 }
@@ -287,7 +285,18 @@ extension MangaDexSource {
 // MARK: - Chapters
 
 extension MangaDexSource {
-    func chapters(seriesSlug: String, have: Int) async throws -> [ChapterEntry]? {
+    func chapters(seriesSlug: String) async throws -> [ChapterEntry] {
+        guard case let .changed(entries) = try await walk(seriesSlug, stored: nil) else { return [] }
+        return entries
+    }
+
+    // the feed states its own total in the first response, so a matching count
+    // answers the whole question before the rest of the pages are asked for
+    func chapters(seriesSlug: String, stored: Int) async throws -> ChapterRevalidation {
+        try await walk(seriesSlug, stored: stored)
+    }
+
+    private func walk(_ seriesSlug: String, stored: Int?) async throws -> ChapterRevalidation {
         var entries: [ChapterEntry] = []
         var offset = 0
 
@@ -305,9 +314,7 @@ extension MangaDexSource {
 
             let response: ChapterList = try await network.get(url: Self.url("manga/\(seriesSlug)/feed", items))
 
-            // the server states the total outright, so a matching count means the
-            // stored list still stands and the rest of the walk is wasted
-            if offset == 0, have > 0, response.total == have { return nil }
+            if offset == 0, let stored, response.total == stored { return .unchanged }
 
             entries += response.data.compactMap(Self.entry)
             offset += response.data.count
@@ -315,7 +322,7 @@ extension MangaDexSource {
             if response.data.isEmpty || offset >= response.total { break }
         }
 
-        return entries
+        return .changed(entries)
     }
 
     private static func entry(from chapter: Chapter) -> ChapterEntry? {
@@ -407,12 +414,32 @@ extension MangaDexSource {
         return map["en"] ?? map.sorted { $0.key < $1.key }.first?.value
     }
 
+    // english, then romanised original, then the original script. mangadex keeps
+    // romanisations under a "-ro" locale, so a japanese series usually carries
+    // both "ja" and "ja-ro" and the romaji is the one worth showing
+    private static let titlePriority = ["en", "ja-ro", "ko-ro", "zh-ro", "ja", "ko", "zh"]
+
     private static func title(from primary: [String: String], falling alternates: [[String: String]]) -> String {
-        if let name = text(from: primary) { return name }
-        for alternate in alternates {
-            if let name = text(from: alternate) { return name }
+        // pooled rather than searched map by map: `title` holds the original
+        // language and the romanisation lives in altTitles, so going map by map
+        // returns the japanese before it ever reaches the romaji one entry later.
+        // first occurrence of a locale wins, and primary is walked first
+        var pool: [String: String] = [:]
+        for map in [primary] + alternates {
+            for (locale, name) in map where pool[locale] == nil && !name.isEmpty {
+                pool[locale] = name
+            }
         }
-        return "Untitled"
+
+        for locale in titlePriority {
+            if let name = pool[locale] { return name }
+        }
+
+        // an unlisted locale: still prefer anything romanised over raw script.
+        // sorted so the pick is stable rather than whatever the dictionary yields
+        let keys = pool.keys.sorted()
+        if let romanised = keys.first(where: { $0.hasSuffix("-ro") }) { return pool[romanised]! }
+        return keys.first.flatMap { pool[$0] } ?? "Untitled"
     }
 
     private static func coverURL(_ manga: String, _ file: String) -> URL {

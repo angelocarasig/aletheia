@@ -16,11 +16,12 @@ struct ReaderScreen: View {
     @Environment(\.dimensions) private var dimensions
 
     @State private var vm: ReaderViewModel?
-    @State private var showingTapZones = false
+    @State private var showingChapters = false
+    @State private var showingSources = false
+    @State private var showingSettings = false
 
     private enum Layout {
         static let settle: Animation = .easeOut(duration: 0.2)
-        static let flash: Duration = .milliseconds(700)
     }
 
     var body: some View {
@@ -53,7 +54,57 @@ struct ReaderScreen: View {
             )
             vm = model
             await model.load()
-            await flashTapZones()
+            model.flashTapZones()
+        }
+        .sheet(isPresented: Binding(get: { vm?.isShowingTapZones ?? false }, set: { vm?.isShowingTapZones = $0 })) {
+            if let vm {
+                ReaderTapZonePicker(
+                    layout: vm.tapZone,
+                    reversed: vm.tapZonesReversed,
+                    isRightToLeft: vm.isReadingRightToLeft,
+                    onSelect: { vm.setTapZone($0) },
+                    onReverse: { vm.setTapZonesReversed($0) }
+                )
+            }
+        }
+        .sheet(isPresented: $showingChapters) {
+            if let vm, let engine = vm.engine {
+                ReaderChapterList(
+                    slots: vm.slots,
+                    current: engine.current?.number,
+                    isLoading: vm.isLoadingSlots,
+                    onSelect: { slot in
+                        Task { await engine.jump(to: slot.chapter) }
+                    }
+                )
+                // read on present rather than at open: progress moves as you
+                // read, so the list has to be current, not cached from launch
+                .task { await vm.loadSlots() }
+            }
+        }
+        .sheet(isPresented: $showingSources) {
+            if let vm, let engine = vm.engine, let chapter = engine.current?.id {
+                ReaderSourceSwitcher(
+                    slot: vm.slot(for: engine.current?.number),
+                    active: vm.activeRow(for: chapter),
+                    isLoading: vm.isLoadingSlots,
+                    onSelect: { option in
+                        Task { await vm.swap(to: option, for: chapter) }
+                    }
+                )
+                // the alternatives ride along with the chapter list's query, so
+                // this is the same read rather than a second one
+                .task { await vm.loadSlots() }
+            }
+        }
+        .sheet(isPresented: $showingSettings) {
+            if let vm, let engine = vm.engine {
+                ReaderSettingsSheet(
+                    engine: engine,
+                    onPadding: { vm.setHorizontalPadding($0) },
+                    onTint: { vm.setChromeTint($0) }
+                )
+            }
         }
         .onDisappear {
             guard let vm else { return }
@@ -77,13 +128,18 @@ private extension ReaderScreen {
                         .allowsHitTesting(false)
                 }
 
-                if showingTapZones {
-                    ReaderTapZoneOverlay(
-                        layout: ReaderSettings.tapZone,
-                        reversed: ReaderSettings.tapZonesReversed
-                    )
-                    .ignoresSafeArea()
-                    .transition(.opacity)
+                if vm.isFlashingTapZones {
+                    ReaderTapZoneMap(layout: vm.tapZone, reversed: vm.tapZonesReversed)
+                        .ignoresSafeArea()
+                        .transition(.opacity)
+                }
+
+                // deliberately outside the overlay branch: a paged mode turns
+                // its own page, and you have to be able to see that coming with
+                // the chrome down
+                if engine.isAutoScrolling, engine.configuration.mode.isPaged {
+                    ReaderCountdown(progress: engine.autoAdvanceProgress)
+                        .transition(.opacity)
                 }
 
                 if let error = engine.error {
@@ -97,22 +153,26 @@ private extension ReaderScreen {
                         onPreviousChapter: { Task { await engine.previousChapter() } },
                         onNextChapter: { Task { await engine.nextChapter() } },
                         onSeek: { engine.goToPage($0) },
+                        // the reading direction is half of what the zones mean,
+                        // so changing it changes them and that has to be shown
                         onModeChange: { mode in
                             vm.setMode(mode)
-                            Task { await flashTapZones() }
+                            vm.flashTapZones()
                         },
                         onDimChange: { vm.setDim($0) },
                         onSpeedChange: { vm.setAutoScrollSpeed($0) },
+                        onIntervalChange: { vm.setAutoAdvanceInterval($0) },
                         // deferred screens. present as real controls so the
                         // chrome is laid out for them, and say so when tapped
-                        onChapters: { AppLog.shared.log("TODO chapter list", category: "reader") },
-                        onSources: { AppLog.shared.log("TODO source switcher", category: "reader") },
-                        onSettings: { AppLog.shared.log("TODO reader settings", category: "reader") },
-                        onTapZones: { Task { await flashTapZones() } },
+                        onChapters: { showingChapters = true },
+                        onSources: { showingSources = true },
+                        onSettings: { showingSettings = true },
+                        onTapZones: { vm.isShowingTapZones = true },
                         onDismiss: { dismiss() }
                     )
                     .transition(.opacity)
                 }
+
             }
             // taps arrive from UIKit in window space and are handled the moment
             // they land. keeping the frame in step here is all the conversion
@@ -150,12 +210,5 @@ private extension ReaderScreen {
         } actions: {
             Button("Go Back") { dismiss() }
         }
-    }
-
-    func flashTapZones() async {
-        guard ReaderSettings.tapZonesEnabled else { return }
-        withAnimation(Layout.settle) { showingTapZones = true }
-        try? await Task.sleep(for: Layout.flash)
-        withAnimation(Layout.settle) { showingTapZones = false }
     }
 }

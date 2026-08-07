@@ -15,14 +15,27 @@ enum ReaderImage {
     // a page is a full-bleed bitmap on a device screen, not a thumbnail.
     // decoding at source resolution is what puts a reader into jetsam - a
     // 1400x2000 page is ~11mb resident once decoded
-    static func options(referer: URL?, width: CGFloat) -> KingfisherOptionsInfo {
-        let limit = max(width, 1) * UIScreen.main.scale
+    // scale comes from whatever view is asking. UIScreen.main is deprecated on
+    // iOS 26 and was never right anyway - the value that matters is the one for
+    // the display this reader is actually on
+    static func options(
+        headers: [String: String],
+        width: CGFloat,
+        scale: CGFloat
+    ) -> KingfisherOptionsInfo {
+        let scale = max(scale, 1)
+
+        // POINTS, not pixels. DownsamplingImageProcessor hands this straight to
+        // downsampledImage(data:to:scale:), which multiplies by the scale factor
+        // itself - passing width * scale asked for three times the dimension and
+        // nine times the pixels on a 3x device
+        let limit = max(width, 1)
 
         return [
             .backgroundDecode,
             .downsamplingImageProcessor(size: CGSize(width: limit, height: limit)),
-            .scaleFactor(UIScreen.main.scale),
-            .requestModifier(AnyModifier.referer(referer)),
+            .scaleFactor(scale),
+            .requestModifier(AnyModifier.headers(headers)),
             .cacheOriginalImage
         ]
     }

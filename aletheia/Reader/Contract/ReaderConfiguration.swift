@@ -13,25 +13,35 @@ struct ReaderConfiguration: Equatable, Sendable {
     var chromeTint: Double = Defaults.chromeTint
     var horizontalPadding: CGFloat = 0
     var autoScrollSpeed: CGFloat = Defaults.autoScrollSpeed
+    var autoAdvanceInterval: TimeInterval = Defaults.autoAdvanceInterval
     var prefetchCount: Int = Defaults.prefetchCount
     var windowSize: Int = Defaults.windowSize
     var preloadThreshold: CGFloat = Defaults.preloadThreshold
-
+    
     enum Defaults {
         // clear glass is permanently transparent by design, so chrome over a
         // busy page has nothing to separate it from the art. a tint on the glass
         // is what Apple prescribes instead of a second scrim view
         static let chromeTint: Double = 0.4
         static let maxChromeTint: Double = 0.7
-
+        
         static let autoScrollSpeed: CGFloat = 100
         static let minAutoScrollSpeed: CGFloat = 20
         static let maxAutoScrollSpeed: CGFloat = 500
+
+        static let maxHorizontalPadding: CGFloat = 48
+        
+        // a paged mode dwells on a page and then slides, so its auto-scroll
+        // setting is a duration rather than a rate. different unit, different
+        // stored value - one number cannot mean both
+        static let autoAdvanceInterval: TimeInterval = 5
+        static let minAutoAdvanceInterval: TimeInterval = 1
+        static let maxAutoAdvanceInterval: TimeInterval = 30
         static let prefetchCount = 3
         static let windowSize = 3
         static let preloadThreshold: CGFloat = 500
         static let maxDim: Double = 0.6
-
+        
         // pages are laid out before their image lands, so the first pass uses a
         // ratio rather than a measurement. corrected per page on load.
         //
@@ -40,7 +50,7 @@ struct ReaderConfiguration: Equatable, Sendable {
         // needs it most
         static let pagedPageRatio: CGFloat = 1414.0 / 1000.0
         static let stripPageRatio: CGFloat = 1.435
-
+        
         // how many real measurements a chapter needs before its own median
         // replaces the static guess, and where sampling stops paying for itself
         static let ratioSampleMinimum = 4
@@ -55,34 +65,45 @@ extension Orientation {
     var resolved: Orientation {
         self == .unknown ? .leftToRight : self
     }
-
+    
+    // tags that mark a vertical-strip title (webtoon/manhwa/manhua), in the
+    // sanitised form tags are stored in: lowercased, spaces stripped
+    static let stripTags: Set<String> = [
+        "webtoon", "manhwa", "manhua", "longstrip", "webcomic"
+    ]
+    
+    func resolved(tags: Set<String>) -> Orientation {
+        guard self == .unknown else { return self }
+        return tags.isDisjoint(with: Self.stripTags) ? .leftToRight : .infinite
+    }
+    
     var isVertical: Bool {
         resolved == .infinite || resolved == .vertical
     }
-
+    
     var isHorizontal: Bool {
         !isVertical
     }
-
+    
     // continuous scroll, one long strip. everything else snaps page to page
     var isContinuous: Bool {
         resolved == .infinite
     }
-
+    
     var isPaged: Bool {
         !isContinuous
     }
-
+    
     var isRightToLeft: Bool {
         resolved == .rightToLeft
     }
-
+    
     var fallbackPageRatio: CGFloat {
         isContinuous
-            ? ReaderConfiguration.Defaults.stripPageRatio
-            : ReaderConfiguration.Defaults.pagedPageRatio
+        ? ReaderConfiguration.Defaults.stripPageRatio
+        : ReaderConfiguration.Defaults.pagedPageRatio
     }
-
+    
     var label: String {
         switch resolved {
         case .infinite: "Infinite Scroll"
@@ -92,7 +113,7 @@ extension Orientation {
         case .unknown: "Left to Right"
         }
     }
-
+    
     var summary: String {
         switch resolved {
         case .infinite: "Continuous strip, best for webtoons"

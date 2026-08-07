@@ -177,8 +177,8 @@ private enum Sample {
             Tsuihou-kei no Akuyaku Party no Leader ni Tensei Shita node, Zamaa Sareru \
             Mae ni Jibun o Tsuihou Shimashita.
             """, preferred: true),
-        title(2, "I Exiled Myself Before the Villains Could", source: "Comix", icon: .comix),
-        title(3, "Tsuihou-kei no Akuyaku Party", source: "Comix", icon: .comix),
+        title(2, "I Exiled Myself Before the Villains Could", source: "MangaDex", icon: .mangaDex),
+        title(3, "Tsuihou-kei no Akuyaku Party", source: "MangaDex", icon: .mangaDex),
         title(4, "追放系の悪役パーティーのリーダーに転生したので", source: nil, icon: nil)
     ]
 }

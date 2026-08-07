@@ -15,6 +15,8 @@ struct DetailsChapters: View {
     var canRefresh: Bool = false
     var onRefresh: () -> Void
     var onMarkAll: (Bool) -> Void
+    var onScanlators: () -> Void
+    var onLanguages: () -> Void
     var onOpen: (Chapter) -> Void
 
     @Environment(\.dimensions) private var dimensions
@@ -22,11 +24,36 @@ struct DetailsChapters: View {
     @State private var sort: Sort = .numberDescending
     @State private var isExpanded = false
 
-    private enum Sort: String, CaseIterable {
-        case numberDescending = "Number descending"
-        case numberAscending = "Number ascending"
-        case dateNewest = "Date newest"
-        case dateOldest = "Date oldest"
+    // named for what the reader wants, not for the column being sorted. "number
+    // descending" describes the query; "latest first" describes the intent that
+    // sent you to the menu. which field it sorts on is the section header's job
+    private enum Sort: Hashable {
+        case numberDescending
+        case numberAscending
+        case dateNewest
+        case dateOldest
+
+        var label: String {
+            switch self {
+            case .numberDescending: "Latest first"
+            case .numberAscending: "From the start"
+            case .dateNewest: "Recently released"
+            case .dateOldest: "First released"
+            }
+        }
+
+        // one glyph per intent rather than a pair of arrows. an arrow only says
+        // which way the list runs, which the label already said - these say what
+        // you came for: the new stuff, the beginning, what just landed, the start
+        // of the archive
+        var icon: String {
+            switch self {
+            case .numberDescending: "sparkles"
+            case .numberAscending: "1.circle"
+            case .dateNewest: "clock"
+            case .dateOldest: "clock.arrow.circlepath"
+            }
+        }
     }
 
     private enum Layout {
@@ -37,6 +64,14 @@ struct DetailsChapters: View {
         static let skeletonMeta: [CGFloat] = [64, 6, 96, 6, 16]
         static let skeletonScanlator: CGFloat = 88
         static let sourceIconSize: CGFloat = 44
+        // wider than tall: three glyphs in one capsule need room between them or
+        // the group reads as a single crowded blob rather than three controls
+        static let chipWidth: CGFloat = 42
+        static let chipHeight: CGFloat = 34
+        static let hairline: CGFloat = 1
+        // short of the full height so the divider reads as a separator inside the
+        // capsule rather than a cut through it
+        static let hairlineScale: CGFloat = 0.5
         static let newDayThreshold = 3
         static let progressHeight: CGFloat = 3
         static let titleLines = 2
@@ -100,14 +135,73 @@ struct DetailsChapters: View {
 extension DetailsChapters {
     private var Header: some View {
         VStack(alignment: .leading, spacing: dimensions.spacing.space8) {
-            SectionHeader(title: "Chapters") { Overflow }
+            SectionHeader("Chapters")
 
             HStack(spacing: dimensions.spacing.space8) {
                 Count
 
                 SortChip
+
+                Spacer(minLength: 0)
+
+                Actions
             }
         }
+    }
+
+    // one capsule, hairlines between: filtering and the overflow act on the same
+    // list, so they read as one control rather than three floating buttons. the
+    // ellipsis moved down here from the section header for the same reason -
+    // it was the only thing acting on chapters that lived somewhere else
+    private var Actions: some View {
+        HStack(spacing: 0) {
+            Chip("person.2", action: onScanlators)
+
+            Hairline
+
+            // a character in a bubble, not a globe: a globe is the symbol for the
+            // web as often as for language, and this filters what the chapter is
+            // written in rather than where it came from
+            Chip("character.bubble", action: onLanguages)
+
+            Hairline
+
+            Overflow
+        }
+        .background(.primary.opacity(Layout.fillOpacity), in: .capsule)
+    }
+
+    private var Hairline: some View {
+        Rectangle()
+            .fill(.primary.opacity(Layout.fillOpacity))
+            .frame(width: Layout.hairline, height: Layout.chipHeight * Layout.hairlineScale)
+    }
+
+    // no background of its own - the group owns that, and a fill per button would
+    // stack two opacities on the same pixels
+    private func Chip(_ name: String, action: @escaping () -> Void) -> some View {
+        Icon(name)
+            .contentShape(.rect)
+            .tappable(action: action)
+    }
+
+    // a menu row has exactly one image slot and iOS renders it trailing, so the
+    // checkmark takes the icon's place rather than sitting beside it. the icon
+    // has done its job by then - you are looking at the row you already chose
+    private func Option(_ option: Sort) -> some View {
+        Button {
+            sort = option
+        } label: {
+            Label(option.label, systemImage: option == sort ? "checkmark" : option.icon)
+        }
+    }
+
+    private func Icon(_ name: String) -> some View {
+        Image(systemName: name)
+            .font(.subheadline)
+            .fontWeight(.medium)
+            .foregroundStyle(.muted)
+            .frame(width: Layout.chipWidth, height: Layout.chipHeight)
     }
 
     @ViewBuilder
@@ -146,31 +240,29 @@ extension DetailsChapters {
                 Label("Mark All as Unread", systemImage: "x.circle.fill")
             }
         } label: {
-            Image(systemName: "ellipsis")
-                .font(.body)
-                .fontWeight(.medium)
-                .foregroundStyle(.muted)
-                .frame(width: dimensions.size.control, height: dimensions.size.control)
+            Icon("ellipsis")
                 .contentShape(.rect)
         }
     }
 
     private var SortChip: some View {
         Menu {
-            ForEach(Sort.allCases, id: \.self) { option in
-                Button {
-                    sort = option
-                } label: {
-                    if option == sort {
-                        Label(option.rawValue, systemImage: "checkmark")
-                    } else {
-                        Text(option.rawValue)
-                    }
-                }
+            // buttons rather than a Picker: a Picker draws its checkmark on the
+            // leading edge and there is no way to move it. sections still say
+            // which field each pair sorts on, which is what the labels leave out -
+            // number and date disagree whenever a source backfills
+            Section("Chapter number") {
+                Option(.numberDescending)
+                Option(.numberAscending)
+            }
+
+            Section("Release date") {
+                Option(.dateNewest)
+                Option(.dateOldest)
             }
         } label: {
             HStack(spacing: dimensions.spacing.space4) {
-                Text(sort.rawValue)
+                Text(sort.label)
                 Image(systemName: "chevron.down")
                     .font(.caption2)
                     .fontWeight(.bold)

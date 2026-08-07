@@ -125,11 +125,15 @@ actor CoverDownloader {
 
         guard !written.isEmpty else { return }
 
+        // the write closure runs off this actor, so it takes a snapshot rather
+        // than the mutable accumulator itself
+        let paths = written
+
         // one transaction, not one per cover: each write wakes the details
         // observation and both entry views
         do {
             try await database.writer.write { db in
-                for (id, path) in written {
+                for (id, path) in paths {
                     _ = try CoverRecord
                         .filter(key: id)
                         .updateAll(db, CoverRecord.Columns.path.set(to: path))

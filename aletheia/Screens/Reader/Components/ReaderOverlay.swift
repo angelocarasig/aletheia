@@ -19,6 +19,7 @@ struct ReaderOverlay: View {
     var onModeChange: (Orientation) -> Void
     var onDimChange: (Double) -> Void
     var onSpeedChange: (CGFloat) -> Void
+    var onIntervalChange: (TimeInterval) -> Void
     var onChapters: () -> Void
     var onSources: () -> Void
     var onSettings: () -> Void
@@ -36,6 +37,11 @@ struct ReaderOverlay: View {
         static let tintOpacity: Double = 0.2
         static let settle: Animation = .snappy(duration: 0.25)
         static let identity: Animation = .snappy(duration: 0.3)
+        // roughly the width of "Chapter 41", so the capsule barely resizes when
+        // the real title lands
+        static let placeholderWidth: CGFloat = 84
+        static let placeholderHeight: CGFloat = 12
+        static let placeholderFill: Double = 0.12
     }
 
     // clear glass has no adaptive behaviour, so it never flips to suit what is
@@ -82,6 +88,9 @@ private extension ReaderOverlay {
 
                 Circular("xmark", action: onDismiss)
             }
+            // on the row rather than the button: a transition needs a transaction
+            // from an ancestor that outlives the view being replaced
+            .animation(Layout.identity, value: sourceIcon)
         }
     }
 
@@ -97,6 +106,11 @@ private extension ReaderOverlay {
                 .clipShape(.circle)
                 .contentShape(.circle)
                 .tappable(action: onSources)
+                // swapping sources replaces the artwork, and a hard cut on the
+                // one control that says where you are reading from reads as a
+                // glitch. keyed on the icon so the swap is what drives it
+                .id(sourceIcon)
+                .transition(.opacity.combined(with: .scale))
         } else {
             // a downloaded chapter whose source has since been removed. nothing
             // to fill with, so this one keeps the glass
@@ -110,14 +124,30 @@ private extension ReaderOverlay {
 
     var Identity: some View {
         VStack(alignment: .leading, spacing: dimensions.spacing.space2) {
-            Text(title)
-                .font(.subheadline)
-                .fontWeight(.semibold)
-                .lineLimit(1)
-                // the number carries the direction on its own: forward rolls the
-                // digits up, back rolls them down. nothing has to track which way
-                // the chapter moved
-                .contentTransition(.numericText(value: engine.current?.number ?? 0))
+            // two views rather than one string: "Loading" and a chapter number
+            // are different kinds of thing, and numericText cannot morph a word
+            // into digits - it would snap. resolving is a replace, moving between
+            // chapters is a roll
+            if let chapter = engine.current {
+                Text("Chapter \(chapter.number.formatted())")
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                    .lineLimit(1)
+                    // the number carries the direction on its own: forward rolls
+                    // the digits up, back rolls them down. nothing has to track
+                    // which way the chapter moved
+                    .contentTransition(.numericText(value: chapter.number))
+                    .transition(.blurReplace)
+            } else {
+                // the shape the chapter will take, not a word standing in for it.
+                // matches ReaderSkeleton's fill so the two placeholders read as
+                // the same surface resolving
+                Capsule()
+                    .fill(.white.opacity(Layout.placeholderFill))
+                    .frame(width: Layout.placeholderWidth, height: Layout.placeholderHeight)
+                    .shimmer()
+                    .transition(.blurReplace)
+            }
 
             if let subtitle {
                 Text(subtitle)
@@ -139,11 +169,6 @@ private extension ReaderOverlay {
         // the capsule resizes to whatever the new chapter is called, so the
         // transaction has to sit above the text rather than on it
         .animation(Layout.identity, value: engine.current?.id)
-    }
-
-    var title: String {
-        guard let chapter = engine.current else { return "Loading" }
-        return "Chapter \(chapter.number.formatted())"
     }
 
     // most sources title a chapter with its own number, which then reads as the
@@ -213,8 +238,10 @@ private extension ReaderOverlay {
 
     var position: String {
         guard engine.pageCount > 0 else { return "—" }
-        let page = scrubbing ? Int(scrubValue) : engine.page
-        return "\(page + 1) / \(engine.pageCount)"
+        // read unconditionally - a ternary short-circuits, so putting this on the
+        // false branch drops the dependency for as long as the reader is scrubbing
+        let current = engine.page
+        return "\((scrubbing ? Int(scrubValue) : current) + 1) / \(engine.pageCount)"
     }
 }
 
@@ -223,10 +250,15 @@ private extension ReaderOverlay {
 private extension ReaderOverlay {
     @ViewBuilder
     var Scrubber: some View {
+        // read here rather than inside the binding. a getter runs outside body
+        // evaluation, so a page read that only happens in there never registers
+        // as a dependency and the thumb stops following the reader
+        let page = engine.page
+
         if engine.pageCount > 1 {
             Slider(
                 value: Binding(
-                    get: { scrubbing ? scrubValue : Double(engine.page) },
+                    get: { scrubbing ? scrubValue : Double(page) },
                     set: { value in
                         scrubValue = value
                         onSeek(Int(value))
@@ -245,7 +277,7 @@ private extension ReaderOverlay {
             )
             .disabled(engine.isLoading)
             .opacity(engine.isLoading ? Layout.disabledOpacity : 1)
-            .sensoryFeedback(.selection, trigger: Int(scrubbing ? scrubValue : Double(engine.page)))
+            .sensoryFeedback(.selection, trigger: scrubbing ? Int(scrubValue) : page)
         } else {
             // a one-page chapter still needs the row to hold its height, or the
             // card jumps between chapters
@@ -310,11 +342,20 @@ private extension ReaderOverlay {
         HStack(spacing: dimensions.spacing.space12) {
             Icon("tortoise.fill")
 
-            Slider(
-                value: speedBinding,
-                in: ReaderConfiguration.Defaults.minAutoScrollSpeed...ReaderConfiguration.Defaults.maxAutoScrollSpeed,
-                step: 10
-            )
+            if engine.configuration.mode.isContinuous {
+                Slider(
+                    value: speedBinding,
+                    in: ReaderConfiguration.Defaults.minAutoScrollSpeed...ReaderConfiguration.Defaults.maxAutoScrollSpeed,
+                    step: 10
+                )
+            } else {
+                // no step: whole seconds no longer divide the range, and a dwell
+                // has no reason to quantise - nothing displays the number
+                Slider(
+                    value: intervalBinding,
+                    in: ReaderConfiguration.Defaults.minAutoAdvanceInterval...ReaderConfiguration.Defaults.maxAutoAdvanceInterval
+                )
+            }
 
             Icon("hare.fill")
         }
@@ -347,6 +388,19 @@ private extension ReaderOverlay {
 
     var speedBinding: Binding<CGFloat> {
         Binding(get: { engine.configuration.autoScrollSpeed }, set: onSpeedChange)
+    }
+
+    // a dwell gets shorter as the reader gets faster, so the raw value would put
+    // the quick end under the tortoise. mirrored across the range instead, and
+    // hare keeps meaning sooner
+    var intervalBinding: Binding<TimeInterval> {
+        let span = ReaderConfiguration.Defaults.minAutoAdvanceInterval
+            + ReaderConfiguration.Defaults.maxAutoAdvanceInterval
+
+        return Binding(
+            get: { span - engine.configuration.autoAdvanceInterval },
+            set: { onIntervalChange(span - $0) }
+        )
     }
 }
 

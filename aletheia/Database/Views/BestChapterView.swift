@@ -80,10 +80,12 @@ extension BestChapterView {
             JOIN \(SeriesRecord.databaseTableName) m ON o.seriesId = m.id
             -- an unavailable source's chapters are unreadable, so they are excluded
             -- entirely rather than winning rank 1 and dead-ending the reader.
-            -- the inner join drops disconnected origins (null sourceId) and the
-            -- filter drops disabled ones - both are unavailable in the same way
+            -- the inner join drops disconnected origins (null sourceId), and the
+            -- filters drop the two ways a source stops being able to answer:
+            -- turned off by the reader, or no longer shipped with the app at all
             JOIN \(SourceRecord.databaseTableName) src ON o.sourceId = src.id
             WHERE src.\(SourceRecord.Columns.disabled.name) = 0
+              AND src.\(SourceRecord.Columns.installed.name) = 1
             """)
     }
 

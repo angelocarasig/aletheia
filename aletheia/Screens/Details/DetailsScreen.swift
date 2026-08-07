@@ -343,7 +343,9 @@ struct DetailsScreen: View {
                 hasFetched: vm.hasFetchedChapters,
                 canRefresh: vm.canRefresh,
                 onRefresh: { Task { await vm.refreshChapters() } },
-                onMarkAll: { read in Task { await vm.markAll(read: read) } }
+                onMarkAll: { read in Task { await vm.markAll(read: read) } },
+                onScanlators: { AppLog.shared.log("TODO scanlator filter", category: "details") },
+                onLanguages: { AppLog.shared.log("TODO language filter", category: "details") }
             ) { chapter in
                 guard let target = vm.read(chapter) else { return }
                 Task { await vm.open(chapter) }

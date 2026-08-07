@@ -16,9 +16,13 @@ import Tagged
 struct SeriesPageSource: ReaderPageSource {
     let database: DatabaseClient
     let registry: Compositor.Registry
+    let fill: ChapterFill
 
     func pages(for chapter: ReaderChapter.ID) async throws -> [ReaderPage] {
-        let id = ChapterRecord.ID(rawValue: chapter)
+        // the token the engine holds and the row that answers for it are two
+        // different things the moment a source is swapped. every ReaderPage below
+        // still carries the token, so nothing downstream has to know
+        let id = await fill.row(for: chapter)
 
         guard let row = try await database.reader.read({ db in
             try Self.locate(id, in: db)
@@ -33,7 +37,7 @@ struct SeriesPageSource: ReaderPageSource {
             guard !files.isEmpty else { throw ReaderError.noPages(chapter) }
 
             return files.enumerated().map { index, url in
-                ReaderPage(chapter: chapter, index: index, url: url, referer: nil)
+                ReaderPage(chapter: chapter, index: index, url: url)
             }
         }
 
@@ -47,13 +51,24 @@ struct SeriesPageSource: ReaderPageSource {
         )
         guard !content.isEmpty else { throw ReaderError.noPages(chapter) }
 
-        let referer = source.descriptor.referer
+        let headers = Self.headers(for: source)
+
+        // the page number you see on screen is 1-based, so it is logged that way
+        // - the whole point is being able to read "page 7 looks wrong" off the
+        // screen and find the url that served it
+        for page in content {
+            AppLog.shared.log(
+                "page \(page.index + 1)/\(content.count) — \(page.url.absoluteString)",
+                category: "reader.pages"
+            )
+        }
+
         return content.map { page in
             ReaderPage(
                 chapter: chapter,
                 index: page.index,
                 url: page.url,
-                referer: referer,
+                headers: headers,
                 // ratio-grade hints are fine here - the reader only ever uses
                 // this to pick a height, never to decide a split
                 size: page.size.map { CGSize(width: $0.width, height: $0.height) }
@@ -62,6 +77,36 @@ struct SeriesPageSource: ReaderPageSource {
     }
 
     // MARK: Private
+
+    // what the source itself would send. an image host behind cloudflare answers
+    // a bare request differently from a browser's, and the reader was sending
+    // nothing but a Referer - no pinned agent, none of the cookies the source
+    // already holds. read from the keychain rather than through AuthRequester:
+    // content() has just refreshed, and a page fetch is not the place to trigger
+    // an interactive challenge
+    private static func headers(for source: Source) -> [String: String] {
+        var headers = [
+            "Referer": source.descriptor.referer.absoluteString,
+            "User-Agent": Constants.Network.userAgent
+        ]
+
+        guard let source = source as? any AuthenticatingSource,
+              let credential = try? Keychain.sources.load(
+                  SourceCredential.self,
+                  account: source.descriptor.slug
+              )
+        else { return headers }
+
+        headers["User-Agent"] = credential.userAgent
+
+        if !credential.cookies.isEmpty {
+            headers["Cookie"] = credential.cookies
+                .map { "\($0.key)=\($0.value)" }
+                .joined(separator: "; ")
+        }
+
+        return headers
+    }
 
     private struct Located: Decodable, FetchableRecord, Sendable {
         let slug: String

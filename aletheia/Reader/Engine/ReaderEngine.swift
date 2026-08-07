@@ -42,14 +42,19 @@ final class ReaderEngine {
     private(set) var isScrolling = false
     private(set) var isZoomed = false
     private(set) var isAutoScrolling = false
+    // 1 → 0 across one dwell, what the countdown bar draws. paged modes only
+    private(set) var autoAdvanceProgress: Double = 1
     private(set) var error: ReaderError?
 
     // fired once per chapter change, never on first load. the flag says whether
     // the reader jumped deliberately or simply scrolled into it
     var onChapterChanged: ((ReaderChapter, Bool) -> Void)?
     var onPageChanged: ((ReaderChapter, Int, Int) -> Void)?
-    // fired once per chapter, forward only. where tracker sync will hang
-    var onChapterFinished: ((ReaderChapter) -> Void)?
+    // fired once per chapter, forward only. where tracker sync will hang.
+    // carries the chapter's page count because a chapter can be crossed without
+    // any of its pages ever being reported visible, and the host would then have
+    // no total to write progress against
+    var onChapterFinished: ((ReaderChapter, Int) -> Void)?
     var onSingleTap: ((CGPoint) -> Void)?
 
     var chapterList: [ReaderChapter] { chapters }
@@ -103,6 +108,13 @@ final class ReaderEngine {
         }
         controller.onAutoScrollEnded = { [weak self] in
             self?.isAutoScrolling = false
+            self?.autoAdvanceProgress = 1
+        }
+        controller.onAutoAdvanceProgress = { [weak self] progress in
+            self?.autoAdvanceProgress = progress
+        }
+        controller.onCanContinue = { [weak self] in
+            self?.canGoNext ?? false
         }
         controller.separatorModel = { [weak self] boundary, direction in
             self?.separator(for: boundary, direction: direction)
@@ -178,6 +190,53 @@ final class ReaderEngine {
         }
     }
 
+    // re-fetch one chapter in place, keeping every other chapter loaded and the
+    // reader on the page it was on. the pages themselves may come from somewhere
+    // entirely different - that is the host's business, not the engine's.
+    //
+    // the scroll at the end is not a nicety. remove() deliberately declines to
+    // compensate the offset when the item under the reader is inside the chapter
+    // being removed, which is exactly this case, so apply() then prepends against
+    // an offset nobody corrected. landing correctly has to be stated
+    func reload(_ chapter: ReaderChapter.ID) async {
+        guard chapters.contains(where: { $0.id == chapter }) else { return }
+
+        let isCurrent = chapter == current?.id
+        let restore = isCurrent ? page : 0
+
+        isLoading = true
+        defer { isLoading = false }
+
+        await window.evict(chapter)
+        await controller?.remove(chapter)
+        resident.remove(chapter)
+
+        do {
+            let load = try await window.load(chapter)
+            await controller?.apply(load.pages, for: chapter)
+            resident.insert(chapter)
+            failures[chapter] = nil
+
+            if let evicted = load.evicted {
+                await controller?.remove(evicted)
+                resident.remove(evicted)
+            }
+
+            if isCurrent {
+                // a different source rarely splits a chapter into the same number
+                // of pages, so the page being restored may not exist any more
+                pageCount = load.pages.count
+                page = min(restore, max(0, load.pages.count - 1))
+                controller?.scroll(to: chapter, page: page, animated: false)
+            }
+
+            controller?.reloadSeparators()
+            error = nil
+        } catch {
+            self.error = Self.reason(from: error, chapter: chapter)
+        }
+    }
+
     func previousChapter() async {
         guard let current, let index = chapters.firstIndex(where: { $0.id == current.id }), index > 0 else { return }
         await jump(to: chapters[index - 1].id)
@@ -197,6 +256,8 @@ final class ReaderEngine {
 
     func advance(forward: Bool) {
         controller?.advance(by: forward ? 1 : -1)
+        // moving by hand says "not yet" to the countdown rather than ending it
+        controller?.resetAutoAdvance()
     }
 
     func retry() async {
@@ -218,6 +279,7 @@ final class ReaderEngine {
         if isAutoScrolling {
             controller?.stopAutoScroll()
             isAutoScrolling = false
+            autoAdvanceProgress = 1
         } else {
             controller?.startAutoScroll()
             isAutoScrolling = true
@@ -303,7 +365,7 @@ final class ReaderEngine {
            direction == .forward,
            completed.insert(id).inserted,
            let chapter = chapters.first(where: { $0.id == id }) {
-            onChapterFinished?(chapter)
+            onChapterFinished?(chapter, controller?.pageCount(for: id) ?? 0)
         }
 
         // the boundary is the last item while its destination has not landed,

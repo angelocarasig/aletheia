@@ -1,17 +1,17 @@
 {
   "images" : [
     {
-      "filename" : "comix.png",
+      "filename" : "atsumaru.png",
       "idiom" : "universal",
       "scale" : "1x"
     },
     {
-      "filename" : "comix 1.png",
+      "filename" : "atsumaru 1.png",
       "idiom" : "universal",
       "scale" : "2x"
     },
     {
-      "filename" : "comix 2.png",
+      "filename" : "atsumaru 2.png",
       "idiom" : "universal",
       "scale" : "3x"
     }
