@@ -34,3 +34,9 @@ enum LanguageCode: String, Codable, Sendable, Hashable, CaseIterable {
         "\(flag) \(displayName)"
     }
 }
+
+extension LanguageCode {
+    // the order every series is seeded with at creation. rows for all four
+    // exist from day one; the reader only ever reorders them
+    static let defaultPriority: [LanguageCode] = [.english, .japanese, .chinese, .korean]
+}

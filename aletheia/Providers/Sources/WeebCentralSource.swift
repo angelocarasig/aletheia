@@ -304,7 +304,9 @@ extension WeebCentralSource {
                 let value = components.queryItems?.first(where: { $0.name == key })?.value,
                 !value.isEmpty
             else { return nil }
-            return value
+            // the site form-encodes spaces as "+", which URLComponents leaves
+            // literal - it only decodes percent escapes
+            return value.replacingOccurrences(of: "+", with: " ")
         }
     }
 

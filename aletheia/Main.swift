@@ -26,6 +26,7 @@ struct AletheiaApp: App {
             tab
         } set: { newValue in
             if newValue == tab { retaps[newValue, default: 0] += 1 }
+            if newValue == .sources { bootstrap.bypass.registerTap() }
             tab = newValue
         }
     }

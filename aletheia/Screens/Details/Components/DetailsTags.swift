@@ -23,7 +23,9 @@ struct DetailsTags: View {
         VStack(alignment: .leading, spacing: dimensions.spacing.space8) {
             FlowLayout(spacing: dimensions.spacing.space8) {
                 ForEach(visible, id: \.self) { tag in
-                    Chip(tag)
+                    // the shared pill (Badge), same as metadata and source status.
+                    // tags are labels, not attention, so the neutral tone
+                    Badge(text: tag, tone: .neutral)
                 }
             }
 
@@ -35,15 +37,5 @@ struct DetailsTags: View {
 
     private var visible: [String] {
         isExpanded ? tags : Array(tags.prefix(Layout.collapsedCount))
-    }
-
-    private func Chip(_ tag: String) -> some View {
-        Text(tag)
-            .font(.caption)
-            .foregroundStyle(.canvas)
-            .padding(.horizontal, dimensions.spacing.space12)
-            .padding(.vertical, dimensions.spacing.space4)
-            .background(.textPrimary)
-            .clipShape(.capsule)
     }
 }

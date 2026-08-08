@@ -11,14 +11,15 @@ import GRDB
 ///
 /// This view solves the deduplication problem where multiple sources/scanlators
 /// provide the same chapter. It ranks chapters using:
-/// 1. Origin priority (lower = better)
-/// 2. Scanlator priority within that origin (lower = better)
+/// 1. Language priority for the series (lower = better, unranked = worst)
+/// 2. Origin priority (lower = better)
+/// 3. Scanlator priority within that origin (lower = better)
 ///
 /// Example:
-/// - Series X has Chapter 1 from:
-///   - Origin A (priority: 0) with Scanlator Y (priority: 0) → rank = 1 ✓ BEST
-///   - Origin A (priority: 0) with Scanlator Z (priority: 1) → rank = 2
-///   - Origin B (priority: 1) with Scanlator Y (priority: 0) → rank = 3
+/// - Series X (language priority: EN 0) has Chapter 1 from:
+///   - Origin B (priority: 1) in EN with Scanlator Y → rank = 1 ✓ BEST
+///   - Origin A (priority: 0) in JA with Scanlator Y (priority: 0) → rank = 2
+///   - Origin A (priority: 0) in JA with Scanlator Z (priority: 1) → rank = 3
 internal struct BestChapterView: ViewRecord {
     let chapterId: Int64
     let number: Double

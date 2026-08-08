@@ -48,14 +48,23 @@ final class SearchViewModel {
         }
     }
 
+    // while false, adultOnly sources are not merely excluded - they do not
+    // exist, so nothing counts them or hints at them
+    var bypassAdult = Preferences.Default.bypassAdultSources {
+        didSet {
+            guard bypassAdult != oldValue else { return }
+            scheduleSearch()
+        }
+    }
+
     // never filtered out of `sources` itself - correlators are built per source at
     // configure and an excluded one simply never observes
     private var searchable: [Source] {
-        includeAdult ? sources : sources.filter { !$0.descriptor.adultOnly }
+        bypassAdult && includeAdult ? sources : sources.filter { !$0.descriptor.adultOnly }
     }
 
     var hiddenAdultCount: Int {
-        includeAdult ? 0 : sources.count { $0.descriptor.adultOnly }
+        bypassAdult && !includeAdult ? sources.count { $0.descriptor.adultOnly } : 0
     }
     private(set) var active = false
     private(set) var submitted = ""

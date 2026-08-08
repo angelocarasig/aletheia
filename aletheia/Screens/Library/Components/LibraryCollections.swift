@@ -20,9 +20,11 @@ struct LibraryCollections: View {
     var onCreate: () -> Void
     var onRename: (LibraryViewModel.Collection) -> Void
     var onDelete: (LibraryViewModel.Collection) -> Void
+    // owned by the screen, not the control: the two floating clusters are
+    // mutually exclusive, and only their parent can see both
+    @Binding var expanded: Bool
 
     @Namespace private var glass
-    @State private var expanded = false
 
     private enum Layout {
         static let selectedFill: Double = 0.16

@@ -16,9 +16,11 @@ struct LibraryActions: View {
     var onSort: () -> Void
     var onFilter: () -> Void
     var filtered = false
+    // owned by the screen, not the control: the two floating clusters are
+    // mutually exclusive, and only their parent can see both
+    @Binding var expanded: Bool
 
     @Namespace private var namespace
-    @State private var expanded = false
 
     private enum Layout {
         static let dot: CGFloat = 10

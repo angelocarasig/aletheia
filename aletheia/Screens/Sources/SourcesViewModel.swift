@@ -19,9 +19,17 @@ final class SourcesViewModel {
 
     private(set) var sources: [SourceRecord] = []
 
-    var pinned: [SourceRecord] { ordered(sources.filter { $0.pinned && !$0.disabled }) }
-    var active: [SourceRecord] { ordered(sources.filter { !$0.pinned && !$0.disabled }) }
-    var disabled: [SourceRecord] { ordered(sources.filter(\.disabled)) }
+    // while false, adultOnly sources are absent from every section rather than
+    // sunk or badged - absence is the whole gate
+    var bypassAdult = Preferences.Default.bypassAdultSources
+
+    private var visible: [SourceRecord] {
+        bypassAdult ? sources : sources.filter { !isAdult($0) }
+    }
+
+    var pinned: [SourceRecord] { ordered(visible.filter { $0.pinned && !$0.disabled }) }
+    var active: [SourceRecord] { ordered(visible.filter { !$0.pinned && !$0.disabled }) }
+    var disabled: [SourceRecord] { ordered(visible.filter(\.disabled)) }
 
     init(database: DatabaseClient, registry: Compositor.Registry) {
         self.database = database

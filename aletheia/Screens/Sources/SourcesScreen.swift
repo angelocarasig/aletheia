@@ -11,7 +11,8 @@ struct SourcesScreen: View {
     @Environment(\.database) private var database
     @Environment(\.compositor) private var compositor
     @Environment(\.dimensions) private var dimensions
-    
+
+    @AppStorage(Preferences.Key.bypassAdultSources) private var bypassAdult = Preferences.Default.bypassAdultSources
     @State private var vm: SourcesViewModel?
     @State private var searchText = ""
     @State private var collapsed: Set<String> = ["disabled"]
@@ -85,6 +86,7 @@ struct SourcesScreen: View {
                 self.vm = vm
                 vm.start()
             }
+            .task(id: bypassAdult) { vm?.bypassAdult = bypassAdult }
         }
     }
     
@@ -113,7 +115,7 @@ struct SourcesScreen: View {
                 } label: {
                     Label(record.pinned ? "Unpin" : "Pin", systemImage: record.pinned ? "pin.slash" : "pin")
                 }
-                
+
                 Button(role: record.disabled ? nil : .destructive) {
                     vm?.toggleDisabled(record)
                 } label: {

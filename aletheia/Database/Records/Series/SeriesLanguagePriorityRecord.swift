@@ -89,6 +89,25 @@ extension SeriesLanguagePriorityRecord {
     }
 }
 
+// MARK: - Seeding
+
+extension SeriesLanguagePriorityRecord {
+    // every series carries all four rows in the default order from creation -
+    // ranking never depends on a row being absent. insert-or-ignore, so calling
+    // this again (chapter refresh healing a series that predates seeding) never
+    // touches an order the reader has since set
+    static func seedDefaults(for seriesId: SeriesRecord.ID, in db: Database) throws {
+        for (index, language) in LanguageCode.defaultPriority.enumerated() {
+            var row = SeriesLanguagePriorityRecord(
+                seriesId: seriesId,
+                language: language,
+                priority: index
+            )
+            try row.insert(db, onConflict: .ignore)
+        }
+    }
+}
+
 // MARK: - Associations
 
 extension SeriesLanguagePriorityRecord {

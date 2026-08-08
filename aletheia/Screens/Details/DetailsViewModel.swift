@@ -113,7 +113,9 @@ final class DetailsViewModel {
 
     var canToggleLibrary: Bool { seriesId != nil && !isSaving }
     var needsDisambiguation: Bool { !candidates.isEmpty }
-    var isRefreshing: Bool { refreshState == .checking }
+    var isRefreshing: Bool {
+        if case .checking = refreshState { true } else { false }
+    }
     var canRefresh: Bool { refreshTarget != nil && !isRefreshing }
 
     // the screen renders from the database alone, so a row is all it waits on
@@ -302,7 +304,18 @@ final class DetailsViewModel {
 
             observe(ids.0)
             assets.enqueue(series: ids.0)
-            await fetchChapters(source: source, seriesSlug: stub.slug, originId: ids.1)
+
+            // attaching to an existing series happens behind a screen that is
+            // already showing chapters from other origins, so the fetch gets the
+            // refresh pill - badged with the new source's icon - rather than
+            // passing silently. a fresh open keeps the skeleton as its indicator
+            if existing != nil {
+                refreshState = .checking(source.descriptor.icon)
+                let added = await fetchChapters(source: source, seriesSlug: stub.slug, originId: ids.1)
+                report(added)
+            } else {
+                await fetchChapters(source: source, seriesSlug: stub.slug, originId: ids.1)
+            }
         } catch {
             failure = Failure(error, fallback: "Couldn't Load Series")
         }
@@ -374,7 +387,7 @@ final class DetailsViewModel {
         guard let originId = snapshot?.refreshable?.originId else { return }
         let origin = OriginRecord.ID(rawValue: originId)
 
-        refreshState = .checking
+        refreshState = .checking(nil)
 
         do {
             let detail = try await target.source.details(seriesSlug: target.slug)
@@ -398,7 +411,7 @@ final class DetailsViewModel {
         guard let target = refreshTarget, !isRefreshing else { return }
         guard let originId = snapshot?.refreshable?.originId else { return }
 
-        refreshState = .checking
+        refreshState = .checking(nil)
         let added = await fetchChapters(
             source: target.source,
             seriesSlug: target.slug,
@@ -467,6 +480,12 @@ final class DetailsViewModel {
                     .filter(key: originId.rawValue)
                     .updateAll(db, OriginRecord.Columns.chaptersFetchedDate.set(to: fetched))
 
+                // insert-or-ignore, so this only ever heals a series created
+                // before seeding existed - a saved order is never touched
+                if let origin = try OriginRecord.fetchOne(db, key: originId.rawValue) {
+                    try SeriesLanguagePriorityRecord.seedDefaults(for: origin.seriesId, in: db)
+                }
+
                 return inserted
             }
 
@@ -474,6 +493,16 @@ final class DetailsViewModel {
                 "origin \(originId.rawValue) \(listing.summary), \(added) new, had \(stored?.description ?? "none")",
                 category: "details"
             )
+
+            // the priority sheets read one-shot on present, so a sheet opened
+            // while this fetch ran is showing the pre-fetch world - it stays
+            // stale (or empty, which is what makes ordering look ignored) until
+            // re-presented. new chapters can carry new languages and scanlators,
+            // so both lists are re-read the moment they land
+            if added > 0 {
+                await loadLanguages()
+                await loadScanlators()
+            }
             return added
         } catch {
             actionFailure = Failure(error, fallback: "Couldn't Load Chapters")
@@ -544,8 +573,12 @@ final class DetailsViewModel {
     // reading, and the date is what tells a browsed series apart from one you
     // actually opened
     func markAll(read: Bool) async {
+        await mark(read: read, numbers: chapters.map(\.number))
+    }
+
+    func mark(read: Bool, numbers: [Double]) async {
         guard let seriesId else { return }
-        let numbers = Array(Set(chapters.map(\.number)))
+        let numbers = Array(Set(numbers))
         guard !numbers.isEmpty else { return }
 
         isSaving = true
@@ -785,9 +818,11 @@ final class DetailsViewModel {
         }
     }
 
-    // every row is rewritten, not just the moved ones: priorities are read through
-    // COALESCE(priority, 999), so a gap would let an unwritten language outrank a
-    // written one
+    // the sheet lists only languages the series actually has chapters in, so a
+    // commit is a swap within the slots those languages already hold - the
+    // reordered languages take each other's priorities, sorted ascending, and
+    // every unlisted row keeps its place. no priority is ever minted or
+    // duplicated, and the seeded relative order of absent languages survives
     func reorderLanguages(_ codes: [String]) async {
         guard let seriesId else { return }
 
@@ -796,14 +831,22 @@ final class DetailsViewModel {
 
         do {
             try await database.writer.write { db in
-                for (index, code) in codes.enumerated() {
-                    guard let language = LanguageCode(rawValue: code) else { continue }
-                    var row = SeriesLanguagePriorityRecord(
-                        seriesId: seriesId,
-                        language: language,
-                        priority: index
-                    )
-                    try row.upsert(db)
+                // a series from before seeding may lack rows; heal before swapping
+                try SeriesLanguagePriorityRecord.seedDefaults(for: seriesId, in: db)
+
+                let rows = try SeriesLanguagePriorityRecord
+                    .filter(SeriesLanguagePriorityRecord.Columns.seriesId == seriesId)
+                    .fetchAll(db)
+                let byLanguage = Dictionary(uniqueKeysWithValues: rows.map { ($0.language, $0) })
+
+                let ordered = codes.compactMap(LanguageCode.init)
+                let slots = ordered.compactMap { byLanguage[$0]?.priority }.sorted()
+                guard slots.count == ordered.count else { return }
+
+                for (slot, language) in zip(slots, ordered) {
+                    guard var row = byLanguage[language], row.priority != slot else { continue }
+                    row.priority = slot
+                    try row.update(db)
                 }
             }
             await loadLanguages()
@@ -1038,9 +1081,12 @@ final class DetailsViewModel {
 // MARK: - Types
 
 extension DetailsViewModel {
+    // checking carries the icon of the source being fetched when the fetch was
+    // caused by attaching a new origin - a refresh of the screen's own source
+    // needs no badge, but a background fetch for a source just added does
     enum RefreshState: Equatable {
         case idle
-        case checking
+        case checking(ImageResource?)
         case added(Int)
         case unchanged
         case failed
@@ -1134,6 +1180,7 @@ private extension DetailsViewModel.Snapshot {
                 language: row.language,
                 publishedDate: row.publishedDate,
                 progress: row.progress,
+                url: row.url,
                 sourceIcon: source?.descriptor.icon,
                 canRead: source != nil
             )
@@ -1253,6 +1300,7 @@ extension DetailsViewModel {
                 c.\(ChapterRecord.Columns.number.name) AS number,
                 c.\(ChapterRecord.Columns.language.name) AS language,
                 c.\(ChapterRecord.Columns.progress.name) AS progress,
+                c.\(ChapterRecord.Columns.url.name) AS url,
                 c.\(ChapterRecord.Columns.publishedDate.name) AS publishedDate,
                 s.\(ScanlatorRecord.Columns.name.name) AS scanlator,
                 o.\(OriginRecord.Columns.slug.name) AS originSlug,
@@ -1441,6 +1489,8 @@ extension DetailsViewModel {
             guard let inserted = series.id else { throw DetailsError.missingIdentifier }
             seriesId = inserted
         }
+
+        try SeriesLanguagePriorityRecord.seedDefaults(for: seriesId, in: db)
 
         let priority = try Int.fetchOne(
             db,
@@ -1812,6 +1862,7 @@ private struct StoredChapter: Decodable, FetchableRecord, Sendable {
     let number: Double
     let language: LanguageCode
     let progress: Double
+    let url: URL
     let publishedDate: Date
     let scanlator: String
     let originSlug: String

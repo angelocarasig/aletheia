@@ -49,6 +49,8 @@ final class Bootstrap {
     private(set) var phase: Phase = .idle
     private(set) var compositor: Compositor?
 
+    @ObservationIgnored var bypass = Bypass()
+
     func run() async {
         switch phase {
         case .idle, .failed: break

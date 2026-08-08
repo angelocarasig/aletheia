@@ -7,9 +7,8 @@
 
 import SwiftUI
 
-// membership toggles immediately rather than staging a diff behind a Done
-// button - every write comes straight back through the observation, so there is
-// no pending state for a cancel to discard
+// membership stages locally and commits on Save, matching the chapter
+// section's order sheets - Cancel discards the pending diff
 struct CollectionPicker: View {
     let collections: [DetailsCollections.Item]
     let isSaving: Bool
@@ -19,32 +18,62 @@ struct CollectionPicker: View {
     @Environment(\.dimensions) private var dimensions
     @Environment(\.dismiss) private var dismiss
 
+    @State private var working: Set<Int64>
+    @State private var touched = false
+
+    init(
+        collections: [DetailsCollections.Item],
+        isSaving: Bool,
+        onToggle: @escaping (Int64) -> Void,
+        onCreate: @escaping () -> Void
+    ) {
+        self.collections = collections
+        self.isSaving = isSaving
+        self.onToggle = onToggle
+        self.onCreate = onCreate
+        _working = State(initialValue: Set(collections.filter(\.contains).map(\.id)))
+    }
+
     private enum Layout {
         static let tintOpacity: Double = 0.3
         static let savingOpacity: Double = 0.6
         static let settle: Animation = .smooth(duration: 0.2)
     }
 
-    private var joined: Int {
-        collections.count(where: \.contains)
+    // only memberships that actually moved get written
+    private var changed: [Int64] {
+        collections.filter { working.contains($0.id) != $0.contains }.map(\.id)
     }
 
     var body: some View {
         NavigationStack {
             Content
                 .navigationTitle("Collections")
-                .navigationSubtitle("^[\(joined) collection](inflect: true) joined")
+                .navigationSubtitle("^[\(working.count) collection](inflect: true) joined")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button("Cancel") { dismiss() }
+                            .disabled(isSaving)
+                    }
+
                     ToolbarItem(placement: .topBarTrailing) {
-                        // toggles apply instantly, so there is nothing to "do" -
-                        // this button only closes
-                        Button("Close", systemImage: "xmark") { dismiss() }
-                            .labelStyle(.iconOnly)
+                        Button("Save") {
+                            changed.forEach(onToggle)
+                            dismiss()
+                        }
+                        .fontWeight(.semibold)
+                        .disabled(changed.isEmpty || isSaving)
                     }
                 }
         }
         .presentationDetents([.medium, .large])
+        // presented before the read lands, so the rows can arrive after init;
+        // reseed only while nothing has been staged
+        .onChange(of: collections) { _, latest in
+            guard !touched else { return }
+            working = Set(latest.filter(\.contains).map(\.id))
+        }
     }
 
     @ViewBuilder
@@ -57,7 +86,14 @@ struct CollectionPicker: View {
                     LazyVStack(spacing: dimensions.spacing.space8) {
                         ForEach(collections) { collection in
                             Row(collection)
-                                .tappable { onToggle(collection.id) }
+                                .tappable {
+                                    touched = true
+                                    if working.contains(collection.id) {
+                                        working.remove(collection.id)
+                                    } else {
+                                        working.insert(collection.id)
+                                    }
+                                }
                         }
 
                         Create
@@ -69,21 +105,23 @@ struct CollectionPicker: View {
             .opacity(isSaving ? Layout.savingOpacity : 1)
             // on an ancestor of every row, so a tick leaving one and landing on
             // another is a single transaction
-            .animation(Layout.settle, value: collections)
+            .animation(Layout.settle, value: working)
         }
     }
 
     private func Row(_ collection: DetailsCollections.Item) -> some View {
-        HStack(spacing: dimensions.spacing.space12) {
-            Image(systemName: collection.contains ? "checkmark.circle.fill" : "circle")
+        let contains = working.contains(collection.id)
+
+        return HStack(spacing: dimensions.spacing.space12) {
+            Image(systemName: contains ? "checkmark.circle.fill" : "circle")
                 .font(.title3)
-                .foregroundStyle(collection.contains ? Palette.brand : Palette.muted)
+                .foregroundStyle(contains ? Palette.brand : Palette.muted)
                 .contentTransition(.symbolEffect(.replace))
 
             VStack(alignment: .leading, spacing: dimensions.spacing.space2) {
                 Text(collection.name)
                     .font(.subheadline)
-                    .fontWeight(collection.contains ? .semibold : .regular)
+                    .fontWeight(contains ? .semibold : .regular)
 
                 Text("^[\(collection.count) series](inflect: true)")
                     .font(.caption2)
@@ -95,7 +133,7 @@ struct CollectionPicker: View {
         }
         .padding(dimensions.spacing.space12)
         .glassEffect(
-            collection.contains
+            contains
                 ? .regular.tint(Palette.brand.opacity(Layout.tintOpacity)).interactive()
                 : .regular.interactive(),
             in: .rect(cornerRadius: dimensions.radius.radius16)

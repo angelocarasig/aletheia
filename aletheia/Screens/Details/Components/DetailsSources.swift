@@ -16,6 +16,7 @@ struct DetailsSources: View {
     @State private var ordering = false
 
     @Environment(\.dimensions) private var dimensions
+    @Environment(\.openURL) private var openURL
 
     private enum Layout {
         static let iconSize: CGFloat = 44
@@ -115,7 +116,7 @@ struct DetailsSources: View {
     }
 
     private func Subtitle(_ origin: Origin) -> some View {
-        Text("\(origin.host) · ^[\(origin.chapterCount) chapter](inflect: true)")
+        Text("^[\(origin.chapterCount) chapter](inflect: true)")
             .font(.caption2)
             .foregroundStyle(.muted)
             .lineLimit(1)
@@ -126,7 +127,7 @@ struct DetailsSources: View {
             Button {
                 onSetPrimary(origin.id)
             } label: {
-                Label("Set as Primary", systemImage: "1.circle")
+                Label("Set as Primary", systemImage: "star")
             }
             .disabled(origin.priority == 0)
 
@@ -136,6 +137,14 @@ struct DetailsSources: View {
                 Label("Change Priority", systemImage: "arrow.up.arrow.down")
             }
             .disabled(origins.count <= 1)
+
+            Button {
+                guard let url = origin.url else { return }
+                openURL(url)
+            } label: {
+                Label("Open in Browser", systemImage: "safari")
+            }
+            .disabled(origin.url == nil)
 
             Button {
                 guard let url = origin.url else { return }

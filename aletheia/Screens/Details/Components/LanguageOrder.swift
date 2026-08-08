@@ -32,8 +32,10 @@ struct LanguageOrder: View {
         _working = State(initialValue: languages)
     }
 
-    private var changed: Bool {
-        working.map(\.id) != languages.map(\.id)
+    // every series carries seeded priority rows, so the listed order is always
+    // the stored order and done only has work to do once something moved
+    private var committable: Bool {
+        !working.isEmpty && working.map(\.id) != languages.map(\.id)
     }
 
     var body: some View {
@@ -49,22 +51,27 @@ struct LanguageOrder: View {
 
                     ToolbarItem(placement: .topBarTrailing) {
                         Button("Done") {
-                            if changed { onCommit(working.map(\.id)) }
+                            if committable { onCommit(working.map(\.id)) }
                             dismiss()
                         }
                         .fontWeight(.semibold)
-                        .disabled(!changed)
+                        .disabled(!committable)
                     }
                 }
         }
         .presentationDetents([.medium, .large])
-        // presented before the read lands, so the rows arrive after init. seeding
-        // is gated on being empty, not on being unchanged - an empty working set
-        // against a populated one reads AS changed, which is what kept this stuck
-        // at "No Languages" while the query was returning rows the whole time
+        // presented before the read lands, so the rows arrive after init. an
+        // empty working set seeds wholesale; a populated one merges - counts
+        // refresh, the staged order survives, and a language a mid-sheet fetch
+        // just introduced appends at the end instead of never appearing
         .onChange(of: languages) { _, latest in
-            guard working.isEmpty else { return }
-            working = latest
+            guard !working.isEmpty else {
+                working = latest
+                return
+            }
+            let staged = working.map(\.id)
+            let byId = Dictionary(uniqueKeysWithValues: latest.map { ($0.id, $0) })
+            working = staged.compactMap { byId[$0] } + latest.filter { !staged.contains($0.id) }
         }
     }
 }

@@ -82,48 +82,50 @@ struct NHentaiSource: AuthenticatingSource {
 
 extension NHentaiSource {
     // five namespaces harvested from /api/v2/tags/{type} into one bundled dump,
-    // count-ordered within each namespace. the filter id is the grammar scope
-    // search() encodes with; the option id is the name itself, because the name
-    // is the request token - nhentai's grammar addresses tags by name, and the
-    // numeric ids stay in the file for the day /galleries/tagged matters
+    // keyed by grammar scope and count-ordered within each. the filter id is the
+    // scope search() encodes with; the option id is the name itself, because the
+    // name is the request token - nhentai's grammar addresses tags by name. the
+    // file's numeric ids and counts wait for /galleries/tagged and Option
+    // gaining a frequency field; the full un-minified dump lives outside the
+    // repo (~Downloads/nhentai-tags-full.json)
     static let filters: [SourceFilter] = {
-        let byGroup = Dictionary(grouping: load("nhentai-tags"), by: \.group)
-        let namespaces: [(scope: String, group: String)] = [
+        let vocabulary = load("nhentai-tags")
+        let namespaces: [(scope: String, name: String)] = [
             ("tag", "Tags"),
             ("artist", "Artists"),
             ("character", "Characters"),
             ("parody", "Parodies"),
             ("group", "Groups")
         ]
-        return namespaces.map { scope, group in
+        return namespaces.map { scope, name in
             var seen = Set<String>()
-            let options: [SourceFilter.Option] = (byGroup[group] ?? []).compactMap { entry in
+            let options: [SourceFilter.Option] = (vocabulary[scope] ?? []).compactMap { entry in
                 guard seen.insert(entry.name).inserted else { return nil }
                 return .init(id: entry.name, name: entry.name)
             }
-            return .multiSelect(id: scope, name: group, options: options, canExclude: true)
+            return .multiSelect(id: scope, name: name, options: options, canExclude: true)
         }
     }()
 
     // an unreadable vocabulary is an empty filter, never a crash: the rest of
     // the source is unaffected and search still works without it
-    private static func load(_ resource: String) -> [Entry] {
+    private static func load(_ resource: String) -> [String: [Entry]] {
         guard let url = Bundle.main.url(forResource: resource, withExtension: "json"),
               let data = try? Data(contentsOf: url),
-              let entries = try? JSONDecoder().decode([Entry].self, from: data)
+              let entries = try? JSONDecoder().decode([String: [Entry]].self, from: data)
         else {
             AppLog.shared.log("vocabulary \(resource).json missing or unreadable", category: "source")
-            return []
+            return [:]
         }
         return entries
     }
 
-    // count is carried in the file but dropped here - Option has nowhere to put
-    // it yet, and the file should not have to be regenerated when it does
     private struct Entry: Decodable {
-        let id: String
         let name: String
-        let group: String
+
+        enum CodingKeys: String, CodingKey {
+            case name = "n"
+        }
     }
 }
 

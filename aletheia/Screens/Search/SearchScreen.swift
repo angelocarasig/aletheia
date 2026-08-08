@@ -22,6 +22,7 @@ struct SearchScreen: View {
     @Environment(\.dimensions) private var dimensions
     @State private var vm = SearchViewModel()
     @AppStorage(Preferences.Key.includeAdultSources) private var includeAdult = Preferences.Default.includeAdultSources
+    @AppStorage(Preferences.Key.bypassAdultSources) private var bypassAdult = Preferences.Default.bypassAdultSources
     @AppStorage(Preferences.Key.blurAdultContent) private var blurAdult = Preferences.Default.blurAdultContent
     @State private var seriesRoute: SeriesRoute?
     @State private var gridRoute: GridRoute?
@@ -152,7 +153,9 @@ struct SearchScreen: View {
             }
 
             ToolbarItem(placement: .topBarTrailing) {
-                if vm.active {
+                // absent entirely without the bypass: while adult sources do not
+                // exist, a toggle for them would be the hint that they do
+                if vm.active, bypassAdult {
                     // retrieval: whether an adultOnly source is queried at all.
                     // the two states are different things rather than one thing
                     // struck through - a flame when they are in, a covered eye
@@ -170,6 +173,7 @@ struct SearchScreen: View {
         // @AppStorage owns the stored value; the view model mirrors it, so which
         // sources are queried and when the search re-runs stay one decision
         .task(id: includeAdult) { vm.includeAdult = includeAdult }
+        .task(id: bypassAdult) { vm.bypassAdult = bypassAdult }
         .navigationDestination(item: $seriesRoute) { route in
             DetailsScreen(entry: .source(sourceSlug: route.sourceSlug, stub: route.stub))
         }

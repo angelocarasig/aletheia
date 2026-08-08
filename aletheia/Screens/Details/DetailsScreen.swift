@@ -36,6 +36,9 @@ struct DetailsScreen: View {
         // the skeleton mirrors the real layout, so a crossfade reads as the
         // placeholder resolving rather than one screen replacing another
         static let settle: Animation = .smooth(duration: 0.35)
+        // the source badge inside the refresh pill - sized to the pill's text
+        // line, not to the 44pt row icon it is cropped from
+        static let badgeSize: CGFloat = 20
     }
 
     var body: some View {
@@ -289,9 +292,17 @@ struct DetailsScreen: View {
     @ViewBuilder
     private func Icon(_ state: DetailsViewModel.RefreshState) -> some View {
         switch state {
-        case .checking:
+        case .checking(let icon):
             ProgressView()
                 .controlSize(.small)
+
+            if let icon {
+                Image(icon)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: Layout.badgeSize, height: Layout.badgeSize)
+                    .clipShape(.rect(cornerRadius: dimensions.radius.radius4))
+            }
 
         case .added:
             Image(systemName: "arrow.down.circle.fill")
@@ -313,7 +324,14 @@ struct DetailsScreen: View {
     @ViewBuilder
     private func Message(_ state: DetailsViewModel.RefreshState) -> some View {
         switch state {
-        case .checking: Text("Checking for chapters")
+        // a badged check is an origin freshly attached, whose whole list is
+        // being fetched - "checking" would undersell what is happening
+        case .checking(let icon):
+            if icon == nil {
+                Text("Checking for chapters")
+            } else {
+                Text("Loading chapters")
+            }
         case .added(let count): Text("^[\(count) new chapter](inflect: true)")
         case .unchanged: Text("No new chapters")
         case .failed: Text("Couldn't refresh")
@@ -417,7 +435,8 @@ struct DetailsScreen: View {
                 onShowHalfChapters: { on in Task { await vm.setShowHalfChapters(on) } },
                 onSources: { showingSourceOrder = true },
                 onScanlators: { showingScanlatorOrder = true },
-                onLanguages: { showingLanguageOrder = true }
+                onLanguages: { showingLanguageOrder = true },
+                onMark: { read, numbers in Task { await vm.mark(read: read, numbers: numbers) } }
             ) { chapter in
                 guard let target = vm.read(chapter) else { return }
                 Task { await vm.open(chapter) }

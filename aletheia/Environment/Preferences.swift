@@ -47,6 +47,8 @@ enum Preferences {
 
         static let includeAdultSources = "search.includeAdultSources"
 
+        static let bypassAdultSources = "sources.bypassAdult"
+
         static let librarySort = "library.sort"
         static let librarySortAscending = "library.sortAscending"
 
@@ -67,6 +69,11 @@ enum Preferences {
         // tick cannot be the gate there - this is the ask, and off means an
         // adultOnly source is not queried at all
         static let includeAdultSources = false
+
+        // the gate above the gate: while false, adultOnly sources do not exist
+        // anywhere - not listed, not searched, not counted as hidden. toggled
+        // only by the ten-tap microinteraction on the Sources tab
+        static let bypassAdultSources = false
 
         // the library's own order is what you last chose, not what the schema
         // happens to return - newest first is only where it starts

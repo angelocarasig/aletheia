@@ -17,6 +17,8 @@ struct LibraryScreen: View {
     @State private var showingCollectionForm = false
     @State private var showingSort = false
     @State private var showingFilters = false
+    @State private var collectionsExpanded = false
+    @State private var actionsExpanded = false
 
     private enum Layout {
         static let placeholderCards = 12
@@ -69,7 +71,8 @@ struct LibraryScreen: View {
                         selected: selection(vm),
                         onCreate: { showingCollectionForm = true },
                         onRename: { _ in log("rename collection") },
-                        onDelete: { _ in log("delete collection") }
+                        onDelete: { _ in log("delete collection") },
+                        expanded: $collectionsExpanded
                     )
                     .padding(dimensions.screenMargin)
                 }
@@ -78,9 +81,19 @@ struct LibraryScreen: View {
                 LibraryActions(
                     onSort: { showingSort = true },
                     onFilter: { showingFilters = true },
-                    filtered: vm?.filter.isActive ?? false
+                    filtered: vm?.filter.isActive ?? false,
+                    expanded: $actionsExpanded
                 )
                 .padding(dimensions.screenMargin)
+            }
+            // one cluster open at a time: opening either collapses the other
+            .onChange(of: collectionsExpanded) { _, open in
+                guard open else { return }
+                withAnimation(.smooth) { actionsExpanded = false }
+            }
+            .onChange(of: actionsExpanded) { _, open in
+                guard open else { return }
+                withAnimation(.smooth) { collectionsExpanded = false }
             }
             // the title carries the collection, so the switcher does not have to
             .navigationTitle(vm?.title ?? "Library")

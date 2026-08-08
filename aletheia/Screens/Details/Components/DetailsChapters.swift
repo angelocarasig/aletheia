@@ -26,6 +26,7 @@ struct DetailsChapters: View {
     var onSources: () -> Void
     var onScanlators: () -> Void
     var onLanguages: () -> Void
+    var onMark: (_ read: Bool, _ numbers: [Double]) -> Void
     var onOpen: (Chapter) -> Void
 
     @Environment(\.dimensions) private var dimensions
@@ -343,7 +344,11 @@ extension DetailsChapters {
                 LazyVStack(spacing: 0) {
                     ForEach(displayed) { chapter in
                         Divider()
+                        // on the row, not inside Details - Details carries the
+                        // canRead .disabled, and marking or opening in browser
+                        // must survive an uninstalled source
                         Row(chapter)
+                            .contextMenu { RowMenu(chapter) }
                     }
 
                     if hasMore {
@@ -432,6 +437,94 @@ extension DetailsChapters {
             Details(chapter)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    @ViewBuilder
+    private func RowMenu(_ chapter: Chapter) -> some View {
+        ControlGroup {
+            Button {
+                onMark(true, [chapter.number])
+            } label: {
+                Label("Mark Read", systemImage: "book.closed")
+            }
+            .disabled(chapter.finished)
+
+            Button {
+                onMark(false, [chapter.number])
+            } label: {
+                Label("Mark Unread", systemImage: "book")
+            }
+            .disabled(chapter.progress == 0)
+        }
+
+        // downloads are not built yet - the row stays so the menu's final shape
+        // is learnable now, and lights up when the feature lands
+        Button {} label: {
+            Label("Download", systemImage: "arrow.down.circle")
+        }
+        .disabled(true)
+
+        Link(destination: chapter.url) {
+            Label("Open in Browser", systemImage: "safari")
+        }
+
+        Divider()
+
+        ControlGroup {
+            Button {
+                onMark(true, numbers(above: chapter))
+            } label: {
+                Label("Read Above", systemImage: "arrow.up.square.fill")
+            }
+
+            Button {
+                onMark(true, numbers(below: chapter))
+            } label: {
+                Label("Read Below", systemImage: "arrow.down.square.fill")
+            }
+
+            Button {
+                onMark(true, chapters.map(\.number))
+            } label: {
+                Label("Read All", systemImage: "books.vertical.fill")
+            }
+        }
+
+        ControlGroup {
+            Button {
+                onMark(false, numbers(above: chapter))
+            } label: {
+                Label("Unread Above", systemImage: "arrow.up.square")
+            }
+
+            Button {
+                onMark(false, numbers(below: chapter))
+            } label: {
+                Label("Unread Below", systemImage: "arrow.down.square")
+            }
+
+            Button {
+                onMark(false, chapters.map(\.number))
+            } label: {
+                Label("Unread All", systemImage: "books.vertical")
+            }
+        }
+    }
+
+    // relative to the sorted list as displayed, tapped row included - "above"
+    // means what is on screen above your thumb, not a chapter-number comparison
+    private func numbers(above chapter: Chapter) -> [Double] {
+        guard let index = sorted.firstIndex(where: { $0.id == chapter.id }) else {
+            return [chapter.number]
+        }
+        return sorted[...index].map(\.number)
+    }
+
+    private func numbers(below chapter: Chapter) -> [Double] {
+        guard let index = sorted.firstIndex(where: { $0.id == chapter.id }) else {
+            return [chapter.number]
+        }
+        return sorted[index...].map(\.number)
     }
 
     // which source this chapter came from - the only per-row signal that a
@@ -527,6 +620,7 @@ extension DetailsChapters {
         let language: LanguageCode
         let publishedDate: Date
         let progress: Double
+        let url: URL
 
         // nil when the origin's source is no longer installed
         let sourceIcon: ImageResource?
