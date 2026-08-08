@@ -36,7 +36,7 @@ extension ReaderError {
     }
 }
 
-extension ReaderError: LocalizedError {
+extension ReaderError: DescribableError {
     var errorDescription: String? {
         switch self {
         case .notFound: "Chapter Not Found"

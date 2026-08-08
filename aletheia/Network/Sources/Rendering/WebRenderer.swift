@@ -8,8 +8,11 @@
 import Foundation
 import WebKit
 
-enum RenderError: Error {
+enum RenderError: DescribableError {
     case noContent
+
+    var errorDescription: String? { "Nothing to Read" }
+    var failureReason: String? { "The page loaded but returned no content." }
 }
 
 extension WebRenderer {

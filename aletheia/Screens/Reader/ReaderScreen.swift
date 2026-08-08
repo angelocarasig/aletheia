@@ -202,12 +202,14 @@ private extension ReaderScreen {
         .background(.ultraThinMaterial)
     }
 
-    func Unavailable(_ message: String) -> some View {
+    func Unavailable(_ failure: Failure) -> some View {
         ContentUnavailableView {
-            Label("Can't Open This Series", systemImage: "book.closed")
+            Label(failure.title, systemImage: "book.closed")
         } description: {
-            Text(message)
+            Text(failure.message)
         } actions: {
+            // Go Back always stands - the reader is pushed, so leaving is the
+            // one action that is always available and always correct here
             Button("Go Back") { dismiss() }
         }
     }

@@ -23,7 +23,7 @@ final class ReaderViewModel {
     private let fill = ChapterFill()
 
     private(set) var engine: ReaderEngine?
-    private(set) var failure: String?
+    private(set) var failure: Failure?
     private(set) var isReady = false
 
     private(set) var slots: [ChapterSlot] = []
@@ -87,7 +87,13 @@ final class ReaderViewModel {
                 try Self.chapters(for: seriesId, in: db)
             }
             guard !loaded.isEmpty else {
-                failure = "This series has no readable chapters."
+                // not an error anything threw - the query succeeded and the
+                // answer is empty, which is permanent until a source is added
+                failure = Failure(
+                    title: "Nothing to Read",
+                    message: "No installed source has chapters for this series.",
+                    isRetryable: false
+                )
                 return
             }
 
@@ -136,7 +142,7 @@ final class ReaderViewModel {
             let progress = stored[ChapterRecord.ID(rawValue: opening)]
             await engine.open(opening, progress: progress)
         } catch {
-            failure = String(describing: error)
+            failure = Failure(error, fallback: "Can't Open This Series")
         }
     }
 

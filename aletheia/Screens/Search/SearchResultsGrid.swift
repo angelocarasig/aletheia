@@ -42,13 +42,15 @@ struct SearchResultsGrid: View {
                     .padding(.top, dimensions.spacing.space48)
             } else if vm.isLoading, vm.entries.isEmpty {
                 Skeleton
-            } else if let error = vm.errorMessage, vm.entries.isEmpty {
+            } else if let failure = vm.failure, vm.entries.isEmpty {
                 ContentUnavailableView {
-                    Label("Couldn't Load", systemImage: "exclamationmark.triangle")
+                    Label(failure.title, systemImage: "exclamationmark.triangle")
                 } description: {
-                    Text(error)
+                    Text(failure.message)
                 } actions: {
-                    Button("Retry") { vm.retry() }
+                    if failure.isRetryable {
+                        Button("Retry") { vm.retry() }
+                    }
                 }
                 .padding(.top, dimensions.spacing.space48)
             } else if vm.entries.isEmpty {

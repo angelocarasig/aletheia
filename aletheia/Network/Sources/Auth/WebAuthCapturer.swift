@@ -9,9 +9,23 @@ import Foundation
 import WebKit
 import Observation
 
-enum CaptureFailure: Error {
+enum CaptureFailure: DescribableError {
     case timedOut
     case cancelled
+
+    var errorDescription: String? {
+        switch self {
+        case .timedOut: "Verification Timed Out"
+        case .cancelled: "Verification Cancelled"
+        }
+    }
+
+    var failureReason: String? {
+        switch self {
+        case .timedOut: "The source's checks didn't finish in time. Try again in a moment."
+        case .cancelled: "This source needs to verify your browser before it can be read."
+        }
+    }
 }
 
 @MainActor

@@ -7,7 +7,7 @@
 
 import Foundation
 
-enum KeychainError: LocalizedError {
+enum KeychainError: DescribableError {
     case unexpectedStatus(OSStatus)
     case encodingFailed(Error)
     case decodingFailed(Error)

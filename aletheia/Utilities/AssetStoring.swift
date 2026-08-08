@@ -51,6 +51,12 @@ extension AssetStoring {
     }
 }
 
-enum AssetError: Error {
+enum AssetError: DescribableError {
     case notAnImage(URL)
+
+    var errorDescription: String? { "Couldn't Save Image" }
+    var failureReason: String? { "The file that came back wasn't an image." }
+
+    // the bytes at that url will not become an image on a second attempt
+    var isRetryable: Bool { false }
 }

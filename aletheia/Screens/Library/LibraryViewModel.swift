@@ -34,7 +34,7 @@ final class LibraryViewModel {
     private var sourceMembership: [SeriesRecord.ID: Set<SourceRecord.ID>] = [:]
     private(set) var isLoading = false
     private(set) var isSaving = false
-    private(set) var failure: String?
+    private(set) var failure: Failure?
 
     // a collection is a subset of the library, not a place - selecting one filters
     // the grid in place rather than pushing anywhere. single-select on purpose:
@@ -173,7 +173,7 @@ final class LibraryViewModel {
             failure = nil
             await loadVocabularies()
         } catch {
-            failure = String(describing: error)
+            failure = Failure(error, fallback: "Couldn't Load Library")
             AppLog.shared.log("library load failed — \(error)", category: "library")
         }
 
@@ -329,7 +329,7 @@ final class LibraryViewModel {
             }
             await loadCollections()
         } catch {
-            failure = String(describing: error)
+            failure = Failure(error, fallback: "Couldn't Load Library")
             AppLog.shared.log("collection create failed — \(error)", category: "library")
         }
     }

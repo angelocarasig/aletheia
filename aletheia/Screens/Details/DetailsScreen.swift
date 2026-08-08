@@ -92,6 +92,20 @@ struct DetailsScreen: View {
         .onChange(of: vm?.needsDisambiguation ?? false) { _, needs in
             showingDisambiguation = needs
         }
+        // an action the reader took that did not happen. the content behind it is
+        // still valid, so this is raised and dismissed rather than replacing the
+        // screen the way `failure` does
+        .alert(
+            vm?.actionFailure?.title ?? "",
+            isPresented: Binding(
+                get: { vm?.actionFailure != nil },
+                set: { if !$0 { vm?.clearActionFailure() } }
+            )
+        ) {
+            Button("OK", role: .cancel) { vm?.clearActionFailure() }
+        } message: {
+            Text(vm?.actionFailure?.message ?? "")
+        }
         .confirmationDialog(
             "Remove \(removing?.name ?? "this source")?",
             isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } }),
@@ -308,23 +322,22 @@ struct DetailsScreen: View {
     }
 
     @ViewBuilder
-    private func Unavailable(_ failure: DetailsViewModel.Failure) -> some View {
-        switch failure {
-        case .unavailable:
-            // the rows may well be in the database, but no installed source can
-            // fetch this series or read a page from it
-            ContentUnavailableView(
-                "Source Unavailable",
-                systemImage: "questionmark.circle",
-                description: Text("No installed source can open this series")
+    private func Unavailable(_ failure: Failure) -> some View {
+        // the rows may well be in the database - what is missing is any installed
+        // source that can fetch this series or read a page from it
+        ContentUnavailableView {
+            Label(
+                failure.title,
+                systemImage: failure.isRetryable ? "exclamationmark.triangle" : "questionmark.circle"
             )
-
-        case .fetch(let message):
-            ContentUnavailableView(
-                "Couldn't Load Series",
-                systemImage: "exclamationmark.triangle",
-                description: Text(message)
-            )
+        } description: {
+            Text(failure.message)
+        } actions: {
+            if failure.isRetryable {
+                Button("Try Again") {
+                    Task { await vm?.load() }
+                }
+            }
         }
     }
 

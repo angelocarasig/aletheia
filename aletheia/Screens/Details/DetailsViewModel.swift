@@ -30,7 +30,13 @@ final class DetailsViewModel {
     private(set) var isSaving = false
     private(set) var isFetchingChapters = false
     private(set) var refreshState: RefreshState = .idle
-    private(set) var errorMessage: String?
+    // a mutation the reader asked for that did not happen. separate from
+    // `failure`, which replaces the whole screen - here the content is still
+    // valid and only the action failed, so it is raised and dismissed
+    private(set) var actionFailure: Failure?
+
+    func clearActionFailure() { actionFailure = nil }
+
 
     private var seriesId: SeriesRecord.ID?
     private var held: SeriesRecord.ID?
@@ -142,7 +148,11 @@ final class DetailsViewModel {
     // reaches the network
     private func resolve() async {
         guard let source = opener, let stub = openerStub else {
-            failure = .unavailable
+            failure = Failure(
+                title: "Source Unavailable",
+                message: "No installed source can open this series.",
+                isRetryable: false
+            )
             return
         }
 
@@ -197,8 +207,7 @@ final class DetailsViewModel {
             self.held = nil
             observe(id)
         } catch {
-            errorMessage = String(describing: error)
-            failure = .fetch(String(describing: error))
+            failure = Failure(error, fallback: "Couldn't Load Series")
         }
     }
 
@@ -237,7 +246,8 @@ final class DetailsViewModel {
                 )
             }
         } catch {
-            errorMessage = String(describing: error)
+            // a background load. the screen keeps what it has rather than nagging
+            AppLog.shared.log("candidates failed — \(error)", category: "details")
             await settle()
         }
     }
@@ -249,7 +259,11 @@ final class DetailsViewModel {
     private func create(into existing: SeriesRecord.ID?) async {
         guard let source = opener, let stub = openerStub else {
             // a library entry always carries its row id, so it never arrives here
-            failure = .unavailable
+            failure = Failure(
+                title: "Source Unavailable",
+                message: "No installed source can open this series.",
+                isRetryable: false
+            )
             return
         }
 
@@ -290,7 +304,7 @@ final class DetailsViewModel {
             assets.enqueue(series: ids.0)
             await fetchChapters(source: source, seriesSlug: stub.slug, originId: ids.1)
         } catch {
-            failure = .fetch(String(describing: error))
+            failure = Failure(error, fallback: "Couldn't Load Series")
         }
     }
 
@@ -335,7 +349,8 @@ final class DetailsViewModel {
                     await self.prime()
                 }
             } catch {
-                self?.errorMessage = String(describing: error)
+                // a background load. the screen keeps what it has rather than nagging
+                AppLog.shared.log("observation failed — \(error)", category: "details")
             }
         }
     }
@@ -371,7 +386,8 @@ final class DetailsViewModel {
         } catch {
             // metadata failing is not a reason to skip chapters - they are fetched
             // separately and are the half a refresh is usually reaching for
-            errorMessage = String(describing: error)
+            // a background load. the screen keeps what it has rather than nagging
+            AppLog.shared.log("metadata refresh failed — \(error)", category: "details")
         }
 
         let added = await fetchChapters(source: target.source, seriesSlug: target.slug, originId: origin)
@@ -460,7 +476,7 @@ final class DetailsViewModel {
             )
             return added
         } catch {
-            errorMessage = String(describing: error)
+            actionFailure = Failure(error, fallback: "Couldn't Load Chapters")
             AppLog.shared.log("origin \(originId.rawValue) chapter fetch FAILED — \(error)", category: "details")
             return nil
         }
@@ -520,7 +536,7 @@ final class DetailsViewModel {
                     .updateAll(db, SeriesRecord.Columns.lastReadDate.set(to: opened))
             }
         } catch {
-            errorMessage = String(describing: error)
+            actionFailure = Failure(error, fallback: "Couldn't Open Chapter")
         }
     }
 
@@ -548,7 +564,7 @@ final class DetailsViewModel {
                 )
             }
         } catch {
-            errorMessage = String(describing: error)
+            actionFailure = Failure(error, fallback: "Couldn't Update Progress")
         }
     }
 
@@ -568,7 +584,7 @@ final class DetailsViewModel {
                     .updateAll(db, SeriesRecord.Columns.preferredCoverId.set(to: id))
             }
         } catch {
-            errorMessage = String(describing: error)
+            actionFailure = Failure(error, fallback: "Couldn't Set Cover")
         }
     }
 
@@ -587,7 +603,7 @@ final class DetailsViewModel {
                     .updateAll(db, SeriesRecord.Columns.preferredTitleId.set(to: id))
             }
         } catch {
-            errorMessage = String(describing: error)
+            actionFailure = Failure(error, fallback: "Couldn't Set Title")
         }
     }
 
@@ -612,7 +628,7 @@ final class DetailsViewModel {
                     .updateAll(db, column.set(to: originId))
             }
         } catch {
-            errorMessage = String(describing: error)
+            actionFailure = Failure(error, fallback: "Couldn't Save Preference")
         }
     }
 
@@ -660,7 +676,7 @@ final class DetailsViewModel {
             }
             AppLog.shared.log("collection \(id) toggled for series \(seriesId.rawValue)", category: "details")
         } catch {
-            errorMessage = String(describing: error)
+            actionFailure = Failure(error, fallback: "Couldn't Update Collection")
             AppLog.shared.log("collection \(id) toggle FAILED — \(error)", category: "details")
         }
     }
@@ -681,7 +697,7 @@ final class DetailsViewModel {
 
             if joining { await toggleCollection(id) }
         } catch {
-            errorMessage = String(describing: error)
+            actionFailure = Failure(error, fallback: "Couldn't Create Collection")
         }
     }
 
@@ -727,7 +743,7 @@ final class DetailsViewModel {
             }
             AppLog.shared.log("origin \(originId) removed", category: "details")
         } catch {
-            errorMessage = String(describing: error)
+            actionFailure = Failure(error, fallback: "Couldn't Remove Source")
             AppLog.shared.log("origin \(originId) remove FAILED — \(error)", category: "details")
         }
     }
@@ -745,7 +761,7 @@ final class DetailsViewModel {
                 try Self.assign(arrange(ordered), in: db)
             }
         } catch {
-            errorMessage = String(describing: error)
+            actionFailure = Failure(error, fallback: "Couldn't Reorder Sources")
             AppLog.shared.log("origin reorder FAILED — \(error)", category: "details")
         }
     }
@@ -764,7 +780,8 @@ final class DetailsViewModel {
                 try Self.languages(for: seriesId, in: db)
             }
         } catch {
-            errorMessage = String(describing: error)
+            // a background load. the screen keeps what it has rather than nagging
+            AppLog.shared.log("languages failed — \(error)", category: "details")
         }
     }
 
@@ -791,7 +808,7 @@ final class DetailsViewModel {
             }
             await loadLanguages()
         } catch {
-            errorMessage = String(describing: error)
+            actionFailure = Failure(error, fallback: "Couldn't Reorder Languages")
             AppLog.shared.log("language reorder FAILED — \(error)", category: "details")
         }
     }
@@ -852,7 +869,8 @@ final class DetailsViewModel {
             }
             scanlatorGroups = Self.group(rows, into: origins)
         } catch {
-            errorMessage = String(describing: error)
+            // a background load. the screen keeps what it has rather than nagging
+            AppLog.shared.log("scanlators failed — \(error)", category: "details")
         }
     }
 
@@ -876,7 +894,7 @@ final class DetailsViewModel {
             }
             await loadScanlators()
         } catch {
-            errorMessage = String(describing: error)
+            actionFailure = Failure(error, fallback: "Couldn't Reorder Groups")
             AppLog.shared.log("scanlator reorder FAILED — \(error)", category: "details")
         }
     }
@@ -979,7 +997,7 @@ final class DetailsViewModel {
                     .updateAll(db, column.set(to: value))
             }
         } catch {
-            errorMessage = String(describing: error)
+            actionFailure = Failure(error, fallback: "Couldn't Update Visibility")
         }
     }
 
@@ -996,7 +1014,7 @@ final class DetailsViewModel {
                     .updateAll(db, SeriesRecord.Columns.status.set(to: value.rawValue))
             }
         } catch {
-            errorMessage = String(describing: error)
+            actionFailure = Failure(error, fallback: "Couldn't Update Status")
         }
     }
 
@@ -1012,7 +1030,7 @@ final class DetailsViewModel {
                 try Self.setInLibrary(value, for: seriesId, in: db)
             }
         } catch {
-            errorMessage = String(describing: error)
+            actionFailure = Failure(error, fallback: "Couldn't Update Library")
         }
     }
 }
@@ -1020,11 +1038,6 @@ final class DetailsViewModel {
 // MARK: - Types
 
 extension DetailsViewModel {
-    enum Failure: Equatable {
-        case unavailable
-        case fetch(String)
-    }
-
     enum RefreshState: Equatable {
         case idle
         case checking

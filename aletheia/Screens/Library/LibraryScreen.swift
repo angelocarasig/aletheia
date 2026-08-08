@@ -214,14 +214,17 @@ private extension LibraryScreen {
         }
     }
 
-    func Failed(_ message: String) -> some View {
+    func Failed(_ failure: Failure) -> some View {
         ContentUnavailableView {
-            Label("Couldn't Load Library", systemImage: "exclamationmark.triangle")
+            Label(failure.title, systemImage: "exclamationmark.triangle")
         } description: {
-            Text(message)
+            Text(failure.message)
         } actions: {
-            Button("Try Again") {
-                Task { await vm?.load() }
+            // only where trying again could actually change the answer
+            if failure.isRetryable {
+                Button("Try Again") {
+                    Task { await vm?.load() }
+                }
             }
         }
     }

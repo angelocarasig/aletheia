@@ -27,7 +27,7 @@ final class SearchGridViewModel {
     private(set) var isLoading = false
     private(set) var isLoadingMore = false
     private(set) var hasMore = true
-    var errorMessage: String?
+    var failure: Failure?
 
     var searchText: String
     var filters: [FilterSelection]
@@ -296,7 +296,7 @@ final class SearchGridViewModel {
     }
 
     func loadMore() {
-        guard !isLoading, !isLoadingMore, hasMore, errorMessage == nil else { return }
+        guard !isLoading, !isLoadingMore, hasMore, failure == nil else { return }
         page += 1
         triggerSearch(loadingMore: true)
     }
@@ -340,7 +340,7 @@ final class SearchGridViewModel {
                 entries = fetched
             }
             hasMore = result.next != nil
-            errorMessage = nil
+            failure = nil
             correlator.observe(entries.map(\.stub))
         } catch is CancellationError {
             if loadingMore, page > 1 { page -= 1 }
@@ -348,7 +348,7 @@ final class SearchGridViewModel {
             if loadingMore, page > 1 { page -= 1 }
         } catch {
             if loadingMore, page > 1 { page -= 1 }
-            errorMessage = String(describing: error)
+            failure = Failure(error, fallback: "Couldn't Load")
             AppLog.shared.log("search failed for '\(source.descriptor.slug)' — \(error)", category: "search")
         }
 
@@ -359,7 +359,7 @@ final class SearchGridViewModel {
         page = 1
         entries = []
         hasMore = true
-        errorMessage = nil
+        failure = nil
     }
 }
 
