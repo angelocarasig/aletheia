@@ -15,9 +15,9 @@ struct DetailsEdit: View {
     let synopses: [Synopsis]
     let metadata: [Metadata]
     let isSaving: Bool
-    var onSetTitle: (Int64) -> Void
-    var onSetSynopsis: (Int64) -> Void
-    var onSetMetadata: (Int64) -> Void
+    var onSetTitle: (Int64?) -> Void
+    var onSetSynopsis: (Int64?) -> Void
+    var onSetMetadata: (Int64?) -> Void
 
     @Environment(\.dimensions) private var dimensions
     @Environment(\.dismiss) private var dismiss
@@ -75,7 +75,10 @@ struct DetailsEdit: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") { dismiss() }
+                    // picks apply instantly, so there is nothing to "do" - this
+                    // button only closes
+                    Button("Close", systemImage: "xmark") { dismiss() }
+                        .labelStyle(.iconOnly)
                 }
             }
         }
@@ -98,9 +101,15 @@ extension DetailsEdit {
             GlassEffectContainer(spacing: dimensions.spacing.space8) {
                 LazyVStack(spacing: dimensions.spacing.space8) {
                     switch field {
-                    case .title: Titles
-                    case .synopsis: Synopses
-                    case .status: Statuses
+                    case .title:
+                        if !titles.isEmpty { AutomaticRow { onSetTitle(nil) } }
+                        Titles
+                    case .synopsis:
+                        if !synopses.isEmpty { AutomaticRow { onSetSynopsis(nil) } }
+                        Synopses
+                    case .status:
+                        if !metadata.isEmpty { AutomaticRow { onSetMetadata(nil) } }
+                        Statuses
                     }
                 }
                 // synopsis and status rows are both keyed by their origin id and
@@ -190,6 +199,49 @@ extension DetailsEdit {
             .fontWeight(preferred ? .semibold : .medium)
     }
 
+    // no pin set: display falls back to origin priority. clearing is a
+    // first-class choice rather than a toggle side effect
+    private func AutomaticRow(clear: @escaping () -> Void) -> some View {
+        let automatic = selection == nil
+        return HStack(spacing: dimensions.spacing.space12) {
+            Image(systemName: "wand.and.stars")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .frame(width: Layout.iconSize, height: Layout.iconSize)
+
+            VStack(alignment: .leading, spacing: dimensions.spacing.space2) {
+                Text("Automatic")
+                    .font(.subheadline)
+                    .fontWeight(automatic ? .semibold : .regular)
+
+                Text("Decided by source priority")
+                    .font(.caption)
+                    .foregroundStyle(.muted)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            if automatic {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.footnote)
+                    .foregroundStyle(.brand)
+                    .transition(.scale.combined(with: .opacity))
+            }
+        }
+        .padding(dimensions.spacing.space12)
+        .glassEffect(
+            automatic
+                ? .regular.tint(Palette.brand.opacity(Layout.tintOpacity))
+                : .regular.interactive(),
+            in: .rect(cornerRadius: dimensions.radius.radius16)
+        )
+        .contentShape(.rect)
+        .accessibilityAddTraits(automatic ? .isSelected : [])
+        .tappable {
+            guard !automatic else { return }
+            clear()
+        }
+    }
+
     // the current pick is not interactive glass - it cannot be tapped, so it
     // should not offer press feedback
     private func Row(
@@ -217,9 +269,8 @@ extension DetailsEdit {
             in: .rect(cornerRadius: dimensions.radius.radius16)
         )
         .contentShape(.rect)
+        .accessibilityAddTraits(preferred ? .isSelected : [])
         .tappable {
-            // a series always displays under something, so the pick can move but
-            // never be cleared
             guard !preferred else { return }
             action()
         }

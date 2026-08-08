@@ -19,8 +19,10 @@ struct PingResult: Sendable {
 }
 
 extension SourceService {
+    var pingURL: URL { descriptor.baseURL }
+
     func ping(using network: NetworkConfiguration = NetworkService()) async -> PingResult {
-        var request = URLRequest(url: descriptor.baseURL)
+        var request = URLRequest(url: pingURL)
         request.timeoutInterval = 1.5
 
         let clock = ContinuousClock()

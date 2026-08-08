@@ -16,6 +16,7 @@ struct SourceHomeScreen: View {
     @State private var vm: SourceHomeViewModel?
     @State private var searchPreset: SourcePreset?
     @State private var seriesRoute: SeriesStub?
+    @State private var showingSearch = false
 
     private var presets: [SourcePreset] {
         source.presets.filter { !$0.hidden }.sorted { $0.order < $1.order }
@@ -50,15 +51,18 @@ struct SourceHomeScreen: View {
         .navigationTitle(source.descriptor.name)
         .navigationBarTitleDisplayMode(.inline)
         .navigationDestination(item: $searchPreset) { preset in
-            SearchGridScreen(source: source, preset: preset)
+            SearchScreen(source: source, preset: preset)
         }
         .navigationDestination(item: $seriesRoute) { stub in
             DetailsScreen(entry: .source(sourceSlug: source.descriptor.slug, stub: stub))
         }
+        .navigationDestination(isPresented: $showingSearch) {
+            SearchScreen(source: source)
+        }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
-                    AppLog.shared.log("search tapped for '\(source.descriptor.slug)'", category: "sources")
+                    showingSearch = true
                 } label: {
                     Image(systemName: "magnifyingglass")
                 }

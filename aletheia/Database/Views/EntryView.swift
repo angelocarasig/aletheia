@@ -19,6 +19,11 @@ internal struct EntryView: ViewRecord {
     // the displayed cover's downloaded location, container-relative
     let path: String?
     let inLibrary: Bool
+    let status: Status
+    // resolved from the preferred metadata origin, else the primary one. nil only
+    // when the series has no origins at all
+    let classification: Classification?
+    let publication: Publication?
     let unreadCount: Int
 
     // date fields for sorting
@@ -43,6 +48,9 @@ extension EntryView {
         static let cover = Column(CodingKeys.cover)
         static let path = Column(CodingKeys.path)
         static let inLibrary = Column(CodingKeys.inLibrary)
+        static let status = Column(CodingKeys.status)
+        static let classification = Column(CodingKeys.classification)
+        static let publication = Column(CodingKeys.publication)
         static let unreadCount = Column(CodingKeys.unreadCount)
         static let addedDate = Column(CodingKeys.addedDate)
         static let updatedDate = Column(CodingKeys.updatedDate)
@@ -93,6 +101,11 @@ extension EntryView {
                 pc.\(CoverRecord.Columns.path.name) as path,
 
                 m.inLibrary,
+                m.\(SeriesRecord.Columns.status.name) as status,
+
+                -- the user's metadata pick, else whatever the primary origin says
+                mo.\(OriginRecord.Columns.classification.name) as classification,
+                mo.\(OriginRecord.Columns.publication.name) as publication,
 
                 -- unread count from best chapters (rank = 1 only)
                 -- respects showHalfChapters preference
@@ -129,6 +142,15 @@ extension EntryView {
                         o2.priority ASC,
                         o2.id ASC
                     LIMIT 1
+                )
+
+            -- metadata origin: same resolution the details screen uses. matched
+            -- on id, so a preference pointing at a deleted origin falls back to
+            -- the primary one rather than dropping the row
+            LEFT JOIN \(OriginRecord.databaseTableName) mo
+                ON mo.id = COALESCE(
+                    m.\(SeriesRecord.Columns.preferredMetadataOriginId.name),
+                    po.id
                 )
 
             -- the displayed cover: the user's pick, else the primary origin's

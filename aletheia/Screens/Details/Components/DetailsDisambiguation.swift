@@ -196,6 +196,7 @@ extension DetailsDisambiguation {
                 .strokeBorder(chosen ? Palette.brand : .clear, lineWidth: Layout.border)
         }
         .contentShape(.rect)
+        .accessibilityAddTraits(chosen ? .isSelected : [])
     }
 
     private func Cover(_ candidate: Candidate) -> some View {

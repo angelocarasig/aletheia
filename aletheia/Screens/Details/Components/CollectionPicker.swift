@@ -37,7 +37,10 @@ struct CollectionPicker: View {
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .topBarTrailing) {
-                        Button("Done") { dismiss() }
+                        // toggles apply instantly, so there is nothing to "do" -
+                        // this button only closes
+                        Button("Close", systemImage: "xmark") { dismiss() }
+                            .labelStyle(.iconOnly)
                     }
                 }
         }

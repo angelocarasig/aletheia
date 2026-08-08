@@ -41,6 +41,7 @@ extension BestChapterView {
         ChapterRecord.self,
         OriginRecord.self,
         OriginScanlatorPriorityRecord.self,
+        SeriesLanguagePriorityRecord.self,
         SeriesRecord.self,
         SourceRecord.self
     ]
@@ -67,7 +68,13 @@ extension BestChapterView {
                 ROW_NUMBER() OVER (
                     PARTITION BY o.seriesId, c.number
                     ORDER BY
-                        o.priority ASC,  -- first: origin priority (0 is best)
+                        -- language outranks origin deliberately: a source is a
+                        -- preference, a language you cannot read is a wall. the
+                        -- preferred source's chinese copy loses to a lower
+                        -- source's english one, and two copies in the same
+                        -- language tie here and fall through to origin as before
+                        COALESCE(slp.priority, 999) ASC,  -- first: language priority (null treated as worst)
+                        o.priority ASC,  -- then: origin priority (0 is best)
                         COALESCE(osp.priority, 999) ASC,  -- then: scanlator priority (null treated as worst)
                         o.id ASC,  -- deterministic tiebreak - priorities are no longer unique
                         c.id ASC
@@ -77,15 +84,31 @@ extension BestChapterView {
             LEFT JOIN \(OriginScanlatorPriorityRecord.databaseTableName) osp
                 ON osp.originId = o.id
                 AND osp.scanlatorId = c.scanlatorId
+            -- left joined so an unranked language sorts last rather than dropping
+            -- the chapter. a series with no rows here ranks exactly as before
+            LEFT JOIN \(SeriesLanguagePriorityRecord.databaseTableName) slp
+                ON slp.\(SeriesLanguagePriorityRecord.Columns.seriesId.name) = o.seriesId
+                AND slp.\(SeriesLanguagePriorityRecord.Columns.language.name) = c.\(ChapterRecord.Columns.language.name)
             JOIN \(SeriesRecord.databaseTableName) m ON o.seriesId = m.id
-            -- an unavailable source's chapters are unreadable, so they are excluded
-            -- entirely rather than winning rank 1 and dead-ending the reader.
-            -- the inner join drops disconnected origins (null sourceId), and the
-            -- filters drop the two ways a source stops being able to answer:
-            -- turned off by the reader, or no longer shipped with the app at all
-            JOIN \(SourceRecord.databaseTableName) src ON o.sourceId = src.id
-            WHERE src.\(SourceRecord.Columns.disabled.name) = 0
-              AND src.\(SourceRecord.Columns.installed.name) = 1
+            -- a chapter earns its place by being readable, which is two different
+            -- things. either its source can still answer for it - not turned off
+            -- by the reader, still shipped with the app, still attached to the
+            -- origin - or its bytes are already on disk, in which case no source
+            -- is needed at all and one being gone changes nothing.
+            --
+            -- left joined on purpose: an inner join drops a disconnected origin
+            -- (null sourceId) before the filter can spare a downloaded chapter.
+            -- ranking is deliberately untouched - a download only outranks a live
+            -- copy when its origin already did, which is the reader's own ordering
+            LEFT JOIN \(SourceRecord.databaseTableName) src ON o.sourceId = src.id
+            WHERE (
+                (
+                    src.id IS NOT NULL
+                    AND src.\(SourceRecord.Columns.disabled.name) = 0
+                    AND src.\(SourceRecord.Columns.installed.name) = 1
+                )
+                OR c.\(ChapterRecord.Columns.path.name) IS NOT NULL
+            )
             """)
     }
 

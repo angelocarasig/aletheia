@@ -34,6 +34,7 @@ final class DatabaseClient: Sendable {
         SeriesCollectionRecord.self,
         ChapterRecord.self,
         OriginScanlatorPriorityRecord.self,
+        SeriesLanguagePriorityRecord.self,
     ]
 
     // views created after tables; view deps precede dependents

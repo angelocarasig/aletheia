@@ -29,7 +29,7 @@ struct WeebCentralSource: SourceService {
     let descriptor = SourceDescriptor(
         slug: "weebcentral",
         name: "WeebCentral",
-        description: "A large English scanlation catalogue, with official releases marked separately from fan translations.",
+        description: "Explore Weeb Central for top manga titles, hidden gems, and the latest releases. Join our community of manga enthusiasts!",
         icon: .weebCentral,
         languages: [.english],
         baseURL: URL(string: "https://weebcentral.com")!,
@@ -64,23 +64,23 @@ struct WeebCentralSource: SourceService {
                 name: "Tags",
                 options: [
                     .init(id: "Action", name: "Action"),
-                    .init(id: "Adult", name: "Adult", nsfw: true),
+                    .init(id: "Adult", name: "Adult", sensitivity: .suggestive),
                     .init(id: "Adventure", name: "Adventure"),
                     .init(id: "Comedy", name: "Comedy"),
                     .init(id: "Doujinshi", name: "Doujinshi"),
                     .init(id: "Drama", name: "Drama"),
-                    .init(id: "Ecchi", name: "Ecchi", nsfw: true),
+                    .init(id: "Ecchi", name: "Ecchi", sensitivity: .suggestive),
                     .init(id: "Fantasy", name: "Fantasy"),
                     .init(id: "Gender Bender", name: "Gender Bender"),
                     .init(id: "Harem", name: "Harem"),
-                    .init(id: "Hentai", name: "Hentai", nsfw: true),
+                    .init(id: "Hentai", name: "Hentai", sensitivity: .adult),
                     .init(id: "Historical", name: "Historical"),
                     .init(id: "Horror", name: "Horror"),
                     .init(id: "Isekai", name: "Isekai"),
                     .init(id: "Josei", name: "Josei"),
-                    .init(id: "Lolicon", name: "Lolicon", nsfw: true),
+                    .init(id: "Lolicon", name: "Lolicon", sensitivity: .suggestive),
                     .init(id: "Martial Arts", name: "Martial Arts"),
-                    .init(id: "Mature", name: "Mature", nsfw: true),
+                    .init(id: "Mature", name: "Mature", sensitivity: .suggestive),
                     .init(id: "Mecha", name: "Mecha"),
                     .init(id: "Mystery", name: "Mystery"),
                     .init(id: "Other", name: "Other"),
@@ -89,17 +89,17 @@ struct WeebCentralSource: SourceService {
                     .init(id: "School Life", name: "School Life"),
                     .init(id: "Sci-fi", name: "Sci-fi"),
                     .init(id: "Seinen", name: "Seinen"),
-                    .init(id: "Shotacon", name: "Shotacon", nsfw: true),
+                    .init(id: "Shotacon", name: "Shotacon", sensitivity: .suggestive),
                     .init(id: "Shoujo", name: "Shoujo"),
                     .init(id: "Shoujo Ai", name: "Shoujo Ai"),
                     .init(id: "Shounen", name: "Shounen"),
                     .init(id: "Shounen Ai", name: "Shounen Ai"),
                     .init(id: "Slice of Life", name: "Slice of Life"),
-                    .init(id: "Smut", name: "Smut", nsfw: true),
+                    .init(id: "Smut", name: "Smut", sensitivity: .suggestive),
                     .init(id: "Sports", name: "Sports"),
                     .init(id: "Supernatural", name: "Supernatural"),
                     .init(id: "Tragedy", name: "Tragedy"),
-                    .init(id: "Yaoi", name: "Yaoi", nsfw: true),
+                    .init(id: "Yaoi", name: "Yaoi", sensitivity: .suggestive),
                     .init(id: "Yuri", name: "Yuri")
                 ],
                 canExclude: true
@@ -122,46 +122,49 @@ struct WeebCentralSource: SourceService {
                     .init(id: "False", name: "Not adapted")
                 ]
             ),
+            // binary on purpose. the api also takes Any, but Any returns a mixed
+            // set and the search fragment carries no per-result adult signal, so
+            // there would be no honest answer for the stubs it produced. dropping
+            // it leaves two one-sided states, which is what makes the stamp below
+            // exact rather than a guess
             .select(
                 id: "adult",
                 name: "Adult Content",
                 options: [
-                    .init(id: "Any", name: "Any"),
-                    .init(id: "True", name: "Include only", nsfw: true),
-                    .init(id: "False", name: "Exclude")
+                    .init(id: "False", name: "Exclude"),
+                    .init(id: "True", name: "Include only", sensitivity: .adult)
                 ]
             )
         ],
-        // the only source that takes direction as its own parameter rather than
-        // baking it into the option, so ascending is finally load-bearing
-        supportedSorts: [
-            .init(
-                id: "sort",
-                name: "Sort",
-                options: [
-                    .init(id: "Best Match", name: "Best match"),
-                    .init(id: "Popularity", name: "Popularity"),
-                    .init(id: "Subscribers", name: "Subscribers"),
-                    .init(id: "Latest Updates", name: "Latest updates"),
-                    .init(id: "Recently Added", name: "Recently added"),
-                    .init(id: "Alphabet", name: "Title (A–Z)")
-                ],
-                defaultIndex: 0,
-                defaultAscending: false
-            )
-        ]
+        // this api takes sort and order as two parameters, but to the app an
+        // option IS a direction - so the id carries both and the source splits
+        // it. same principle as MangaFire encoding its own include/exclude
+        // split: the quirk lives in the source, not in the shared model
+        supportedSort: .init(
+            options: [
+                .init(id: "Best Match", name: "Best match"),
+                .init(id: "Popularity", name: "Popularity"),
+                .init(id: "Subscribers", name: "Subscribers"),
+                .init(id: "Latest Updates", name: "Latest updates"),
+                .init(id: "Recently Added", name: "Recently added"),
+                .init(id: "Recently Added|Ascending", name: "Oldest added"),
+                .init(id: "Alphabet|Ascending", name: "Title (A–Z)"),
+                .init(id: "Alphabet", name: "Title (Z–A)")
+            ],
+            defaultSort: "Best Match"
+        )
     )
 
     var presets: [SourcePreset] {
         [
             .init(id: "popular", name: "Popular", subtitle: "Most read on WeebCentral", order: 0,
-                  sort: .init(optionID: "Popularity", ascending: false)),
+                  sort: .init(optionID: "Popularity")),
             .init(id: "latest", name: "Latest Updates", subtitle: "Freshly released chapters", order: 1,
-                  sort: .init(optionID: "Latest Updates", ascending: false)),
+                  sort: .init(optionID: "Latest Updates")),
             .init(id: "new", name: "New Releases", subtitle: "Recently added series", order: 2,
-                  sort: .init(optionID: "Recently Added", ascending: false)),
+                  sort: .init(optionID: "Recently Added")),
             .init(id: "subscribed", name: "Most Followed", subtitle: "Series with the most subscribers", order: 3,
-                  sort: .init(optionID: "Subscribers", ascending: false))
+                  sort: .init(optionID: "Subscribers"))
         ]
     }
 }
@@ -179,12 +182,14 @@ extension WeebCentralSource {
             items.append(.init(name: "text", value: text))
         }
 
-        let sort = query.sort ?? .init(optionID: "Best Match", ascending: false)
-        items.append(.init(name: "sort", value: sort.optionID))
-        items.append(.init(name: "order", value: sort.ascending ? "Ascending" : "Descending"))
+        let sort = resolvedSort(for: query)
+        let (field, order) = Self.split(sort.optionID)
+        items.append(.init(name: "sort", value: field))
+        items.append(.init(name: "order", value: order))
 
         items += Self.parameters(for: query.filters)
         items += Self.defaults(missing: query.filters)
+        items += Self.adultDefault(missing: query.filters)
 
         var components = URLComponents(
             url: descriptor.baseURL.appendingPathComponent("search/data"),
@@ -195,13 +200,17 @@ extension WeebCentralSource {
         guard let url = components.url else { throw URLError(.badURL) }
 
         let data = try await network.get(url: url, headers: ["Referer": descriptor.referer.absoluteString])
-        let stubs = try Self.stubs(from: String(decoding: data, as: UTF8.self))
+        // rung 2: the result card is a title, a cover and a chapter count - no
+        // adult signal anywhere in the fragment. the request answers instead,
+        // and can only ever be one-sided because Any was dropped from the filter
+        let stubs = try Self.stubs(from: String(decoding: data, as: UTF8.self),
+                                   adult: allowsAdult(for: query))
 
         // no total comes back, so a full window is the only sign there is more
         return SearchPage(items: stubs, next: stubs.count == Self.window ? query.page + 1 : nil)
     }
 
-    private static func stubs(from html: String) throws -> [SeriesStub] {
+    private static func stubs(from html: String, adult: Bool) throws -> [SeriesStub] {
         let document = try SwiftSoup.parse(html)
 
         return try document.select(Selector.card).compactMap { card -> SeriesStub? in
@@ -216,7 +225,8 @@ extension WeebCentralSource {
             return SeriesStub(
                 slug: slug,
                 title: title,
-                cover: cover(for: slug)
+                cover: cover(for: slug),
+                adult: adult
             )
         }
     }
@@ -225,6 +235,14 @@ extension WeebCentralSource {
     // nothing that breaks when the markup is restyled
     private static func cover(for slug: String) -> URL? {
         URL(string: "https://temp.compsci88.com/cover/normal/\(slug).webp")
+    }
+
+    // suffix-anchored so a legitimate pipe inside a title survives - only a
+    // trailing "| Weeb Central" is branding
+    static func strippingSiteSuffix(_ title: String) -> String {
+        title
+            .replacing(/\s*\|\s*Weeb\s?Central\s*$/.ignoresCase(), with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     // /series/{ULID}/{title-slug} - the trailing part is decorative, the ulid is
@@ -252,9 +270,12 @@ extension WeebCentralSource {
         let data = try await network.get(url: url, headers: ["Referer": descriptor.referer.absoluteString])
         let document = try SwiftSoup.parse(String(decoding: data, as: UTF8.self))
 
-        // two h1 elements carry the same title, one per breakpoint
+        // two h1 elements carry the same title, one per breakpoint. og:title
+        // arrives branded - "Blue Lock | Weeb Central" - so whichever path wins,
+        // the site suffix comes off
         let heading = try document.select("h1").first()?.text() ?? ""
-        let title = try document.select("meta[property=og:title]").first()?.attr("content") ?? heading
+        let raw = try document.select("meta[property=og:title]").first()?.attr("content") ?? heading
+        let title = Self.strippingSiteSuffix(raw)
 
         let synopsis = try document.select("p.whitespace-pre-wrap").first()?.text() ?? ""
 
@@ -415,6 +436,14 @@ extension WeebCentralSource {
 // MARK: - Parameters
 
 extension WeebCentralSource {
+    // an option id is `field` or `field|Ascending`. descending is the default
+    // because it is what every option except the two alphabetical ones wants
+    private static func split(_ optionID: String) -> (field: String, order: String) {
+        let parts = optionID.components(separatedBy: "|")
+        guard parts.count == 2 else { return (optionID, "Descending") }
+        return (parts[0], parts[1])
+    }
+
     private static func parameters(for filters: [FilterSelection]) -> [URLQueryItem] {
         filters.flatMap { filter -> [URLQueryItem] in
             switch filter {
@@ -441,8 +470,20 @@ extension WeebCentralSource {
     // form always submits them, and omitting them narrows the results
     private static func defaults(missing filters: [FilterSelection]) -> [URLQueryItem] {
         let chosen = Set(filters.map(\.id))
-        return ["official", "anime", "adult"]
+        // adult is absent here: Any is what the other two mean by "unset", but on
+        // this axis it means "return both kinds", and the gate has to exclude
+        // rather than stay quiet. addressed by adultDefault below
+        return ["official", "anime"]
             .filter { !chosen.contains($0) }
             .map { .init(name: $0, value: "Any") }
+    }
+
+    // the flag is theirs, not ours: it is drawn wide enough to cover Berserk, so
+    // Exclude hides mature seinen this app would not call adult. accepted for the
+    // simpler binary - excluded_tag=Hentai was measured as the narrower lever and
+    // deliberately passed over
+    private static func adultDefault(missing filters: [FilterSelection]) -> [URLQueryItem] {
+        guard !filters.contains(where: { $0.id == "adult" }) else { return [] }
+        return [.init(name: "adult", value: "False")]
     }
 }

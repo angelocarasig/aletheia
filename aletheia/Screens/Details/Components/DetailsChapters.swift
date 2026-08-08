@@ -12,9 +12,18 @@ struct DetailsChapters: View {
     let chapters: [Chapter]
     var isFetching: Bool = false
     var hasFetched: Bool = true
-    var canRefresh: Bool = false
-    var onRefresh: () -> Void
-    var onMarkAll: (Bool) -> Void
+    // counts every origin, disabled ones included: two sources is exactly when
+    // reordering starts to matter, and the common reason to reorder is to put a
+    // working source above one you have turned off
+    var sourceCount: Int = 0
+    // series-scoped, so they live on the row rather than in UserDefaults
+    var showAllChapters: Bool = false
+    var showHalfChapters: Bool = true
+    var onShowAllChapters: (Bool) -> Void
+    var onShowHalfChapters: (Bool) -> Void
+    // refresh and mark-all deliberately absent: DetailsActions already owns them,
+    // one screen up. no surveyed reader duplicates its chapter bulk actions
+    var onSources: () -> Void
     var onScanlators: () -> Void
     var onLanguages: () -> Void
     var onOpen: (Chapter) -> Void
@@ -33,12 +42,15 @@ struct DetailsChapters: View {
         case dateNewest
         case dateOldest
 
+        // one word each. the section header already names the field, so the label
+        // only has to say which end you land on - and the chip below shows the
+        // chosen word alone, where a phrase reads as a sentence fragment
         var label: String {
             switch self {
-            case .numberDescending: "Latest first"
-            case .numberAscending: "From the start"
-            case .dateNewest: "Recently released"
-            case .dateOldest: "First released"
+            case .numberDescending: "Latest"
+            case .numberAscending: "First"
+            case .dateNewest: "Recent"
+            case .dateOldest: "Oldest"
             }
         }
 
@@ -64,19 +76,12 @@ struct DetailsChapters: View {
         static let skeletonMeta: [CGFloat] = [64, 6, 96, 6, 16]
         static let skeletonScanlator: CGFloat = 88
         static let sourceIconSize: CGFloat = 44
-        // wider than tall: three glyphs in one capsule need room between them or
-        // the group reads as a single crowded blob rather than three controls
-        static let chipWidth: CGFloat = 42
-        static let chipHeight: CGFloat = 34
-        static let hairline: CGFloat = 1
-        // short of the full height so the divider reads as a separator inside the
-        // capsule rather than a cut through it
-        static let hairlineScale: CGFloat = 0.5
         static let newDayThreshold = 3
         static let progressHeight: CGFloat = 3
         static let titleLines = 2
         static let emptyStateHeight: CGFloat = 200
         static let finishedOpacity: Double = 0.5
+        static let disabledOpacity: Double = 0.35
         static let fillOpacity: Double = 0.1
         // the skeleton mirrors the real rows, so a crossfade reads as the
         // placeholder resolving rather than one view replacing another
@@ -135,7 +140,7 @@ struct DetailsChapters: View {
 extension DetailsChapters {
     private var Header: some View {
         VStack(alignment: .leading, spacing: dimensions.spacing.space8) {
-            SectionHeader("Chapters")
+            SectionHeader(title: "Chapters") { Visibility }
 
             HStack(spacing: dimensions.spacing.space8) {
                 Count
@@ -144,45 +149,95 @@ extension DetailsChapters {
 
                 Spacer(minLength: 0)
 
-                Actions
+                Filters
             }
         }
     }
 
-    // one capsule, hairlines between: filtering and the overflow act on the same
-    // list, so they read as one control rather than three floating buttons. the
-    // ellipsis moved down here from the section header for the same reason -
-    // it was the only thing acting on chapters that lived somewhere else
-    private var Actions: some View {
-        HStack(spacing: 0) {
-            Chip("person.2", action: onScanlators)
+    // back in the section header, where the other sections put their one control.
+    // it belongs above the row rather than in it: the three below reorder what
+    // wins, these two change what the list is made of
+    private var Visibility: some View {
+        Menu {
+            // two copies of one thing, which is exactly what this reveals: the
+            // same chapter number from every source rather than only the winner.
+            // deliberately not the 3d stack - that is the source button's glyph,
+            // and these two do different jobs
+            Toggle(isOn: allChapters) {
+                Label("Show All", systemImage: "square.on.square")
+            }
 
-            Hairline
-
-            // a character in a bubble, not a globe: a globe is the symbol for the
-            // web as often as for language, and this filters what the chapter is
-            // written in rather than where it came from
-            Chip("character.bubble", action: onLanguages)
-
-            Hairline
-
-            Overflow
+            // a literal half rather than a division sign: the setting is about
+            // chapter 52.5 existing, not about dividing anything
+            //
+            // off and dimmed while everything is shown - a list that hides nothing
+            // cannot be hiding half chapters, so the switch would be a lie
+            Toggle(isOn: halfChapters) {
+                Label("Show Half", systemImage: "circle.lefthalf.filled")
+            }
+            .disabled(showAllChapters)
+        } label: {
+            Icon("ellipsis")
+                .contentShape(.rect)
         }
-        .background(.primary.opacity(Layout.fillOpacity), in: .capsule)
+        .menuStyle(.button)
+        .buttonStyle(.plain)
     }
 
-    private var Hairline: some View {
-        Rectangle()
-            .fill(.primary.opacity(Layout.fillOpacity))
-            .frame(width: Layout.hairline, height: Layout.chipHeight * Layout.hairlineScale)
+    private var allChapters: Binding<Bool> {
+        Binding(get: { showAllChapters }, set: onShowAllChapters)
     }
 
-    // no background of its own - the group owns that, and a fill per button would
-    // stack two opacities on the same pixels
-    private func Chip(_ name: String, action: @escaping () -> Void) -> some View {
+    // reads as on whenever everything is shown, so the row agrees with the list
+    private var halfChapters: Binding<Bool> {
+        Binding(
+            get: { showAllChapters || showHalfChapters },
+            set: onShowHalfChapters
+        )
+    }
+
+    // three separate capsules rather than one segmented group: these narrow three
+    // independent axes, and a shared container asserts they are one control with
+    // three modes. spacing carries the relationship instead.
+    //
+    // all three always present, including on a series with one of everything - a
+    // row whose controls come and go is harder to learn than one that is always
+    // the same shape
+    private var Filters: some View {
+        HStack(spacing: dimensions.spacing.space8) {
+            // opens Source Priority rather than a filter: with one source there
+            // is no order to change, so it stays visible but inert
+            Filter(
+                "plus.square.dashed",
+                "Change source priority",
+                enabled: sourceCount > 1,
+                action: onSources
+            )
+
+            Filter("person.2", "Filter by scanlator", action: onScanlators)
+
+            // a character in a bubble, not a globe: a globe reads as the web as
+            // often as language, and this narrows what the chapter is written in
+            Filter("translate", "Filter by language", action: onLanguages)
+        }
+    }
+
+    // dimmed rather than removed when it cannot act - the row keeps its shape,
+    // and a control that is present but inert reads as "nothing to do here"
+    // rather than as a feature the app does not have
+    private func Filter(
+        _ name: String,
+        _ label: String,
+        enabled: Bool = true,
+        action: @escaping () -> Void
+    ) -> some View {
         Icon(name)
-            .contentShape(.rect)
+            .chipBackground(Layout.fillOpacity)
+            .contentShape(.capsule)
             .tappable(action: action)
+            .disabled(!enabled)
+            .opacity(enabled ? 1 : Layout.disabledOpacity)
+            .accessibilityLabel(label)
     }
 
     // a menu row has exactly one image slot and iOS renders it trailing, so the
@@ -196,12 +251,16 @@ extension DetailsChapters {
         }
     }
 
+    // padded to a pill, not framed to a square: at 44x44 a capsule renders as a
+    // circle, which sat beside the sort chip's pill as a different shape. same
+    // construction as the sort label so the two match by being built alike
     private func Icon(_ name: String) -> some View {
         Image(systemName: name)
             .font(.subheadline)
             .fontWeight(.medium)
             .foregroundStyle(.muted)
-            .frame(width: Layout.chipWidth, height: Layout.chipHeight)
+            .padding(.horizontal, dimensions.spacing.space16)
+            .frame(height: dimensions.touchTarget)
     }
 
     @ViewBuilder
@@ -217,32 +276,6 @@ extension DetailsChapters {
         .foregroundStyle(.muted)
         .contentTransition(.numericText())
         .animation(Layout.settle, value: phase)
-    }
-
-    private var Overflow: some View {
-        Menu {
-            Button(action: onRefresh) {
-                Label("Refresh Chapters", systemImage: "arrow.clockwise")
-            }
-            .disabled(!canRefresh)
-
-            Divider()
-
-            Button {
-                onMarkAll(true)
-            } label: {
-                Label("Mark All as Read", systemImage: "checkmark.circle.fill")
-            }
-
-            Button {
-                onMarkAll(false)
-            } label: {
-                Label("Mark All as Unread", systemImage: "x.circle.fill")
-            }
-        } label: {
-            Icon("ellipsis")
-                .contentShape(.rect)
-        }
     }
 
     private var SortChip: some View {
@@ -261,6 +294,9 @@ extension DetailsChapters {
                 Option(.dateOldest)
             }
         } label: {
+            // neutral, not brand. a sort is always set, so a permanent tint says
+            // nothing - and blue already means "a filter is on" one screen over.
+            // the accent is reserved for state that varies
             HStack(spacing: dimensions.spacing.space4) {
                 Text(sort.label)
                 Image(systemName: "chevron.down")
@@ -269,11 +305,23 @@ extension DetailsChapters {
             }
             .font(.subheadline)
             .fontWeight(.medium)
-            .foregroundStyle(.brand)
-            .padding(.horizontal, dimensions.spacing.space8)
-            .padding(.vertical, dimensions.spacing.space4)
-            .background(Palette.brand.opacity(Layout.fillOpacity), in: .capsule)
+            .foregroundStyle(.muted)
+            .padding(.horizontal, dimensions.spacing.space12)
+            .frame(height: dimensions.touchTarget)
+            .chipBackground(Layout.fillOpacity)
         }
+        // a Menu tints its own label with the accent colour, and .primary in the
+        // background above then resolves against that tint rather than neutral -
+        // which is why this capsule read differently to the filter's
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+    }
+}
+
+private extension View {
+    // one definition, so the two controls cannot drift apart again
+    func chipBackground(_ opacity: Double) -> some View {
+        background(.primary.opacity(opacity), in: .capsule)
     }
 }
 

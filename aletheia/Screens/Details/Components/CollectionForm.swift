@@ -34,8 +34,12 @@ struct CollectionForm: View {
         name.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    private var isReserved: Bool {
+        CollectionRecord.isReserved(trimmed)
+    }
+
     private var canCreate: Bool {
-        !trimmed.isEmpty && !isSaving
+        !trimmed.isEmpty && !isReserved && !isSaving
     }
 
     var body: some View {
@@ -52,7 +56,14 @@ struct CollectionForm: View {
                 } header: {
                     Text("Name")
                 } footer: {
-                    Remaining(name.count, of: Layout.nameLimit)
+                    // the reason replaces the counter rather than stacking under
+                    // it - one footer, one thing to fix
+                    if isReserved {
+                        Text("“\(trimmed)” is used by the library itself. Pick another name.")
+                            .foregroundStyle(Palette.warning)
+                    } else {
+                        Remaining(name.count, of: Layout.nameLimit)
+                    }
                 }
 
                 Section {

@@ -14,6 +14,7 @@ struct SourcePresetRow: View {
     let onOpenSeries: (SeriesStub) -> Void
 
     @Environment(\.dimensions) private var dimensions
+    @Environment(\.compositor) private var compositor
     @State private var vm: SourcePresetViewModel?
 
     private enum Layout {
@@ -31,7 +32,7 @@ struct SourcePresetRow: View {
         .background(.surface)
         .clipShape(.rect(cornerRadius: dimensions.radius.radius12))
         .task {
-            let vm = vm ?? SourcePresetViewModel(source: source, preset: preset)
+            let vm = vm ?? SourcePresetViewModel(source: source, preset: preset, database: compositor.database)
             self.vm = vm
             if vm.isIdle { await vm.load() } else { vm.resume() }
         }

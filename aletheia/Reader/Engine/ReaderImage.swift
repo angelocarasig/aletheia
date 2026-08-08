@@ -14,7 +14,8 @@ import Kingfisher
 enum ReaderImage {
     // a page is a full-bleed bitmap on a device screen, not a thumbnail.
     // decoding at source resolution is what puts a reader into jetsam - a
-    // 1400x2000 page is ~11mb resident once decoded
+    // 1400x2000 page is ~11mb resident once decoded.
+    //
     // scale comes from whatever view is asking. UIScreen.main is deprecated on
     // iOS 26 and was never right anyway - the value that matters is the one for
     // the display this reader is actually on
@@ -25,26 +26,18 @@ enum ReaderImage {
     ) -> KingfisherOptionsInfo {
         let scale = max(scale, 1)
 
-        // POINTS, not pixels. DownsamplingImageProcessor hands this straight to
-        // downsampledImage(data:to:scale:), which multiplies by the scale factor
-        // itself - passing width * scale asked for three times the dimension and
-        // nine times the pixels on a 3x device
-        let limit = max(width, 1)
+        // PIXELS, and the width specifically. PageDownsampler works out the max
+        // pixel size per image from its own aspect ratio, because bounding the
+        // longest side - which is what DownsamplingImageProcessor does - starves
+        // a tall strip of exactly the dimension it is drawn at
+        let target = max(width, 1) * scale
 
         return [
             .backgroundDecode,
-            .downsamplingImageProcessor(size: CGSize(width: limit, height: limit)),
+            .processor(PageDownsampler(width: target)),
             .scaleFactor(scale),
             .requestModifier(AnyModifier.headers(headers)),
             .cacheOriginalImage
         ]
-    }
-}
-
-private extension KingfisherOptionsInfoItem {
-    // DownsamplingImageProcessor keys on its size, so both call sites derive it
-    // from the same number and stay cache-compatible
-    static func downsamplingImageProcessor(size: CGSize) -> KingfisherOptionsInfoItem {
-        .processor(DownsamplingImageProcessor(size: size))
     }
 }

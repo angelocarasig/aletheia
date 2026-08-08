@@ -13,16 +13,36 @@ import Observation
 @Observable
 final class SourcesViewModel {
     private let database: DatabaseClient
+    // adultOnly is a descriptor fact, not a column - the row cannot answer it
+    private let registry: Compositor.Registry
     private var task: Task<Void, Never>?
-    
+
     private(set) var sources: [SourceRecord] = []
-    
-    var pinned: [SourceRecord] { sources.filter { $0.pinned && !$0.disabled } }
-    var active: [SourceRecord] { sources.filter { !$0.pinned && !$0.disabled } }
-    var disabled: [SourceRecord] { sources.filter(\.disabled) }
-    
-    init(database: DatabaseClient) {
+
+    var pinned: [SourceRecord] { ordered(sources.filter { $0.pinned && !$0.disabled }) }
+    var active: [SourceRecord] { ordered(sources.filter { !$0.pinned && !$0.disabled }) }
+    var disabled: [SourceRecord] { ordered(sources.filter(\.disabled)) }
+
+    init(database: DatabaseClient, registry: Compositor.Registry) {
         self.database = database
+        self.registry = registry
+    }
+
+    // adult sources sink to the bottom of whichever section they are in, rather
+    // than to the bottom of the screen - a pinned adult source is still pinned,
+    // and moving it out of its section would be overriding a choice you made
+    private func ordered(_ records: [SourceRecord]) -> [SourceRecord] {
+        records.sorted { lhs, rhs in
+            let left = isAdult(lhs)
+            let right = isAdult(rhs)
+
+            guard left == right else { return !left }
+            return lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
+        }
+    }
+
+    private func isAdult(_ record: SourceRecord) -> Bool {
+        registry.source(slug: record.slug)?.descriptor.adultOnly == true
     }
     
     func start() {

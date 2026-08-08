@@ -10,7 +10,7 @@ import SwiftUI
 struct DetailsTitles: View {
     let titles: [Title]
     let isSaving: Bool
-    var onSetPreferred: (Int64) -> Void
+    var onSetPreferred: (Int64?) -> Void
 
     @Environment(\.dimensions) private var dimensions
     @Environment(\.dismiss) private var dismiss
@@ -41,7 +41,10 @@ struct DetailsTitles: View {
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .topBarTrailing) {
-                        Button("Done") { dismiss() }
+                        // picks apply instantly, so there is nothing to "do" -
+                        // this button only closes
+                        Button("Close", systemImage: "xmark") { dismiss() }
+                            .labelStyle(.iconOnly)
                     }
                 }
         }
@@ -60,11 +63,15 @@ struct DetailsTitles: View {
                 // rather than reading as a stack of separate stickers
                 GlassEffectContainer(spacing: dimensions.spacing.space8) {
                     LazyVStack(spacing: dimensions.spacing.space8) {
+                        AutomaticRow
+                            .tappable {
+                                guard preferred != nil else { return }
+                                onSetPreferred(nil)
+                            }
+
                         ForEach(titles) { title in
                             Row(title)
                                 .tappable {
-                                    // a series always displays under something, so
-                                    // the pick can move but never be cleared
                                     guard !title.isPreferred else { return }
                                     onSetPreferred(title.id)
                                 }
@@ -90,6 +97,42 @@ struct DetailsTitles: View {
             .padding(.bottom, dimensions.spacing.space12)
     }
 
+    // no pin set: display falls back to origin priority. selection language:
+    // the checkmark sits on whichever row is in effect, and clearing is a
+    // first-class choice rather than a toggle side effect
+    private var AutomaticRow: some View {
+        HStack(spacing: dimensions.spacing.space12) {
+            Image(systemName: "wand.and.stars")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .frame(width: Layout.iconSize, height: Layout.iconSize)
+
+            VStack(alignment: .leading, spacing: dimensions.spacing.space2) {
+                Text("Automatic")
+                    .font(.subheadline)
+                    .fontWeight(preferred == nil ? .semibold : .regular)
+
+                Text("Decided by source priority")
+                    .font(.caption)
+                    .foregroundStyle(.muted)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            if preferred == nil {
+                Check
+            }
+        }
+        .padding(dimensions.spacing.space12)
+        .glassEffect(
+            preferred == nil
+                ? .regular.tint(Palette.brand.opacity(Layout.tintOpacity))
+                : .regular.interactive(),
+            in: .rect(cornerRadius: dimensions.radius.radius16)
+        )
+        .contentShape(.rect)
+        .accessibilityAddTraits(preferred == nil ? .isSelected : [])
+    }
+
     private func Row(_ title: Title) -> some View {
         HStack(spacing: dimensions.spacing.space12) {
             Icon(title)
@@ -101,10 +144,7 @@ struct DetailsTitles: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
 
             if title.isPreferred {
-                Image(systemName: "star.fill")
-                    .font(.footnote)
-                    .foregroundStyle(.warning)
-                    .transition(.scale.combined(with: .opacity))
+                Check
             }
         }
         .padding(dimensions.spacing.space12)
@@ -112,11 +152,19 @@ struct DetailsTitles: View {
         // should not offer press feedback
         .glassEffect(
             title.isPreferred
-                ? .regular.tint(Palette.warning.opacity(Layout.tintOpacity))
+                ? .regular.tint(Palette.brand.opacity(Layout.tintOpacity))
                 : .regular.interactive(),
             in: .rect(cornerRadius: dimensions.radius.radius16)
         )
         .contentShape(.rect)
+        .accessibilityAddTraits(title.isPreferred ? .isSelected : [])
+    }
+
+    private var Check: some View {
+        Image(systemName: "checkmark.circle.fill")
+            .font(.footnote)
+            .foregroundStyle(.brand)
+            .transition(.scale.combined(with: .opacity))
     }
 
     @ViewBuilder

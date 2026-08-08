@@ -18,7 +18,11 @@ struct DetailsScreen: View {
     @State private var vm: DetailsViewModel?
     @State private var reading: DetailsViewModel.ReaderTarget?
     @State private var showingCovers = false
+    @State private var showingSourceOrder = false
+    @State private var showingScanlatorOrder = false
+    @State private var showingLanguageOrder = false
     @State private var showingTitles = false
+    @State private var searchingAll = false
     @State private var showingEdit = false
     @State private var showingCollection = false
     @State private var showingCollections = false
@@ -58,6 +62,9 @@ struct DetailsScreen: View {
                 seriesId: target.seriesId,
                 chapterId: target.chapterId
             )
+        }
+        .navigationDestination(isPresented: $searchingAll) {
+            SearchScreen(query: vm?.title ?? "", embedded: true)
         }
         .sheet(isPresented: $showingDisambiguation) {
             if let vm {
@@ -138,6 +145,40 @@ struct DetailsScreen: View {
                     isSaving: vm.isSaving,
                     onSetPreferred: { id in Task { await vm.setPreferredTitle(id) } }
                 )
+            }
+        }
+        // the same sheet DetailsSources presents. reordering is what decides
+        // which source's copy of a chapter wins, so it belongs to both sections
+        .sheet(isPresented: $showingSourceOrder) {
+            if let vm {
+                OriginOrder(
+                    origins: vm.origins,
+                    onCommit: { ids in Task { await vm.reorderOrigins(ids) } }
+                )
+            }
+        }
+        .sheet(isPresented: $showingScanlatorOrder) {
+            if let vm {
+                ScanlatorOrder(
+                    groups: vm.scanlatorGroups,
+                    isLoading: vm.isLoadingScanlators,
+                    onCommit: { origin, ids in
+                        Task { await vm.reorderScanlators(origin, ids) }
+                    }
+                )
+                // read on present: this needs every scanlator, including ones
+                // that currently win nothing, which the screen's list does not have
+                .task { await vm.loadScanlators() }
+            }
+        }
+        .sheet(isPresented: $showingLanguageOrder) {
+            if let vm {
+                LanguageOrder(
+                    languages: vm.languageOrder,
+                    isLoading: vm.isLoadingLanguages,
+                    onCommit: { codes in Task { await vm.reorderLanguages(codes) } }
+                )
+                .task { await vm.loadLanguages() }
             }
         }
         .sheet(isPresented: $showingCovers) {
@@ -286,7 +327,8 @@ struct DetailsScreen: View {
                 title: vm.title,
                 authors: vm.authors,
                 onOpenCovers: { showingCovers = true },
-                onOpenTitles: { showingTitles = true }
+                onOpenTitles: { showingTitles = true },
+                onSearchAll: { searchingAll = true }
             )
 
             DetailsActions(
@@ -341,11 +383,14 @@ struct DetailsScreen: View {
                 chapters: vm.chapters,
                 isFetching: vm.isFetchingChapters,
                 hasFetched: vm.hasFetchedChapters,
-                canRefresh: vm.canRefresh,
-                onRefresh: { Task { await vm.refreshChapters() } },
-                onMarkAll: { read in Task { await vm.markAll(read: read) } },
-                onScanlators: { AppLog.shared.log("TODO scanlator filter", category: "details") },
-                onLanguages: { AppLog.shared.log("TODO language filter", category: "details") }
+                sourceCount: vm.origins.count,
+                showAllChapters: vm.showAllChapters,
+                showHalfChapters: vm.showHalfChapters,
+                onShowAllChapters: { on in Task { await vm.setShowAllChapters(on) } },
+                onShowHalfChapters: { on in Task { await vm.setShowHalfChapters(on) } },
+                onSources: { showingSourceOrder = true },
+                onScanlators: { showingScanlatorOrder = true },
+                onLanguages: { showingLanguageOrder = true }
             ) { chapter in
                 guard let target = vm.read(chapter) else { return }
                 Task { await vm.open(chapter) }

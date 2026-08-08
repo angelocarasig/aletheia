@@ -16,10 +16,18 @@ struct SourcesScreen: View {
     @State private var searchText = ""
     @State private var collapsed: Set<String> = ["disabled"]
     @State private var route: Route?
+    @State private var globalSearch: GlobalSearch?
     
     private struct Route: Identifiable, Hashable {
         let slug: String
         var id: String { slug }
+    }
+
+    // the text itself is the identity: submitting the same term twice is the
+    // same destination, and the screen seeds from it
+    private struct GlobalSearch: Identifiable, Hashable {
+        let text: String
+        var id: String { text }
     }
     
     var body: some View {
@@ -29,10 +37,10 @@ struct SourcesScreen: View {
                     Searchbar(
                         searchText: $searchText,
                         placeholder: "Search sources",
-                        submit: .init(
-                            backgroundColor: .blue,
-                            prompt: { "Search all sources for '\($0)'?" },
-                            action: { text in AppLog.shared.log("search all: \(text)", category: "sources") }
+                        handoff: .init(
+                            tint: .brand,
+                            label: { "Search every source for “\($0)”" },
+                            onSelect: { text in globalSearch = GlobalSearch(text: text) }
                         )
                     )
                     
@@ -66,17 +74,35 @@ struct SourcesScreen: View {
                     SourceHomeScreen(source: source, record: vm?.sources.first { $0.slug == route.slug })
                 }
             }
+            // embedded: this stack is the Sources tab's, so the pushed screen
+            // must not bring one of its own
+            .navigationDestination(item: $globalSearch) { search in
+                SearchScreen(query: search.text, embedded: true)
+            }
             .animation(.spring(response: 0.35, dampingFraction: 0.8), value: searchText)
             .task {
-                let vm = vm ?? SourcesViewModel(database: database)
+                let vm = vm ?? SourcesViewModel(database: database, registry: compositor.registry)
                 self.vm = vm
                 vm.start()
             }
         }
     }
     
+    // containered because several glass views in one tree share a render pass -
+    // applying the effect outside a container is what degrades performance.
+    // spacing is small on purpose: a value larger than the stack's own spacing
+    // makes neighbouring rows blend into one capsule at rest
     @ViewBuilder
     private func Rows(_ records: [SourceRecord]) -> some View {
+        GlassEffectContainer(spacing: dimensions.spacing.space4) {
+            LazyVStack(spacing: dimensions.spacing.space8) {
+                List(records)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func List(_ records: [SourceRecord]) -> some View {
         ForEach(records, id: \.slug) { record in
             SourceRow(record: record, source: compositor.registry.source(slug: record.slug)) {
                 route = Route(slug: record.slug)
@@ -132,7 +158,21 @@ private struct SourceRow: View {
     var onTap: () -> Void
     
     @State private var ping: PingResult?
-    
+
+    private enum Layout {
+        // the tint carries its own alpha rather than relying on the material to
+        // soften it. .regular resolves dark over a dark page and averages a
+        // full-strength colour toward that dark, so a bare .danger reads greyer
+        // than .danger at a third of it. same value CollectionPicker tints with
+        static let adultTint: Double = 0.15
+        static let adultBorder: Double = 0.35
+    }
+
+    private var glass: Glass {
+        guard source?.descriptor.adultOnly == true else { return .regular }
+        return .regular.tint(Palette.danger.opacity(Layout.adultTint))
+    }
+
     var body: some View {
         HStack(spacing: dimensions.spacing.space12) {
             Icon
@@ -143,7 +183,20 @@ private struct SourceRow: View {
                 .font(.caption)
                 .foregroundStyle(.tertiary)
         }
-        .padding(.vertical, dimensions.spacing.space8)
+        .padding(.horizontal, dimensions.spacing.space12)
+        .padding(.vertical, dimensions.spacing.space12)
+        // applied after the padding that sizes it, per the glass contract - the
+        // effect takes the frame it is given
+        .glassEffect(glass, in: .rect(cornerRadius: dimensions.radius.radius16))
+        // the material alone cannot hold a colour against black - the border is
+        // where the red actually reads, and it gives the state a shape channel
+        // rather than leaving it on hue alone
+        .overlay {
+            if source?.descriptor.adultOnly == true {
+                RoundedRectangle(cornerRadius: dimensions.radius.radius16)
+                    .strokeBorder(.danger.opacity(Layout.adultBorder), lineWidth: 1)
+            }
+        }
         .opacity(record.disabled ? 0.5 : 1)
         .contentShape(.rect)
         .tappable(action: onTap)
@@ -170,12 +223,27 @@ private struct SourceRow: View {
         .clipShape(shape)
     }
     
+    // a badge rather than a section of its own: the row already sorts and groups
+    // by pinned/disabled, and a fourth grouping would structure the screen around
+    // a property most sources do not have. nothing here shows content - only that
+    // opening this source will
     private var Info: some View {
         VStack(alignment: .leading, spacing: dimensions.spacing.space2) {
-            Text(source?.descriptor.name ?? record.slug)
-                .font(.subheadline)
-                .fontWeight(.medium)
-                .lineLimit(1)
+            HStack(spacing: dimensions.spacing.space4) {
+                Text(source?.descriptor.name ?? record.slug)
+                    .font(.subheadline)
+                    .fontWeight(.medium)
+                    .lineLimit(1)
+
+                if source?.descriptor.adultOnly == true {
+                    Text("18+")
+                        .font(.system(size: 9, weight: .heavy))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, dimensions.spacing.space4)
+                        .padding(.vertical, 1)
+                        .background(.danger, in: .capsule)
+                }
+            }
             
             HStack(spacing: dimensions.spacing.space4) {
                 Text(source?.descriptor.baseURL.host() ?? record.slug)

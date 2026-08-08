@@ -87,6 +87,13 @@ final class DetailsViewModel {
     var status: Status { snapshot?.status ?? .planning }
     var chapters: [DetailsChapters.Chapter] { snapshot?.chapters ?? [] }
     var origins: [DetailsSources.Origin] { snapshot?.origins ?? [] }
+
+    private(set) var scanlatorGroups: [ScanlatorOrder.Origin] = []
+    private(set) var isLoadingScanlators = false
+
+    private(set) var languageOrder: [LanguageOrder.Language] = []
+    private(set) var isLoadingLanguages = false
+
     var covers: [DetailsCovers.Cover] { snapshot?.covers ?? [] }
     var titles: [DetailsTitles.Title] { snapshot?.titles ?? [] }
     var synopses: [DetailsEdit.Synopsis] { snapshot?.synopses ?? [] }
@@ -565,9 +572,9 @@ final class DetailsViewModel {
         }
     }
 
-    // not optional, unlike the cover: a series always displays under some title,
-    // so the pick can move but never be cleared
-    func setPreferredTitle(_ id: Int64) async {
+    // nil clears the pick - display falls back to origin priority, which always
+    // resolves to something, so clearing is safe
+    func setPreferredTitle(_ id: Int64?) async {
         guard let seriesId else { return }
 
         isSaving = true
@@ -584,15 +591,15 @@ final class DetailsViewModel {
         }
     }
 
-    func setPreferredSynopsis(_ originId: Int64) async {
+    func setPreferredSynopsis(_ originId: Int64?) async {
         await setPreference(SeriesRecord.Columns.preferredSynopsisOriginId, to: originId)
     }
 
-    func setPreferredMetadata(_ originId: Int64) async {
+    func setPreferredMetadata(_ originId: Int64?) async {
         await setPreference(SeriesRecord.Columns.preferredMetadataOriginId, to: originId)
     }
 
-    private func setPreference(_ column: Column, to originId: Int64) async {
+    private func setPreference(_ column: Column, to originId: Int64?) async {
         guard let seriesId else { return }
 
         isSaving = true
@@ -743,6 +750,239 @@ final class DetailsViewModel {
         }
     }
 
+    // MARK: - Language priority
+
+    // every language this series has a chapter in, in ranked order. unranked ones
+    // come last, which is where best_chapter puts them too
+    func loadLanguages() async {
+        guard let seriesId, !isLoadingLanguages else { return }
+        isLoadingLanguages = true
+        defer { isLoadingLanguages = false }
+
+        do {
+            languageOrder = try await database.reader.read { db in
+                try Self.languages(for: seriesId, in: db)
+            }
+        } catch {
+            errorMessage = String(describing: error)
+        }
+    }
+
+    // every row is rewritten, not just the moved ones: priorities are read through
+    // COALESCE(priority, 999), so a gap would let an unwritten language outrank a
+    // written one
+    func reorderLanguages(_ codes: [String]) async {
+        guard let seriesId else { return }
+
+        isSaving = true
+        defer { isSaving = false }
+
+        do {
+            try await database.writer.write { db in
+                for (index, code) in codes.enumerated() {
+                    guard let language = LanguageCode(rawValue: code) else { continue }
+                    var row = SeriesLanguagePriorityRecord(
+                        seriesId: seriesId,
+                        language: language,
+                        priority: index
+                    )
+                    try row.upsert(db)
+                }
+            }
+            await loadLanguages()
+        } catch {
+            errorMessage = String(describing: error)
+            AppLog.shared.log("language reorder FAILED — \(error)", category: "details")
+        }
+    }
+
+    nonisolated private static func languages(
+        for seriesId: SeriesRecord.ID,
+        in db: Database
+    ) throws -> [LanguageOrder.Language] {
+        // straight off the base tables, not best_chapter: a language that
+        // currently wins nothing is exactly the one you came here to promote
+        let sql = """
+            SELECT
+                c.\(ChapterRecord.Columns.language.name) AS code,
+                COUNT(c.id) AS chapterCount
+            FROM \(ChapterRecord.databaseTableName) c
+            JOIN \(OriginRecord.databaseTableName) o ON o.id = c.\(ChapterRecord.Columns.originId.name)
+            LEFT JOIN \(SeriesLanguagePriorityRecord.databaseTableName) slp
+                ON slp.\(SeriesLanguagePriorityRecord.Columns.seriesId.name) = o.\(OriginRecord.Columns.seriesId.name)
+                AND slp.\(SeriesLanguagePriorityRecord.Columns.language.name) = c.\(ChapterRecord.Columns.language.name)
+            WHERE o.\(OriginRecord.Columns.seriesId.name) = ?
+            GROUP BY c.\(ChapterRecord.Columns.language.name)
+            ORDER BY
+                COALESCE(MIN(slp.\(SeriesLanguagePriorityRecord.Columns.priority.name)), 999) ASC,
+                c.\(ChapterRecord.Columns.language.name) ASC
+            """
+
+        return try StoredLanguage
+            .fetchAll(db, sql: sql, arguments: [seriesId.rawValue])
+            .compactMap { row in
+                guard let code = LanguageCode(rawValue: row.code) else { return nil }
+                return LanguageOrder.Language(
+                    id: code.rawValue,
+                    flag: code.flag,
+                    name: code.displayName,
+                    chapterCount: row.chapterCount
+                )
+            }
+    }
+
+    private struct StoredLanguage: Decodable, FetchableRecord, Sendable {
+        let code: String
+        let chapterCount: Int
+    }
+
+    // MARK: - Scanlator priority
+
+    // read when the sheet opens rather than with the series: it needs every
+    // scanlator, not just the ones currently winning a chapter, so it cannot come
+    // off the rank-1 chapter list the screen already has
+    func loadScanlators() async {
+        guard let seriesId, !isLoadingScanlators else { return }
+        isLoadingScanlators = true
+        defer { isLoadingScanlators = false }
+
+        do {
+            let rows = try await database.reader.read { db in
+                try Self.scanlators(for: seriesId, in: db)
+            }
+            scanlatorGroups = Self.group(rows, into: origins)
+        } catch {
+            errorMessage = String(describing: error)
+        }
+    }
+
+    // priority is stored per (origin, scanlator), so ordering is committed one
+    // origin at a time. every row is written, not just moved ones - a gap in the
+    // sequence would let COALESCE(priority, 999) reorder things behind the user
+    func reorderScanlators(_ originId: Int64, _ ids: [Int64]) async {
+        isSaving = true
+        defer { isSaving = false }
+
+        do {
+            try await database.writer.write { db in
+                for (index, id) in ids.enumerated() {
+                    var row = OriginScanlatorPriorityRecord(
+                        originId: OriginRecord.ID(rawValue: originId),
+                        scanlatorId: ScanlatorRecord.ID(rawValue: id),
+                        priority: index
+                    )
+                    try row.upsert(db)
+                }
+            }
+            await loadScanlators()
+        } catch {
+            errorMessage = String(describing: error)
+            AppLog.shared.log("scanlator reorder FAILED — \(error)", category: "details")
+        }
+    }
+
+    private struct StoredScanlator: Decodable, FetchableRecord, Sendable {
+        let originId: Int64
+        let scanlatorId: Int64
+        let name: String
+        let chapterCount: Int
+    }
+
+    nonisolated private static func scanlators(
+        for seriesId: SeriesRecord.ID,
+        in db: Database
+    ) throws -> [StoredScanlator] {
+        // no best_chapter here: a scanlator that currently loses every chapter is
+        // exactly the one you open this sheet to promote
+        let sql = """
+            SELECT
+                o.id AS originId,
+                s.id AS scanlatorId,
+                s.\(ScanlatorRecord.Columns.name.name) AS name,
+                COUNT(c.id) AS chapterCount
+            FROM \(ChapterRecord.databaseTableName) c
+            JOIN \(OriginRecord.databaseTableName) o ON o.id = c.\(ChapterRecord.Columns.originId.name)
+            JOIN \(ScanlatorRecord.databaseTableName) s ON s.id = c.\(ChapterRecord.Columns.scanlatorId.name)
+            LEFT JOIN \(OriginScanlatorPriorityRecord.databaseTableName) osp
+                ON osp.\(OriginScanlatorPriorityRecord.Columns.originId.name) = o.id
+                AND osp.\(OriginScanlatorPriorityRecord.Columns.scanlatorId.name) = s.id
+            WHERE o.\(OriginRecord.Columns.seriesId.name) = ?
+            GROUP BY o.id, s.id
+            ORDER BY
+                o.\(OriginRecord.Columns.priority.name) ASC,
+                COALESCE(MIN(osp.\(OriginScanlatorPriorityRecord.Columns.priority.name)), 999) ASC,
+                s.\(ScanlatorRecord.Columns.name.name) ASC
+            """
+
+        return try StoredScanlator.fetchAll(db, sql: sql, arguments: [seriesId.rawValue])
+    }
+
+    // grouped in place so the query's ordering survives - origin priority between
+    // groups, scanlator priority within one
+    nonisolated private static func group(
+        _ rows: [StoredScanlator],
+        into origins: [DetailsSources.Origin]
+    ) -> [ScanlatorOrder.Origin] {
+        var groups: [ScanlatorOrder.Origin] = []
+
+        for row in rows {
+            let scanlator = ScanlatorOrder.Scanlator(
+                id: row.scanlatorId,
+                name: row.name,
+                chapterCount: row.chapterCount
+            )
+
+            if let index = groups.firstIndex(where: { $0.id == row.originId }) {
+                groups[index].scanlators.append(scanlator)
+            } else {
+                let origin = origins.first { $0.id == row.originId }
+                groups.append(
+                    ScanlatorOrder.Origin(
+                        id: row.originId,
+                        name: origin?.name ?? "Unknown Source",
+                        icon: origin?.icon,
+                        scanlators: [scanlator]
+                    )
+                )
+            }
+        }
+
+        return groups
+    }
+
+    // MARK: - Chapter visibility
+
+    var showAllChapters: Bool { snapshot?.showAllChapters ?? false }
+    var showHalfChapters: Bool { snapshot?.showHalfChapters ?? true }
+
+    // every source's copy rather than the winner of each number. this is the one
+    // setting that makes the priority sheets moot, so it overrides the half-chapter
+    // filter too - a list showing everything cannot be hiding halves
+    func setShowAllChapters(_ value: Bool) async {
+        await setVisibility(SeriesRecord.Columns.showAllChapters, value)
+    }
+
+    func setShowHalfChapters(_ value: Bool) async {
+        await setVisibility(SeriesRecord.Columns.showHalfChapters, value)
+    }
+
+    private func setVisibility(_ column: Column, _ value: Bool) async {
+        guard let seriesId else { return }
+
+        isSaving = true
+        defer { isSaving = false }
+
+        do {
+            try await database.writer.write { db in
+                _ = try SeriesRecord
+                    .filter(key: seriesId.rawValue)
+                    .updateAll(db, column.set(to: value))
+            }
+        } catch {
+            errorMessage = String(describing: error)
+        }
+    }
+
     func setStatus(_ value: Status) async {
         guard let seriesId, value != status else { return }
 
@@ -814,6 +1054,8 @@ extension DetailsViewModel {
         let publication: Publication?
         let inLibrary: Bool
         let status: Status
+        let showAllChapters: Bool
+        let showHalfChapters: Bool
         let readCount: Int
         let lastReadDate: Date
         let metadataFetchedDate: Date
@@ -861,6 +1103,8 @@ private extension DetailsViewModel.Snapshot {
         publication = entry.publication
         inLibrary = entry.inLibrary
         status = stored.series.status
+        showAllChapters = stored.series.showAllChapters
+        showHalfChapters = stored.series.showHalfChapters
         readCount = entry.readChapterCount
         lastReadDate = entry.lastReadDate
         rows = stored.chapters
@@ -1006,7 +1250,10 @@ extension DetailsViewModel {
             JOIN \(OriginRecord.databaseTableName) o ON o.id = c.\(ChapterRecord.Columns.originId.name)
             LEFT JOIN \(SourceRecord.databaseTableName) src ON src.id = o.\(OriginRecord.Columns.sourceId.name)
             WHERE bc.seriesId = ?
-              AND bc.rank = 1
+              -- rank = 1 is the deduplicated list. showAllChapters drops that
+              -- filter entirely, so every source's copy of a number is a row
+              AND (bc.showAllChapters = 1 OR bc.rank = 1)
+              -- isVisible already folds in showAllChapters and showHalfChapters
               AND bc.isVisible = 1
             ORDER BY bc.number ASC
             """
@@ -1031,8 +1278,8 @@ extension DetailsViewModel {
                 o.\(OriginRecord.Columns.synopsis.name) AS synopsis,
                 o.\(OriginRecord.Columns.classification.name) AS classification,
                 o.\(OriginRecord.Columns.publication.name) AS publication,
-                (o.id = s.\(SeriesRecord.Columns.preferredSynopsisOriginId.name)) AS isSynopsis,
-                (o.id = s.\(SeriesRecord.Columns.preferredMetadataOriginId.name)) AS isMetadata,
+                COALESCE(o.id = s.\(SeriesRecord.Columns.preferredSynopsisOriginId.name), 0) AS isSynopsis,
+                COALESCE(o.id = s.\(SeriesRecord.Columns.preferredMetadataOriginId.name), 0) AS isMetadata,
                 src.\(SourceRecord.Columns.slug.name) AS sourceSlug,
                 src.\(SourceRecord.Columns.name.name) AS sourceName,
                 src.\(SourceRecord.Columns.baseURL.name) AS sourceBaseURL,
@@ -1092,7 +1339,7 @@ extension DetailsViewModel {
                 t.\(TitleRecord.Columns.value.name) AS value,
                 src.\(SourceRecord.Columns.slug.name) AS sourceSlug,
                 src.\(SourceRecord.Columns.name.name) AS sourceName,
-                (t.id = s.\(SeriesRecord.Columns.preferredTitleId.name)) AS isPreferred
+                COALESCE(t.id = s.\(SeriesRecord.Columns.preferredTitleId.name), 0) AS isPreferred
             FROM \(TitleRecord.databaseTableName) t
             JOIN \(SeriesRecord.databaseTableName) s ON s.id = t.\(TitleRecord.Columns.seriesId.name)
             LEFT JOIN \(OriginRecord.databaseTableName) o ON o.id = t.\(TitleRecord.Columns.originId.name)
@@ -1115,7 +1362,7 @@ extension DetailsViewModel {
                 c.\(CoverRecord.Columns.path.name) AS path,
                 src.\(SourceRecord.Columns.slug.name) AS sourceSlug,
                 src.\(SourceRecord.Columns.name.name) AS sourceName,
-                (c.id = s.\(SeriesRecord.Columns.preferredCoverId.name)) AS isPreferred
+                COALESCE(c.id = s.\(SeriesRecord.Columns.preferredCoverId.name), 0) AS isPreferred
             FROM \(CoverRecord.databaseTableName) c
             JOIN \(SeriesRecord.databaseTableName) s ON s.id = c.\(CoverRecord.Columns.seriesId.name)
             LEFT JOIN \(OriginRecord.databaseTableName) o ON o.id = c.\(CoverRecord.Columns.originId.name)

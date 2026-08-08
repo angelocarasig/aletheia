@@ -61,10 +61,13 @@ struct LibraryCard: View {
             Text(unreadCount > Layout.badgeCap ? "\(Layout.badgeCap)+" : "\(unreadCount)")
                 .font(.caption2)
                 .fontWeight(.bold)
+                // red rather than brand: this is a notification count, and red is
+                // what a count on artwork reads as everywhere else on the platform.
+                // onBrand is plain white, which is the right contrast on red too
                 .foregroundStyle(.onBrand)
                 .padding(.horizontal, dimensions.spacing.space8)
                 .padding(.vertical, dimensions.spacing.space2)
-                .background(.brand, in: .capsule)
+                .background(.danger, in: .capsule)
                 .padding(dimensions.spacing.space4)
         }
     }

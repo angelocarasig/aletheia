@@ -19,7 +19,7 @@ final class Correlator {
 
     private(set) var matches: [String: SeriesMatch] = [:]
 
-    init(sourceSlug: String, database: DatabaseClient = .client) {
+    init(sourceSlug: String, database: DatabaseClient) {
         self.sourceSlug = sourceSlug
         self.database = database
     }

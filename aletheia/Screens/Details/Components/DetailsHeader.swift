@@ -16,6 +16,7 @@ struct DetailsHeader: View {
     let authors: [String]
     var onOpenCovers: () -> Void
     var onOpenTitles: () -> Void
+    var onSearchAll: () -> Void
 
     @Environment(\.dimensions) private var dimensions
 
@@ -78,6 +79,10 @@ struct DetailsHeader: View {
             UIPasteboard.general.string = title
         } label: {
             Label("Copy Title", systemImage: "doc.on.doc")
+        }
+
+        Button(action: onSearchAll) {
+            Label("Search All Sources", systemImage: "magnifyingglass")
         }
     }
 

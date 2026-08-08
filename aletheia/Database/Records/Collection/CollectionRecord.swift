@@ -34,7 +34,21 @@ extension CollectionRecord {
         static let updatedDate = Column(CodingKeys.updatedDate)
     }
 
+    // names the library already uses for itself - "All" is the unfiltered chip and
+    // "Library" is what the title falls back to, so either one as a collection
+    // makes the current selection unreadable. lowercase, matched case-insensitively
+    static let reservedNames: Set<String> = ["all", "library"]
+
+    static func isReserved(_ name: String) -> Bool {
+        reservedNames.contains(name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())
+    }
+
     static func createTable(db: Database) throws {
+        // built from reservedNames so the constraint and the swift check cannot
+        // drift apart. enforced here rather than only at the form because any
+        // future import or sync path writes rows the form never sees
+        let reserved = reservedNames.sorted().map { "'\($0)'" }.joined(separator: ", ")
+
         try db.create(table: databaseTableName, options: [.ifNotExists]) { t in
             t.autoIncrementedPrimaryKey(Columns.id.name)
 
@@ -45,6 +59,8 @@ extension CollectionRecord {
             t.column(Columns.description.name, .text)
             t.column(Columns.createdDate.name, .datetime).notNull()
             t.column(Columns.updatedDate.name, .datetime).notNull()
+
+            t.check(sql: "TRIM(LOWER(\(Columns.name.name))) NOT IN (\(reserved))")
         }
     }
 

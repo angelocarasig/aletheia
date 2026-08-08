@@ -13,6 +13,22 @@ struct SeriesStub: Sendable, Hashable {
     let slug: String
     let title: String
     let cover: URL?
+
+    /// pornographic, as this source draws that line. never comparable between
+    /// sources - MangaDex means its `pornographic` tier, WeebCentral means its
+    /// own wider flag - so nothing may be built that assumes two sources agree.
+    ///
+    /// a claim, not a guess: `true` only when the source knows, `false` only when
+    /// it can guarantee. a source that can do neither shapes its request until it
+    /// can. see docs/features/adult-content.md
+    let adult: Bool
+
+    init(slug: String, title: String, cover: URL?, adult: Bool = false) {
+        self.slug = slug
+        self.title = title
+        self.cover = cover
+        self.adult = adult
+    }
 }
 
 /// full series metadata from a source.

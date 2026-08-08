@@ -11,7 +11,6 @@ struct MangaFireSource: SourceService, AuthenticatingSource {
     let requester: AuthRequester
     let renderer: WebRenderer
     
-    private let defaultSortID = "relevance:desc"
     private let detailsPath = "title"
 
     let descriptor = SourceDescriptor(
@@ -32,8 +31,8 @@ struct MangaFireSource: SourceService, AuthenticatingSource {
                 options: [
                     .init(id: "safe", name: "Safe"),
                     .init(id: "suggestive", name: "Suggestive"),
-                    .init(id: "erotica", name: "Erotica", nsfw: true),
-                    .init(id: "pornographic", name: "Pornographic", nsfw: true)
+                    .init(id: "erotica", name: "Erotica", sensitivity: .suggestive),
+                    .init(id: "pornographic", name: "Pornographic", sensitivity: .adult)
                 ],
                 canExclude: false
             ),
@@ -72,7 +71,7 @@ struct MangaFireSource: SourceService, AuthenticatingSource {
                 name: "Genres",
                 options: [
                     .init(id: "1", name: "Action"),
-                    .init(id: "268929", name: "Adult", nsfw: true),
+                    .init(id: "268929", name: "Adult", sensitivity: .suggestive),
                     .init(id: "78", name: "Adventure"),
                     .init(id: "3", name: "Avant Garde"),
                     .init(id: "4", name: "Boys Love"),
@@ -85,7 +84,7 @@ struct MangaFireSource: SourceService, AuthenticatingSource {
                     .init(id: "9", name: "Girls Love"),
                     .init(id: "10", name: "Gourmet"),
                     .init(id: "11", name: "Harem"),
-                    .init(id: "268930", name: "Hentai", nsfw: true),
+                    .init(id: "268930", name: "Hentai", sensitivity: .adult),
                     .init(id: "268922", name: "Historical"),
                     .init(id: "530", name: "Horror"),
                     .init(id: "13", name: "Isekai"),
@@ -113,7 +112,7 @@ struct MangaFireSource: SourceService, AuthenticatingSource {
                     .init(id: "30", name: "Shoujo"),
                     .init(id: "31", name: "Shounen"),
                     .init(id: "538", name: "Slice of Life"),
-                    .init(id: "268932", name: "Smut", nsfw: true),
+                    .init(id: "268932", name: "Smut", sensitivity: .suggestive),
                     .init(id: "33", name: "Space"),
                     .init(id: "34", name: "Sports"),
                     .init(id: "75", name: "Super Power"),
@@ -149,8 +148,8 @@ struct MangaFireSource: SourceService, AuthenticatingSource {
                     .init(id: "268940", name: "Ghosts"),
                     .init(id: "268941", name: "Gyaru"),
                     .init(id: "268942", name: "Harem"),
-                    .init(id: "268943", name: "Incest", nsfw: true),
-                    .init(id: "268944", name: "Loli", nsfw: true),
+                    .init(id: "268943", name: "Incest", sensitivity: .suggestive),
+                    .init(id: "268944", name: "Loli", sensitivity: .suggestive),
                     .init(id: "268945", name: "Mafia"),
                     .init(id: "268946", name: "Magic"),
                     .init(id: "268947", name: "Martial Arts"),
@@ -166,7 +165,7 @@ struct MangaFireSource: SourceService, AuthenticatingSource {
                     .init(id: "268957", name: "Reverse Harem"),
                     .init(id: "268958", name: "Samurai"),
                     .init(id: "268959", name: "School Life"),
-                    .init(id: "268960", name: "Shota", nsfw: true),
+                    .init(id: "268960", name: "Shota", sensitivity: .suggestive),
                     .init(id: "268961", name: "Supernatural"),
                     .init(id: "268962", name: "Survival"),
                     .init(id: "268963", name: "Time Travel"),
@@ -189,43 +188,38 @@ struct MangaFireSource: SourceService, AuthenticatingSource {
                 canExclude: false
             )
         ],
-        supportedSorts: [
-            .init(
-                id: "sort",
-                name: "Sort",
-                options: [
-                    .init(id: "relevance:desc", name: "Best match"),
-                    .init(id: "updated_at:desc", name: "Latest update"),
-                    .init(id: "created_at:desc", name: "Recently added"),
-                    .init(id: "title:asc", name: "Title (A–Z)"),
-                    .init(id: "title:desc", name: "Title (Z–A)"),
-                    .init(id: "year:desc", name: "Year (newest)"),
-                    .init(id: "year:asc", name: "Year (oldest)"),
-                    .init(id: "score:desc", name: "Highest rated"),
-                    .init(id: "trending:desc", name: "Trending"),
-                    .init(id: "views_7d:desc", name: "Most viewed · 7 days"),
-                    .init(id: "views_30d:desc", name: "Most viewed · 30 days"),
-                    .init(id: "views_total:desc", name: "Most viewed · all time"),
-                    .init(id: "follows_total:desc", name: "Most followed")
-                ],
-                defaultIndex: 0,
-                defaultAscending: false
-            )
-        ]
+        supportedSort: .init(
+            options: [
+                .init(id: "relevance:desc", name: "Best match"),
+                .init(id: "updated_at:desc", name: "Latest update"),
+                .init(id: "created_at:desc", name: "Recently added"),
+                .init(id: "title:asc", name: "Title (A–Z)"),
+                .init(id: "title:desc", name: "Title (Z–A)"),
+                .init(id: "year:desc", name: "Year (newest)"),
+                .init(id: "year:asc", name: "Year (oldest)"),
+                .init(id: "score:desc", name: "Highest rated"),
+                .init(id: "trending:desc", name: "Trending"),
+                .init(id: "views_7d:desc", name: "Most viewed · 7 days"),
+                .init(id: "views_30d:desc", name: "Most viewed · 30 days"),
+                .init(id: "views_total:desc", name: "Most viewed · all time"),
+                .init(id: "follows_total:desc", name: "Most followed")
+            ],
+            defaultSort: "relevance:desc"
+        )
     )
 
     var presets: [SourcePreset] {
         [
             .init(id: "trending", name: "Trending", subtitle: "What everyone's reading now", order: 0,
-                  sort: .init(optionID: "trending:desc", ascending: false)),
+                  sort: .init(optionID: "trending:desc")),
             .init(id: "latest", name: "Latest Updates", subtitle: "Freshly released chapters", order: 1,
-                  sort: .init(optionID: "updated_at:desc", ascending: false)),
+                  sort: .init(optionID: "updated_at:desc")),
             .init(id: "new", name: "New Releases", subtitle: "Recently added series", order: 2,
-                  sort: .init(optionID: "created_at:desc", ascending: false)),
+                  sort: .init(optionID: "created_at:desc")),
             .init(id: "top-rated", name: "Top Rated", subtitle: "Highest scored on MangaFire", order: 3,
-                  sort: .init(optionID: "score:desc", ascending: false)),
+                  sort: .init(optionID: "score:desc")),
             .init(id: "popular", name: "All-Time Popular", subtitle: "Most viewed of all time", order: 4,
-                  sort: .init(optionID: "views_total:desc", ascending: false))
+                  sort: .init(optionID: "views_total:desc"))
         ]
     }
 
@@ -253,14 +247,39 @@ extension MangaFireSource {
         let json = try await renderer.sniff(url, credential: credential, matching: "/api/titles")
         let response = try JSONDecoder().decode(TitlesResponse.self, from: Data(json.utf8))
 
+        // rung 2: the list payload carries no rating - twelve fields, none of
+        // them a tier, identical on a pornographic-only query. so the request
+        // answers instead, which it can because content_rating is a server-side
+        // whitelist and we always send one.
+        //
+        // ticking clean and pornographic together is a legitimate but genuinely
+        // mixed request, and there is nothing per item to separate them. it
+        // stamps adult and over-blurs the clean half; one tap undoes it, where
+        // the other way round undoes the preference itself
+        let adult = Self.stampsAdult(for: query, gateOpen: allowsAdult(for: query))
+
         let items = response.items.map { item in
             SeriesStub(
                 slug: item.hid,
                 title: item.title,
-                cover: item.poster.medium.flatMap { URL(string: $0) }
+                cover: item.poster.medium.flatMap { URL(string: $0) },
+                adult: adult
             )
         }
         return SearchPage(items: items, next: response.meta.hasNext ? response.meta.page + 1 : nil)
+    }
+
+    private static let clean = ["safe", "suggestive", "erotica"]
+
+    // whatever the reader picked is what came back, so the answer is whether any
+    // of it is pornographic. with no pick at all the gate is shut and browseURL
+    // sent the clean whitelist
+    private static func stampsAdult(for query: SearchQuery, gateOpen: Bool) -> Bool {
+        guard gateOpen else { return false }
+        guard case let .multiSelect(_, included, _)? = query.filters.first(where: { $0.id == "content_rating" })
+        else { return true }
+
+        return included.contains("pornographic")
     }
 
     private struct TitlesResponse: Decodable {
@@ -301,10 +320,20 @@ extension MangaFireSource {
     private func browseURL(for query: SearchQuery) -> URL {
         var items: [URLQueryItem] = []
 
+        // /browse consults their localStorage prefs only when the url omits
+        // content_rating, so sending it always makes the answer ours rather than
+        // a default their site picks in a store we never see. their prefs also
+        // carry blockedGenres, which browse ignores entirely - one url parameter
+        // is the whole gate here, and nothing needs writing to storage
+        if !query.filters.contains(where: { $0.id == "content_rating" }) {
+            let allowed = allowsAdult(for: query) ? Self.clean + ["pornographic"] : Self.clean
+            items.append(URLQueryItem(name: "content_rating", value: allowed.joined(separator: ",")))
+        }
+
         if let text = query.text, !text.isEmpty {
             items.append(URLQueryItem(name: "keyword", value: text))
         }
-        items.append(URLQueryItem(name: "sort", value: query.sort?.optionID ?? defaultSortID))
+        items.append(URLQueryItem(name: "sort", value: resolvedSort(for: query).optionID))
 
         for filter in query.filters {
             switch filter {

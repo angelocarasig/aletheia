@@ -14,7 +14,7 @@ struct MangaDexSource: RevalidatingSource {
 
     private static let api = URL(string: "https://api.mangadex.org")!
     private static let uploads = URL(string: "https://uploads.mangadex.org")!
-    private static let limit = 24
+    private static let limit = 30
     private static let feedLimit = 500
     private static let feedCap = 20
 
@@ -27,7 +27,7 @@ struct MangaDexSource: RevalidatingSource {
     let descriptor = SourceDescriptor(
         slug: "mangadex",
         name: "MangaDex",
-        description: "A community-run scanlation catalogue. No ads, no tracking, and the widest language coverage of any source.",
+        description: "Read comics and manga online at MangaDex, with high quality images and support creators and translators!",
         icon: .mangaDex,
         languages: [.english, .japanese, .korean, .chinese],
         baseURL: URL(string: "https://mangadex.org")!,
@@ -39,8 +39,8 @@ struct MangaDexSource: RevalidatingSource {
                 options: [
                     .init(id: "safe", name: "Safe"),
                     .init(id: "suggestive", name: "Suggestive"),
-                    .init(id: "erotica", name: "Erotica", nsfw: true),
-                    .init(id: "pornographic", name: "Pornographic", nsfw: true)
+                    .init(id: "erotica", name: "Erotica", sensitivity: .suggestive),
+                    .init(id: "pornographic", name: "Pornographic", sensitivity: .adult)
                 ],
                 canExclude: false
             ),
@@ -111,7 +111,7 @@ struct MangaDexSource: RevalidatingSource {
                     .init(id: "aafb99c1-7f60-43fa-b75f-fc9502ce29c7", name: "Harem"),
                     .init(id: "33771934-028e-4cb3-8744-691e866a923e", name: "Historical"),
                     .init(id: "cdad7e68-1419-41dd-bdce-27753074a640", name: "Horror"),
-                    .init(id: "5bd0e105-4481-44ca-b6e7-7544da56b1a3", name: "Incest", nsfw: true),
+                    .init(id: "5bd0e105-4481-44ca-b6e7-7544da56b1a3", name: "Incest", sensitivity: .suggestive),
                     .init(id: "ace04997-f6bd-436e-b261-779182193d3d", name: "Isekai"),
                     .init(id: "2d1f5d56-a1e5-4d0d-a961-2193588b08ec", name: "Loli"),
                     .init(id: "3e2b8dae-350e-4ab8-a8ce-016e844b9f0d", name: "Long Strip"),
@@ -141,7 +141,7 @@ struct MangaDexSource: RevalidatingSource {
                     .init(id: "caaa44eb-cd40-4177-b930-79d3ef2afe87", name: "School Life"),
                     .init(id: "256c8bd9-4904-4360-bf4f-508a76d67183", name: "Sci-Fi"),
                     .init(id: "891cf039-b895-47f0-9229-bef4c96eccd4", name: "Self-Published"),
-                    .init(id: "97893a4c-12af-4dac-b6be-0dffb353568e", name: "Sexual Violence", nsfw: true),
+                    .init(id: "97893a4c-12af-4dac-b6be-0dffb353568e", name: "Sexual Violence", sensitivity: .suggestive),
                     .init(id: "ddefd648-5140-4e5f-ba18-4eca4071d19b", name: "Shota"),
                     .init(id: "e5301a23-ebd9-49dd-a0cb-2add944c7fe9", name: "Slice of Life"),
                     .init(id: "69964a64-2f90-4d33-beeb-f3ed2875eb4c", name: "Sports"),
@@ -165,35 +165,30 @@ struct MangaDexSource: RevalidatingSource {
         ],
         // direction is baked into each option id, the same as the other sources -
         // the api names its axes as order[key]=dir and this maps straight through
-        supportedSorts: [
-            .init(
-                id: "sort",
-                name: "Sort",
-                options: [
-                    .init(id: "followedCount:desc", name: "Most followed"),
-                    .init(id: "relevance:desc", name: "Best match"),
-                    .init(id: "latestUploadedChapter:desc", name: "Latest chapter"),
-                    .init(id: "createdAt:desc", name: "Recently added"),
-                    .init(id: "rating:desc", name: "Highest rated"),
-                    .init(id: "year:desc", name: "Newest"),
-                    .init(id: "title:asc", name: "Title (A–Z)")
-                ],
-                defaultIndex: 0,
-                defaultAscending: false
-            )
-        ]
+        supportedSort: .init(
+            options: [
+                .init(id: "followedCount:desc", name: "Most followed"),
+                .init(id: "relevance:desc", name: "Best match"),
+                .init(id: "latestUploadedChapter:desc", name: "Latest chapter"),
+                .init(id: "createdAt:desc", name: "Recently added"),
+                .init(id: "rating:desc", name: "Highest rated"),
+                .init(id: "year:desc", name: "Newest"),
+                .init(id: "title:asc", name: "Title (A–Z)")
+            ],
+            defaultSort: "relevance:desc"
+        )
     )
 
     var presets: [SourcePreset] {
         [
             .init(id: "popular", name: "Popular", subtitle: "Most followed on MangaDex", order: 0,
-                  sort: .init(optionID: "followedCount:desc", ascending: false)),
+                  sort: .init(optionID: "followedCount:desc")),
             .init(id: "latest", name: "Latest Updates", subtitle: "Freshly uploaded chapters", order: 1,
-                  sort: .init(optionID: "latestUploadedChapter:desc", ascending: false)),
+                  sort: .init(optionID: "latestUploadedChapter:desc")),
             .init(id: "new", name: "New Releases", subtitle: "Recently added titles", order: 2,
-                  sort: .init(optionID: "createdAt:desc", ascending: false)),
+                  sort: .init(optionID: "createdAt:desc")),
             .init(id: "top-rated", name: "Top Rated", subtitle: "Highest rated by the community", order: 3,
-                  sort: .init(optionID: "rating:desc", ascending: false))
+                  sort: .init(optionID: "rating:desc"))
         ]
     }
 }
@@ -215,10 +210,11 @@ extension MangaDexSource {
         }
 
         items += Self.parameters(for: query.filters)
+        items += Self.ratings(for: query, gateOpen: allowsAdult(for: query))
 
         // relevance only means anything alongside a title, and the api rejects it
         // without one
-        let sort = query.sort?.optionID ?? "followedCount:desc"
+        let sort = resolvedSort(for: query).optionID
         let usable = (sort == "relevance:desc" && (query.text ?? "").isEmpty) ? "followedCount:desc" : sort
         items += Self.order(usable)
 
@@ -229,11 +225,25 @@ extension MangaDexSource {
         return SearchPage(items: stubs, next: seen < response.total ? query.page + 1 : nil)
     }
 
+    // the api's own default when contentRating is omitted is safe + suggestive +
+    // erotica - close to ours but not ours, and decided by them. a rating the
+    // reader picked is left alone; the gate is already reflected in it
+    private static func ratings(for query: SearchQuery, gateOpen: Bool) -> [URLQueryItem] {
+        guard !query.filters.contains(where: { $0.id == "contentRating" }) else { return [] }
+
+        let allowed = gateOpen ? clean + ["pornographic"] : clean
+        return allowed.map { .init(name: "contentRating[]", value: $0) }
+    }
+
+    private static let clean = ["safe", "suggestive", "erotica"]
+
+    // rung 1: the item says so itself, so the request never enters into it
     private static func stub(from entry: Manga) -> SeriesStub? {
         SeriesStub(
             slug: entry.id,
             title: title(from: entry.attributes.title, falling: entry.attributes.altTitles),
-            cover: cover(for: entry)
+            cover: cover(for: entry),
+            adult: entry.attributes.contentRating == "pornographic"
         )
     }
 }

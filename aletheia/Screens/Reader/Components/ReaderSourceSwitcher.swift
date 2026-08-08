@@ -174,8 +174,6 @@ private extension ReaderSourceSwitcher {
                     .fontWeight(.semibold)
                     .foregroundStyle(.secondary)
                     .rotationEffect(.degrees(expanded.contains(source.id) ? 0 : -90))
-            } else if source.options[0].id == active {
-                Check
             }
         }
         .padding(dimensions.spacing.space12)
@@ -201,27 +199,20 @@ private extension ReaderSourceSwitcher {
                 .font(.subheadline)
                 .lineLimit(1)
                 .frame(maxWidth: .infinity, alignment: .leading)
-
-            if option.id == active {
-                Check
-            }
         }
         .padding(dimensions.spacing.space12)
         .padding(.leading, Layout.indent)
+        // the fill alone marks the serving row: a session swap is where you
+        // are, not a stored preference, so it takes the position marker and
+        // not the checkmark (selection-language.md)
         .background { Highlight(option.id == active) }
         .contentShape(.rect)
+        .accessibilityAddTraits(option.id == active ? .isSelected : [])
         .tappable {
             onSelect(option)
             dismiss()
         }
         .transition(.opacity.combined(with: .move(edge: .top)))
-    }
-
-    var Check: some View {
-        Image(systemName: "checkmark")
-            .font(.subheadline)
-            .fontWeight(.semibold)
-            .foregroundStyle(.brand)
     }
 
     @ViewBuilder

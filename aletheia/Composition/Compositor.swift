@@ -29,7 +29,10 @@ struct Compositor: Sendable {
         let sources: [Source] = [
             MangaFireSource(requester: requester, renderer: renderer),
             MangaDexSource(network: network),
-            WeebCentralSource(network: network)
+            AtsumaruSource(network: network),
+            WeebCentralSource(network: network),
+            ScansGGSource(network: network),
+            NHentaiSource(requester: requester, network: network)
         ]
 
         self.database = database

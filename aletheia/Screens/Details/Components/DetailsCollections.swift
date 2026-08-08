@@ -72,9 +72,18 @@ struct DetailsCollections: View {
 
     private func Card(_ collection: Item) -> some View {
         VStack(alignment: .leading, spacing: dimensions.spacing.space2) {
-            Text(collection.name)
-                .font(.subheadline)
-                .fontWeight(.semibold)
+            HStack(spacing: dimensions.spacing.space4) {
+                // membership never rides on the fill alone - state needs a
+                // shape channel, not just color (selection-language.md)
+                Image(systemName: collection.contains ? "checkmark.circle.fill" : "circle")
+                    .font(.caption)
+                    .foregroundStyle(collection.contains ? .brand : .muted)
+                    .contentTransition(.symbolEffect(.replace))
+
+                Text(collection.name)
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+            }
 
             Text("^[\(collection.count) item](inflect: true)")
                 .font(.caption2)

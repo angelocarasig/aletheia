@@ -16,6 +16,11 @@ struct SourcePreset: Sendable, Identifiable, Hashable {
     let filters: [FilterSelection]
     let sort: SortSelection?
 
+    // opaque to everything but the source that declared it. presets are the only
+    // query the app builds without user text, which is what lets one name a
+    // different endpoint - see SearchQuery.route
+    let route: String?
+
     init(
         id: String,
         name: String,
@@ -23,7 +28,8 @@ struct SourcePreset: Sendable, Identifiable, Hashable {
         order: Int,
         hidden: Bool = false,
         filters: [FilterSelection] = [],
-        sort: SortSelection? = nil
+        sort: SortSelection? = nil,
+        route: String? = nil
     ) {
         self.id = id
         self.name = name
@@ -32,10 +38,11 @@ struct SourcePreset: Sendable, Identifiable, Hashable {
         self.hidden = hidden
         self.filters = filters
         self.sort = sort
+        self.route = route
     }
 
     func query(page: Int = 1) -> SearchQuery {
-        SearchQuery(text: nil, filters: filters, sort: sort, page: page)
+        SearchQuery(text: nil, filters: filters, sort: sort, page: page, route: route)
     }
 
     static func == (lhs: SourcePreset, rhs: SourcePreset) -> Bool { lhs.id == rhs.id }

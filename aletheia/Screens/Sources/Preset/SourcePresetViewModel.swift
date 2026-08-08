@@ -27,7 +27,7 @@ final class SourcePresetViewModel {
         return false
     }
 
-    init(source: Source, preset: SourcePreset, database: DatabaseClient = .client) {
+    init(source: Source, preset: SourcePreset, database: DatabaseClient) {
         self.source = source
         self.preset = preset
         self.correlator = Correlator(sourceSlug: source.descriptor.slug, database: database)
