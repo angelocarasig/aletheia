@@ -240,6 +240,20 @@ struct DetailsScreen: View {
                     .transition(.move(edge: .trailing).combined(with: .opacity))
             }
         }
+        // an inset rather than an overlay: this one is permanent, and a bar that
+        // permanently covers the last chapter row is a bar that hides the thing
+        // it is about
+        .safeAreaInset(edge: .bottom) {
+            DetailsContinue(chapters: vm.chapters) { chapter in
+                guard let target = vm.read(chapter) else { return }
+                Task { await vm.open(chapter) }
+                reading = target
+            }
+            .padding(.horizontal, dimensions.screenMargin)
+            // lifted off the safe area edge so it reads as floating over the
+            // list rather than sitting on the bottom of the screen
+            .padding(.bottom, dimensions.spacing.space8)
+        }
         .animation(Layout.settle, value: vm.refreshState)
     }
 

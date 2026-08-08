@@ -52,8 +52,13 @@ struct DetailsHeader: View {
                     .placeholder { Placeholder }
                     .fade(duration: Layout.fadeDuration)
                     .scaledToFill()
+                    // a new preferred cover is a new identity, so it crossfades in
+                    // over the old one rather than swapping hard
+                    .id(cover)
+                    .transition(.opacity)
             }
             .clipShape(.rect(cornerRadius: dimensions.radius.radius16, style: .continuous))
+            .animation(.smooth(duration: 0.35), value: cover)
             .tappable(action: onOpenCovers)
     }
 

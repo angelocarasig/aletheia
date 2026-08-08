@@ -115,10 +115,7 @@ struct DetailsSources: View {
     }
 
     private func Subtitle(_ origin: Origin) -> some View {
-        let fetched = origin.fetchedDate
-            .map { " · \($0.formatted(.relative(presentation: .numeric)))" } ?? ""
-
-        return Text("\(origin.host) · ^[\(origin.chapterCount) chapter](inflect: true)\(fetched)")
+        Text("\(origin.host) · ^[\(origin.chapterCount) chapter](inflect: true)")
             .font(.caption2)
             .foregroundStyle(.muted)
             .lineLimit(1)

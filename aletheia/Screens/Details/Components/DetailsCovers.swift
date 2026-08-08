@@ -264,21 +264,28 @@ struct DetailsCovers: View {
     // the selected cover blurred back over itself. content, not chrome, so it is
     // deliberately not glass
     @ViewBuilder
+    // the animation lives on this stable Color.clear base, not on the image:
+    // .id(focused.id) replaces the KFImage as the pager swipes, so an animation
+    // on the image itself is torn down with it and the backdrop cuts instantly
     private var Backdrop: some View {
-        if let focused {
-            KFImage(focused.artwork)
-                .requestModifier(AnyModifier.referer(referer))
-                .resizable()
-                .placeholder { Color.clear }
-                .fade(duration: 0.25)
-                .scaledToFill()
-                .scaleEffect(Layout.backdropScale)
-                .blur(radius: Layout.backdropBlur)
-                .overlay(Color.black.opacity(Layout.backdropDim))
-                .ignoresSafeArea()
-                .transition(.opacity)
-                .id(focused.id)
-        }
+        Color.clear
+            .overlay {
+                if let focused {
+                    KFImage(focused.artwork)
+                        .requestModifier(AnyModifier.referer(referer))
+                        .resizable()
+                        .placeholder { Color.clear }
+                        .fade(duration: 0.25)
+                        .scaledToFill()
+                        .scaleEffect(Layout.backdropScale)
+                        .blur(radius: Layout.backdropBlur)
+                        .overlay(Color.black.opacity(Layout.backdropDim))
+                        .transition(.opacity)
+                        .id(focused.id)
+                }
+            }
+            .ignoresSafeArea()
+            .animation(.smooth(duration: 0.35), value: focused?.id)
     }
 
     @ViewBuilder

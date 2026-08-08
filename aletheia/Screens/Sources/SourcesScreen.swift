@@ -164,8 +164,8 @@ private struct SourceRow: View {
         // soften it. .regular resolves dark over a dark page and averages a
         // full-strength colour toward that dark, so a bare .danger reads greyer
         // than .danger at a third of it. same value CollectionPicker tints with
-        static let adultTint: Double = 0.15
-        static let adultBorder: Double = 0.35
+        static let adultTint: Double = 0.05
+        static let adultBorder: Double = 0.15
     }
 
     private var glass: Glass {

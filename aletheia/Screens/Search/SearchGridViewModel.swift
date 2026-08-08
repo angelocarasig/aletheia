@@ -40,6 +40,7 @@ final class SearchGridViewModel {
     @ObservationIgnored private var observationTask: Task<Void, Never>?
 
     var title: String { preset?.name ?? "Search" }
+    var isAdultSource: Bool { source.descriptor.adultOnly }
     var sourceName: String { source.descriptor.name }
     var sourceIcon: ImageResource { source.descriptor.icon }
     var sourceDescription: String { source.descriptor.description }

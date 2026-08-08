@@ -88,15 +88,25 @@ struct DetailsBackdrop: View {
     }
 
     private func Artwork(_ size: CGSize, processor: (any ImageProcessor)? = nil) -> some View {
-        KFImage(cover)
-            .requestModifier(AnyModifier.referer(referer))
-            .setProcessor(processor ?? DefaultImageProcessor.default)
-            .resizable()
-            .placeholder { Placeholder }
-            .fade(duration: Layout.fadeDuration)
-            .scaledToFill()
+        // the animation sits on this stable Color.clear ancestor, not on the
+        // image: .id(cover) replaces the KFImage, so an animation modifier on the
+        // image itself is torn down with it and never drives the transition. keyed
+        // on cover alone, so it never fires on the scroll-driven blur opacity
+        Color.clear
             .frame(width: size.width, height: Layout.height)
+            .overlay {
+                KFImage(cover)
+                    .requestModifier(AnyModifier.referer(referer))
+                    .setProcessor(processor ?? DefaultImageProcessor.default)
+                    .resizable()
+                    .placeholder { Placeholder }
+                    .fade(duration: Layout.fadeDuration)
+                    .scaledToFill()
+                    .id(cover)
+                    .transition(.opacity)
+            }
             .clipped()
+            .animation(.smooth(duration: 0.35), value: cover)
     }
 
     private var Placeholder: some View {
