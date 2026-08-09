@@ -34,9 +34,14 @@ extension Failure {
             message = localized.failureReason ?? localized.recoverySuggestion ?? ""
             isRetryable = true
         } else {
+            // an error that never learned to describe itself is internal by
+            // definition - a database error's text is sql, not a sentence. the
+            // detail goes to the log so it is never lost, and the screen gets
+            // words a person can act on
             title = fallback
-            message = error.localizedDescription
+            message = "Something unexpected went wrong. Please try again."
             isRetryable = true
+            AppLog.shared.log("unpresentable error reached a screen — \(error)", category: "failure")
         }
     }
 }

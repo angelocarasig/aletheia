@@ -68,6 +68,10 @@ struct SourceHomeScreen: View {
                 }
             }
 
+            // searching and configuring are unrelated - without the spacer they
+            // share one glass capsule and read as a single control
+            ToolbarSpacer(.fixed, placement: .topBarTrailing)
+
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
                     AppLog.shared.log("settings tapped for '\(source.descriptor.slug)'", category: "sources")

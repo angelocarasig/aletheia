@@ -5,7 +5,6 @@
 //  Created by Angelo Carasig on 7/8/2026.
 //
 
-import CoreGraphics
 import Foundation
 
 // what a chapter boundary is made of. a stack of slots rather than one layout,
@@ -29,9 +28,19 @@ struct ReaderSeparatorModel: Equatable, Sendable {
     var gap: Gap?
     var destination: Destination
 
+    // the reading-event write for the finished chapter, rendered beside the
+    // terminal number going forward. content only, never height - nil renders
+    // nothing, which is every separator until the reader wires the insert
+    var event: EventStatus?
+
     struct Terminal: Equatable, Sendable {
         let number: Double
         let title: String
+    }
+
+    enum EventStatus: Equatable, Sendable {
+        case recording
+        case recorded
     }
 
     // consecutive chapters can come from different sources: best_chapter ranks

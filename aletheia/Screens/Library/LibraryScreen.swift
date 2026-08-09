@@ -56,38 +56,44 @@ struct LibraryScreen: View {
                     Content
                 }
                 .padding(.top, dimensions.spacing.space8)
-                // the floating clusters overlap the scroll view, so the last row
-                // needs somewhere to go once you reach the bottom
-                .padding(.bottom, dimensions.spacing.space64)
                 // on the container that survives the swap, keyed to the same
                 // value the branches switch on
                 .animation(.settle, value: phase)
             }
-            // two clusters, one per corner: where you are on the left, what you
-            // are doing to it on the right. separate containers on purpose - they
-            // are unrelated controls that happen to share an edge
-            .overlay(alignment: .bottomLeading) {
-                if let vm {
-                    LibraryCollections(
-                        collections: vm.collections,
-                        total: vm.entries.count,
-                        selected: selection(vm),
-                        onCreate: { showingCollectionForm = true },
-                        onRename: { _ in log("rename collection") },
-                        onDelete: { _ in log("delete collection") },
-                        expanded: $collectionsExpanded
+            // a bar rather than two overlays: it reserves the clearance the last
+            // row needs instead of a literal bottom padding, and registers as a
+            // control surface so the scroll edge effect reaches it
+            //
+            // stacked, not an HStack - the collections panel opens to full width,
+            // which in a row would squeeze the actions cluster to nothing. one
+            // cluster per corner, and only ever one of them open
+            .safeAreaBar(edge: .bottom) {
+                ZStack(alignment: .bottom) {
+                    if let vm {
+                        LibraryCollections(
+                            collections: vm.collections,
+                            total: vm.entries.count,
+                            selected: selection(vm),
+                            onCreate: { showingCollectionForm = true },
+                            onRename: { _ in log("rename collection") },
+                            onDelete: { _ in log("delete collection") },
+                            expanded: $collectionsExpanded
+                        )
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+
+                    LibraryActions(
+                        onSort: { showingSort = true },
+                        onFilter: { showingFilters = true },
+                        filtered: vm?.filter.isActive ?? false,
+                        expanded: $actionsExpanded
                     )
-                    .padding(dimensions.screenMargin)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
                 }
-            }
-            .overlay(alignment: .bottomTrailing) {
-                LibraryActions(
-                    onSort: { showingSort = true },
-                    onFilter: { showingFilters = true },
-                    filtered: vm?.filter.isActive ?? false,
-                    expanded: $actionsExpanded
-                )
-                .padding(dimensions.screenMargin)
+                .padding(.horizontal, dimensions.screenMargin)
+                // the bar sits flush on the tab bar otherwise, and two glass
+                // surfaces touching read as one
+                .padding(.bottom, dimensions.spacing.space16)
             }
             // one cluster open at a time: opening either collapses the other
             .onChange(of: collectionsExpanded) { _, open in
@@ -101,6 +107,7 @@ struct LibraryScreen: View {
             // the title carries the collection, so the switcher does not have to
             .navigationTitle(vm?.title ?? "Library")
             .navigationSubtitle(subtitle)
+            .toolbarTitleDisplayMode(.inlineLarge)
             .navigationDestination(for: SeriesEntry.self) { DetailsScreen(entry: $0) }
             .sheet(isPresented: $showingSort) {
                 if let vm {

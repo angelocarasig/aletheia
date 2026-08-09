@@ -39,6 +39,11 @@ final class ReaderEngine {
     // scrolling across anything, so neither can mark a chapter finished
     private var completed: Set<ReaderChapter.ID> = []
 
+    // what the host reports about its reading-event write per finished chapter,
+    // rendered beside the terminal number. content only - the separator's
+    // height never depends on it
+    private var events: [ReaderChapter.ID: ReaderSeparatorModel.EventStatus] = [:]
+
     @ObservationIgnored private weak var controller: ReaderController?
 
     private(set) var configuration: ReaderConfiguration
@@ -376,9 +381,16 @@ final class ReaderEngine {
                 terminal: terminal,
                 continuity: info.continuity,
                 gap: info.gap,
-                destination: destination(after: id)
+                destination: destination(after: id),
+                event: events[id]
             )
         }
+    }
+
+    func setEvent(_ status: ReaderSeparatorModel.EventStatus?, for chapter: ReaderChapter.ID) {
+        guard events[chapter] != status else { return }
+        events[chapter] = status
+        controller?.reloadSeparators()
     }
 
     private func destination(after id: ReaderChapter.ID) -> ReaderSeparatorModel.Destination {

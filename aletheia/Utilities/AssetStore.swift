@@ -9,26 +9,14 @@ import Foundation
 
 struct AssetStore: AssetStoring {
     private let network: NetworkConfiguration
-    private let throttler: RequestThrottler
     private let log: AppLog
 
-    // its own throttler rather than the shared one: that is tuned for json with a
-    // three second timeout, which half a megabyte of cover blows through on any
-    // congested connection
+    // no throttler of its own any more: pacing is per host and lives inside
+    // NetworkService, so a cover and a chapter fetch at the same site finally
+    // share one budget instead of being two limits blind to each other
     init(network: NetworkConfiguration, log: AppLog = .shared) {
         self.network = network
-        self.throttler = RequestThrottler(
-            maxConcurrent: Limits.concurrent,
-            staggerDelay: Limits.stagger,
-            timeout: Limits.timeout
-        )
         self.log = log
-    }
-
-    private enum Limits {
-        static let concurrent = 3
-        static let stagger: Duration = .milliseconds(250)
-        static let timeout: Duration = .seconds(30)
     }
 
     func store(_ asset: Asset, progress: (@Sendable (Int, Int) -> Void)? = nil) async throws -> String {
@@ -56,9 +44,7 @@ struct AssetStore: AssetStoring {
                 continue
             }
 
-            let data: Data = try await throttler.execute { [network] in
-                try await network.get(url: remote, headers: headers)
-            }
+            let data: Data = try await network.get(url: remote, headers: headers)
 
             // a status code is not enough. cloudflare interstitials and hotlink
             // blocks come back 200 text/html, and persisting one would set a path

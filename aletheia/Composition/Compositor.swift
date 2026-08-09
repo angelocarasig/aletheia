@@ -12,6 +12,8 @@ struct Compositor: Sendable {
     let registry: Registry
     let db: Persistence
     let assets: Assets
+    let refresh: Refresh
+    let libraryRefresh: LibraryRefresh
     let requester: AuthRequester
     let presenter: AuthPresenter
 
@@ -32,14 +34,20 @@ struct Compositor: Sendable {
             AtsumaruSource(network: network),
             WeebCentralSource(network: network),
             ScansGGSource(network: network),
-            NHentaiSource(requester: requester, network: network)
+            NHentaiSource(requester: requester, network: network),
+            ToonilySource(requester: requester)
         ]
 
         self.database = database
         self.presenter = presenter
         self.requester = requester
-        self.registry = Registry(sources: sources, database: database)
+        let registry = Registry(sources: sources, database: database)
+        let refresh = Refresh(database: database)
+
+        self.registry = registry
+        self.refresh = refresh
         self.assets = Assets(database: database, network: network)
+        self.libraryRefresh = LibraryRefresh(database: database, registry: registry, refresher: refresh)
         self.db = Persistence(database: database)
     }
 }

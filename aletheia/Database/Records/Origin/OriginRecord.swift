@@ -28,8 +28,19 @@ struct OriginRecord: Codable, DatabaseRecord {
     var metadataFetchedDate: Date = .distantPast
     var chaptersFetchedDate: Date = .distantPast
 
+    // stamped on every attempt, succeeded or not, so a source that keeps being
+    // asked and keeps giving nothing is distinguishable from one nothing has
+    // touched. fetchError is the current-status half: set on failure, nulled on
+    // success, so a recovered source leaves no trace. no run history by design
+    var fetchAttemptedDate: Date = .distantPast
+    var fetchError: String?
+
     var disconnected: Bool {
         sourceId == nil
+    }
+
+    var failing: Bool {
+        fetchError != nil
     }
 }
 
@@ -54,6 +65,8 @@ extension OriginRecord {
 
         static let metadataFetchedDate = Column(CodingKeys.metadataFetchedDate)
         static let chaptersFetchedDate = Column(CodingKeys.chaptersFetchedDate)
+        static let fetchAttemptedDate = Column(CodingKeys.fetchAttemptedDate)
+        static let fetchError = Column(CodingKeys.fetchError)
     }
 
     static func createTable(db: Database) throws {
@@ -73,6 +86,8 @@ extension OriginRecord {
 
             t.column(Columns.metadataFetchedDate.name, .datetime).notNull()
             t.column(Columns.chaptersFetchedDate.name, .datetime).notNull()
+            t.column(Columns.fetchAttemptedDate.name, .datetime).notNull()
+            t.column(Columns.fetchError.name, .text)
         }
     }
 
@@ -115,6 +130,16 @@ extension OriginRecord {
             Columns.seriesId.name,
             Columns.sourceId.name
         ], ifNotExists: true)
+
+        // currently-failing origins are a handful out of everything, so the
+        // aggregate reads a partial index rather than scanning the table
+        try db.create(
+            index: "idx_origin_failing",
+            on: databaseTableName,
+            columns: [Columns.seriesId.name],
+            options: .ifNotExists,
+            condition: Columns.fetchError != nil
+        )
     }
 
     mutating func didInsert(_ inserted: InsertionSuccess) {

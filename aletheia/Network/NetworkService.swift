@@ -32,8 +32,21 @@ extension NetworkConfiguration {
 
 final class NetworkService: NetworkConfiguration {
     private let decoder: JSONDecoder
-    
-    init() {
+    private let session: URLSession
+    private let gate: HostGate
+
+    init(gate: HostGate = HostGate()) {
+        self.gate = gate
+
+        // an owned session rather than .shared, which ignores configuration and
+        // so cannot carry a resource timeout at all. a caller needing different
+        // timings builds its own request and goes through send(_:)
+        let configuration = URLSessionConfiguration.default
+        configuration.timeoutIntervalForRequest = Constants.Network.timeout
+        configuration.timeoutIntervalForResource = Constants.Network.resourceTimeout
+        configuration.httpMaximumConnectionsPerHost = Constants.Network.connectionsPerHost
+        self.session = URLSession(configuration: configuration)
+
         self.decoder = JSONDecoder()
         self.decoder.dateDecodingStrategy = .custom { decoder in
             let container = try decoder.singleValueContainer()
@@ -89,9 +102,9 @@ final class NetworkService: NetworkConfiguration {
             }
         }
         
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await perform(request)
         try handleResponse(response)
-        
+
         return data  // Return raw, no JSON decoding
     }
     
@@ -113,9 +126,9 @@ final class NetworkService: NetworkConfiguration {
             throw NetworkError.encoding(error)
         }
         
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await perform(request)
         try handleResponse(response)
-        
+
         do {
             return try decoder.decode(Response.self, from: data)
         } catch let decodingError as DecodingError {
@@ -124,56 +137,53 @@ final class NetworkService: NetworkConfiguration {
     }
     
     func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
-        do {
-            let (data, response) = try await URLSession.shared.data(for: request)
-            guard let httpResponse = response as? HTTPURLResponse else {
-                throw NetworkError.failed(URLError(.badServerResponse))
-            }
-            return (data, httpResponse)
-        } catch let urlError as URLError {
-            switch urlError.code {
-            case .cancelled:
-                throw NetworkError.cancelled
-            case .notConnectedToInternet:
-                throw NetworkError.offline
-            case .timedOut:
-                throw NetworkError.timeout
-            default:
-                throw NetworkError.failed(urlError)
-            }
+        let (data, response) = try await perform(request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw NetworkError.failed(URLError(.badServerResponse))
         }
+        return (data, httpResponse)
     }
 
     private func makeRequest(url: URL, method: String, body: Data?, headers: [String: String]?) async throws -> (Data, URLResponse) {
         var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData)
         request.httpMethod = method
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        
+
         if let headers = headers {
             for (key, value) in headers {
                 request.setValue(value, forHTTPHeaderField: key)
             }
         }
-        
+
         if let body = body {
             request.httpBody = body
         }
-        
-        do {
-            return try await URLSession.shared.data(for: request)
-        } catch let urlError as URLError {
-            switch urlError.code {
-            case .cancelled:
+
+        return try await perform(request)
+    }
+
+    // the one place a request leaves the app: the host gate, the owned session,
+    // and the url-error mapping all live here so no path can miss one
+    private func perform(_ request: URLRequest) async throws -> (Data, URLResponse) {
+        try await gate.execute(host: request.url?.host()) { [session] in
+            do {
+                return try await session.data(for: request)
+            } catch let urlError as URLError {
+                switch urlError.code {
+                case .cancelled:
+                    throw NetworkError.cancelled
+                case .notConnectedToInternet:
+                    throw NetworkError.offline
+                case .timedOut:
+                    throw NetworkError.timeout
+                default:
+                    throw NetworkError.failed(urlError)
+                }
+            } catch is CancellationError {
                 throw NetworkError.cancelled
-            case .notConnectedToInternet:
-                throw NetworkError.offline
-            case .timedOut:
-                throw NetworkError.timeout
-            default:
-                throw NetworkError.failed(urlError)
+            } catch {
+                throw NetworkError.failed(URLError(.unknown))
             }
-        } catch {
-            throw NetworkError.failed(URLError(.unknown))
         }
     }
     

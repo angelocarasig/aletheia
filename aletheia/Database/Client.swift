@@ -10,8 +10,15 @@ import GRDB
 
 final class DatabaseClient: Sendable {
     // only here to satisfy the @Entry defaults in AppEnvironment, which the
-    // bootstrapped tree never reads. the app path goes through open()
+    // bootstrapped tree never reads. the app path goes through open().
+    // SwiftUI evaluates an environment default the moment a view declares the
+    // property, so in a preview - where the container is not the app's - the
+    // trap fired before any body ran. debug falls back to memory instead
+    #if DEBUG
+    static let client = (try? DatabaseClient()) ?? preview
+    #else
     static let client = try! DatabaseClient()
+    #endif
 
     let reader: DatabaseReader
     let writer: DatabaseWriter
@@ -35,6 +42,8 @@ final class DatabaseClient: Sendable {
         ChapterRecord.self,
         OriginScanlatorPriorityRecord.self,
         SeriesLanguagePriorityRecord.self,
+        ReadingEventRecord.self,
+        ReadingSessionRecord.self,
     ]
 
     // views created after tables; view deps precede dependents
@@ -87,4 +96,21 @@ final class DatabaseClient: Sendable {
         self.reader = pool
         self.writer = pool
     }
+
+    #if DEBUG
+    // previews and tests: the schema with nothing in it, no app group and no
+    // file. a pool needs WAL companions on disk, so memory is a queue
+    static let preview: DatabaseClient = try! DatabaseClient(inMemory: ())
+
+    private init(inMemory: Void) throws {
+        let queue = try DatabaseQueue(configuration: DatabaseClient.configuration)
+
+        var migrator = DatabaseMigrator()
+        Migrations.register(with: &migrator, records: DatabaseClient.allRecords, views: DatabaseClient.allViews)
+        try migrator.migrate(queue)
+
+        self.reader = queue
+        self.writer = queue
+    }
+    #endif
 }

@@ -16,11 +16,13 @@ struct ReaderSeparatorView: View {
     var onRetry: () -> Void
 
     @Environment(\.dimensions) private var dimensions
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private enum Layout {
         static let ruleWidth: CGFloat = 64
         static let ruleHeight: CGFloat = 1
         static let dotSize: CGFloat = 5
+        static let eventBadge: CGFloat = 18
     }
 
     var body: some View {
@@ -62,10 +64,43 @@ private extension ReaderSeparatorView {
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
-            Text("Chapter \(terminal.number.formatted())")
-                .font(.headline)
+            HStack(spacing: dimensions.spacing.space8) {
+                Text("Chapter \(terminal.number.formatted())")
+                    .font(.headline)
+
+                EventBadge
+            }
         }
         .frame(height: ReaderSeparatorModel.Metrics.terminal)
+    }
+
+    // the write's own state, injected through the model. geometry only - the
+    // badge is .secondary, so colour-based effects read as nothing here. the
+    // ring spins while the event row is in flight; the check enters by drawing
+    // itself along its stroke path (draw-on), the outgoing side draws off.
+    // forward only: backward travel records nothing
+    @ViewBuilder
+    var EventBadge: some View {
+        if model.direction == .forward, let event = model.event {
+            Group {
+                switch event {
+                case .recording:
+                    Image(systemName: "progress.indicator")
+                        .symbolEffect(.rotate, options: .repeat(.continuous))
+                        .transition(reduceMotion ? .opacity : AnyTransition(.symbolEffect(.drawOn)))
+
+                case .recorded:
+                    Image(systemName: "checkmark")
+                        .fontWeight(.semibold)
+                        .transition(reduceMotion ? .opacity : AnyTransition(.symbolEffect(.drawOn)))
+                }
+            }
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
+            .frame(width: Layout.eventBadge, height: Layout.eventBadge)
+            .animation(.settle, value: event)
+            .accessibilityLabel(event == .recorded ? "Chapter recorded" : "Recording chapter")
+        }
     }
 
     func Continuity(_ continuity: ReaderSeparatorModel.Continuity) -> some View {
@@ -208,4 +243,160 @@ private extension ReaderSeparatorModel.Gap {
             ? "Chapter \(from.formatted()) is missing"
             : "Chapters \(from.formatted())–\(to.formatted()) are missing"
     }
+}
+
+// MARK: - Previews
+
+// the separator has no orientation input - it renders identically in every
+// reading mode. its axes are direction and destination state, so those are
+// what the previews cover
+#Preview("Forward") {
+    ReaderSeparatorView(
+        model: .init(
+            boundary: .after(1),
+            direction: .forward,
+            terminal: .init(number: 44, title: "The Gathering Storm"),
+            continuity: nil,
+            gap: nil,
+            destination: .chapter(number: 45, title: "Aftermath")
+        ),
+        onRetry: {}
+    )
+}
+
+#Preview("Backward") {
+    ReaderSeparatorView(
+        model: .init(
+            boundary: .after(1),
+            direction: .backward,
+            terminal: .init(number: 45, title: "Aftermath"),
+            continuity: nil,
+            gap: nil,
+            destination: .chapter(number: 44, title: "The Gathering Storm")
+        ),
+        onRetry: {}
+    )
+}
+
+#Preview("Event Recording") {
+    ReaderSeparatorView(
+        model: .init(
+            boundary: .after(1),
+            direction: .forward,
+            terminal: .init(number: 44, title: ""),
+            continuity: nil,
+            gap: nil,
+            destination: .chapter(number: 45, title: ""),
+            event: .recording
+        ),
+        onRetry: {}
+    )
+}
+
+#Preview("Event Recorded") {
+    ReaderSeparatorView(
+        model: .init(
+            boundary: .after(1),
+            direction: .forward,
+            terminal: .init(number: 44, title: ""),
+            continuity: nil,
+            gap: nil,
+            destination: .chapter(number: 45, title: ""),
+            event: .recorded
+        ),
+        onRetry: {}
+    )
+}
+
+#Preview("Event Flow") {
+    @Previewable @State var event: ReaderSeparatorModel.EventStatus?
+
+    ReaderSeparatorView(
+        model: .init(
+            boundary: .after(1),
+            direction: .forward,
+            terminal: .init(number: 44, title: ""),
+            continuity: nil,
+            gap: nil,
+            destination: .chapter(number: 45, title: ""),
+            event: event
+        ),
+        onRetry: {}
+    )
+    .task {
+        try? await Task.sleep(for: .seconds(1))
+        event = .recording
+        try? await Task.sleep(for: .seconds(1.5))
+        event = .recorded
+    }
+}
+
+#Preview("Full Stack") {
+    ReaderSeparatorView(
+        model: .init(
+            boundary: .after(1),
+            direction: .forward,
+            terminal: .init(number: 44, title: "The Gathering Storm"),
+            continuity: .init(source: "MangaDex", scanlator: "Asura Scans", language: "EN"),
+            gap: .init(from: 45, to: 49, count: 5),
+            destination: .chapter(number: 50, title: "Return")
+        ),
+        onRetry: {}
+    )
+}
+
+#Preview("Loading") {
+    ReaderSeparatorView(
+        model: .init(
+            boundary: .after(1),
+            direction: .forward,
+            terminal: .init(number: 44, title: ""),
+            continuity: nil,
+            gap: nil,
+            destination: .loading(number: 45)
+        ),
+        onRetry: {}
+    )
+}
+
+#Preview("Failed") {
+    ReaderSeparatorView(
+        model: .init(
+            boundary: .after(1),
+            direction: .forward,
+            terminal: .init(number: 44, title: ""),
+            continuity: nil,
+            gap: nil,
+            destination: .failed(.offline(2))
+        ),
+        onRetry: {}
+    )
+}
+
+#Preview("Caught Up") {
+    ReaderSeparatorView(
+        model: .init(
+            boundary: .after(1),
+            direction: .forward,
+            terminal: .init(number: 44, title: ""),
+            continuity: nil,
+            gap: nil,
+            destination: .caughtUp
+        ),
+        onRetry: {}
+    )
+}
+
+#Preview("Start of Series") {
+    ReaderSeparatorView(
+        model: .init(
+            boundary: .start,
+            direction: .backward,
+            terminal: nil,
+            continuity: nil,
+            gap: nil,
+            destination: .startOfSeries
+        ),
+        onRetry: {}
+    )
 }

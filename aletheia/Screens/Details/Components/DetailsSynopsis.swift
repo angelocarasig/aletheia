@@ -8,7 +8,7 @@
 import SwiftUI
 
 struct DetailsSynopsis: View {
-    let synopsis: AttributedString
+    let synopsis: AttributedString?
 
     @Environment(\.dimensions) private var dimensions
 
@@ -24,28 +24,39 @@ struct DetailsSynopsis: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: dimensions.spacing.space8) {
-            Synopsis
+            if let synopsis {
+                Synopsis(synopsis)
 
-            if isTruncated || isExpanded {
-                ExpandToggle(isExpanded: $isExpanded)
+                if isTruncated || isExpanded {
+                    ExpandToggle(isExpanded: $isExpanded)
+                }
+            } else {
+                Placeholder
             }
         }
     }
 
+    private var Placeholder: some View {
+        Text("No description available")
+            .font(.subheadline)
+            .foregroundStyle(.textPrimary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
     @ViewBuilder
-    private var Synopsis: some View {
+    private func Synopsis(_ synopsis: AttributedString) -> some View {
         if isTruncated || isExpanded {
-            SynopsisText.tappable {
+            SynopsisText(synopsis).tappable {
                 withAnimation(Layout.expand) { isExpanded.toggle() }
             }
         } else {
-            SynopsisText
+            SynopsisText(synopsis)
         }
     }
 
     // truncation can't be read off Text directly - an unclipped copy is rendered
     // hidden behind the clipped one and the two heights compared
-    private var SynopsisText: some View {
+    private func SynopsisText(_ synopsis: AttributedString) -> some View {
         Text(synopsis)
             .font(.subheadline)
             .foregroundStyle(.textPrimary)

@@ -14,6 +14,7 @@ struct ReaderScreen: View {
     @Environment(\.compositor) private var compositor
     @Environment(\.dismiss) private var dismiss
     @Environment(\.dimensions) private var dimensions
+    @Environment(\.scenePhase) private var scenePhase
 
     @State private var vm: ReaderViewModel?
     @State private var showingChapters = false
@@ -121,6 +122,20 @@ struct ReaderScreen: View {
         .onDisappear {
             guard let vm else { return }
             Task { await vm.close() }
+        }
+        // .background commits progress and ends the sitting; .active starts the
+        // next one. .inactive stays untouched - a notification shade or a call
+        // banner is not the end of a sitting
+        .onChange(of: scenePhase) { _, phase in
+            guard let vm else { return }
+            switch phase {
+            case .background:
+                Task { await vm.background() }
+            case .active:
+                vm.foreground()
+            default:
+                break
+            }
         }
     }
 }

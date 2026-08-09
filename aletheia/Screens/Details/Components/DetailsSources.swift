@@ -92,7 +92,7 @@ struct DetailsSources: View {
     // is per-origin is how much it contributes and how fresh that is
     private func Details(_ origin: Origin) -> some View {
         VStack(alignment: .leading, spacing: dimensions.spacing.space2) {
-            HStack(spacing: dimensions.spacing.space8) {
+            HStack(alignment: .firstTextBaseline, spacing: dimensions.spacing.space8) {
                 Text(origin.name)
                     .font(.subheadline)
                     .fontWeight(.semibold)
@@ -102,17 +102,40 @@ struct DetailsSources: View {
             }
 
             Subtitle(origin)
+
+            if origin.failing {
+                Trouble(origin)
+            }
+        }
+    }
+
+    // the attempt date, not a first-seen date: the row says how long ago the app
+    // last tried and got nothing, which is the fact it actually holds
+    @ViewBuilder
+    private func Trouble(_ origin: Origin) -> some View {
+        if let reason = origin.failureReason {
+            Group {
+                if let failedDate = origin.failedDate {
+                    Text("\(reason) Last tried \(failedDate.formatted(.relative(presentation: .named))).")
+                } else {
+                    Text(reason)
+                }
+            }
+            .font(.caption2)
+            .foregroundStyle(.warningText)
+            .lineLimit(2)
         }
     }
 
     @ViewBuilder
     private func State(_ origin: Origin) -> some View {
         switch origin.availability {
-        case .available where origin.priority == 0: Badge(text: "PRIMARY", tone: .brand)
+        case .available where origin.failing: Badge(text: "FAILING", tone: .warning, size: .compact)
+        case .available where origin.priority == 0: Badge(text: "PRIMARY", tone: .brand, size: .compact)
         case .available: EmptyView()
-        case .disabled: Badge(text: "DISABLED", tone: .warning)
-        case .disconnected: Badge(text: "DISCONNECTED", tone: .danger)
-        case .missing: Badge(text: "NOT INSTALLED", tone: .neutral)
+        case .disabled: Badge(text: "DISABLED", tone: .warning, size: .compact)
+        case .disconnected: Badge(text: "DISCONNECTED", tone: .danger, size: .compact)
+        case .missing: Badge(text: "NOT INSTALLED", tone: .neutral, size: .compact)
         }
     }
 
@@ -206,8 +229,15 @@ extension DetailsSources {
         let chapterCount: Int
         let fetchedDate: Date?
         let availability: Availability
+        // the last attempt's error, cleared the moment the source answers again -
+        // so this is what is wrong now, never what once was
+        let failureReason: String?
+        let failedDate: Date?
 
         var unavailable: Bool { availability != .available }
+
+        // a source the user switched off is not a source that is failing
+        var failing: Bool { failureReason != nil && availability == .available }
 
         // disabled is the user's own doing, disconnected means the source row
         // went away, missing means it is no longer compiled into the app

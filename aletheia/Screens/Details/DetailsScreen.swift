@@ -14,6 +14,7 @@ struct DetailsScreen: View {
     @Environment(\.dimensions) private var dimensions
     @Environment(\.compositor) private var compositor
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State private var vm: DetailsViewModel?
     @State private var reading: DetailsViewModel.ReaderTarget?
@@ -28,6 +29,8 @@ struct DetailsScreen: View {
     @State private var showingCollection = false
     @State private var showingCollections = false
     @State private var removing: DetailsSources.Origin?
+    @State private var marking: DetailsViewModel.MarkRequest?
+    @State private var markCommitted: UUID?
     @State private var showingDisambiguation = false
     // written here, read only inside the backdrop - reading it in this body
     // would re-evaluate the whole chapter list on every scroll step
@@ -37,6 +40,9 @@ struct DetailsScreen: View {
         // the source badge inside the refresh pill - sized to the pill's text
         // line, not to the 44pt row icon it is cropped from
         static let badgeSize: CGFloat = 20
+        // wide enough for a source name beside a failure sentence, narrow enough
+        // that the pill never spans the screen it floats over
+        static let pillWidth: CGFloat = 320
     }
 
     // the branch selector and the animation key are the same value on purpose -
@@ -136,6 +142,31 @@ struct DetailsScreen: View {
         } message: {
             Text("Its chapters are removed with it. Your reading progress on chapters from other sources is kept.")
         }
+        .alert(
+            markTitle,
+            isPresented: Binding(get: { marking != nil }, set: { if !$0 { marking = nil } })
+        ) {
+            if let request = marking {
+                if request.read {
+                    Button("Mark as Read", role: .destructive) { commit(request) }
+                } else {
+                    Button("Mark as Unread", role: .destructive) { commit(request) }
+                }
+            }
+            Button("Cancel", role: .cancel) { marking = nil }
+        } message: {
+            // silent when nothing is lost - a zero here would be a sentence
+            // saying the action is free, which is not what the reader is being
+            // asked to confirm
+            if let request = marking, request.affected > 0 {
+                if request.read {
+                    Text("\(request.affected) \(request.affected == 1 ? "chapter" : "chapters") you're partway through will be marked finished, losing your page position.")
+                } else {
+                    Text("This clears your reading progress on \(request.affected) of them. This can't be undone.")
+                }
+            }
+        }
+        .sensoryFeedback(.impact(weight: .heavy), trigger: markCommitted)
         .sheet(isPresented: $showingCollections) {
             if let vm {
                 // the picker presents its own create form, so dismissing the
@@ -257,6 +288,7 @@ struct DetailsScreen: View {
                 entry: entry,
                 registry: compositor.registry,
                 assets: compositor.assets,
+                refresher: compositor.refresh,
                 database: database
             )
             self.vm = vm
@@ -316,68 +348,80 @@ struct DetailsScreen: View {
         .animation(.settle, value: vm.refreshState)
     }
 
-    // one pill for the whole sequence: the spinner becomes the outcome in place,
-    // and the capsule grows to whatever the answer needs
+    // one row per source, each answering for itself: a spinner becomes that
+    // source's outcome in place, so a dead source is named rather than collapsing
+    // the whole run into "couldn't refresh". a single-origin series is one row
     private func Refreshing(_ state: DetailsViewModel.RefreshState) -> some View {
-        HStack(spacing: dimensions.spacing.space8) {
-            Icon(state)
-            Message(state)
-                .font(.subheadline)
-                .fontWeight(.medium)
+        VStack(alignment: .leading, spacing: dimensions.spacing.space8) {
+            ForEach(state.outcomes) { outcome in
+                Outcome(outcome)
+            }
         }
         .padding(.horizontal, dimensions.spacing.space16)
         .padding(.vertical, dimensions.spacing.space12)
-        .glassEffect(.regular, in: .capsule)
+        .frame(maxWidth: Layout.pillWidth, alignment: .leading)
+        .glassEffect(.regular, in: .rect(cornerRadius: dimensions.radius.radius16))
         .padding(dimensions.screenMargin)
     }
 
-    @ViewBuilder
-    private func Icon(_ state: DetailsViewModel.RefreshState) -> some View {
-        switch state {
-        case .checking(let icon):
-            ProgressView()
-                .controlSize(.small)
+    private func Outcome(_ outcome: DetailsViewModel.RefreshState.Outcome) -> some View {
+        HStack(spacing: dimensions.spacing.space8) {
+            Icon(outcome)
 
-            if let icon {
-                Image(icon)
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: Layout.badgeSize, height: Layout.badgeSize)
-                    .clipShape(.rect(cornerRadius: dimensions.radius.radius4))
-            }
+            Text(outcome.name)
+                .font(.subheadline)
+                .fontWeight(.medium)
+                .lineLimit(1)
 
-        case .added:
-            Image(systemName: "arrow.down.circle.fill")
-                .foregroundStyle(.success)
-
-        case .unchanged:
-            Image(systemName: "checkmark.circle.fill")
-                .foregroundStyle(.muted)
-
-        case .failed:
-            Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(.warning)
-
-        case .idle:
-            EmptyView()
+            Message(outcome.result)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
         }
     }
 
-    @ViewBuilder
-    private func Message(_ state: DetailsViewModel.RefreshState) -> some View {
-        switch state {
-        // a badged check is an origin freshly attached, whose whole list is
-        // being fetched - "checking" would undersell what is happening
-        case .checking(let icon):
-            if icon == nil {
-                Text("Checking for chapters")
-            } else {
-                Text("Loading chapters")
+    // every state is a symbol, spinner included, so the outcome can enter by
+    // drawing itself along the stroke the spinner drew off - the reader's
+    // separator badge speaks the same dialect
+    private func Icon(_ outcome: DetailsViewModel.RefreshState.Outcome) -> some View {
+        Group {
+            switch outcome.result {
+            case nil:
+                Image(systemName: "progress.indicator")
+                    .foregroundStyle(.secondary)
+                    .symbolEffect(.rotate, options: .repeat(.continuous))
+                    .transition(reduceMotion ? .opacity : AnyTransition(.symbolEffect(.drawOn)))
+
+            case .added:
+                Image(systemName: "plus.circle.fill")
+                    .foregroundStyle(.success)
+                    .transition(reduceMotion ? .opacity : AnyTransition(.symbolEffect(.drawOn)))
+
+            // the inverse of the plus beside it, so the row reads as one
+            // vocabulary: added, nothing added, failed. not a tick - that reads
+            // as an achievement the source did not earn
+            case .unchanged:
+                Image(systemName: "minus.circle")
+                    .foregroundStyle(.muted)
+                    .transition(reduceMotion ? .opacity : AnyTransition(.symbolEffect(.drawOn)))
+
+            case .failed:
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.warning)
+                    .transition(reduceMotion ? .opacity : AnyTransition(.symbolEffect(.drawOn)))
             }
+        }
+        .frame(width: Layout.badgeSize, height: Layout.badgeSize)
+        .animation(.settle, value: outcome.result)
+    }
+
+    @ViewBuilder
+    private func Message(_ result: Compositor.Refresh.Outcome?) -> some View {
+        switch result {
+        case nil: Text("Checking")
         case .added(let count): Text("^[\(count) new chapter](inflect: true)")
-        case .unchanged: Text("No new chapters")
-        case .failed: Text("Couldn't refresh")
-        case .idle: EmptyView()
+        case .unchanged: Text("Up to date")
+        case .failed(let reason): Text(reason)
         }
     }
 
@@ -399,6 +443,32 @@ struct DetailsScreen: View {
                 }
             }
         }
+    }
+
+    private var markTitle: String {
+        let count = marking?.scope ?? 0
+        let noun = count == 1 ? "chapter" : "chapters"
+        if marking?.read == true {
+            return "Mark \(count) \(noun) as read?"
+        } else {
+            return "Mark \(count) \(noun) as unread?"
+        }
+    }
+
+    // one chapter is a common, visible, self-explaining change and goes straight
+    // through; anything wider asks first
+    private func requestMark(_ vm: DetailsViewModel, read: Bool, numbers: [Double]) {
+        if let request = vm.markRequest(read: read, numbers: numbers) {
+            marking = request
+        } else {
+            Task { await vm.mark(read: read, numbers: numbers) }
+        }
+    }
+
+    private func commit(_ request: DetailsViewModel.MarkRequest) {
+        marking = nil
+        markCommitted = request.id
+        Task { await vm?.mark(read: request.read, numbers: request.numbers) }
     }
 
     private func Content(_ vm: DetailsViewModel) -> some View {
@@ -427,15 +497,13 @@ struct DetailsScreen: View {
                 onToggleLibrary: { Task { await vm.toggleLibrary() } },
                 onSetStatus: { status in Task { await vm.setStatus(status) } },
                 onRefreshChapters: { Task { await vm.refreshChapters() } },
-                onMarkAll: { read in Task { await vm.markAll(read: read) } },
+                onMarkAll: { read in requestMark(vm, read: read, numbers: vm.chapters.map(\.number)) },
                 onEditDetails: { showingEdit = true },
                 onMerge: { showingMerge = true }
             )
 
             // emptiness is decided at mapping - an empty synopsis arrives as nil
-            if let synopsis = vm.synopsis {
-                DetailsSynopsis(synopsis: synopsis)
-            }
+            DetailsSynopsis(synopsis: vm.synopsis)
 
             if !vm.tags.isEmpty {
                 DetailsTags(tags: vm.tags)
@@ -480,7 +548,7 @@ struct DetailsScreen: View {
                 onSources: { showingSourceOrder = true },
                 onScanlators: { showingScanlatorOrder = true },
                 onLanguages: { showingLanguageOrder = true },
-                onMark: { read, numbers in Task { await vm.mark(read: read, numbers: numbers) } }
+                onMark: { read, numbers in requestMark(vm, read: read, numbers: numbers) }
             ) { chapter in
                 guard let target = vm.read(chapter) else { return }
                 Task { await vm.open(chapter) }

@@ -18,6 +18,7 @@ final class DetailsViewModel {
     private let database: DatabaseClient
     private let registry: Compositor.Registry
     private let assets: Compositor.Assets
+    private let refresher: Compositor.Refresh
 
     // a cover swapping from its remote url to its downloaded file changes the
     // kingfisher cache key, which replays the fade. first answer wins for the life
@@ -66,11 +67,13 @@ final class DetailsViewModel {
         entry: SeriesEntry,
         registry: Compositor.Registry,
         assets: Compositor.Assets,
+        refresher: Compositor.Refresh,
         database: DatabaseClient
     ) {
         self.entry = entry
         self.registry = registry
         self.assets = assets
+        self.refresher = refresher
         self.database = database
     }
 
@@ -120,9 +123,9 @@ final class DetailsViewModel {
     var canToggleLibrary: Bool { seriesId != nil && !isSaving }
     var needsDisambiguation: Bool { !candidates.isEmpty }
     var isRefreshing: Bool {
-        if case .checking = refreshState { true } else { false }
+        if case .running = refreshState { true } else { false }
     }
-    var canRefresh: Bool { refreshTarget != nil && !isRefreshing }
+    var canRefresh: Bool { !refreshTargets.isEmpty && !isRefreshing }
 
     // the screen renders from the database alone, so a row is all it waits on
     var isReady: Bool { snapshot != nil && !needsDisambiguation }
@@ -316,11 +319,22 @@ final class DetailsViewModel {
             // refresh pill - badged with the new source's icon - rather than
             // passing silently. a fresh open keeps the skeleton as its indicator
             if existing != nil {
-                refreshState = .checking(source.descriptor.icon)
-                let added = await fetchChapters(source: source, seriesSlug: stub.slug, originId: ids.1)
-                report(added)
+                var outcome = RefreshState.Outcome(
+                    id: ids.1.rawValue,
+                    name: source.descriptor.name,
+                    icon: source.descriptor.icon,
+                    result: nil
+                )
+                refreshState = .running([outcome])
+                outcome.result = await refresher.chapters(
+                    source: source,
+                    seriesSlug: stub.slug,
+                    originId: ids.1
+                )
+                refreshState = .finished([outcome])
+                schedule()
             } else {
-                await fetchChapters(source: source, seriesSlug: stub.slug, originId: ids.1)
+                _ = await refresher.chapters(source: source, seriesSlug: stub.slug, originId: ids.1)
             }
         } catch {
             failure = Failure(error, fallback: "Couldn't Load Series")
@@ -377,64 +391,78 @@ final class DetailsViewModel {
     // MARK: - Refresh
 
     // which source speaks for this series, and under what slug. a sourced entry
-    // knows already; a library one takes its highest priority available origin
-    private var refreshTarget: (source: Source, slug: String)? {
-        if let source = opener, let stub = openerStub {
-            return (source, stub.slug)
-        }
-
-        guard let primary = snapshot?.refreshable else { return nil }
-        guard let source = registry.source(slug: primary.sourceSlug) else { return nil }
-        return (source, primary.slug)
+    // knows already; a library one takes every origin it can still speak to.
+    // an origin nothing ever asks goes permanently stale while the reader is
+    // free to switch to it, so a refresh is the whole set or it is a lie
+    private var refreshTargets: [Snapshot.Refreshable] {
+        snapshot?.refreshables ?? []
     }
 
     func refresh() async {
-        guard let target = refreshTarget, !isRefreshing else { return }
-        guard let originId = snapshot?.refreshable?.originId else { return }
-        let origin = OriginRecord.ID(rawValue: originId)
-
-        refreshState = .checking(nil)
-
-        do {
-            let detail = try await target.source.details(seriesSlug: target.slug)
-            try await database.writer.write { db in
-                try Self.update(originId: origin, from: detail, in: db)
-            }
-            // covers are add-only on refresh, so a refresh can introduce new ones
-            if let seriesId { assets.enqueue(series: seriesId) }
-        } catch {
-            // metadata failing is not a reason to skip chapters - they are fetched
-            // separately and are the half a refresh is usually reaching for
-            // a background load. the screen keeps what it has rather than nagging
-            AppLog.shared.log("metadata refresh failed — \(error)", category: "details")
-        }
-
-        let added = await fetchChapters(source: target.source, seriesSlug: target.slug, originId: origin)
-        report(added)
+        await run(metadata: true)
     }
 
     func refreshChapters() async {
-        guard let target = refreshTarget, !isRefreshing else { return }
-        guard let originId = snapshot?.refreshable?.originId else { return }
-
-        refreshState = .checking(nil)
-        let added = await fetchChapters(
-            source: target.source,
-            seriesSlug: target.slug,
-            originId: OriginRecord.ID(rawValue: originId)
-        )
-        report(added)
+        await run(metadata: false)
     }
 
-    // the outcome replaces the spinner in place, then clears itself. cancelling
-    // the previous dismissal means a second refresh restarts the three seconds
-    // rather than inheriting whatever was left of the last one
-    private func report(_ added: Int?) {
-        guard let added else {
-            refreshState = .failed
-            return schedule()
+    // every origin answers for itself: one dead source reports as one failed row
+    // and the rest still land. results arrive as each origin finishes rather than
+    // at the end, so the pill fills in
+    private func run(metadata: Bool) async {
+        guard !isRefreshing else { return }
+        let targets = refreshTargets
+        guard !targets.isEmpty else { return }
+
+        dismissal?.cancel()
+        isFetchingChapters = true
+        defer { isFetchingChapters = false }
+
+        var outcomes = targets.map {
+            RefreshState.Outcome(id: $0.originId, name: $0.name, icon: $0.icon, result: nil)
         }
-        refreshState = added > 0 ? .added(added) : .unchanged
+        refreshState = .running(outcomes)
+
+        await withTaskGroup(of: (Int64, Compositor.Refresh.Outcome).self) { group in
+            for target in targets {
+                guard let source = registry.source(slug: target.sourceSlug) else { continue }
+                let originId = OriginRecord.ID(rawValue: target.originId)
+                group.addTask { [refresher] in
+                    if metadata {
+                        await refresher.metadata(
+                            source: source,
+                            seriesSlug: target.slug,
+                            originId: originId
+                        )
+                    }
+                    let result = await refresher.chapters(
+                        source: source,
+                        seriesSlug: target.slug,
+                        originId: originId
+                    )
+                    return (target.originId, result)
+                }
+            }
+
+            for await (originId, result) in group {
+                guard let index = outcomes.firstIndex(where: { $0.id == originId }) else { continue }
+                outcomes[index].result = result
+                refreshState = .running(outcomes)
+            }
+        }
+
+        // covers are add-only on refresh, so a refresh can introduce new ones
+        if metadata, let seriesId { assets.enqueue(series: seriesId) }
+
+        // both lists are per-origin and both can gain entries from a single new
+        // chapter, so they are re-read once for the whole run rather than per
+        // origin that happened to add something
+        if outcomes.contains(where: { if case .added = $0.result { true } else { false } }) {
+            await loadLanguages()
+            await loadScanlators()
+        }
+
+        refreshState = .finished(outcomes)
         schedule()
     }
 
@@ -447,76 +475,6 @@ final class DetailsViewModel {
         }
     }
 
-    // the count of chapters that did not already exist, or nil when the fetch
-    // threw - the outcome pill needs to tell "nothing new" from "could not check"
-    @discardableResult
-    private func fetchChapters(
-        source: Source,
-        seriesSlug: String,
-        originId: OriginRecord.ID
-    ) async -> Int? {
-        isFetchingChapters = true
-        defer { isFetchingChapters = false }
-
-        let stored = snapshot?.origins.first { $0.id == originId.rawValue }?.chapterCount
-
-        do {
-            // a source that can tell cheaply whether anything moved gets asked
-            // that instead. everyone else is asked for the list, which is the
-            // whole of the base contract.
-            //
-            // either way the source answered, so either way the date is stamped -
-            // only a throw leaves the stored list unknown, and only then does the
-            // skeleton stay up
-            let listing: ChapterRevalidation
-            if let revalidating = source as? any RevalidatingSource, let stored {
-                listing = try await revalidating.chapters(seriesSlug: seriesSlug, stored: stored)
-            } else {
-                listing = .changed(try await source.chapters(seriesSlug: seriesSlug))
-            }
-            let fetched = Date.now
-
-            let added = try await database.writer.write { db -> Int in
-                var inserted = 0
-                if case let .changed(entries) = listing, !entries.isEmpty {
-                    inserted = try Self.upsert(entries, for: originId, in: db)
-                }
-
-                _ = try OriginRecord
-                    .filter(key: originId.rawValue)
-                    .updateAll(db, OriginRecord.Columns.chaptersFetchedDate.set(to: fetched))
-
-                // insert-or-ignore, so this only ever heals a series created
-                // before seeding existed - a saved order is never touched
-                if let origin = try OriginRecord.fetchOne(db, key: originId.rawValue) {
-                    try SeriesLanguagePriorityRecord.seedDefaults(for: origin.seriesId, in: db)
-                }
-
-                return inserted
-            }
-
-            AppLog.shared.log(
-                "origin \(originId.rawValue) \(listing.summary), \(added) new, had \(stored?.description ?? "none")",
-                category: "details"
-            )
-
-            // the priority sheets read one-shot on present, so a sheet opened
-            // while this fetch ran is showing the pre-fetch world - it stays
-            // stale (or empty, which is what makes ordering look ignored) until
-            // re-presented. new chapters can carry new languages and scanlators,
-            // so both lists are re-read the moment they land
-            if added > 0 {
-                await loadLanguages()
-                await loadScanlators()
-            }
-            return added
-        } catch {
-            actionFailure = Failure(error, fallback: "Couldn't Load Chapters")
-            AppLog.shared.log("origin \(originId.rawValue) chapter fetch FAILED — \(error)", category: "details")
-            return nil
-        }
-    }
-
     // a series whose row exists but whose chapters never landed would otherwise
     // never try again - matching short-circuits before create(), which is the only
     // other caller. this is not a refresh: it fires once, and only for an origin
@@ -524,13 +482,19 @@ final class DetailsViewModel {
     private func prime() async {
         guard !primed, !isFetchingChapters else { return }
         guard let snapshot, snapshot.chaptersFetchedDate == .distantPast else { return }
-        guard let origin = snapshot.refreshable, let target = refreshTarget else { return }
+        guard let target = snapshot.refreshables.first else { return }
+        guard let source = registry.source(slug: target.sourceSlug) else { return }
 
         primed = true
-        await fetchChapters(
-            source: target.source,
+        isFetchingChapters = true
+        defer { isFetchingChapters = false }
+
+        // no pill: this is the skeleton's own fetch, and a failure here is
+        // carried by the source row rather than raised over an empty screen
+        _ = await refresher.chapters(
+            source: source,
             seriesSlug: target.slug,
-            originId: OriginRecord.ID(rawValue: origin.originId)
+            originId: OriginRecord.ID(rawValue: target.originId)
         )
     }
 
@@ -575,13 +539,29 @@ final class DetailsViewModel {
         }
     }
 
+    // bulk marking is confirmed in both directions because both destroy
+    // something no source can give back - unread clears every kind of progress,
+    // read overwrites a partway page position with a finished chapter. counts
+    // are by chapter number, which is what the reader picked; the write itself
+    // fans out across every origin carrying that number
+    func markRequest(read: Bool, numbers: [Double]) -> MarkRequest? {
+        let unique = Set(numbers)
+        guard unique.count > 1 else { return nil }
+
+        let touched = chapters.filter { unique.contains($0.number) }
+        let losing = touched.filter { read ? ($0.progress > 0 && $0.progress < 1) : $0.progress > 0 }
+
+        return MarkRequest(
+            read: read,
+            numbers: Array(unique),
+            scope: unique.count,
+            affected: Set(losing.map(\.number)).count
+        )
+    }
+
     // deliberately leaves lastReadDate alone - marking is bookkeeping, not
     // reading, and the date is what tells a browsed series apart from one you
     // actually opened
-    func markAll(read: Bool) async {
-        await mark(read: read, numbers: chapters.map(\.number))
-    }
-
     func mark(read: Bool, numbers: [Double]) async {
         guard let seriesId else { return }
         let numbers = Array(Set(numbers))
@@ -1161,15 +1141,31 @@ final class DetailsViewModel {
 // MARK: - Types
 
 extension DetailsViewModel {
-    // checking carries the icon of the source being fetched when the fetch was
-    // caused by attaching a new origin - a refresh of the screen's own source
-    // needs no badge, but a background fetch for a source just added does
+    // one entry per origin the run is talking to, so a three-source series shows
+    // three answers rather than one summary that hides which source is broken.
+    // running and finished carry the same list - the difference is only whether
+    // entries can still change
     enum RefreshState: Equatable {
         case idle
-        case checking(ImageResource?)
-        case added(Int)
-        case unchanged
-        case failed
+        case running([Outcome])
+        case finished([Outcome])
+
+        var outcomes: [Outcome] {
+            switch self {
+            case .idle: []
+            case .running(let outcomes), .finished(let outcomes): outcomes
+            }
+        }
+
+        // nil is still checking - the unit answers with one of three things, and
+        // "has not answered yet" is a property of the row rather than a fourth
+        // answer the unit could ever return
+        struct Outcome: Identifiable, Equatable {
+            let id: Int64
+            let name: String
+            let icon: ImageResource?
+            var result: Compositor.Refresh.Outcome?
+        }
     }
 
     // the source is not itself hashable, so identity comes from the slugs that
@@ -1181,6 +1177,16 @@ extension DetailsViewModel {
         let chapterId: ChapterRecord.ID
 
         var id: Int64 { chapterId.rawValue }
+    }
+
+    // scope is what the reader chose, affected is what it costs them - the two
+    // diverge because marking read only overwrites chapters left partway
+    struct MarkRequest: Identifiable {
+        let id = UUID()
+        let read: Bool
+        let numbers: [Double]
+        let scope: Int
+        let affected: Int
     }
 
     struct Snapshot {
@@ -1207,14 +1213,16 @@ extension DetailsViewModel {
         let synopses: [DetailsEdit.Synopsis]
         let choices: [DetailsEdit.Metadata]
         let collections: [DetailsCollections.Item]
-        let refreshable: Refreshable?
+        let refreshables: [Refreshable]
 
         fileprivate let rows: [StoredChapter]
 
-        struct Refreshable {
+        struct Refreshable: Sendable {
             let originId: Int64
             let slug: String
             let sourceSlug: String
+            let name: String
+            let icon: ImageResource?
         }
 
         fileprivate func row(for id: Int64) -> StoredChapter? {
@@ -1287,7 +1295,9 @@ private extension DetailsViewModel.Snapshot {
                 priority: row.priority,
                 chapterCount: row.chapterCount,
                 fetchedDate: row.chaptersFetchedDate > .distantPast ? row.chaptersFetchedDate : nil,
-                availability: availability
+                availability: availability,
+                failureReason: row.fetchError,
+                failedDate: row.fetchAttemptedDate > .distantPast ? row.fetchAttemptedDate : nil
             )
         }
 
@@ -1339,14 +1349,22 @@ private extension DetailsViewModel.Snapshot {
             )
         }
 
-        // origins are already ordered available first, so the first one still backed
-        // by installed code is the one refresh speaks to
-        let usable = stored.origins.first { row in
-            guard row.installed, !row.disconnected, !row.disabled else { return false }
-            return row.sourceSlug.flatMap { registry.source(slug: $0) } != nil
+        // origins are already ordered available first, and a refresh speaks to
+        // every one of them that installed code can still reach - the head of the
+        // list is only the one whose dates stand for the series
+        refreshables = stored.origins.compactMap { row in
+            guard row.installed, !row.disconnected, !row.disabled else { return nil }
+            guard let slug = row.sourceSlug, let source = registry.source(slug: slug) else { return nil }
+            return Refreshable(
+                originId: row.id,
+                slug: row.slug,
+                sourceSlug: slug,
+                name: row.sourceName ?? slug,
+                icon: source.descriptor.icon
+            )
         }
-        refreshable = usable.flatMap { row in
-            row.sourceSlug.map { Refreshable(originId: row.id, slug: row.slug, sourceSlug: $0) }
+        let usable = refreshables.first.flatMap { first in
+            stored.origins.first { $0.id == first.originId }
         }
 
         // whichever origin heads the list supplies the displayed cover, so its
@@ -1417,6 +1435,8 @@ extension DetailsViewModel {
                 o.\(OriginRecord.Columns.priority.name) AS priority,
                 o.\(OriginRecord.Columns.chaptersFetchedDate.name) AS chaptersFetchedDate,
                 o.\(OriginRecord.Columns.metadataFetchedDate.name) AS metadataFetchedDate,
+                o.\(OriginRecord.Columns.fetchAttemptedDate.name) AS fetchAttemptedDate,
+                o.\(OriginRecord.Columns.fetchError.name) AS fetchError,
                 o.\(OriginRecord.Columns.synopsis.name) AS synopsis,
                 o.\(OriginRecord.Columns.classification.name) AS classification,
                 o.\(OriginRecord.Columns.publication.name) AS publication,
@@ -1714,108 +1734,6 @@ extension DetailsViewModel {
         return (seriesId, originId)
     }
 
-    // metadata a refresh is allowed to overwrite. titles and covers are add-only,
-    // so a pick the user made can never be taken away by a later fetch
-    nonisolated fileprivate static func update(
-        originId: OriginRecord.ID,
-        from detail: SeriesDetail,
-        in db: Database
-    ) throws {
-        guard var origin = try OriginRecord.fetchOne(db, key: originId.rawValue) else { return }
-
-        _ = try origin.updateChanges(db) {
-            $0.synopsis = detail.synopsis
-            $0.classification = detail.classification
-            $0.publication = detail.publication
-            $0.metadataFetchedDate = .now
-        }
-
-        for value in [detail.title] + detail.altTitles {
-            _ = try TitleRecord.findOrCreate(
-                TitleRecord(id: nil, seriesId: origin.seriesId, originId: originId, value: value),
-                in: db
-            )
-        }
-
-        for url in detail.covers {
-            _ = try CoverRecord.findOrCreate(
-                CoverRecord(id: nil, seriesId: origin.seriesId, originId: originId, url: url, path: nil),
-                in: db
-            )
-        }
-    }
-
-    // chapters arrive independently of the rest of a series, so this runs on its
-    // own and is safe to repeat. progress and lastReadDate are never overwritten
-    @discardableResult
-    nonisolated fileprivate static func upsert(
-        _ entries: [ChapterEntry],
-        for originId: OriginRecord.ID,
-        in db: Database
-    ) throws -> Int {
-        guard !entries.isEmpty else { return 0 }
-        var inserted = 0
-
-        var scanlators: [String: ScanlatorRecord.ID] = [:]
-        for entry in entries where scanlators[entry.scanlator] == nil {
-            let scanlator = try ScanlatorRecord.findOrCreate(
-                ScanlatorRecord(id: nil, name: entry.scanlator),
-                in: db
-            )
-            guard let scanlatorId = scanlator.id else { continue }
-            scanlators[entry.scanlator] = scanlatorId
-
-            // order of first appearance, and only when absent - a refresh must not
-            // discard an ordering the user has since set
-            var priority = OriginScanlatorPriorityRecord(
-                originId: originId,
-                scanlatorId: scanlatorId,
-                priority: scanlators.count - 1
-            )
-            try priority.insert(db, onConflict: .ignore)
-        }
-
-        let existing = try ChapterRecord
-            .filter(ChapterRecord.Columns.originId == originId)
-            .fetchAll(db)
-        let bySlug = Dictionary(existing.map { ($0.slug, $0) }, uniquingKeysWith: { first, _ in first })
-
-        for entry in entries {
-            guard let scanlatorId = scanlators[entry.scanlator] else { continue }
-
-            if var current = bySlug[entry.slug] {
-                // diffed against the stored encoding, so a source that returned
-                // nothing new issues no UPDATE and wakes no observation
-                _ = try current.updateChanges(db) {
-                    $0.title = entry.title
-                    $0.number = entry.number
-                    $0.publishedDate = entry.publishedDate
-                    $0.language = entry.language
-                    $0.url = entry.url
-                }
-            } else {
-                var chapter = ChapterRecord(
-                    id: nil,
-                    originId: originId,
-                    scanlatorId: scanlatorId,
-                    slug: entry.slug,
-                    title: entry.title,
-                    number: entry.number,
-                    publishedDate: entry.publishedDate,
-                    language: entry.language,
-                    progress: 0,
-                    lastReadDate: nil,
-                    url: entry.url,
-                    path: nil
-                )
-                try chapter.insert(db)
-                inserted += 1
-            }
-        }
-
-        return inserted
-    }
-
     // reparent plus the two things a library row owns that a browse row does
     // not: collection memberships and read state worth propagating. collections
     // copy first while the losing row still exists; reparent then moves origins,
@@ -2032,6 +1950,8 @@ private struct StoredOrigin: Decodable, FetchableRecord, Sendable {
     let chapterCount: Int
     let chaptersFetchedDate: Date
     let metadataFetchedDate: Date
+    let fetchAttemptedDate: Date
+    let fetchError: String?
     let synopsis: String
     let classification: Classification
     let publication: Publication

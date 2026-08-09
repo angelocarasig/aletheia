@@ -20,10 +20,15 @@ extension Compositor {
             do {
                 let deleted = try await database.writer.write { db in
                     // a series never opened in the reader still holds lastReadDate's
-                    // .distantPast default, which is what marks it as disposable
-                    try SeriesRecord
+                    // .distantPast default, and status stays at .planning until you
+                    // deliberately pick one - together they mark it as disposable.
+                    // lastReadDate leads because it is the selective one with an
+                    // index behind it; inLibrary covers two values and is not
+                    let never = Date.distantPast
+                    return try SeriesRecord
+                        .filter(SeriesRecord.Columns.lastReadDate == never)
                         .filter(SeriesRecord.Columns.inLibrary == false)
-                        .filter(SeriesRecord.Columns.lastReadDate == Date.distantPast)
+                        .filter(SeriesRecord.Columns.status == Status.planning.rawValue)
                         .deleteAll(db)
                 }
                 AppLog.shared.log("cleaned \(deleted) unread series not in library", category: "clean")

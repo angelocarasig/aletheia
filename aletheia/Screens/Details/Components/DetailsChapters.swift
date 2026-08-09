@@ -585,7 +585,7 @@ extension DetailsChapters {
             Text(chapter.language.flag)
 
             if isNew(chapter) {
-                Badge(text: "NEW")
+                Badge(text: "NEW", size: .compact)
             }
         }
         .font(.caption)

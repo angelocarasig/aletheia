@@ -50,6 +50,18 @@ final class ReaderViewModel {
     // the number behind the row it was handed
     @ObservationIgnored private var numbers: [ChapterRecord.ID: Double] = [:]
 
+    // history rows carry a title snapshot because their seriesId is a soft
+    // reference - the row must stay readable after a purge or merge
+    @ObservationIgnored private var seriesTitle = ""
+
+    // one sitting, accumulated in memory and inserted complete at the flush
+    // points - never opened as a row and closed later. `entered` is the page
+    // each chapter was at when the sitting began, so pagesRead is the sitting's
+    // own advance rather than lifetime progress
+    @ObservationIgnored private var sessionStart: Date?
+    @ObservationIgnored private var entered: [ChapterRecord.ID: Int] = [:]
+    @ObservationIgnored private var sessionChaptersRead = 0
+
     func sourceIcon(for chapter: ReaderChapter.ID?) -> ImageResource? {
         chapter.flatMap { icons[$0] }
     }
@@ -97,7 +109,7 @@ final class ReaderViewModel {
                 return
             }
 
-            let (orientation, tags) = try await database.reader.read { [seriesId] db in
+            let (orientation, tags, title) = try await database.reader.read { [seriesId] db in
                 let orientation = try SeriesRecord
                     .fetchOne(db, key: seriesId.rawValue)?.orientation ?? .unknown
                 let tags = try TagRecord
@@ -105,8 +117,18 @@ final class ReaderViewModel {
                         .filter(SeriesTagRecord.Columns.seriesId == seriesId.rawValue))
                     .select(TagRecord.Columns.normalizedName, as: String.self)
                     .fetchSet(db)
-                return (orientation, tags)
+                let title = try String.fetchOne(
+                    db,
+                    sql: """
+                        SELECT \(EntryView.Columns.title.name)
+                        FROM \(EntryView.databaseTableName)
+                        WHERE \(EntryView.Columns.seriesId.name) = ?
+                        """,
+                    arguments: [seriesId.rawValue]
+                ) ?? ""
+                return (orientation, tags, title)
             }
+            seriesTitle = title
 
             loaded.forEach { chapter in
                 stored[ChapterRecord.ID(rawValue: chapter.id)] = chapter.progress
@@ -137,17 +159,38 @@ final class ReaderViewModel {
             bind(engine)
             self.engine = engine
             isReady = true
+            sessionStart = .now
 
             let opening = try await resolve(startingChapter, among: loaded)
             let progress = stored[ChapterRecord.ID(rawValue: opening)]
             await engine.open(opening, progress: progress)
         } catch {
             failure = Failure(error, fallback: "Can't Open This Series")
+            AppLog.shared.log("reader open failed — \(error)", category: "reader")
         }
     }
 
     func close() async {
         await flush()
+        await endSession()
+    }
+
+    // MARK: Scene lifecycle
+
+    // backgrounding ends the sitting - one complete row, foreground time only.
+    // returning starts a fresh sitting from the pages already reached, so
+    // nothing is counted twice. .inactive deliberately does neither: a
+    // notification shade or a call banner is not the end of a sitting
+    func background() async {
+        await flush()
+        await endSession()
+    }
+
+    func foreground() {
+        guard engine != nil, sessionStart == nil else { return }
+        sessionStart = .now
+        entered = reached.mapValues(\.page)
+        sessionChaptersRead = 0
     }
 
     // MARK: Source switching
@@ -427,6 +470,7 @@ final class ReaderViewModel {
 
     private func track(chapter: ReaderChapter, page: Int, total: Int) {
         let id = ChapterRecord.ID(rawValue: chapter.id)
+        if entered[id] == nil { entered[id] = page }
         let best = max(reached[id]?.page ?? 0, page)
         reached[id] = (best, total)
 
@@ -446,10 +490,63 @@ final class ReaderViewModel {
 
         reached[id] = (total - 1, total)
         await save(id, throttled: false)
-        AppLog.shared.log(
-            "finished chapter \(chapter.number.formatted()) — TODO tracker sync",
-            category: "reader"
-        )
+        await record(chapter)
+    }
+
+    // the reading event is independent of the progress save above: the save's
+    // monotonic guard skips a re-read of a finished chapter, but a re-read
+    // completion is still a reading act and today's tally counts acts. the
+    // engine's completed set already makes this once per chapter per sitting
+    private func record(_ chapter: ReaderChapter) async {
+        engine?.setEvent(.recording, for: chapter.id)
+
+        do {
+            try await database.writer.write { [seriesId, seriesTitle] db in
+                var event = ReadingEventRecord(
+                    kind: .chapterCompleted,
+                    seriesId: seriesId,
+                    seriesTitle: seriesTitle,
+                    chapterNumber: chapter.number
+                )
+                try event.insert(db)
+            }
+            sessionChaptersRead += 1
+            engine?.setEvent(.recorded, for: chapter.id)
+        } catch {
+            // nothing landed, so the badge says nothing rather than lying
+            engine?.setEvent(nil, for: chapter.id)
+            AppLog.shared.log("failed to record reading event — \(error)", category: "reader")
+        }
+    }
+
+    // inserted complete or not at all: a sitting that read nothing writes no
+    // row, and a force-quit loses only the in-flight sitting - the same tail
+    // the 3-second throttle already accepts
+    private func endSession() async {
+        guard let start = sessionStart else { return }
+        sessionStart = nil
+
+        let pages = reached.reduce(0) { sum, item in
+            sum + max(0, item.value.page - (entered[item.key] ?? 0))
+        }
+        let chapters = sessionChaptersRead
+        guard pages > 0 || chapters > 0 else { return }
+
+        do {
+            try await database.writer.write { [seriesId, seriesTitle] db in
+                var session = ReadingSessionRecord(
+                    seriesId: seriesId,
+                    seriesTitle: seriesTitle,
+                    pagesRead: pages,
+                    chaptersRead: chapters,
+                    startedDate: start,
+                    endedDate: .now
+                )
+                try session.insert(db)
+            }
+        } catch {
+            AppLog.shared.log("failed to record reading session — \(error)", category: "reader")
+        }
     }
 
     private func flush() async {

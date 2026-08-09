@@ -27,6 +27,11 @@ struct ChapterRecord: Codable, DatabaseRecord, StorableRecord {
     var url: URL
     var path: String?
 
+    // when this row landed here, not when the site published it. the updates feed
+    // groups by the day a chapter arrived, and publishedDate answers a different
+    // question - a backfilled year-old chapter is new to the reader today
+    var addedDate: Date = .now
+
     var finished: Bool {
         progress >= 1
     }
@@ -60,6 +65,7 @@ extension ChapterRecord {
         static let language = Column(CodingKeys.language)
         static let progress = Column(CodingKeys.progress)
         static let lastReadDate = Column(CodingKeys.lastReadDate)
+        static let addedDate = Column(CodingKeys.addedDate)
     }
 
     static func createTable(db: Database) throws {
@@ -78,6 +84,7 @@ extension ChapterRecord {
             t.column(Columns.progress.name, .real).notNull()
             t.column(Columns.lastReadDate.name, .datetime)
             t.column(Columns.path.name, .text)
+            t.column(Columns.addedDate.name, .datetime).notNull()
         }
     }
 

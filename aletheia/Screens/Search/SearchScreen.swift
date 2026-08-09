@@ -153,6 +153,8 @@ struct SearchScreen: View {
                 }
             }
 
+            ToolbarSpacer(.fixed, placement: .topBarTrailing)
+
             ToolbarItem(placement: .topBarTrailing) {
                 // absent entirely without the bypass: while adult sources do not
                 // exist, a toggle for them would be the hint that they do

@@ -55,6 +55,12 @@ enum Preferences {
         // json, not a key per group - the filter gains groups over time and one
         // blob keeps that from becoming a migration each time
         static let libraryFilter = "library.filter"
+
+        // json blob of seriesId -> dismissal date. reading the series again
+        // resurrects it, so the value is a date rather than a bare set
+        static let homeDismissed = "home.dismissed"
+
+        static let homeStatRange = "home.statRange"
     }
 
     enum Default {
@@ -79,5 +85,9 @@ enum Preferences {
         // happens to return - newest first is only where it starts
         static let librarySort = LibrarySort.added
         static let librarySortAscending = false
+
+        // the week is what a landing strip is for - a glance at what is happening
+        // now, with the longer views a tap away on the same control
+        static let homeStatRange = StatRange.week
     }
 }
