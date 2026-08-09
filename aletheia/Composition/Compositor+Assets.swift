@@ -11,12 +11,26 @@ import GRDB
 extension Compositor {
     struct Assets: Sendable {
         private let downloader: CoverDownloader
-        private let store: any AssetStoring
 
-        init(database: DatabaseClient, network: NetworkConfiguration, log: AppLog = .shared) {
+        // shared with the chapter downloader rather than built twice: one store
+        // means one place that knows the on-disk layout, and the sweep's
+        // fixed-depth enumeration is part of that layout
+        let store: any AssetStoring
+
+        init(
+            database: DatabaseClient,
+            registry: Registry,
+            network: NetworkConfiguration,
+            log: AppLog = .shared
+        ) {
             let store = AssetStore(network: network, log: log)
             self.store = store
-            self.downloader = CoverDownloader(database: database, store: store, log: log)
+            self.downloader = CoverDownloader(
+                database: database,
+                registry: registry,
+                store: store,
+                log: log
+            )
         }
 
         // the work is owned by the actor, not by whoever asked for it - a screen
@@ -39,14 +53,21 @@ extension Compositor {
 
 actor CoverDownloader {
     private let database: DatabaseClient
+    private let registry: Compositor.Registry
     private let store: any AssetStoring
     private let log: AppLog
 
     private var inFlight: Set<Int64> = []
     private var failures: [Int64: Int] = [:]
 
-    init(database: DatabaseClient, store: any AssetStoring, log: AppLog) {
+    init(
+        database: DatabaseClient,
+        registry: Compositor.Registry,
+        store: any AssetStoring,
+        log: AppLog
+    ) {
         self.database = database
+        self.registry = registry
         self.store = store
         self.log = log
     }
@@ -108,11 +129,19 @@ actor CoverDownloader {
         var written: [Int64: String] = [:]
 
         for row in queued {
+            // a disconnected origin has no source to speak for it, so the request
+            // goes out with the pinned agent alone - the same bare request it
+            // made before headers were a source's business
+            let headers = row.sourceSlug
+                .flatMap { registry.source(slug: $0) }?
+                .requestHeaders
+                ?? ["User-Agent": Constants.Network.userAgent]
+
             let asset = Asset(
                 key: row.url.absoluteString,
                 parts: [row.url],
                 folder: CoverRecord.storage,
-                referer: row.referer
+                headers: headers
             )
 
             do {
@@ -149,7 +178,7 @@ extension CoverDownloader {
     fileprivate struct Pending: Decodable, FetchableRecord, Sendable {
         let id: Int64
         let url: URL
-        let referer: URL?
+        let sourceSlug: String?
     }
 
     // both joins are LEFT: originId and sourceId are each ON DELETE SET NULL, so
@@ -159,7 +188,7 @@ extension CoverDownloader {
             SELECT
                 c.id AS id,
                 c.\(CoverRecord.Columns.url.name) AS url,
-                src.\(SourceRecord.Columns.referer.name) AS referer
+                src.\(SourceRecord.Columns.slug.name) AS sourceSlug
             FROM \(CoverRecord.databaseTableName) c
             JOIN \(SeriesRecord.databaseTableName) s ON s.id = c.\(CoverRecord.Columns.seriesId.name)
             LEFT JOIN \(OriginRecord.databaseTableName) o ON o.id = c.\(CoverRecord.Columns.originId.name)
@@ -179,7 +208,7 @@ extension CoverDownloader {
             SELECT
                 c.id AS id,
                 c.\(CoverRecord.Columns.url.name) AS url,
-                src.\(SourceRecord.Columns.referer.name) AS referer
+                src.\(SourceRecord.Columns.slug.name) AS sourceSlug
             FROM \(CoverRecord.databaseTableName) c
             JOIN \(SeriesRecord.databaseTableName) s ON s.id = c.\(CoverRecord.Columns.seriesId.name)
             LEFT JOIN \(OriginRecord.databaseTableName) o ON o.id = c.\(CoverRecord.Columns.originId.name)

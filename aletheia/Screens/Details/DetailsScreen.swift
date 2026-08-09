@@ -549,7 +549,15 @@ struct DetailsScreen: View {
                 onRefreshChapters: { Task { await vm.refreshChapters() } },
                 onMarkAll: { read in requestMark(vm, read: read, numbers: vm.chapters.map(\.number)) },
                 onEditDetails: { showingEdit = true },
-                onMerge: { showingMerge = true }
+                onMerge: { showingMerge = true },
+                onDownloadUnread: {
+                    guard let id = vm.seriesId else { return }
+                    compositor.downloads.enqueue(unreadFor: id)
+                },
+                onDeleteDownloads: {
+                    guard let id = vm.seriesId else { return }
+                    compositor.downloads.delete(for: id)
+                }
             )
 
             // emptiness is decided at mapping - an empty synopsis arrives as nil
@@ -598,7 +606,17 @@ struct DetailsScreen: View {
                 onSources: { showingSourceOrder = true },
                 onScanlators: { showingScanlatorOrder = true },
                 onLanguages: { showingLanguageOrder = true },
-                onMark: { read, numbers in requestMark(vm, read: read, numbers: numbers) }
+                onMark: { read, numbers in requestMark(vm, read: read, numbers: numbers) },
+                downloads: compositor.downloads,
+                onDownload: { id in
+                    compositor.downloads.enqueue(chapter: ChapterRecord.ID(rawValue: id))
+                },
+                onCancelDownload: { id in
+                    compositor.downloads.cancel(chapter: ChapterRecord.ID(rawValue: id))
+                },
+                onDelete: { id in
+                    compositor.downloads.delete(chapter: ChapterRecord.ID(rawValue: id))
+                }
             ) { chapter in
                 guard let target = vm.read(chapter) else { return }
                 Task { await vm.open(chapter) }

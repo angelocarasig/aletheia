@@ -51,7 +51,7 @@ struct SeriesPageSource: ReaderPageSource {
         )
         guard !content.isEmpty else { throw ReaderError.noPages(chapter) }
 
-        let headers = Self.headers(for: source)
+        let headers = source.requestHeaders
 
         // the page number you see on screen is 1-based, so it is logged that way
         // - the whole point is being able to read "page 7 looks wrong" off the
@@ -77,36 +77,6 @@ struct SeriesPageSource: ReaderPageSource {
     }
 
     // MARK: Private
-
-    // what the source itself would send. an image host behind cloudflare answers
-    // a bare request differently from a browser's, and the reader was sending
-    // nothing but a Referer - no pinned agent, none of the cookies the source
-    // already holds. read from the keychain rather than through AuthRequester:
-    // content() has just refreshed, and a page fetch is not the place to trigger
-    // an interactive challenge
-    private static func headers(for source: Source) -> [String: String] {
-        var headers = [
-            "Referer": source.descriptor.referer.absoluteString,
-            "User-Agent": Constants.Network.userAgent
-        ]
-
-        guard let source = source as? any AuthenticatingSource,
-              let credential = try? Keychain.sources.load(
-                  SourceCredential.self,
-                  account: source.descriptor.slug
-              )
-        else { return headers }
-
-        headers["User-Agent"] = credential.userAgent
-
-        if !credential.cookies.isEmpty {
-            headers["Cookie"] = credential.cookies
-                .map { "\($0.key)=\($0.value)" }
-                .joined(separator: "; ")
-        }
-
-        return headers
-    }
 
     private struct Located: Decodable, FetchableRecord, Sendable {
         let slug: String

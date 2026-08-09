@@ -8,6 +8,7 @@
 	<array>
 		<string>moe.aletheia.refresh</string>
 		<string>moe.aletheia.refresh.scheduled</string>
+		<string>moe.aletheia.downloads</string>
 	</array>
 </dict>
 </plist>

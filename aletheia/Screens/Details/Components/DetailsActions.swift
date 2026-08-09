@@ -19,6 +19,10 @@ struct DetailsActions: View {
     var onMarkAll: (Bool) -> Void
     var onEditDetails: () -> Void
     var onMerge: () -> Void
+    // the bulk half of downloads. per-chapter lives on the chapter row, where
+    // the thing being acted on is
+    var onDownloadUnread: () -> Void = {}
+    var onDeleteDownloads: () -> Void = {}
 
     @Environment(\.dimensions) private var dimensions
     @Environment(\.colorScheme) private var colorScheme
@@ -117,6 +121,17 @@ struct DetailsActions: View {
                 Label("Merge Into…", systemImage: "arrow.triangle.merge")
             }
             .disabled(!inLibrary)
+
+            Divider()
+
+            Button(action: onDownloadUnread) {
+                Label("Download Unread", systemImage: "arrow.down.circle")
+            }
+            .disabled(!canRefresh)
+
+            Button(role: .destructive, action: onDeleteDownloads) {
+                Label("Delete Downloads", systemImage: "trash")
+            }
 
             Divider()
 

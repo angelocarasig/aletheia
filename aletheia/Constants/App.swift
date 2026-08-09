@@ -19,6 +19,11 @@ extension Constants {
         // a different api as well as a different id: the one above extends work
         // someone started, this one asks the system to find a moment of its own
         static let scheduledRefresh = "moe.aletheia.refresh.scheduled"
+
+        // its own identifier for the same reason refresh has one: a download
+        // queue and a library walk are started independently and routinely run
+        // together, so sharing an id makes them compete for the same slot
+        static let downloads = "moe.aletheia.downloads"
     }
 
     enum App {

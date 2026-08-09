@@ -75,6 +75,13 @@ enum Preferences {
         static let refreshInterval = "refresh.interval"
         static let refreshedDate = "refresh.lastRun"
         static let refreshedAutomaticallyDate = "refresh.lastAutomaticRun"
+
+        // the queue as an ordered array of chapter ids. what a kill destroys is
+        // intent - "download these forty" - and a person cannot reconstruct that;
+        // page totals and pages-already-done both rebuild for free. it is also
+        // what tells the sweep a half-finished directory is work rather than an
+        // orphan, since path is only stamped on completion
+        static let downloadQueue = "downloads.queue"
     }
 
     enum Default {

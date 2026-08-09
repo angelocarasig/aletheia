@@ -15,7 +15,13 @@ struct Asset: Sendable {
     let key: String
     let parts: [URL]
     let folder: URL
-    let referer: URL?
+
+    // whatever the source itself would send - referer, pinned agent, and the
+    // cookies it already holds. a referer alone was enough for covers and is not
+    // enough for pages: behind cloudflare the missing cookie comes back as a
+    // 200 text/html challenge, which store() then refuses as "not an image".
+    // built once by SourceService.requestHeaders so no caller composes its own
+    let headers: [String: String]
 
     // many parts land as a directory, one lands as a file
     var collected: Bool { parts.count > 1 }

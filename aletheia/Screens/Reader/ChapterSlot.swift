@@ -54,6 +54,13 @@ struct ChapterSlot: Identifiable, Hashable, Sendable {
         let publishedDate: Date
         let progress: Double
 
+        // a snapshot, and only ever finished: path is stamped on completion, so
+        // an in-flight download reads as not downloaded. a slot is built once per
+        // sheet, so a download landing while it is open shows on the next open.
+        // this is the screen that makes the per-row rule legible - when ranking
+        // moves, it is where you find the row the badge moved to
+        let downloaded: Bool
+
         // the source's own identity, so the switcher can group options under it.
         // both nil together when the origin has been disconnected from its source
         let sourceName: String?
@@ -76,6 +83,7 @@ extension ChapterSlot {
         let language: LanguageCode
         let publishedDate: Date
         let progress: Double
+        let path: String?
         let sourceSlug: String?
         let sourceName: String?
     }
@@ -95,6 +103,7 @@ extension ChapterSlot {
                 language: row.language,
                 publishedDate: row.publishedDate,
                 progress: row.progress,
+                downloaded: row.path != nil,
                 sourceName: row.sourceName,
                 sourceIcon: row.sourceSlug.flatMap(icon)
             )

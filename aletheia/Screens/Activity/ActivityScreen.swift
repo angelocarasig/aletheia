@@ -20,6 +20,7 @@ struct ActivityScreen: View {
     @State private var vm: ActivityViewModel?
     @State private var reading: ReadingTarget?
     @State private var showingFailures = false
+    @State private var showingDownloads = false
 
     private struct ReadingTarget: Identifiable, Hashable {
         let seriesId: SeriesRecord.ID
@@ -100,6 +101,9 @@ struct ActivityScreen: View {
             .navigationDestination(isPresented: $showingFailures) {
                 FailuresScreen()
             }
+            .navigationDestination(isPresented: $showingDownloads) {
+                DownloadQueueScreen(downloads: compositor.downloads)
+            }
             .toolbar {
                 if let vm, phase == .content {
                     ToolbarItem(placement: .primaryAction) {
@@ -160,6 +164,8 @@ private extension ActivityScreen {
     // happened while the app was closed still leave a trace here
     func Now(_ snapshot: ActivityViewModel.Snapshot) -> some View {
         let refresh = compositor.refresh
+        let downloads = compositor.downloads
+        let queued = downloads.order.count
 
         return ActivityNowSection(
             model: .init(
@@ -171,16 +177,28 @@ private extension ActivityScreen {
                         total: refresh.total
                     )
                     : .idle(lastChecked: snapshot.lastChecked),
-                downloads: .idle(stored: snapshot.downloadedChapters),
+                // chapters rather than pages, and from the stored counters rather
+                // than a fold over the queue: summing every item's progress here
+                // would subscribe this row to all of them
+                downloads: queued > 0
+                    ? .active(
+                        chapters: queued,
+                        progress: downloads.total > 0
+                            ? Double(downloads.completed) / Double(downloads.total)
+                            : 0
+                    )
+                    : .idle(stored: snapshot.downloadedChapters),
                 failing: snapshot.failingSources
             ),
             onCancelRefresh: { refresh.cancel() },
+            onOpenDownloads: { showingDownloads = true },
             // the count is the awareness; the list is the attribution and the
             // retry. a series can be healthy on one source and dead on another,
             // so naming the series alone would not be enough to act on
             onOpenFailures: { showingFailures = true }
         )
         .animation(.settle, value: refresh.isRunning)
+        .animation(.settle, value: queued > 0)
     }
 
     func DaySection(_ group: ActivityViewModel.DayGroup) -> some View {

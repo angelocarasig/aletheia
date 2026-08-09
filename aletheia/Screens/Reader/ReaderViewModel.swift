@@ -650,6 +650,7 @@ final class ReaderViewModel {
                 c.\(ChapterRecord.Columns.publishedDate.name) AS publishedDate,
                 c.\(ChapterRecord.Columns.progress.name) AS progress,
                 c.\(ChapterRecord.Columns.language.name) AS language,
+                c.\(ChapterRecord.Columns.path.name) AS path,
                 sc.\(ScanlatorRecord.Columns.name.name) AS scanlator,
                 src.\(SourceRecord.Columns.slug.name) AS sourceSlug,
                 src.\(SourceRecord.Columns.name.name) AS sourceName

@@ -25,12 +25,7 @@ struct AssetStore: AssetStoring {
 
         var written: URL?
 
-        // one asset, one set of headers - and a let, because the request closure
-        // is sendable and cannot capture something still being mutated
-        let headers = [
-            "User-Agent": Constants.Network.userAgent,
-            "Referer": asset.referer?.absoluteString
-        ].compactMapValues { $0 }
+        let headers = asset.headers
 
         for (index, remote) in asset.parts.enumerated() {
             try Task.checkCancellation()

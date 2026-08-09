@@ -35,6 +35,39 @@ extension SourceService {
     // it is the default rather than something every source has to write out
     var presets: [SourcePreset] { [] }
 
+    // what the source itself would send, for any request made on its behalf that
+    // does not go through the source's own code - page images and cover art. an
+    // image host behind cloudflare answers a bare request differently from a
+    // browser's, and a 200 text/html interstitial is not an image, so a missing
+    // cookie header surfaces as "couldn't save image" rather than as a challenge.
+    //
+    // read from the keychain rather than through AuthRequester: the caller has
+    // just finished a source call that refreshed it, and fetching bytes is not
+    // the place to trigger an interactive challenge
+    var requestHeaders: [String: String] {
+        var headers = [
+            "Referer": descriptor.referer.absoluteString,
+            "User-Agent": Constants.Network.userAgent
+        ]
+
+        guard let source = self as? any AuthenticatingSource,
+              let credential = try? Keychain.sources.load(
+                  SourceCredential.self,
+                  account: source.descriptor.slug
+              )
+        else { return headers }
+
+        headers["User-Agent"] = credential.userAgent
+
+        if !credential.cookies.isEmpty {
+            headers["Cookie"] = credential.cookies
+                .map { "\($0.key)=\($0.value)" }
+                .joined(separator: "; ")
+        }
+
+        return headers
+    }
+
     // a query without an explicit sort falls back to the descriptor's declared
     // search default - the source's best match - so every search() resolves the
     // same way instead of each source inventing its own fallback

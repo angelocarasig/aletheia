@@ -7,6 +7,7 @@
 
 import SwiftUI
 import Foundation
+import Tagged
 
 struct DetailsChapters: View {
     let chapters: [Chapter]
@@ -27,6 +28,13 @@ struct DetailsChapters: View {
     var onScanlators: () -> Void
     var onLanguages: () -> Void
     var onMark: (_ read: Bool, _ numbers: [Double]) -> Void
+    // the queue itself, so a row can ask whether it is in it. reading `index` is
+    // a membership read - it changes on enqueue and finish, seconds apart - and
+    // the per-page ticks are read off the returned instance instead
+    var downloads: Compositor.Downloads?
+    var onDownload: (_ id: Int64) -> Void = { _ in }
+    var onCancelDownload: (_ id: Int64) -> Void = { _ in }
+    var onDelete: (_ id: Int64) -> Void = { _ in }
     var onOpen: (Chapter) -> Void
 
     @Environment(\.dimensions) private var dimensions
@@ -84,6 +92,34 @@ struct DetailsChapters: View {
         static let finishedOpacity: Double = 0.5
         static let disabledOpacity: Double = 0.35
         static let fillOpacity: Double = 0.1
+        static let ringWidth: CGFloat = 2
+        static let ringTrackOpacity: Double = 0.3
+        static let ringDuration: Double = 0.1
+    }
+
+    // what the row's trailing control is currently showing. a chapter's own
+    // bytes and the queue are two different facts, and this is where they
+    // collapse into the single thing a person taps
+    private enum DownloadPhase: Equatable {
+        case idle
+        case queued
+        case downloading
+        case failed
+        case completed
+
+        var tracked: Bool {
+            self == .queued || self == .downloading
+        }
+
+        var label: String {
+            switch self {
+            case .idle: "Download"
+            case .queued: "Waiting to download, tap to cancel"
+            case .downloading: "Downloading, tap to cancel"
+            case .failed: "Download failed, tap to retry"
+            case .completed: "Downloaded"
+            }
+        }
     }
 
     var body: some View {
@@ -433,8 +469,105 @@ extension DetailsChapters {
         HStack(alignment: .center, spacing: dimensions.spacing.space12) {
             SourceIcon(chapter)
             Details(chapter)
+            Storage(chapter)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    // the lookup is a read of the collection - it answers WHICH download - and
+    // the progress is read off the returned instance, which is what keeps a page
+    // landing on chapter 3 from redrawing the other two hundred rows. a row whose
+    // lookup returns nil is subscribed to membership alone and never ticks
+    private func Storage(_ chapter: Chapter) -> some View {
+        let download = downloads?.index[ChapterRecord.ID(rawValue: chapter.id)]
+        let state = state(for: chapter, download)
+        // read unconditionally rather than on a branch of the switch below: a
+        // read that only happens in one case is not a dependency in the others
+        let fraction = download?.fraction ?? 0
+
+        return ZStack {
+            // the track, carrying the ring at rest so the trim has something to
+            // fill rather than appearing out of nothing
+            Circle()
+                .stroke(lineWidth: Layout.ringWidth)
+                .foregroundStyle(.brand)
+                .opacity(state.tracked ? Layout.ringTrackOpacity : 0)
+
+            Circle()
+                .trim(from: 0, to: fraction)
+                .stroke(style: StrokeStyle(lineWidth: Layout.ringWidth, lineCap: .round, lineJoin: .round))
+                .foregroundStyle(.brand)
+                .rotationEffect(.degrees(-90))
+                .opacity(state == .downloading ? 1 : 0)
+                .animation(.linear(duration: Layout.ringDuration), value: fraction)
+
+            Glyph(state)
+        }
+        .frame(width: dimensions.size.icon20, height: dimensions.size.icon20)
+        .frame(width: dimensions.touchTarget, height: dimensions.touchTarget)
+        .opacity(state == .idle && !chapter.canRead ? Layout.disabledOpacity : 1)
+        .contentShape(.rect)
+        .tappable { act(state, on: chapter) }
+        // completed is a status, not a control: deleting a chapter's bytes off a
+        // 20pt target sitting where "downloading, tap to stop" was a second ago is
+        // one mistap away, so deletion lives in the context menu and nowhere else
+        .disabled(state == .completed || (state == .idle && !chapter.canRead))
+        .accessibilityLabel(state.label)
+        .animation(.settle, value: state)
+    }
+
+    @ViewBuilder
+    private func Glyph(_ state: DownloadPhase) -> some View {
+        Group {
+            switch state {
+            case .idle:
+                Image(systemName: "arrow.down.circle")
+                    .foregroundStyle(.muted)
+
+            case .queued:
+                Image(systemName: "clock.fill")
+                    .foregroundStyle(.brand)
+
+            // a stop rather than an x: the ring around it is the thing being
+            // stopped, and the glyph sits inside it
+            case .downloading:
+                Image(systemName: "stop.fill")
+                    .font(.caption2)
+                    .foregroundStyle(.brand)
+
+            case .failed:
+                Image(systemName: "exclamationmark.circle.fill")
+                    .foregroundStyle(.danger)
+
+            case .completed:
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(.success)
+            }
+        }
+        .font(.title3)
+        .contentTransition(.symbolEffect(.replace))
+    }
+
+    // downloaded is this row's own bytes, so it outranks a queue entry that can
+    // only be a re-download of something already on disk
+    private func state(for chapter: Chapter, _ download: Download?) -> DownloadPhase {
+        if chapter.downloaded { return .completed }
+
+        guard let download else { return .idle }
+
+        switch download.state {
+        case .queued, .preparing: return .queued
+        case .downloading: return .downloading
+        case .failed: return .failed
+        }
+    }
+
+    private func act(_ state: DownloadPhase, on chapter: Chapter) {
+        switch state {
+        case .idle, .failed: onDownload(chapter.id)
+        case .queued, .downloading: onCancelDownload(chapter.id)
+        case .completed: break
+        }
     }
 
     @ViewBuilder
@@ -455,12 +588,26 @@ extension DetailsChapters {
             .disabled(chapter.progress == 0)
         }
 
-        // downloads are not built yet - the row stays so the menu's final shape
-        // is learnable now, and lights up when the feature lands
-        Button {} label: {
-            Label("Download", systemImage: "arrow.down.circle")
+        if chapter.downloaded {
+            Button(role: .destructive) {
+                onDelete(chapter.id)
+            } label: {
+                Label("Delete Download", systemImage: "trash")
+            }
+        } else if downloads?.index[ChapterRecord.ID(rawValue: chapter.id)] != nil {
+            Button(role: .destructive) {
+                onCancelDownload(chapter.id)
+            } label: {
+                Label("Cancel Download", systemImage: "xmark.circle")
+            }
+        } else {
+            Button {
+                onDownload(chapter.id)
+            } label: {
+                Label("Download", systemImage: "arrow.down.circle")
+            }
+            .disabled(!chapter.canRead)
         }
-        .disabled(true)
 
         Link(destination: chapter.url) {
             Label("Open in Browser", systemImage: "safari")
@@ -626,6 +773,11 @@ extension DetailsChapters {
         // an uninstalled or disabled source can still show its chapters, but
         // nothing can fetch pages for them
         let canRead: Bool
+
+        // this row's own bytes, not this chapter number's. two sources serving
+        // chapter 44 are two rows with two paths, and downloading one says
+        // nothing about the other (offline-availability.md)
+        let downloaded: Bool
 
         var finished: Bool { progress >= 1 }
     }

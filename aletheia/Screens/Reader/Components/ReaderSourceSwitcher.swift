@@ -211,6 +211,8 @@ private extension ReaderSourceSwitcher {
                 .font(.subheadline)
                 .lineLimit(1)
                 .frame(maxWidth: .infinity, alignment: .leading)
+
+            Stored(option.downloaded)
         }
         .padding(dimensions.spacing.space12)
         .padding(.leading, Layout.indent)
@@ -225,6 +227,18 @@ private extension ReaderSourceSwitcher {
             dismiss()
         }
         .transition(.opacity.combined(with: .move(edge: .top)))
+    }
+
+    // a download belongs to one row, not to a chapter number - so when ranking
+    // moves, this is the screen that shows which row still holds the bytes
+    @ViewBuilder
+    func Stored(_ shown: Bool) -> some View {
+        if shown {
+            Image(systemName: "arrow.down.circle.fill")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .accessibilityLabel("Downloaded")
+        }
     }
 
     @ViewBuilder

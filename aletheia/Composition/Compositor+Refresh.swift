@@ -62,9 +62,40 @@ extension Compositor {
         }
 
         @ObservationIgnored private var run: Task<Void, Never>?
+
         // the system task, once it grants one. the run does not wait for it and
-        // does not need it: this only extends a walk that is already going
-        @ObservationIgnored private var task: BGContinuedProcessingTask?
+        // does not need it: this only extends a walk that is already going.
+        // lazy because the init is nonisolated, so Compositor can build this off
+        // the main actor, and these closures capture self.
+        //
+        // scaled progress with drift: a series takes about as long as its slowest
+        // origin, so a stretch with nothing finishing is silence the system reads
+        // as a stall. the bar is a liveness signal and the subtitle is the
+        // measure, which is why they tell slightly different stories
+        @ObservationIgnored private lazy var task = ContinuedTask(
+            identifier: Constants.Tasks.refresh,
+            log: log,
+            tick: { [weak self] in
+                guard let self, self.isRunning, self.total > 0 else { return nil }
+                let scale = Int64(self.total) * Limits.scale
+                return ContinuedTask.Tick(
+                    done: min(Int64(self.completed) * Limits.scale + self.drift.values.reduce(0, +), scale),
+                    total: scale,
+                    subtitle: "\(self.completed) of \(self.total)"
+                )
+            },
+            // asymptotic on purpose: a fixed step reaches the ceiling and stops,
+            // which brings the silence back later rather than removing it.
+            // approaching a ceiling it never reaches means a series that is
+            // genuinely stuck still reports movement
+            drift: { [weak self] in
+                guard let self else { return }
+                for id in self.active {
+                    let current = self.drift[id] ?? 0
+                    self.drift[id] = current + (Limits.ceiling - current) / 4
+                }
+            }
+        )
         // new chapters this run found, for the one notification it may post
         @ObservationIgnored private var added = 0
         @ObservationIgnored private var touched = 0
@@ -72,7 +103,6 @@ extension Compositor {
         @ObservationIgnored private var pending: [Series] = []
         // how far each in-flight series has drifted, 0..<ceiling
         @ObservationIgnored private var drift: [Int64: Int64] = [:]
-        @ObservationIgnored private var heart: Task<Void, Never>?
 
         var isRunning: Bool { run != nil }
 
@@ -88,10 +118,6 @@ extension Compositor {
             // where a series in flight drifts to but never arrives, so finishing
             // it is still a visible jump rather than a rounding error
             static let ceiling: Int64 = 900
-
-            // comfortably inside the ~30s cadence window, with room for a tick to
-            // be missed
-            static let beat: Duration = .seconds(5)
         }
 
         // nonisolated so Compositor can build it: that init opens the database
@@ -186,8 +212,6 @@ extension Compositor {
 
         private func finish() {
             stamp()
-            heart?.cancel()
-            heart = nil
             drift = [:]
             run = nil
             pending = []
@@ -197,8 +221,7 @@ extension Compositor {
             scope = nil
             total = 0
 
-            task?.setTaskCompleted(success: true)
-            task = nil
+            task.finish()
         }
 
         // one notification, only for a run nobody watched, only when it found
@@ -361,19 +384,10 @@ extension Compositor {
         // registered before the end of launch, which the api requires - and from
         // a launch the system started itself, so this has to run whether or not
         // a screen ever appears
-        nonisolated func register() {
-            #if !targetEnvironment(simulator)
-            BGTaskScheduler.shared.register(
-                forTaskWithIdentifier: Constants.Tasks.refresh,
-                using: nil
-            ) { task in
-                guard let task = task as? BGContinuedProcessingTask else {
-                    task.setTaskCompleted(success: false)
-                    return
-                }
-                Task { @MainActor [weak self] in self?.adopt(task) }
-            }
+        func register() {
+            task.register { [weak self] in self?.cancel() }
 
+            #if !targetEnvironment(simulator)
             // the scheduled half is a different api on purpose: opportunistic,
             // no ui, minutes of runtime rather than an extension of something
             // the user is watching
@@ -399,85 +413,15 @@ extension Compositor {
             #endif
         }
 
-        // the system granted the task after the walk was already going, so this
-        // attaches rather than starts. a run that finished in the meantime
-        // completes it immediately - there is nothing left to extend
-        private func adopt(_ task: BGContinuedProcessingTask) {
-            guard isRunning else {
-                task.setTaskCompleted(success: true)
-                return
-            }
-
-            task.expirationHandler = { [weak self] in
-                // cancel, system pressure and failure all arrive here
-                // identically - the api cannot say which, so neither can we
-                Task { @MainActor in self?.cancel() }
-            }
-
-            self.task = task
-            beat()
-            advance()
-        }
-
         private func submit(named name: String?) {
-            #if !targetEnvironment(simulator)
-            let request = BGContinuedProcessingTaskRequest(
-                identifier: Constants.Tasks.refresh,
+            task.submit(
                 title: name.map { "Updating \($0)" } ?? "Updating Library",
                 subtitle: "Checking for new chapters"
             )
-
-            do {
-                try BGTaskScheduler.shared.submit(request)
-            } catch {
-                // a failed submission is not a failed refresh: the walk is
-                // already running in the foreground, it simply will not survive
-                // being backgrounded
-                log.log("continued-processing task not granted — \(error)", category: "refresh")
-            }
-            #endif
         }
 
-        // the system expires a task whose progress has not moved for about thirty
-        // seconds, and a series can exceed that on its own - one mangafire origin
-        // measures ~24s, and the tail of a walk is disproportionately mangafire
-        // because the fast sources drain early. so progress is scaled and each
-        // series in flight drifts upward between completions.
-        //
-        // the subtitle stays in whole series, because "6 of 11" is what a person
-        // can read; only the bar drifts
         private func advance() {
-            guard let task, total > 0 else { return }
-
-            let done = Int64(completed) * Limits.scale + drift.values.reduce(0, +)
-
-            task.progress.totalUnitCount = Int64(total) * Limits.scale
-            task.progress.completedUnitCount = min(done, Int64(total) * Limits.scale)
-            task.updateTitle(task.title, subtitle: "\(completed) of \(total)")
-        }
-
-        // asymptotic on purpose: a fixed step reaches the ceiling and stops, which
-        // brings the silence back later rather than removing it. approaching a
-        // ceiling it never reaches means a series that is genuinely stuck still
-        // reports movement, and the scale is 1000 so the increments stay whole
-        // numbers long enough to matter.
-        //
-        // this is a heartbeat, not a delay waiting for state to settle - the
-        // periodic tick IS the signal the system is asking for
-        private func beat() {
-            heart?.cancel()
-            heart = Task { [weak self] in
-                while !Task.isCancelled {
-                    try? await Task.sleep(for: Limits.beat)
-                    guard let self, self.isRunning, !Task.isCancelled else { return }
-
-                    for id in self.active {
-                        let current = self.drift[id] ?? 0
-                        self.drift[id] = current + (Limits.ceiling - current) / 4
-                    }
-                    self.advance()
-                }
-            }
+            task.advance()
         }
 
         // every origin of a series at once, exactly as the Details screen does.

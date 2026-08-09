@@ -73,11 +73,17 @@ final class Bootstrap {
             // does not block the first frame - it enumerates a directory that can
             // hold thousands of entries
             compositor.assets.sweep()
+            compositor.downloads.sweep()
 
             // registration has to complete before launch ends, and a launch the
             // system started for the task itself has no screens to do it from
             compositor.refresh.register()
+            compositor.downloads.register()
             compositor.refresh.catchUp()
+
+            // the queue is intent, and intent is what a kill destroys - the bytes
+            // already on disk are picked up again for free
+            compositor.downloads.restore()
             await Notifier.prepare()
 
             self.compositor = compositor

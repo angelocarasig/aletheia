@@ -1454,6 +1454,7 @@ extension DetailsViewModel {
                 c.\(ChapterRecord.Columns.language.name) AS language,
                 c.\(ChapterRecord.Columns.progress.name) AS progress,
                 c.\(ChapterRecord.Columns.url.name) AS url,
+                c.\(ChapterRecord.Columns.path.name) AS path,
                 c.\(ChapterRecord.Columns.publishedDate.name) AS publishedDate,
                 s.\(ScanlatorRecord.Columns.name.name) AS scanlator,
                 o.\(OriginRecord.Columns.slug.name) AS originSlug,
@@ -1495,7 +1496,8 @@ extension DetailsViewModel {
                 progress: row.progress,
                 url: row.url,
                 sourceIcon: source?.descriptor.icon,
-                canRead: source != nil
+                canRead: source != nil,
+                downloaded: row.path != nil
             )
         }
     }
@@ -2076,6 +2078,7 @@ private struct StoredChapter: Decodable, FetchableRecord, Sendable {
     let language: LanguageCode
     let progress: Double
     let url: URL
+    let path: String?
     let publishedDate: Date
     let scanlator: String
     let originSlug: String

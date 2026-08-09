@@ -426,10 +426,11 @@ extension HomeViewModel {
         // the pieces directly rather than a whole Compositor - building that
         // constructs every source, and a preview has no use for one
         let database = DatabaseClient.preview
+        let registry = Compositor.Registry(sources: [], database: database)
         let model = HomeViewModel(
             database: database,
-            assets: Compositor.Assets(database: database, network: NetworkService()),
-            registry: Compositor.Registry(sources: [], database: database)
+            assets: Compositor.Assets(database: database, registry: registry, network: NetworkService()),
+            registry: registry
         )
         model.snapshot = snapshot
         model.failure = failure
