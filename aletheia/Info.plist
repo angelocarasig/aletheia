@@ -4,5 +4,10 @@
 <dict>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>Save series covers to your photo library.</string>
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>moe.aletheia.refresh</string>
+		<string>moe.aletheia.refresh.scheduled</string>
+	</array>
 </dict>
 </plist>

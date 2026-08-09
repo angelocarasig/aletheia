@@ -61,6 +61,20 @@ enum Preferences {
         static let homeDismissed = "home.dismissed"
 
         static let homeStatRange = "home.statRange"
+
+        // what a library refresh is allowed to skip. all default off: the walk
+        // shipped checking everything, and a filter that silently turns itself
+        // on changes what "refresh" means without being asked
+        static let refreshSkipCompleted = "refresh.skipCompleted"
+        static let refreshSkipUnread = "refresh.skipUnread"
+        static let refreshSkipNotStarted = "refresh.skipNotStarted"
+
+        // hours between automatic runs, 0 meaning never. the two stamps are
+        // deliberately separate: a manual refresh must not postpone the
+        // automatic one, which is how suwayomi keeps its schedule honest
+        static let refreshInterval = "refresh.interval"
+        static let refreshedDate = "refresh.lastRun"
+        static let refreshedAutomaticallyDate = "refresh.lastAutomaticRun"
     }
 
     enum Default {
@@ -89,5 +103,15 @@ enum Preferences {
         // the week is what a landing strip is for - a glance at what is happening
         // now, with the longer views a tap away on the same control
         static let homeStatRange = StatRange.week
+
+        static let refreshSkipCompleted = false
+        static let refreshSkipUnread = false
+        static let refreshSkipNotStarted = false
+
+        // manual only until asked otherwise. the surveyed apps default to an
+        // interval, but they also ship the catch-up and the settings that make
+        // one honest - turning it on before those exist would promise a
+        // schedule the app cannot keep
+        static let refreshInterval = 0
     }
 }

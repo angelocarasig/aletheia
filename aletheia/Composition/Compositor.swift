@@ -13,7 +13,6 @@ struct Compositor: Sendable {
     let db: Persistence
     let assets: Assets
     let refresh: Refresh
-    let libraryRefresh: LibraryRefresh
     let requester: AuthRequester
     let presenter: AuthPresenter
 
@@ -42,12 +41,10 @@ struct Compositor: Sendable {
         self.presenter = presenter
         self.requester = requester
         let registry = Registry(sources: sources, database: database)
-        let refresh = Refresh(database: database)
 
         self.registry = registry
-        self.refresh = refresh
+        self.refresh = Refresh(database: database, registry: registry)
         self.assets = Assets(database: database, network: network)
-        self.libraryRefresh = LibraryRefresh(database: database, registry: registry, refresher: refresh)
         self.db = Persistence(database: database)
     }
 }

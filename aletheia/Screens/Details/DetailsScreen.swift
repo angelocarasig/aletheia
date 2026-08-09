@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import Tagged
 
 struct DetailsScreen: View {
     let entry: SeriesEntry
@@ -327,7 +328,13 @@ struct DetailsScreen: View {
         // a list that already renders, so nothing below should move
         .overlay(alignment: .bottomTrailing) {
             if vm.refreshState != .idle {
-                Refreshing(vm.refreshState)
+                Refreshing(vm.refreshState.outcomes)
+                    .transition(.move(edge: .trailing).combined(with: .opacity))
+            } else if case let rebuilt = live(vm), !rebuilt.isEmpty {
+                // a fetch this screen no longer remembers starting, or a library
+                // run holding this series. pulling to refresh here would join
+                // those fetches rather than start a second set
+                Refreshing(rebuilt)
                     .transition(.move(edge: .trailing).combined(with: .opacity))
             }
         }
@@ -346,14 +353,34 @@ struct DetailsScreen: View {
             .padding(.bottom, dimensions.spacing.space8)
         }
         .animation(.settle, value: vm.refreshState)
+        // the other thing the overlay switches on, or the shared-unit pill would
+        // appear and leave without a transition
+        .animation(.settle, value: live(vm))
+    }
+
+    // rebuilt from the shared unit rather than remembered, which is what lets
+    // the pill come back after the screen was closed and reopened mid-fetch.
+    // only origins still in play appear: an origin that finished while the
+    // screen was gone took its count with the last view model, and inventing a
+    // row for it would be inventing the answer too
+    private func live(_ vm: DetailsViewModel) -> [DetailsViewModel.RefreshState.Outcome] {
+        let refresh = compositor.refresh
+        let waiting = vm.seriesId.map {
+            refresh.isQueued(series: $0.rawValue) || refresh.isChecking(series: $0.rawValue)
+        } ?? false
+
+        return vm.refreshables.compactMap { target in
+            guard refresh.isChecking(origin: target.originId) || waiting else { return nil }
+            return .init(id: target.originId, name: target.name, icon: target.icon, result: nil)
+        }
     }
 
     // one row per source, each answering for itself: a spinner becomes that
     // source's outcome in place, so a dead source is named rather than collapsing
     // the whole run into "couldn't refresh". a single-origin series is one row
-    private func Refreshing(_ state: DetailsViewModel.RefreshState) -> some View {
+    private func Refreshing(_ outcomes: [DetailsViewModel.RefreshState.Outcome]) -> some View {
         VStack(alignment: .leading, spacing: dimensions.spacing.space8) {
-            ForEach(state.outcomes) { outcome in
+            ForEach(outcomes) { outcome in
                 Outcome(outcome)
             }
         }
@@ -365,15 +392,21 @@ struct DetailsScreen: View {
     }
 
     private func Outcome(_ outcome: DetailsViewModel.RefreshState.Outcome) -> some View {
-        HStack(spacing: dimensions.spacing.space8) {
-            Icon(outcome)
+        // no answer yet is two different things: waiting for a slot at the host,
+        // or actually talking to it. the unit knows which, and a row that says
+        // "checking" while nothing is in flight is the small lie that makes a
+        // slow refresh look broken
+        let started = compositor.refresh.isChecking(origin: outcome.id)
+
+        return HStack(spacing: dimensions.spacing.space8) {
+            Icon(outcome, started: started)
 
             Text(outcome.name)
                 .font(.subheadline)
                 .fontWeight(.medium)
                 .lineLimit(1)
 
-            Message(outcome.result)
+            Message(outcome.result, started: started)
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
@@ -383,13 +416,21 @@ struct DetailsScreen: View {
     // every state is a symbol, spinner included, so the outcome can enter by
     // drawing itself along the stroke the spinner drew off - the reader's
     // separator badge speaks the same dialect
-    private func Icon(_ outcome: DetailsViewModel.RefreshState.Outcome) -> some View {
+    private func Icon(_ outcome: DetailsViewModel.RefreshState.Outcome, started: Bool) -> some View {
         Group {
             switch outcome.result {
+            // waiting for a slot is not the same as talking to the host, and a
+            // spinner for something that has not begun is the small lie that
+            // makes a slow refresh look stuck
+            case nil where !started:
+                Image(systemName: "clock")
+                    .foregroundStyle(.muted)
+                    .transition(reduceMotion ? .opacity : AnyTransition(.symbolEffect(.drawOn)))
+
             case nil:
                 Image(systemName: "progress.indicator")
                     .foregroundStyle(.secondary)
-                    .symbolEffect(.rotate, options: .repeat(.continuous))
+                    .symbolEffect(.rotate, options: .repeat(.continuous), isActive: !reduceMotion)
                     .transition(reduceMotion ? .opacity : AnyTransition(.symbolEffect(.drawOn)))
 
             case .added:
@@ -409,19 +450,28 @@ struct DetailsScreen: View {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .foregroundStyle(.warning)
                     .transition(reduceMotion ? .opacity : AnyTransition(.symbolEffect(.drawOn)))
+
+            // stopped, not broken - the same muted weight as "nothing new",
+            // because neither is something the reader has to act on
+            case .cancelled:
+                Image(systemName: "xmark.circle")
+                    .foregroundStyle(.muted)
+                    .transition(reduceMotion ? .opacity : AnyTransition(.symbolEffect(.drawOn)))
             }
         }
         .frame(width: Layout.badgeSize, height: Layout.badgeSize)
         .animation(.settle, value: outcome.result)
+        .animation(.settle, value: started)
     }
 
     @ViewBuilder
-    private func Message(_ result: Compositor.Refresh.Outcome?) -> some View {
+    private func Message(_ result: OriginRefresher.Outcome?, started: Bool) -> some View {
         switch result {
-        case nil: Text("Checking")
+        case nil: Text(started ? "Checking" : "Queued")
         case .added(let count): Text("^[\(count) new chapter](inflect: true)")
         case .unchanged: Text("Up to date")
         case .failed(let reason): Text(reason)
+        case .cancelled: Text("Stopped")
         }
     }
 

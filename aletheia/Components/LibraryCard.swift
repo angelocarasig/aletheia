@@ -15,8 +15,17 @@ struct LibraryCard: View {
     var title: String?
     var cover: URL?
     var unreadCount: Int = 0
+    var activity: Activity?
+
+    // the same two words the details pill uses: waiting for its turn, or being
+    // talked to right now. a card with neither is not in a run at all
+    enum Activity {
+        case queued
+        case checking
+    }
 
     @Environment(\.dimensions) private var dimensions
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private enum Layout {
         static let coverAspect: CGFloat = 11 / 16
@@ -26,6 +35,11 @@ struct LibraryCard: View {
         static let subtitleWidthFactor: CGFloat = 0.6
         static let placeholderOpacity: Double = 0.1
         static let badgeCap = 99
+        static let scrimOpacity: Double = 0.45
+        // lighter, because waiting is a weaker claim on the card than being
+        // worked on - the two have to be distinguishable at a glance across a
+        // grid, not just on the one you are looking at
+        static let queuedScrimOpacity: Double = 0.3
     }
 
     var body: some View {
@@ -50,9 +64,48 @@ struct LibraryCard: View {
                     Placeholder
                 }
             }
+            .overlay { Checking }
             .clipShape(.rect(cornerRadius: dimensions.radius.radius12))
             // outside the clip so the badge is not cut by the corner radius
             .overlay(alignment: .topTrailing) { Unread }
+            // the scrim fades rather than snapping - a card entering and leaving
+            // the run is the most frequent state change on this screen
+            .animation(.settle, value: activity)
+    }
+
+    // the SourceCard treatment: a scrim carries the state at a glance and a mark
+    // says which one, so the artwork stays readable underneath. centred and
+    // spinning rather than a corner glyph, because this one is happening now
+    // rather than being a fact about the series
+    @ViewBuilder
+    private var Checking: some View {
+        switch activity {
+        case .checking:
+            Color.black.opacity(Layout.scrimOpacity)
+                .overlay {
+                    Image(systemName: "arrow.triangle.2.circlepath")
+                        .font(.title)
+                        .foregroundStyle(.brand)
+                        // continuous rather than the default stepped rotation,
+                        // which reads as stuttering on a long-running check.
+                        // the scrim already says the card is busy, so with
+                        // reduce motion on the symbol simply holds still
+                        .symbolEffect(.rotate, options: .repeat(.continuous), isActive: !reduceMotion)
+                }
+                .transition(.opacity)
+
+        case .queued:
+            Color.black.opacity(Layout.queuedScrimOpacity)
+                .overlay {
+                    Image(systemName: "clock")
+                        .font(.title)
+                        .foregroundStyle(.white.opacity(0.8))
+                }
+                .transition(.opacity)
+
+        case nil:
+            EmptyView()
+        }
     }
 
     @ViewBuilder

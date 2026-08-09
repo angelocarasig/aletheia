@@ -252,10 +252,24 @@ final class ActivityViewModel {
                 """
         ) ?? 0
 
+        // currently failing, not ever failed: the column is cleared the moment a
+        // source answers again, so this needs no acknowledgement state of its own
+        let failingSources = try Int.fetchOne(
+            db,
+            sql: """
+                SELECT COUNT(*)
+                FROM \(OriginRecord.databaseTableName) o
+                JOIN \(SeriesRecord.databaseTableName) s ON s.id = o.\(OriginRecord.Columns.seriesId.name)
+                WHERE o.\(OriginRecord.Columns.fetchError.name) IS NOT NULL
+                  AND s.\(SeriesRecord.Columns.inLibrary.name) = 1
+                """
+        ) ?? 0
+
         return Snapshot(
             entries: entries.sorted { $0.latestDate > $1.latestDate },
             lastChecked: lastChecked,
-            downloadedChapters: downloadedChapters
+            downloadedChapters: downloadedChapters,
+            failingSources: failingSources
         )
     }
 
@@ -293,6 +307,7 @@ extension ActivityViewModel {
         let entries: [FeedEntry]
         let lastChecked: Date?
         let downloadedChapters: Int
+        let failingSources: Int
         var isEmpty: Bool { entries.isEmpty }
     }
 

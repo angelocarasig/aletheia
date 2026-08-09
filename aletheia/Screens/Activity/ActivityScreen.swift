@@ -19,6 +19,7 @@ struct ActivityScreen: View {
 
     @State private var vm: ActivityViewModel?
     @State private var reading: ReadingTarget?
+    @State private var showingFailures = false
 
     private struct ReadingTarget: Identifiable, Hashable {
         let seriesId: SeriesRecord.ID
@@ -91,9 +92,13 @@ struct ActivityScreen: View {
             }
             .animation(.settle, value: phase)
             .navigationTitle("Activity")
+            .toolbarTitleDisplayMode(.large)
             .navigationDestination(for: SeriesEntry.self) { DetailsScreen(entry: $0) }
             .navigationDestination(item: $reading) { target in
                 ReaderScreen(seriesId: target.seriesId, chapterId: target.chapterId)
+            }
+            .navigationDestination(isPresented: $showingFailures) {
+                FailuresScreen()
             }
             .toolbar {
                 if let vm, phase == .content {
@@ -149,14 +154,33 @@ private extension ActivityScreen {
         .animation(.settle, value: vm.grouping)
     }
 
-    // always present, settled on facts while nothing runs. when the downloader
-    // and global refresh exist, their observable progress models take these
-    // rows over with live state - and nothing else ever renders here
+    // always present, settled on facts while nothing runs, and taken over by the
+    // live run when there is one. the numbers come from the runner's observable
+    // model; the facts come from columns, which is what makes a run that
+    // happened while the app was closed still leave a trace here
     func Now(_ snapshot: ActivityViewModel.Snapshot) -> some View {
-        ActivityNowSection(model: .init(
-            refresh: .idle(lastChecked: snapshot.lastChecked),
-            downloads: .idle(stored: snapshot.downloadedChapters)
-        ))
+        let refresh = compositor.refresh
+
+        return ActivityNowSection(
+            model: .init(
+                refresh: refresh.isRunning
+                    ? .running(
+                        scope: refresh.scope,
+                        seriesTitle: refresh.current,
+                        completed: refresh.completed,
+                        total: refresh.total
+                    )
+                    : .idle(lastChecked: snapshot.lastChecked),
+                downloads: .idle(stored: snapshot.downloadedChapters),
+                failing: snapshot.failingSources
+            ),
+            onCancelRefresh: { refresh.cancel() },
+            // the count is the awareness; the list is the attribution and the
+            // retry. a series can be healthy on one source and dead on another,
+            // so naming the series alone would not be enough to act on
+            onOpenFailures: { showingFailures = true }
+        )
+        .animation(.settle, value: refresh.isRunning)
     }
 
     func DaySection(_ group: ActivityViewModel.DayGroup) -> some View {

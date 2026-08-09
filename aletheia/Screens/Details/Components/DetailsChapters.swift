@@ -415,6 +415,7 @@ extension DetailsChapters {
     private var ExpandToggle: some View {
         HStack(spacing: dimensions.spacing.space8) {
             Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                .contentTransition(.symbolEffect(.replace))
             Text(isExpanded ? "Show Less" : "Show All \(chapters.count) Chapters")
         }
         .font(.subheadline)

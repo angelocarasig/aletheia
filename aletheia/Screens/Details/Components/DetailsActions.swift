@@ -73,6 +73,10 @@ struct DetailsActions: View {
             }
         } label: {
             Label(status.label, systemImage: status.icon)
+                // the write lands from a menu with no animation of its own, so
+                // the glyph needs one here or the replace has nothing to run in
+                .contentTransition(.symbolEffect(.replace))
+                .animation(.settle, value: status)
                 .lineLimit(Layout.contentLines)
                 .fontWeight(.medium)
                 // the fill is the inverse of the current scheme, so the tint has

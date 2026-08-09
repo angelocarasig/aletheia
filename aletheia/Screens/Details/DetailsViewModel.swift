@@ -39,10 +39,13 @@ final class DetailsViewModel {
     func clearActionFailure() { actionFailure = nil }
 
 
-    private var seriesId: SeriesRecord.ID?
+    // read by the screen to ask whether a library run is touching this series -
+    // its own pill would otherwise sit idle while chapters land underneath it
+    private(set) var seriesId: SeriesRecord.ID?
     private var held: SeriesRecord.ID?
     private var started = false
     private var primed = false
+    private var adopted = false
     private var stream: Task<Void, Never>?
     private var dismissal: Task<Void, Never>?
 
@@ -119,6 +122,11 @@ final class DetailsViewModel {
 
     // an empty chapter list only means "none" once a fetch has actually landed
     var hasFetchedChapters: Bool { (snapshot?.chaptersFetchedDate ?? .distantPast) > .distantPast }
+
+    // the origins a refresh would speak to, named. the screen asks the shared
+    // unit which of them are in flight and rebuilds the rows from that - its own
+    // refreshState died with the last view model, but the origins did not
+    var refreshables: [Snapshot.Refreshable] { snapshot?.refreshables ?? [] }
 
     var canToggleLibrary: Bool { seriesId != nil && !isSaving }
     var needsDisambiguation: Bool { !candidates.isEmpty }
@@ -361,10 +369,17 @@ final class DetailsViewModel {
                         .fetchOne(db)
                 else { return nil }
 
+                let rows = try Self.chapters(for: id, in: db)
+
                 return Stored(
                     series: series,
                     entry: entry,
-                    chapters: try Self.chapters(for: id, in: db),
+                    chapters: rows,
+                    // mapped here rather than in Snapshot.init: this closure runs
+                    // on the database queue, and a series with four hundred
+                    // chapters was rebuilding every row on the main actor on
+                    // every emission - measured at ~700ms after a bulk insert
+                    display: Self.display(rows, registry: registry),
                     origins: try Self.origins(for: id, in: db),
                     covers: try Self.covers(for: id, in: db),
                     titles: try Self.titles(for: id, in: db),
@@ -379,7 +394,8 @@ final class DetailsViewModel {
                     self.snapshot = Snapshot(stored, registry: registry) { remote, path in
                         self.artwork(remote, path: path)
                     }
-                    await self.prime()
+                    self.adopt()
+                    self.prime()
                 }
             } catch {
                 // a background load. the screen keeps what it has rather than nagging
@@ -418,12 +434,18 @@ final class DetailsViewModel {
         isFetchingChapters = true
         defer { isFetchingChapters = false }
 
+        // if a library walk is holding this series in its queue, it is about to
+        // fetch exactly what this is fetching. tell it not to bother - pulling
+        // to refresh means check this one now, and the walk arriving later to
+        // repeat the work is two requests for one answer
+        if let seriesId { refresher.dequeue(series: seriesId.rawValue) }
+
         var outcomes = targets.map {
             RefreshState.Outcome(id: $0.originId, name: $0.name, icon: $0.icon, result: nil)
         }
         refreshState = .running(outcomes)
 
-        await withTaskGroup(of: (Int64, Compositor.Refresh.Outcome).self) { group in
+        await withTaskGroup(of: (Int64, OriginRefresher.Outcome).self) { group in
             for target in targets {
                 guard let source = registry.source(slug: target.sourceSlug) else { continue }
                 let originId = OriginRecord.ID(rawValue: target.originId)
@@ -475,11 +497,57 @@ final class DetailsViewModel {
         }
     }
 
+    // a fetch this screen started before it was closed is still running in the
+    // shared unit, and its answer is owed to whoever asks. joining takes that
+    // answer rather than issuing a second request - without it the rebuilt pill
+    // can only show that something is happening, then vanish when it stops
+    // claims the flag synchronously and then leaves: awaiting the joins here
+    // would hold the observation loop open for the length of the fetch, and
+    // nothing from the database would reach the screen while it waited
+    private func adopt() {
+        guard !adopted, !isRefreshing else { return }
+
+        let live = refreshables.filter { refresher.isChecking(origin: $0.originId) }
+        guard !live.isEmpty else { return }
+
+        adopted = true
+        Task { [weak self] in await self?.join(live) }
+    }
+
+    private func join(_ live: [Snapshot.Refreshable]) async {
+        var outcomes = live.map {
+            RefreshState.Outcome(id: $0.originId, name: $0.name, icon: $0.icon, result: nil)
+        }
+        refreshState = .running(outcomes)
+
+        await withTaskGroup(of: (Int64, OriginRefresher.Outcome?).self) { group in
+            for target in live {
+                let originId = OriginRecord.ID(rawValue: target.originId)
+                group.addTask { [refresher] in
+                    (target.originId, await refresher.join(originId: originId))
+                }
+            }
+
+            for await (originId, outcome) in group {
+                guard let outcome, let index = outcomes.firstIndex(where: { $0.id == originId }) else { continue }
+                outcomes[index].result = outcome
+                refreshState = .running(outcomes)
+            }
+        }
+
+        refreshState = .finished(outcomes)
+        schedule()
+    }
+
     // a series whose row exists but whose chapters never landed would otherwise
     // never try again - matching short-circuits before create(), which is the only
     // other caller. this is not a refresh: it fires once, and only for an origin
     // that has never been fetched at all
-    private func prime() async {
+    // claims its flag synchronously and then leaves, for the same reason adopt()
+    // does: this runs inside the observation loop, and awaiting a network fetch
+    // there holds that loop open for the length of it - a cover finishing in the
+    // meantime would not reach the screen until the chapters did
+    private func prime() {
         guard !primed, !isFetchingChapters else { return }
         guard let snapshot, snapshot.chaptersFetchedDate == .distantPast else { return }
         guard let target = snapshot.refreshables.first else { return }
@@ -487,15 +555,17 @@ final class DetailsViewModel {
 
         primed = true
         isFetchingChapters = true
-        defer { isFetchingChapters = false }
 
-        // no pill: this is the skeleton's own fetch, and a failure here is
-        // carried by the source row rather than raised over an empty screen
-        _ = await refresher.chapters(
-            source: source,
-            seriesSlug: target.slug,
-            originId: OriginRecord.ID(rawValue: target.originId)
-        )
+        Task { [weak self, refresher] in
+            // no pill: this is the skeleton's own fetch, and a failure here is
+            // carried by the source row rather than raised over an empty screen
+            _ = await refresher.chapters(
+                source: source,
+                seriesSlug: target.slug,
+                originId: OriginRecord.ID(rawValue: target.originId)
+            )
+            self?.isFetchingChapters = false
+        }
     }
 
     // MARK: - Reading
@@ -1164,7 +1234,7 @@ extension DetailsViewModel {
             let id: Int64
             let name: String
             let icon: ImageResource?
-            var result: Compositor.Refresh.Outcome?
+            var result: OriginRefresher.Outcome?
         }
     }
 
@@ -1256,23 +1326,7 @@ private extension DetailsViewModel.Snapshot {
         lastReadDate = entry.lastReadDate
         rows = stored.chapters
 
-        chapters = stored.chapters.map { row in
-            // the icon resolves through the registry, so a source that is no longer
-            // compiled in yields nil and the row renders a placeholder
-            let source = row.sourceSlug.flatMap { registry.source(slug: $0) }
-            return DetailsChapters.Chapter(
-                id: row.id,
-                number: row.number,
-                title: row.title,
-                scanlator: row.scanlator,
-                language: row.language,
-                publishedDate: row.publishedDate,
-                progress: row.progress,
-                url: row.url,
-                sourceIcon: source?.descriptor.icon,
-                canRead: source != nil
-            )
-        }
+        chapters = stored.display
 
         origins = stored.origins.map { row in
             // three different unavailabilities, and they need different answers from
@@ -1423,6 +1477,29 @@ extension DetailsViewModel {
 
     // ordered the way best_chapter ranks them: priority first, id as the
     // deterministic tiebreak, unavailable sources last
+    // the icon resolves through the registry, so a source that is no longer
+    // compiled in yields nil and the row renders a placeholder
+    nonisolated fileprivate static func display(
+        _ rows: [StoredChapter],
+        registry: Compositor.Registry
+    ) -> [DetailsChapters.Chapter] {
+        rows.map { row in
+            let source = row.sourceSlug.flatMap { registry.source(slug: $0) }
+            return DetailsChapters.Chapter(
+                id: row.id,
+                number: row.number,
+                title: row.title,
+                scanlator: row.scanlator,
+                language: row.language,
+                publishedDate: row.publishedDate,
+                progress: row.progress,
+                url: row.url,
+                sourceIcon: source?.descriptor.icon,
+                canRead: source != nil
+            )
+        }
+    }
+
     nonisolated fileprivate static func origins(
         for seriesId: SeriesRecord.ID,
         in db: Database
@@ -1919,6 +1996,7 @@ private struct Stored: Sendable {
     let series: SeriesRecord
     let entry: RichfulEntryView
     let chapters: [StoredChapter]
+    let display: [DetailsChapters.Chapter]
     let origins: [StoredOrigin]
     let covers: [StoredCover]
     let titles: [StoredTitle]

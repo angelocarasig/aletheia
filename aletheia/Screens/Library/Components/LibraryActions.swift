@@ -48,6 +48,7 @@ struct LibraryActions: View {
 private extension LibraryActions {
     var Root: some View {
         Image(systemName: expanded ? "xmark" : "line.3.horizontal.decrease")
+            .contentTransition(.symbolEffect(.replace))
             .font(.system(size: dimensions.size.icon20, weight: .medium))
             .frame(width: dimensions.size.controlL, height: dimensions.size.controlL)
             .glassEffect(.regular.interactive(), in: .circle)

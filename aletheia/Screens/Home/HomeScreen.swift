@@ -79,7 +79,7 @@ struct HomeScreen: View {
             .animation(.settle, value: phase)
             .navigationTitle("Home")
             .navigationSubtitle(subtitle)
-            .toolbarTitleDisplayMode(.inlineLarge)
+            .toolbarTitleDisplayMode(.large)
             .toolbarTitleMenu {
                 // the window is what the title is scoped by, so it belongs to the
                 // title rather than a trailing button. the control exists only

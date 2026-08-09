@@ -70,6 +70,7 @@ struct SourcesScreen: View {
             }
             .frame(maxHeight: .infinity, alignment: .top)
             .navigationTitle("Sources")
+            .toolbarTitleDisplayMode(.large)
             .navigationDestination(item: $route) { route in
                 if let source = compositor.registry.source(slug: route.slug) {
                     SourceHomeScreen(source: source, record: vm?.sources.first { $0.slug == route.slug })

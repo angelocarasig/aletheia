@@ -74,6 +74,10 @@ struct SearchScreen: View {
             NavigationStack {
                 GlobalContent
                     .toolbarVisibility(vm.active ? .visible : .hidden, for: .navigationBar)
+                    // stated rather than inherited, so all five tab roots declare
+                    // the same thing. this root carries no title of its own - the
+                    // bar exists only to hold the search field once it is active
+                    .toolbarTitleDisplayMode(.large)
             }
             .modifier(GlobalLifecycle(vm: vm, seed: query, compositor: compositor))
             .onChange(of: reset) {

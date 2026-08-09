@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import Tagged
 
 struct LibraryScreen: View {
     @Environment(\.database) private var database
@@ -60,6 +61,18 @@ struct LibraryScreen: View {
                 // value the branches switch on
                 .animation(.settle, value: phase)
             }
+            // returns as soon as the walk is under way rather than awaiting it:
+            // a run is minutes, and holding the pull spinner open for that is
+            // both a lie about what it means and a scroll view pinned down.
+            // the cards mark themselves as they are checked, which is the
+            // feedback the gesture actually earns
+            .refreshable {
+                guard let vm else { return }
+                compositor.refresh.start(
+                    collection: vm.selectedCollection,
+                    named: vm.selectedCollection == nil ? nil : vm.title
+                )
+            }
             // a bar rather than two overlays: it reserves the clearance the last
             // row needs instead of a literal bottom padding, and registers as a
             // control surface so the scroll edge effect reaches it
@@ -107,8 +120,20 @@ struct LibraryScreen: View {
             // the title carries the collection, so the switcher does not have to
             .navigationTitle(vm?.title ?? "Library")
             .navigationSubtitle(subtitle)
-            .toolbarTitleDisplayMode(.inlineLarge)
+            .toolbarTitleDisplayMode(.large)
             .navigationDestination(for: SeriesEntry.self) { DetailsScreen(entry: $0) }
+            // here rather than on Activity: this is where a refresh is started,
+            // and the screen it opens is about what that refresh does
+            .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    NavigationLink {
+                        RefreshSettingsScreen()
+                    } label: {
+                        Image(systemName: "gearshape")
+                    }
+                    .accessibilityLabel("Library update settings")
+                }
+            }
             .sheet(isPresented: $showingSort) {
                 if let vm {
                     LibrarySortSheet(
@@ -168,6 +193,19 @@ private extension LibraryScreen {
             get: { vm.selectedCollection },
             set: { vm.selectedCollection = $0 }
         )
+    }
+
+    // both sets are read unconditionally rather than short-circuited: reading
+    // one of them is what makes this card redraw when a run moves a series from
+    // queued to checking, and a ternary that never touches `queued` would leave
+    // waiting cards blank until something else invalidated them
+    func activity(for id: SeriesRecord.ID) -> LibraryCard.Activity? {
+        let refresh = compositor.refresh
+        let checking = refresh.isChecking(series: id.rawValue)
+        let queued = refresh.isQueued(series: id.rawValue)
+
+        if checking { return .checking }
+        return queued ? .queued : nil
     }
 
     func log(_ message: String) {
@@ -250,7 +288,8 @@ private extension LibraryScreen {
                         LibraryCard(
                             title: entry.title,
                             cover: entry.cover,
-                            unreadCount: entry.unreadCount
+                            unreadCount: entry.unreadCount,
+                            activity: activity(for: entry.id)
                         )
                     }
                     .buttonStyle(.plain)

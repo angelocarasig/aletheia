@@ -20,6 +20,7 @@ struct ExpandToggle: View {
         HStack(spacing: dimensions.spacing.space4) {
             Spacer()
             Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                .contentTransition(.symbolEffect(.replace))
             Text(isExpanded ? "Show Less" : "Show More")
         }
         .font(.caption)

@@ -18,29 +18,27 @@ struct ActivityNowSection: View {
     let model: Model
     var onCancelRefresh: () -> Void = {}
     var onOpenDownloads: () -> Void = {}
-    var onClearFailure: (Model.FailureEntry.ID) -> Void = { _ in }
+    var onOpenFailures: () -> Void = {}
 
     @Environment(\.dimensions) private var dimensions
 
     struct Model: Equatable {
         var refresh: RefreshState = .idle(lastChecked: nil)
         var downloads: DownloadState = .idle(stored: 0)
-        var failures: [FailureEntry] = []
+        // sources failing right now, read from origin.fetchError. not a list of
+        // entries to dismiss: the column is true until that source answers
+        // again, so an x would either hide a live fact or need a third column
+        // saying it had been acknowledged
+        var failing: Int = 0
 
         enum RefreshState: Equatable {
             case idle(lastChecked: Date?)
-            case running(seriesTitle: String, completed: Int, total: Int)
+            case running(scope: String?, seriesTitle: String?, completed: Int, total: Int)
         }
 
         enum DownloadState: Equatable {
             case idle(stored: Int)
             case active(chapters: Int, progress: Double)
-        }
-
-        struct FailureEntry: Equatable, Identifiable {
-            let id: Int
-            let seriesTitle: String
-            let reason: String
         }
     }
 
@@ -54,8 +52,8 @@ struct ActivityNowSection: View {
 
             DownloadsRow
 
-            ForEach(model.failures) { failure in
-                FailureRow(failure)
+            if model.failing > 0 {
+                FailingRow
             }
         }
     }
@@ -91,15 +89,17 @@ private extension ActivityNowSection {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
 
-        case let .running(seriesTitle, completed, total):
+        case let .running(scope, seriesTitle, completed, total):
             VStack(alignment: .leading, spacing: dimensions.spacing.space8) {
                 HStack(spacing: dimensions.spacing.space12) {
                     VStack(alignment: .leading, spacing: dimensions.spacing.space2) {
-                        Text("Updating Library")
+                        // the scope is named, so a collection refresh never reads
+                        // as though the whole library is being walked
+                        Text(scope.map { "Updating \($0)" } ?? "Updating Library")
                             .font(.caption)
                             .foregroundStyle(.secondary)
 
-                        Text(seriesTitle)
+                        Text(seriesTitle ?? "Starting…")
                             .font(.subheadline)
                             .fontWeight(.medium)
                             .lineLimit(1)
@@ -181,37 +181,35 @@ private extension ActivityNowSection {
         }
     }
 
-    func FailureRow(_ failure: Model.FailureEntry) -> some View {
+    // one row for however many are broken, opening the list. it leaves on its
+    // own when the sources answer again - there is nothing here to dismiss
+    var FailingRow: some View {
         HStack(spacing: dimensions.spacing.space12) {
             Image(systemName: "exclamationmark.triangle.fill")
                 .font(.caption)
                 .foregroundStyle(Palette.warningText)
 
             VStack(alignment: .leading, spacing: dimensions.spacing.space2) {
-                Text("Couldn't update \(failure.seriesTitle)")
+                Text("^[\(model.failing) source](inflect: true) failing")
                     .font(.subheadline)
                     .fontWeight(.medium)
                     .lineLimit(1)
 
-                Text(failure.reason)
+                Text("Their series can't pick up new chapters.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
-            Button {
-                onClearFailure(failure.id)
-            } label: {
-                Image(systemName: "xmark")
-                    .font(.caption)
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(.secondary)
-            .accessibilityLabel("Dismiss")
+            Image(systemName: "chevron.right")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
         }
         .padding(dimensions.spacing.space12)
         .background(.primary.opacity(Layout.fillOpacity), in: .rect(cornerRadius: dimensions.radius.radius12))
+        .contentShape(.rect)
+        .tappable { onOpenFailures() }
     }
 
     func Card(@ViewBuilder content: () -> some View) -> some View {
@@ -246,7 +244,7 @@ private extension ActivityNowSection {
 #Preview("Refresh Running") {
     ActivityNowSection(
         model: .init(
-            refresh: .running(seriesTitle: "Heavenly Solo Defender", completed: 12, total: 87),
+            refresh: .running(scope: nil, seriesTitle: "Heavenly Solo Defender", completed: 12, total: 87),
             downloads: .idle(stored: 12)
         )
     )
@@ -264,20 +262,17 @@ private extension ActivityNowSection {
 }
 
 #Preview("Everything + Failures") {
-    @Previewable @State var model = ActivityNowSection.Model(
-        refresh: .running(seriesTitle: "A Former Hero Returned From Another World", completed: 30, total: 87),
-        downloads: .active(chapters: 5, progress: 0.72),
-        failures: [
-            .init(id: 1, seriesTitle: "Motae Solo", reason: "The source didn't respond."),
-            .init(id: 2, seriesTitle: "Solo Martial Arts", reason: "No internet connection available."),
-        ]
-    )
-
     ActivityNowSection(
-        model: model,
-        onClearFailure: { id in
-            model.failures.removeAll { $0.id == id }
-        }
+        model: .init(
+            refresh: .running(
+                scope: "Reading",
+                seriesTitle: "A Former Hero Returned From Another World",
+                completed: 30,
+                total: 87
+            ),
+            downloads: .active(chapters: 5, progress: 0.72),
+            failing: 2
+        )
     )
     .padding()
 }
@@ -301,6 +296,7 @@ private extension ActivityNowSection {
         for step in 0...40 {
             try? await Task.sleep(for: .milliseconds(300))
             model.refresh = .running(
+                scope: nil,
                 seriesTitle: titles[step % titles.count],
                 completed: step * 2,
                 total: 80

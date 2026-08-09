@@ -74,6 +74,12 @@ final class Bootstrap {
             // hold thousands of entries
             compositor.assets.sweep()
 
+            // registration has to complete before launch ends, and a launch the
+            // system started for the task itself has no screens to do it from
+            compositor.refresh.register()
+            compositor.refresh.catchUp()
+            await Notifier.prepare()
+
             self.compositor = compositor
             phase = .ready
         } catch {

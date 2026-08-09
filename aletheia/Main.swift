@@ -15,6 +15,8 @@ enum AppTab: Hashable {
 struct AletheiaApp: App {
     // nothing runs in init - the app value is built on the main actor before the
     // first frame, which is exactly where database work must not happen
+    @Environment(\.scenePhase) private var scenePhase
+
     @State private var bootstrap = Bootstrap()
     @State private var tab: AppTab = .home
     @State private var retaps: [AppTab: Int] = [:]
@@ -45,6 +47,12 @@ struct AletheiaApp: App {
                 }
             }
             .task { await bootstrap.run() }
+            // the half of the schedule nothing can silently switch off: coming
+            // back to the app is when a missed automatic run is noticed
+            .onChange(of: scenePhase) { _, phase in
+                guard phase == .active else { return }
+                bootstrap.compositor?.refresh.catchUp()
+            }
         }
     }
 

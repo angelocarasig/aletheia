@@ -56,6 +56,7 @@ private extension LibraryCollections {
     // still filtered" without opening
     var Root: some View {
         Image(systemName: expanded ? "xmark" : "square.stack")
+            .contentTransition(.symbolEffect(.replace))
             .font(.system(size: dimensions.size.icon20, weight: .medium))
             .frame(width: dimensions.size.controlL, height: dimensions.size.controlL)
             .glassEffect(tinted, in: .circle)
