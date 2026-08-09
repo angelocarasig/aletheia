@@ -60,9 +60,18 @@ struct SourceHero: View {
         .frame(height: Layout.heroHeight)
         .frame(maxWidth: .infinity)
         .clipped()
+        .animation(.settle, value: phase)
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
     }
     
+    // branch selector and animation key are one value - see
+    // docs/features/loading-transitions.md
+    private var phase: LoadPhase {
+        if !entries.isEmpty { .content }
+        else if isLoading { .pending }
+        else { .empty }
+    }
+
     @ViewBuilder
     private var Background: some View {
         if !entries.isEmpty, width > 0 {
@@ -99,10 +108,15 @@ struct SourceHero: View {
                 .overlay(Color.black.opacity(Layout.overlayDim))
             }
             .allowsHitTesting(false)
+            .transition(.opacity)
         } else if isLoading {
-            Rectangle().fill(.surface).shimmer()
+            Rectangle().fill(.surface)
+                .shimmer()
+                .accessibilityHidden(true)
+                .transition(.opacity)
         } else {
             Rectangle().fill(Color.surface.opacity(0.3))
+                .transition(.opacity)
         }
     }
     

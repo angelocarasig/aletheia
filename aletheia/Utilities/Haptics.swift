@@ -2,7 +2,7 @@
 //  Haptics.swift
 //  aletheia
 //
-//  Created by Angelo Carasig on 8/8/26.
+//  Created by Angelo Carasig on 8/8/2026.
 //
 
 import CoreHaptics

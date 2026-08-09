@@ -20,8 +20,13 @@ struct ReaderScreen: View {
     @State private var showingSources = false
     @State private var showingSettings = false
 
-    private enum Layout {
-        static let settle: Animation = .easeOut(duration: 0.2)
+    // branch selector and animation key are one value - the swap previously
+    // keyed isOverlayVisible, which never changes on readiness, so the
+    // skeleton's transition was dead code. see docs/features/loading-transitions.md
+    private var phase: LoadPhase {
+        if vm?.engine != nil { .content }
+        else if vm?.failure != nil { .failed }
+        else { .pending }
     }
 
     var body: some View {
@@ -29,11 +34,18 @@ struct ReaderScreen: View {
             Color.black
                 .ignoresSafeArea()
 
-            if let vm, let engine = vm.engine {
-                Reading(vm, engine)
-            } else if let vm, let failure = vm.failure {
-                Unavailable(failure)
-            } else {
+            switch phase {
+            case .content:
+                if let vm, let engine = vm.engine {
+                    Reading(vm, engine)
+                        .transition(.opacity)
+                }
+            case .failed:
+                if let vm, let failure = vm.failure {
+                    Unavailable(failure)
+                        .transition(.opacity)
+                }
+            default:
                 // a whole screen of content is about to land, so it gets the
                 // shape it will take rather than a spinner over nothing
                 ReaderSkeleton()
@@ -43,7 +55,7 @@ struct ReaderScreen: View {
         .statusBarHidden(!(vm?.isOverlayVisible ?? true))
         .toolbarVisibility(.hidden, for: .navigationBar)
         .toolbarVisibility(.hidden, for: .tabBar)
-        .animation(Layout.settle, value: vm?.isOverlayVisible ?? true)
+        .animation(.settle, value: phase)
         .task {
             guard vm == nil else { return }
             let model = ReaderViewModel(

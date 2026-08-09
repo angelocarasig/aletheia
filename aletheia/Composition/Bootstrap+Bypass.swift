@@ -2,7 +2,7 @@
 //  Bootstrap+Bypass.swift
 //  aletheia
 //
-//  Created by Angelo Carasig on 9/8/26.
+//  Created by Angelo Carasig on 9/8/2026.
 //
 
 import Foundation

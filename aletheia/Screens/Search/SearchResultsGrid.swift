@@ -32,28 +32,39 @@ struct SearchResultsGrid: View {
         static let pageVisibility = 0.1
     }
 
+    // nil is idle: nothing asked for yet, which is neither pending nor empty.
+    // branch selector and animation key are one value - the old isLoading key
+    // left empty -> content and failure swaps as hard cuts
+    private var phase: LoadPhase? {
+        if vm.isIdle { nil }
+        else if vm.isLoading, vm.entries.isEmpty { .pending }
+        else if vm.failure != nil, vm.entries.isEmpty { .failed }
+        else if vm.entries.isEmpty { .empty }
+        else { .content }
+    }
+
     var body: some View {
         Group {
-            // nothing asked for yet, so nothing fetched. the prompt names both
-            // ways in rather than only the obvious one - the filters are a real
-            // entry point now, not decoration
-            if vm.isIdle {
+            switch phase {
+            // the prompt names both ways in rather than only the obvious one -
+            // the filters are a real entry point now, not decoration
+            case nil:
                 Idle
                     .padding(.top, dimensions.spacing.space48)
-            } else if vm.isLoading, vm.entries.isEmpty {
+            case .pending:
                 Skeleton
-            } else if let failure = vm.failure, vm.entries.isEmpty {
+            case .failed:
                 ContentUnavailableView {
-                    Label(failure.title, systemImage: "exclamationmark.triangle")
+                    Label(vm.failure?.title ?? "Couldn't Search", systemImage: "exclamationmark.triangle")
                 } description: {
-                    Text(failure.message)
+                    Text(vm.failure?.message ?? "")
                 } actions: {
-                    if failure.isRetryable {
+                    if vm.failure?.isRetryable == true {
                         Button("Retry") { vm.retry() }
                     }
                 }
                 .padding(.top, dimensions.spacing.space48)
-            } else if vm.entries.isEmpty {
+            case .empty:
                 // filters are the likeliest reason nothing came back, and an
                 // empty state that cannot undo the thing that emptied it is a
                 // dead end. the action only appears when there is one to undo
@@ -67,12 +78,12 @@ struct SearchResultsGrid: View {
                     }
                 }
                 .padding(.top, dimensions.spacing.space48)
-            } else {
+            case .content:
                 Grid
             }
         }
         .transition(.opacity)
-        .animation(.smooth(duration: 0.35), value: vm.isLoading)
+        .animation(.settle, value: phase)
     }
 
     // the source's own identity, not a generic magnifier. this is the one moment
@@ -176,6 +187,8 @@ struct SearchResultsGrid: View {
             }
         }
         .shimmer()
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 }
 

@@ -38,7 +38,6 @@ struct ReaderChapterList: View {
         static let skeletonBarHeight: CGFloat = 10
         static let skeletonTitle: CGFloat = 150
         static let skeletonMeta: CGFloat = 90
-        static let settle: Animation = .smooth(duration: 0.35)
         static let jump: Animation = .snappy(duration: 0.3)
     }
 
@@ -76,7 +75,9 @@ struct ReaderChapterList: View {
         // the reader pins dark chrome deliberately, and a bright panel in a dark
         // room undoes that in one tap
         .environment(\.colorScheme, .dark)
-        .animation(Layout.settle, value: slots.isEmpty)
+        // keyed to the same value the branches switch on - a boolean key left
+        // skeleton -> "No Chapters" (both empty) as a hard cut
+        .animation(.settle, value: phase)
     }
 }
 
@@ -136,19 +137,26 @@ private extension ReaderChapterList {
 // MARK: - Content
 
 private extension ReaderChapterList {
+    var phase: LoadPhase {
+        if !slots.isEmpty { .content }
+        else if isLoading { .pending }
+        else { .empty }
+    }
+
     @ViewBuilder
     func Content(_ proxy: ScrollViewProxy) -> some View {
-        if slots.isEmpty, isLoading {
+        switch phase {
+        case .pending:
             Skeleton
                 .transition(.opacity)
-        } else if slots.isEmpty {
+        case .empty, .failed:
             ContentUnavailableView(
                 "No Chapters",
                 systemImage: "book.closed",
                 description: Text("Nothing readable was found for this series.")
             )
             .transition(.opacity)
-        } else {
+        case .content:
             Rows(proxy)
                 .transition(.opacity)
         }
@@ -301,6 +309,7 @@ private extension ReaderChapterList {
         }
         .scrollContentBackground(.hidden)
         .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 
     var SkeletonRow: some View {

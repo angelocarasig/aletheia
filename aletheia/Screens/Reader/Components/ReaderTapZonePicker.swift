@@ -26,7 +26,6 @@ struct ReaderTapZonePicker: View {
         static let fillOpacity: Double = 0.1
         static let currentOpacity: Double = 0.15
         static let rowSpacing: CGFloat = 2
-        static let settle: Animation = .smooth(duration: 0.35)
     }
 
     var body: some View {
@@ -68,8 +67,8 @@ private extension ReaderTapZonePicker {
             .padding(.bottom, dimensions.spacing.space24)
         }
         .scrollContentBackground(.hidden)
-        .animation(Layout.settle, value: layout)
-        .animation(Layout.settle, value: reversed)
+        .animation(.settle, value: layout)
+        .animation(.settle, value: reversed)
     }
 
     func Row(_ option: ReaderTapZones.Layout) -> some View {

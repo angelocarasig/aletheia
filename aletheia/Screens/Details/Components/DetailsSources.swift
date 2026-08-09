@@ -23,6 +23,7 @@ struct DetailsSources: View {
         static let rankWidth: CGFloat = 20
         static let placeholderOpacity: Double = 0.06
         static let unavailableOpacity: Double = 0.5
+        static let slugLength = 8
         static let settle: Animation = .smooth(duration: 0.3)
     }
 
@@ -115,11 +116,31 @@ struct DetailsSources: View {
         }
     }
 
+    // two origins from one source render the same name and icon, so the slug is
+    // surfaced exactly then - it is the only fact telling the listings apart
+    private var duplicatedNames: Set<String> {
+        Set(Dictionary(grouping: origins, by: \.name).filter { $1.count > 1 }.keys)
+    }
+
+    @ViewBuilder
     private func Subtitle(_ origin: Origin) -> some View {
-        Text("^[\(origin.chapterCount) chapter](inflect: true)")
-            .font(.caption2)
-            .foregroundStyle(.muted)
-            .lineLimit(1)
+        Group {
+            if duplicatedNames.contains(origin.name) {
+                Text("\(marker(for: origin.slug)) · ^[\(origin.chapterCount) chapter](inflect: true)")
+            } else {
+                Text("^[\(origin.chapterCount) chapter](inflect: true)")
+            }
+        }
+        .font(.caption2)
+        .foregroundStyle(.muted)
+        .lineLimit(1)
+    }
+
+    // a marker, not the slug - mangadex slugs are uuids that would push the
+    // chapter count off the row, and eight characters is already past the first
+    // uuid group, which is where two listings stop looking alike
+    private func marker(for slug: String) -> String {
+        slug.count <= Layout.slugLength ? slug : slug.prefix(Layout.slugLength) + "…"
     }
 
     private func Actions(_ origin: Origin) -> some View {
@@ -177,6 +198,7 @@ extension DetailsSources {
     struct Origin: Identifiable, Hashable {
         let id: Int64
         let name: String
+        let slug: String
         let host: String
         let url: URL?
         let icon: ImageResource?

@@ -58,7 +58,7 @@ struct DetailsHeader: View {
                     .transition(.opacity)
             }
             .clipShape(.rect(cornerRadius: dimensions.radius.radius16, style: .continuous))
-            .animation(.smooth(duration: 0.35), value: cover)
+            .animation(.settle, value: cover)
             .tappable(action: onOpenCovers)
     }
 

@@ -63,18 +63,31 @@ struct SourcePresetRow: View {
         .tappable(action: onOpen)
     }
 
+    // branch selector and animation key are one value - the old isIdle key was
+    // a bool proxy, so loaded -> failed and loaded -> empty never animated
+    private var phase: LoadPhase {
+        switch vm?.phase {
+        case nil, .loading: .pending
+        case .loaded(let items) where items.isEmpty: .empty
+        case .loaded: .content
+        case .failed: .failed
+        }
+    }
+
     @ViewBuilder
     private var Content: some View {
         Group {
-            switch vm?.phase ?? .loading {
-            case .loading:
+            switch phase {
+            case .pending:
                 Skeleton
-            case .loaded(let items) where items.isEmpty:
+            case .empty:
                 Unavailable {
                     ContentUnavailableView("No Results", systemImage: "magnifyingglass")
                 }
-            case .loaded(let items):
-                Carousel(items)
+            case .content:
+                if case .loaded(let items) = vm?.phase {
+                    Carousel(items)
+                }
             case .failed:
                 Unavailable {
                     ContentUnavailableView {
@@ -86,7 +99,7 @@ struct SourcePresetRow: View {
             }
         }
         .transition(.opacity)
-        .animation(.smooth(duration: 0.35), value: vm?.isIdle)
+        .animation(.settle, value: phase)
     }
 
     private var Skeleton: some View {
@@ -104,6 +117,8 @@ struct SourcePresetRow: View {
         }
         .scrollDisabled(true)
         .shimmer()
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 
     private func Carousel(_ items: [SeriesStub]) -> some View {

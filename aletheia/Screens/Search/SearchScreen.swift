@@ -20,6 +20,7 @@ struct SearchScreen: View {
 
     @Environment(\.compositor) private var compositor
     @Environment(\.dimensions) private var dimensions
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var vm = SearchViewModel()
     @AppStorage(Preferences.Key.includeAdultSources) private var includeAdult = Preferences.Default.includeAdultSources
     @AppStorage(Preferences.Key.bypassAdultSources) private var bypassAdult = Preferences.Default.bypassAdultSources
@@ -102,7 +103,7 @@ struct SearchScreen: View {
                 if !vm.active {
                     Hero
                         .padding(.top, Layout.heroLift)
-                        .transition(.blurReplace.combined(with: .opacity))
+                        .transition(.replace(reduceMotion: reduceMotion).combined(with: .opacity))
                 }
 
                 Searchbar(
@@ -118,15 +119,15 @@ struct SearchScreen: View {
                 if vm.active, vm.allEmpty {
                     ContentUnavailableView.search(text: vm.submitted)
                         .padding(.top, dimensions.spacing.space48)
-                        .transition(.blurReplace)
+                        .transition(.replace(reduceMotion: reduceMotion))
                 } else {
                     Sections
                         .padding(.horizontal, dimensions.screenMargin)
-                        .transition(.blurReplace)
+                        .transition(.replace(reduceMotion: reduceMotion))
                 }
             }
             .padding(.bottom, dimensions.screenMargin)
-            .animation(.smooth(duration: 0.35), value: vm.stateKey)
+            .animation(.settle, value: vm.stateKey)
         }
         .scrollDismissesKeyboard(.immediately)
         .background(.canvas)
@@ -529,6 +530,8 @@ struct SearchScreen: View {
         }
         .scrollDisabled(true)
         .shimmer()
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 
     private func Unavailable<Content: View>(@ViewBuilder content: () -> Content) -> some View {

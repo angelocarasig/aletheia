@@ -22,6 +22,13 @@ final class ReaderEngine {
     private let boundaries: [ReaderChapter.ID: ReaderBoundaryInfo]
     private var loading: Set<ReaderChapter.ID> = []
 
+    // a depth counter, not a flag: preload's detached Task can still be in
+    // flight when a jump begins. while it is non-zero the reader is being
+    // rebuilt, and a proximity request raised by clear()'s contentSize collapse
+    // would resolve against a `current` that has not caught up yet - which is
+    // what spliced the chapter *before* the one being opened above it
+    private var navigating = 0
+
     // what the destination slot reads. resident mirrors the controller's loaded
     // set; failures makes a preload error visible instead of only logged
     private var resident: Set<ReaderChapter.ID> = []
@@ -136,28 +143,33 @@ final class ReaderEngine {
         }
 
         isLoading = true
+        navigating += 1
         defer { isLoading = false }
 
         do {
             let load = try await window.load(chapter)
-            await controller?.apply(load.pages, for: chapter)
-            resident.insert(chapter)
 
+            // asserted before the rebuild, not after: clear/apply can clamp the
+            // offset and wake proximity, and anything that reads `current` in
+            // that window must see the chapter being opened
             current = target
             pageCount = load.pages.count
             page = Self.startingPage(progress: progress, of: load.pages.count)
+
+            await controller?.apply(load.pages, for: chapter)
+            resident.insert(chapter)
+
             controller?.scroll(to: chapter, page: page, animated: false)
             error = nil
-
-            // a one-page chapter never scrolls far enough to trip proximity, so
-            // its neighbours would never arrive on their own
-            if load.pages.count == 1 {
-                preload(.end)
-                preload(.start)
-            }
         } catch {
             self.error = Self.reason(from: error, chapter: chapter)
         }
+
+        // re-armed explicitly once `current` is correct, so neighbours arrive in
+        // a deterministic order rather than off whatever proximity fired mid-rebuild
+        navigating -= 1
+        preload(.end)
+        preload(.start)
     }
 
     func jump(to chapter: ReaderChapter.ID) async {
@@ -165,20 +177,27 @@ final class ReaderEngine {
         guard target.id != current?.id else { return }
 
         isLoading = true
+        navigating += 1
         defer { isLoading = false }
 
         do {
             let load = try await window.load(chapter)
             await window.clear(keeping: chapter)
+
+            // before clear(): emptying the snapshot collapses contentSize, the
+            // scroll view clamps, and proximity fires with both edges "near".
+            // with `current` already the target that request is at least honest,
+            // and the navigating gate drops it outright
+            let previous = current
+            current = target
+            pageCount = load.pages.count
+            page = 0
+
             await controller?.clear()
             resident = []
             await controller?.apply(load.pages, for: chapter)
             resident.insert(chapter)
 
-            let previous = current
-            current = target
-            pageCount = load.pages.count
-            page = 0
             controller?.scroll(to: chapter, page: 0, animated: false)
             error = nil
 
@@ -188,6 +207,10 @@ final class ReaderEngine {
         } catch {
             self.error = Self.reason(from: error, chapter: chapter)
         }
+
+        navigating -= 1
+        preload(.end)
+        preload(.start)
     }
 
     // re-fetch one chapter in place, keeping every other chapter loaded and the
@@ -205,6 +228,7 @@ final class ReaderEngine {
         let restore = isCurrent ? page : 0
 
         isLoading = true
+        navigating += 1
         defer { isLoading = false }
 
         await window.evict(chapter)
@@ -224,7 +248,10 @@ final class ReaderEngine {
 
             if isCurrent {
                 // a different source rarely splits a chapter into the same number
-                // of pages, so the page being restored may not exist any more
+                // of pages, so the page being restored may not exist any more.
+                // current is re-asserted too - a reload never changed it, but
+                // nothing else guarantees it survived the remove/apply pair
+                current = chapters.first { $0.id == chapter } ?? current
                 pageCount = load.pages.count
                 page = min(restore, max(0, load.pages.count - 1))
                 controller?.scroll(to: chapter, page: page, animated: false)
@@ -235,6 +262,10 @@ final class ReaderEngine {
         } catch {
             self.error = Self.reason(from: error, chapter: chapter)
         }
+
+        navigating -= 1
+        preload(.end)
+        preload(.start)
     }
 
     func previousChapter() async {
@@ -289,6 +320,12 @@ final class ReaderEngine {
     // MARK: Private
 
     private func handleVisiblePage(_ visible: ReaderPage, index: Int, total: Int) {
+        // a navigator has already asserted the chapter and page it is moving to,
+        // and its own scroll(to:) reports on the way there. those reports are
+        // geometrically honest but describe a position being passed through, so
+        // letting them write would undo the destination the navigator just set
+        guard navigating == 0 else { return }
+
         page = index
         pageCount = total
 
@@ -384,6 +421,9 @@ final class ReaderEngine {
     }
 
     private func preload(_ position: ReaderController.Position) {
+        // dropped rather than deferred: the navigator re-arms both directions on
+        // its way out, once `current` is the chapter actually being read
+        guard navigating == 0 else { return }
         guard let current, let index = chapters.firstIndex(where: { $0.id == current.id }) else { return }
 
         let target: ReaderChapter?
@@ -392,7 +432,11 @@ final class ReaderEngine {
         case .start: target = index > 0 ? chapters[index - 1] : nil
         }
 
-        guard let target, !loading.contains(target.id) else { return }
+        // resident, not just the window: the cache holds bytes, the controller
+        // holds sections, and the two drift apart on every evict and reload.
+        // asking only the cache is what re-applied a chapter the collection view
+        // still had, which is a duplicate section identifier and a hard crash
+        guard let target, !loading.contains(target.id), !resident.contains(target.id) else { return }
 
         Task { [weak self] in
             guard let self else { return }

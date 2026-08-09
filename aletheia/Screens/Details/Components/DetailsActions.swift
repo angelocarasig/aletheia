@@ -18,6 +18,7 @@ struct DetailsActions: View {
     var onRefreshChapters: () -> Void
     var onMarkAll: (Bool) -> Void
     var onEditDetails: () -> Void
+    var onMerge: () -> Void
 
     @Environment(\.dimensions) private var dimensions
     @Environment(\.colorScheme) private var colorScheme
@@ -105,6 +106,13 @@ struct DetailsActions: View {
                 Label("Refresh Chapters", systemImage: "arrow.clockwise")
             }
             .disabled(!canRefresh)
+
+            // merging pulls this series into another one you own, so it only
+            // means something once both sides can be library rows
+            Button(action: onMerge) {
+                Label("Merge Into…", systemImage: "arrow.triangle.merge")
+            }
+            .disabled(!inLibrary)
 
             Divider()
 

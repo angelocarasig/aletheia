@@ -7,25 +7,26 @@
 
 import SwiftUI
 
-// membership stages locally and commits on Save, matching the chapter
+// membership stages locally and commits on Done, matching the chapter
 // section's order sheets - Cancel discards the pending diff
 struct CollectionPicker: View {
     let collections: [DetailsCollections.Item]
     let isSaving: Bool
     var onToggle: (Int64) -> Void
-    var onCreate: () -> Void
+    var onCreate: (String, String?) -> Void
 
     @Environment(\.dimensions) private var dimensions
     @Environment(\.dismiss) private var dismiss
 
     @State private var working: Set<Int64>
     @State private var touched = false
+    @State private var showingCreate = false
 
     init(
         collections: [DetailsCollections.Item],
         isSaving: Bool,
         onToggle: @escaping (Int64) -> Void,
-        onCreate: @escaping () -> Void
+        onCreate: @escaping (String, String?) -> Void
     ) {
         self.collections = collections
         self.isSaving = isSaving
@@ -35,7 +36,7 @@ struct CollectionPicker: View {
     }
 
     private enum Layout {
-        static let tintOpacity: Double = 0.3
+        static let fillOpacity: Double = 0.05
         static let savingOpacity: Double = 0.6
         static let settle: Animation = .smooth(duration: 0.2)
     }
@@ -58,7 +59,7 @@ struct CollectionPicker: View {
                     }
 
                     ToolbarItem(placement: .topBarTrailing) {
-                        Button("Save") {
+                        Button("Done") {
                             changed.forEach(onToggle)
                             dismiss()
                         }
@@ -68,11 +69,21 @@ struct CollectionPicker: View {
                 }
         }
         .presentationDetents([.medium, .large])
+        .sheet(isPresented: $showingCreate) {
+            CollectionForm(isSaving: isSaving, onCreate: onCreate)
+        }
+        .sensoryFeedback(.selection, trigger: working)
         // presented before the read lands, so the rows can arrive after init;
-        // reseed only while nothing has been staged
-        .onChange(of: collections) { _, latest in
-            guard !touched else { return }
-            working = Set(latest.filter(\.contains).map(\.id))
+        // reseed only while nothing has been staged. once staged, still fold in
+        // rows created from here (they arrive already joined) or Done would
+        // read the new membership as a pending removal
+        .onChange(of: collections) { previous, latest in
+            if touched {
+                let known = Set(previous.map(\.id))
+                working.formUnion(latest.filter { !known.contains($0.id) && $0.contains }.map(\.id))
+            } else {
+                working = Set(latest.filter(\.contains).map(\.id))
+            }
         }
     }
 
@@ -82,22 +93,20 @@ struct CollectionPicker: View {
             EmptyState
         } else {
             ScrollView {
-                GlassEffectContainer(spacing: dimensions.spacing.space8) {
-                    LazyVStack(spacing: dimensions.spacing.space8) {
-                        ForEach(collections) { collection in
-                            Row(collection)
-                                .tappable {
-                                    touched = true
-                                    if working.contains(collection.id) {
-                                        working.remove(collection.id)
-                                    } else {
-                                        working.insert(collection.id)
-                                    }
+                LazyVStack(spacing: dimensions.spacing.space8) {
+                    ForEach(collections) { collection in
+                        Row(collection)
+                            .tappable {
+                                touched = true
+                                if working.contains(collection.id) {
+                                    working.remove(collection.id)
+                                } else {
+                                    working.insert(collection.id)
                                 }
-                        }
-
-                        Create
+                            }
                     }
+
+                    Create
                 }
                 .padding(.horizontal, dimensions.screenMargin)
                 .padding(.bottom, dimensions.spacing.space24)
@@ -132,13 +141,13 @@ struct CollectionPicker: View {
             Spacer(minLength: 0)
         }
         .padding(dimensions.spacing.space12)
-        .glassEffect(
-            contains
-                ? .regular.tint(Palette.brand.opacity(Layout.tintOpacity)).interactive()
-                : .regular.interactive(),
-            in: .rect(cornerRadius: dimensions.radius.radius16)
+        // flat tinted fill, not glass - rows are content, glass is chrome
+        .background(
+            contains ? AnyShapeStyle(Palette.brandSubtle) : AnyShapeStyle(.primary.opacity(Layout.fillOpacity)),
+            in: .rect(cornerRadius: dimensions.radius.radius12)
         )
         .contentShape(.rect)
+        .accessibilityAddTraits(contains ? .isSelected : [])
     }
 
     private var Create: some View {
@@ -152,11 +161,11 @@ struct CollectionPicker: View {
 
             Spacer(minLength: 0)
         }
-        .foregroundStyle(.brand)
+        .foregroundStyle(Palette.brandText)
         .padding(dimensions.spacing.space12)
-        .glassEffect(.regular.interactive(), in: .rect(cornerRadius: dimensions.radius.radius16))
+        .background(Palette.brandSubtle, in: .rect(cornerRadius: dimensions.radius.radius12))
         .contentShape(.rect)
-        .tappable(action: onCreate)
+        .tappable { showingCreate = true }
     }
 
     private var EmptyState: some View {
@@ -165,7 +174,7 @@ struct CollectionPicker: View {
         } description: {
             Text("Create a collection to organise your library")
         } actions: {
-            Button("Create Collection", action: onCreate)
+            Button("Create Collection") { showingCreate = true }
                 .buttonStyle(.glassProminent)
         }
     }
@@ -189,7 +198,7 @@ private enum Sample {
             collections: Sample.many,
             isSaving: false,
             onToggle: { _ in },
-            onCreate: { }
+            onCreate: { _, _ in }
         )
     }
 }
@@ -200,7 +209,7 @@ private enum Sample {
             collections: Sample.many.map { .init(id: $0.id, name: $0.name, count: $0.count, contains: false) },
             isSaving: false,
             onToggle: { _ in },
-            onCreate: { }
+            onCreate: { _, _ in }
         )
     }
 }
@@ -211,7 +220,7 @@ private enum Sample {
             collections: [],
             isSaving: false,
             onToggle: { _ in },
-            onCreate: { }
+            onCreate: { _, _ in }
         )
     }
 }

@@ -2,7 +2,7 @@
 //  ReaderSettingsSheet.swift
 //  aletheia
 //
-//  Created by Angelo Carasig on 7/8/26.
+//  Created by Angelo Carasig on 7/8/2026.
 //
 
 import SwiftUI

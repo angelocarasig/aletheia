@@ -84,9 +84,6 @@ struct DetailsChapters: View {
         static let finishedOpacity: Double = 0.5
         static let disabledOpacity: Double = 0.35
         static let fillOpacity: Double = 0.1
-        // the skeleton mirrors the real rows, so a crossfade reads as the
-        // placeholder resolving rather than one view replacing another
-        static let settle: Animation = .smooth(duration: 0.35)
     }
 
     var body: some View {
@@ -96,7 +93,7 @@ struct DetailsChapters: View {
         }
         // has to sit on an ancestor that survives the swap - on the Group itself
         // it is replaced along with the branch, so nothing drives the transition
-        .animation(Layout.settle, value: phase)
+        .animation(.settle, value: phase)
     }
 
     private var sorted: [Chapter] {
@@ -125,14 +122,8 @@ struct DetailsChapters: View {
     // one value for the whole section to animate on. switching on the two
     // booleans separately would let the skeleton and the list cross-dissolve
     // through the empty state on the way
-    fileprivate enum Phase {
-        case pending
-        case empty
-        case list
-    }
-
-    fileprivate var phase: Phase {
-        if !chapters.isEmpty { .list }
+    fileprivate var phase: LoadPhase {
+        if !chapters.isEmpty { .content }
         else if isPending { .pending }
         else { .empty }
     }
@@ -276,7 +267,7 @@ extension DetailsChapters {
         .font(.subheadline)
         .foregroundStyle(.muted)
         .contentTransition(.numericText())
-        .animation(Layout.settle, value: phase)
+        .animation(.settle, value: phase)
     }
 
     private var SortChip: some View {
@@ -336,11 +327,13 @@ extension DetailsChapters {
                 Skeleton
                     .transition(.opacity)
 
-            case .empty:
+            // a chapter fetch that fails surfaces through the action alert, so
+            // the section itself never reaches .failed - it renders as empty
+            case .empty, .failed:
                 EmptyState
                     .transition(.opacity)
 
-            case .list:
+            case .content:
                 LazyVStack(spacing: 0) {
                     ForEach(displayed) { chapter in
                         Divider()
@@ -370,7 +363,11 @@ extension DetailsChapters {
                 SkeletonRow
             }
         }
+        // on the container, so one sweep crosses every row - per-row masks are
+        // n independent animated gradients saying the same thing
+        .shimmer()
         .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 
     private var SkeletonRow: some View {

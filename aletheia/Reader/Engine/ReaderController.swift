@@ -54,7 +54,6 @@ final class ReaderController: UIViewController {
 
     // reading order decides direction, so the last position is kept rather than
     // the last offset - coordinates cannot answer this under right-to-left
-    private var lastPosition: ReadingPosition?
     private(set) var lastDirection: ReadingDirection = .forward
 
     private var pendingInvalidation = false
@@ -62,6 +61,12 @@ final class ReaderController: UIViewController {
     private var requestedNext = false
     private var requestedPrevious = false
     private var lastReportedPage: ReaderPage?
+
+    // a depth counter, not a flag. mid-mutation the reader momentarily sits
+    // somewhere it never read - a snapshot apply lays out at the pre-restore
+    // offset, a remove shrinks contentSize past the offset so UIScrollView
+    // clamps - and every one of those dispatches scrollViewDidScroll
+    private var mutations = 0
 
     var onVisiblePageChanged: ((ReaderPage, Int, Int) -> Void)?
     // the engine owns what a boundary means; the controller only renders it
@@ -110,6 +115,17 @@ final class ReaderController: UIViewController {
     func apply(_ chapterPages: [ReaderPage], for chapter: ReaderChapter.ID) async {
         guard !chapterPages.isEmpty else { return }
         guard let slot = order.firstIndex(of: chapter) else { return }
+        // re-applying a resident chapter is a no-op, never a second section: the
+        // snapshot keys on chapter id, so a duplicate is an uncatchable UIKit
+        // exception. content that actually changed arrives through reload, which
+        // removes first
+        guard !loaded.contains(chapter) else { return }
+
+        // after the guards, so the defer never outlives an operation that never
+        // started. the snapshot apply and the offset restore both report from
+        // geometry that is only half-settled
+        beginMutation()
+        defer { endMutation() }
 
         // land any outstanding size corrections first. the snapshot below runs
         // its own layout pass, which would otherwise realise them, fold them
@@ -165,13 +181,30 @@ final class ReaderController: UIViewController {
             }
             setOffsetWithoutAnimation(restored)
 
+            // both answers to the same question, one line apart: what the layout
+            // says is centre-screen now, and what the stale visible set would
+            // have said. they diverging by a whole chapter was the bug - if they
+            // agree here, the geometry is settled and the reporter is honest
+            let centre = centremostPage()
+            let stale = collectionView.indexPathsForVisibleItems
+                .min { lhs, rhs in
+                    let mid = { (path: IndexPath) -> CGFloat in
+                        self.collectionView.layoutAttributesForItem(at: path)?.frame.midY ?? .greatestFiniteMagnitude
+                    }
+                    let target = collectionView.contentOffset.y + collectionView.bounds.height / 2
+                    return abs(mid(lhs) - target) < abs(mid(rhs) - target)
+                }
+                .flatMap { dataSource.itemIdentifier(for: $0)?.page }
+
             AppLog.shared.log(
                 """
                 prepend ch\(chapter): \(chapterPages.count) pages, \(measured) measured — \
                 size \(Int(size.height))→\(Int(collectionView.contentSize.height)) \
                 inserted \(Int(inserted)), \
                 offset \(Int(offset.y))→\(Int(restored.y)), \
-                settled at \(Int(collectionView.contentOffset.y))
+                settled at \(Int(collectionView.contentOffset.y)), \
+                centre ch\(centre?.chapter.description ?? "—") \
+                (visible set said ch\(stale?.chapter.description ?? "—"))
                 """,
                 category: "reader.layout"
             )
@@ -187,6 +220,11 @@ final class ReaderController: UIViewController {
 
     func remove(_ chapter: ReaderChapter.ID) async {
         guard pages[chapter] != nil else { return }
+
+        // covers the anchor-lost early return further down as well
+        beginMutation()
+        defer { endMutation() }
+
         flushInvalidation()
 
         // hold the item under the reader BY IDENTITY, not by index - the index
@@ -247,6 +285,9 @@ final class ReaderController: UIViewController {
     }
 
     func clear() async {
+        beginMutation()
+        defer { endMutation() }
+
         flushInvalidation()
         pendingOffsetAdjustment = 0
 
@@ -828,6 +869,18 @@ final class ReaderController: UIViewController {
         onSingleTap?(gesture.location(in: nil))
     }
 
+    private func beginMutation() {
+        mutations += 1
+    }
+
+    // one reconciling report on the way out, so a mutation that genuinely moved
+    // the reader is still announced - just once, from the settled geometry
+    private func endMutation() {
+        mutations = max(0, mutations - 1)
+        guard mutations == 0 else { return }
+        reportVisiblePage()
+    }
+
     private func resetPreloadRequests() {
         requestedNext = false
         requestedPrevious = false
@@ -971,12 +1024,20 @@ extension ReaderController: UICollectionViewDelegate {
     // MARK: Private
 
     private func reportVisiblePage() {
+        // gated here and nowhere else: checkProximity reads only offset/bounds/
+        // contentSize, which are fresh whatever the layout is doing, and
+        // updatePrefetch is advisory and self-corrects
+        guard mutations == 0 else { return }
         guard let page = centremostPage() else { return }
         guard page != lastReportedPage else { return }
-        lastReportedPage = page
 
         let chapterPages = pages[page.chapter] ?? []
         guard let index = chapterPages.firstIndex(of: page) else { return }
+
+        // latched only once the page is known live: it feeds travelDirection ->
+        // separator approach -> whether onChapterFinished fires, so latching it
+        // above the guard records direction from a page that was never reported
+        lastReportedPage = page
         onVisiblePageChanged?(page, index, chapterPages.count)
     }
 
@@ -986,22 +1047,28 @@ extension ReaderController: UICollectionViewDelegate {
         centremostPath().flatMap { dataSource.itemIdentifier(for: $0)?.page }
     }
 
+    // candidates come from the layout, not from indexPathsForVisibleItems: that
+    // set is a product of layoutSubviews and so describes the bounds *before* a
+    // programmatic offset write, while the distances are measured against the
+    // bounds after it. the two disagree by more than a viewport exactly when a
+    // prepend restores the offset, which is what reported the spliced-in chapter.
+    // bounds.origin IS contentOffset on a scroll view, so querying with bounds
+    // makes the rect and the frames the same coordinate space by construction,
+    // and both are fresh
     private func centremostPath() -> IndexPath? {
-        let visible = collectionView.indexPathsForVisibleItems
-        guard !visible.isEmpty else { return nil }
+        let bounds = collectionView.bounds
+        guard let candidates = collectionView.collectionViewLayout
+            .layoutAttributesForElements(in: bounds) else { return nil }
 
         let vertical = configuration.mode.isVertical
-        let centre = vertical
-            ? collectionView.contentOffset.y + collectionView.bounds.height / 2
-            : collectionView.contentOffset.x + collectionView.bounds.width / 2
+        let centre = vertical ? bounds.midY : bounds.midX
 
         var best: (path: IndexPath, distance: CGFloat)?
-        for path in visible {
-            guard let attributes = collectionView.layoutAttributesForItem(at: path) else { continue }
+        for attributes in candidates where attributes.representedElementCategory == .cell {
             let mid = vertical ? attributes.frame.midY : attributes.frame.midX
             let distance = abs(mid - centre)
             if best == nil || distance < best!.distance {
-                best = (path, distance)
+                best = (attributes.indexPath, distance)
             }
         }
 

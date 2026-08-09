@@ -30,8 +30,8 @@ struct ReaderSourceSwitcher: View {
         static let rowSpacing: CGFloat = 2
         // sits the scanlator rows under their source's name rather than its icon
         static let indent: CGFloat = 44
-        static let settle: Animation = .smooth(duration: 0.35)
         static let expand: Animation = .snappy(duration: 0.25)
+        static let skeletonRows = 6
     }
 
     // one entry per source, holding every scanlator that source has for this
@@ -86,21 +86,31 @@ struct ReaderSourceSwitcher: View {
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
         .environment(\.colorScheme, .dark)
-        .animation(Layout.settle, value: slot?.options.count ?? 0)
+        .animation(.settle, value: phase)
     }
 }
 
 // MARK: - Content
 
 private extension ReaderSourceSwitcher {
+    var phase: LoadPhase {
+        if let slot, slot.options.count > 1 { .content }
+        else if isLoading { .pending }
+        else { .empty }
+    }
+
     @ViewBuilder
     var Content: some View {
-        if let slot, slot.options.count > 1 {
-            Options(slot)
-        } else if isLoading {
-            ProgressView()
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else {
+        switch phase {
+        case .content:
+            if let slot {
+                Options(slot)
+                    .transition(.opacity)
+            }
+        case .pending:
+            SheetSkeleton(rows: Layout.skeletonRows)
+                .transition(.opacity)
+        case .empty, .failed:
             // not an error - one source having the chapter is the normal case for
             // most series, and there is nothing to choose between
             ContentUnavailableView(
@@ -108,8 +118,10 @@ private extension ReaderSourceSwitcher {
                 systemImage: "square.stack.3d.up.slash",
                 description: Text("No other source has this chapter. Add another source to the series to read it from elsewhere.")
             )
+            .transition(.opacity)
         }
     }
+
 
     func Options(_ slot: ChapterSlot) -> some View {
         ScrollView {
@@ -131,7 +143,7 @@ private extension ReaderSourceSwitcher {
         }
         .scrollContentBackground(.hidden)
         .animation(Layout.expand, value: expanded)
-        .animation(Layout.settle, value: active)
+        .animation(.settle, value: active)
         // the source you are reading from opens on its own, so the scanlator in
         // use is visible without hunting for it
         .onAppear {

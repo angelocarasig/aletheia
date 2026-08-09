@@ -23,6 +23,31 @@ struct DetailsEdit: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var field: Field = .title
+    @State private var stagedTitle: Int64?
+    @State private var stagedSynopsis: Int64?
+    @State private var stagedMetadata: Int64?
+    @State private var touched = false
+
+    init(
+        titles: [DetailsTitles.Title],
+        synopses: [Synopsis],
+        metadata: [Metadata],
+        isSaving: Bool,
+        onSetTitle: @escaping (Int64?) -> Void,
+        onSetSynopsis: @escaping (Int64?) -> Void,
+        onSetMetadata: @escaping (Int64?) -> Void
+    ) {
+        self.titles = titles
+        self.synopses = synopses
+        self.metadata = metadata
+        self.isSaving = isSaving
+        self.onSetTitle = onSetTitle
+        self.onSetSynopsis = onSetSynopsis
+        self.onSetMetadata = onSetMetadata
+        _stagedTitle = State(initialValue: titles.first(where: \.isPreferred)?.id)
+        _stagedSynopsis = State(initialValue: synopses.first(where: \.isPreferred)?.id)
+        _stagedMetadata = State(initialValue: metadata.first(where: \.isPreferred)?.id)
+    }
 
     private enum Layout {
         static let iconSize: CGFloat = 22
@@ -49,14 +74,21 @@ struct DetailsEdit: View {
         }
     }
 
-    // the tint moves between rows on a write that comes back through the
-    // observation, so the tap's own transaction is long closed by then
+    // picks stage locally and commit on Done, matching the order sheets and
+    // the collection picker - Cancel discards the pending diff
     private var selection: Int64? {
         switch field {
-        case .title: titles.first(where: \.isPreferred)?.id
-        case .synopsis: synopses.first(where: \.isPreferred)?.id
-        case .status: metadata.first(where: \.isPreferred)?.id
+        case .title: stagedTitle
+        case .synopsis: stagedSynopsis
+        case .status: stagedMetadata
         }
+    }
+
+    // only picks that actually moved get written
+    private var changed: Bool {
+        stagedTitle != titles.first(where: \.isPreferred)?.id
+            || stagedSynopsis != synopses.first(where: \.isPreferred)?.id
+            || stagedMetadata != metadata.first(where: \.isPreferred)?.id
     }
 
     var body: some View {
@@ -74,15 +106,38 @@ struct DetailsEdit: View {
             .navigationTitle("Edit Details")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Cancel") { dismiss() }
+                        .disabled(isSaving)
+                }
+
                 ToolbarItem(placement: .topBarTrailing) {
-                    // picks apply instantly, so there is nothing to "do" - this
-                    // button only closes
-                    Button("Close", systemImage: "xmark") { dismiss() }
-                        .labelStyle(.iconOnly)
+                    Button("Done") {
+                        if stagedTitle != titles.first(where: \.isPreferred)?.id { onSetTitle(stagedTitle) }
+                        if stagedSynopsis != synopses.first(where: \.isPreferred)?.id { onSetSynopsis(stagedSynopsis) }
+                        if stagedMetadata != metadata.first(where: \.isPreferred)?.id { onSetMetadata(stagedMetadata) }
+                        dismiss()
+                    }
+                    .fontWeight(.semibold)
+                    .disabled(!changed || isSaving)
                 }
             }
         }
         .presentationDetents([.medium, .large])
+        // preferences can move underneath while the sheet is up; reseed only
+        // while nothing has been staged
+        .onChange(of: titles) { _, latest in
+            guard !touched else { return }
+            stagedTitle = latest.first(where: \.isPreferred)?.id
+        }
+        .onChange(of: synopses) { _, latest in
+            guard !touched else { return }
+            stagedSynopsis = latest.first(where: \.isPreferred)?.id
+        }
+        .onChange(of: metadata) { _, latest in
+            guard !touched else { return }
+            stagedMetadata = latest.first(where: \.isPreferred)?.id
+        }
     }
 }
 
@@ -102,13 +157,13 @@ extension DetailsEdit {
                 LazyVStack(spacing: dimensions.spacing.space8) {
                     switch field {
                     case .title:
-                        if !titles.isEmpty { AutomaticRow { onSetTitle(nil) } }
+                        if !titles.isEmpty { AutomaticRow { stagedTitle = nil } }
                         Titles
                     case .synopsis:
-                        if !synopses.isEmpty { AutomaticRow { onSetSynopsis(nil) } }
+                        if !synopses.isEmpty { AutomaticRow { stagedSynopsis = nil } }
                         Synopses
                     case .status:
-                        if !metadata.isEmpty { AutomaticRow { onSetMetadata(nil) } }
+                        if !metadata.isEmpty { AutomaticRow { stagedMetadata = nil } }
                         Statuses
                     }
                 }
@@ -133,14 +188,16 @@ extension DetailsEdit {
             Empty("No alternative titles stored")
         } else {
             ForEach(titles) { title in
-                Row(preferred: title.isPreferred, icon: title.sourceIcon) {
+                let staged = stagedTitle == title.id
+
+                Row(preferred: staged, icon: title.sourceIcon) {
                     Text(title.value)
                         .font(.subheadline)
-                        .fontWeight(title.isPreferred ? .semibold : .regular)
+                        .fontWeight(staged ? .semibold : .regular)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .multilineTextAlignment(.leading)
                 } action: {
-                    onSetTitle(title.id)
+                    stagedTitle = title.id
                 }
             }
         }
@@ -152,9 +209,11 @@ extension DetailsEdit {
             Empty("No descriptions stored")
         } else {
             ForEach(synopses) { synopsis in
-                Row(preferred: synopsis.isPreferred, icon: synopsis.sourceIcon) {
+                let staged = stagedSynopsis == synopsis.id
+
+                Row(preferred: staged, icon: synopsis.sourceIcon) {
                     VStack(alignment: .leading, spacing: dimensions.spacing.space4) {
-                        Source(synopsis.sourceName, preferred: synopsis.isPreferred)
+                        Source(synopsis.sourceName, preferred: staged)
 
                         Text(synopsis.text)
                             .font(.caption)
@@ -164,7 +223,7 @@ extension DetailsEdit {
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                 } action: {
-                    onSetSynopsis(synopsis.id)
+                    stagedSynopsis = synopsis.id
                 }
             }
         }
@@ -176,9 +235,11 @@ extension DetailsEdit {
             Empty("No sources to take this from")
         } else {
             ForEach(metadata) { entry in
-                Row(preferred: entry.isPreferred, icon: entry.sourceIcon) {
+                let staged = stagedMetadata == entry.id
+
+                Row(preferred: staged, icon: entry.sourceIcon) {
                     VStack(alignment: .leading, spacing: dimensions.spacing.space8) {
-                        Source(entry.sourceName, preferred: entry.isPreferred)
+                        Source(entry.sourceName, preferred: staged)
 
                         HStack(spacing: dimensions.spacing.space8) {
                             Badge(text: entry.classification.rawValue, tone: entry.classification.tone)
@@ -187,7 +248,7 @@ extension DetailsEdit {
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                 } action: {
-                    onSetMetadata(entry.id)
+                    stagedMetadata = entry.id
                 }
             }
         }
@@ -238,6 +299,7 @@ extension DetailsEdit {
         .accessibilityAddTraits(automatic ? .isSelected : [])
         .tappable {
             guard !automatic else { return }
+            touched = true
             clear()
         }
     }
@@ -272,6 +334,7 @@ extension DetailsEdit {
         .accessibilityAddTraits(preferred ? .isSelected : [])
         .tappable {
             guard !preferred else { return }
+            touched = true
             action()
         }
     }

@@ -64,6 +64,7 @@ struct ScanlatorOrder: View {
                 }
         }
         .presentationDetents([.medium, .large])
+        .animation(.settle, value: phase)
         // presented before the read lands, so the rows arrive after init. gated on
         // being empty rather than unchanged - the same guard written against
         // `changed` never fires, because an empty set differs from a populated one
@@ -77,17 +78,24 @@ struct ScanlatorOrder: View {
 // MARK: - Content
 
 private extension ScanlatorOrder {
+    var phase: LoadPhase {
+        if !working.isEmpty { .content }
+        else if isLoading { .pending }
+        else { .empty }
+    }
+
     @ViewBuilder
     var Content: some View {
         if working.isEmpty, isLoading {
-            ProgressView()
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            SheetSkeleton(rows: 6)
+                .transition(.opacity)
         } else if working.isEmpty {
             ContentUnavailableView(
                 "No Scanlators",
                 systemImage: "person.2.slash",
                 description: Text("No chapters have been fetched for this series yet.")
             )
+            .transition(.opacity)
         } else {
             List {
                 ForEach($working) { $group in
@@ -107,6 +115,7 @@ private extension ScanlatorOrder {
             }
             // always active, so the handles are there without an Edit button
             .environment(\.editMode, .constant(.active))
+            .transition(.opacity)
         }
     }
 

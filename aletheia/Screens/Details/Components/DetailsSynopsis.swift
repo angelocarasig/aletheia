@@ -8,7 +8,7 @@
 import SwiftUI
 
 struct DetailsSynopsis: View {
-    let synopsis: String
+    let synopsis: AttributedString
 
     @Environment(\.dimensions) private var dimensions
 

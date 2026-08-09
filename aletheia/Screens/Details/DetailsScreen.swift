@@ -24,6 +24,7 @@ struct DetailsScreen: View {
     @State private var showingTitles = false
     @State private var searchingAll = false
     @State private var showingEdit = false
+    @State private var showingMerge = false
     @State private var showingCollection = false
     @State private var showingCollections = false
     @State private var removing: DetailsSources.Origin?
@@ -33,12 +34,18 @@ struct DetailsScreen: View {
     @State private var scroll = DetailsScroll()
 
     private enum Layout {
-        // the skeleton mirrors the real layout, so a crossfade reads as the
-        // placeholder resolving rather than one screen replacing another
-        static let settle: Animation = .smooth(duration: 0.35)
         // the source badge inside the refresh pill - sized to the pill's text
         // line, not to the 44pt row icon it is cropped from
         static let badgeSize: CGFloat = 20
+    }
+
+    // the branch selector and the animation key are the same value on purpose -
+    // keying a correlated boolean is how swaps go dead or partial.
+    // see docs/features/loading-transitions.md
+    private var phase: LoadPhase {
+        if vm?.isReady == true { .content }
+        else if vm?.failure != nil { .failed }
+        else { .pending }
     }
 
     var body: some View {
@@ -48,17 +55,23 @@ struct DetailsScreen: View {
             Palette.canvas
                 .ignoresSafeArea()
 
-            if let vm, vm.isReady {
-                Loaded(vm)
-            } else if let vm, let failure = vm.failure {
-                Unavailable(failure)
-                    .transition(.opacity)
-            } else {
+            switch phase {
+            case .content:
+                if let vm {
+                    Loaded(vm)
+                        .transition(.opacity)
+                }
+            case .failed:
+                if let vm, let failure = vm.failure {
+                    Unavailable(failure)
+                        .transition(.opacity)
+                }
+            default:
                 DetailsSkeleton()
                     .transition(.opacity)
             }
         }
-        .animation(Layout.settle, value: vm?.isReady ?? false)
+        .animation(.settle, value: phase)
         .navigationBarTitleDisplayMode(.inline)
         .navigationDestination(item: $reading) { target in
             ReaderScreen(
@@ -125,13 +138,15 @@ struct DetailsScreen: View {
         }
         .sheet(isPresented: $showingCollections) {
             if let vm {
+                // the picker presents its own create form, so dismissing the
+                // form returns to the list with the new collection already joined
                 CollectionPicker(
                     collections: vm.availableCollections,
                     isSaving: vm.isSaving,
                     onToggle: { id in Task { await vm.toggleCollection(id) } },
-                    // stacked over the picker, so dismissing the form returns to
-                    // the list with the new collection already joined
-                    onCreate: { showingCollection = true }
+                    onCreate: { name, description in
+                        Task { await vm.createCollection(name: name, description: description) }
+                    }
                 )
             }
         }
@@ -140,6 +155,33 @@ struct DetailsScreen: View {
                 CollectionForm(isSaving: vm.isSaving) { name, description in
                     Task { await vm.createCollection(name: name, description: description) }
                 }
+            }
+        }
+        .sheet(isPresented: $showingMerge) {
+            if let vm {
+                DetailsMerge(
+                    source: .init(
+                        title: vm.title,
+                        authors: vm.authors.joined(separator: ", "),
+                        synopsis: vm.synopsis.map { String($0.characters) },
+                        cover: vm.cover,
+                        referer: vm.referer,
+                        status: vm.status,
+                        publication: vm.publication,
+                        origins: vm.origins.count,
+                        read: vm.readCount,
+                        total: vm.chapters.count
+                    ),
+                    candidates: vm.mergeCandidates,
+                    isLoading: vm.isLoadingMergeCandidates,
+                    onSearch: { query in await vm.loadMergeCandidates(query: query) },
+                    onMerge: { id in
+                        showingMerge = false
+                        Task { await vm.merge(into: id) }
+                    }
+                )
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
             }
         }
         .sheet(isPresented: $showingEdit) {
@@ -271,7 +313,7 @@ struct DetailsScreen: View {
             // list rather than sitting on the bottom of the screen
             .padding(.bottom, dimensions.spacing.space8)
         }
-        .animation(Layout.settle, value: vm.refreshState)
+        .animation(.settle, value: vm.refreshState)
     }
 
     // one pill for the whole sequence: the spinner becomes the outcome in place,
@@ -386,10 +428,12 @@ struct DetailsScreen: View {
                 onSetStatus: { status in Task { await vm.setStatus(status) } },
                 onRefreshChapters: { Task { await vm.refreshChapters() } },
                 onMarkAll: { read in Task { await vm.markAll(read: read) } },
-                onEditDetails: { showingEdit = true }
+                onEditDetails: { showingEdit = true },
+                onMerge: { showingMerge = true }
             )
 
-            if let synopsis = vm.synopsis, !synopsis.isEmpty {
+            // emptiness is decided at mapping - an empty synopsis arrives as nil
+            if let synopsis = vm.synopsis {
                 DetailsSynopsis(synopsis: synopsis)
             }
 

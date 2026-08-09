@@ -59,6 +59,9 @@ struct LibraryScreen: View {
                 // the floating clusters overlap the scroll view, so the last row
                 // needs somewhere to go once you reach the bottom
                 .padding(.bottom, dimensions.spacing.space64)
+                // on the container that survives the swap, keyed to the same
+                // value the branches switch on
+                .animation(.settle, value: phase)
             }
             // two clusters, one per corner: where you are on the left, what you
             // are doing to it on the right. separate containers on purpose - they
@@ -168,22 +171,42 @@ private extension LibraryScreen {
 // MARK: - Content
 
 private extension LibraryScreen {
+    // branch selector and animation key are one value - see
+    // docs/features/loading-transitions.md
+    var phase: LoadPhase {
+        if vm?.failure != nil { .failed }
+        else if vm == nil || vm?.isLoading == true { .pending }
+        else if vm?.filtered.isEmpty == true { .empty }
+        else { .content }
+    }
+
     @ViewBuilder
     var Content: some View {
-        if let vm, let failure = vm.failure {
-            Failed(failure)
-        } else if let vm, !vm.isLoading {
-            Grid(vm)
-        } else {
+        switch phase {
+        case .failed:
+            if let vm, let failure = vm.failure {
+                Failed(failure)
+                    .transition(.opacity)
+            }
+        case .pending:
             Skeleton
+                .transition(.opacity)
+        case .empty:
+            if let vm {
+                Empty(vm)
+                    .transition(.opacity)
+            }
+        case .content:
+            if let vm {
+                Grid(vm)
+                    .transition(.opacity)
+            }
         }
     }
 
     @ViewBuilder
-    func Grid(_ vm: LibraryViewModel) -> some View {
-        let entries = vm.filtered
-
-        if entries.isEmpty, vm.isFiltered {
+    func Empty(_ vm: LibraryViewModel) -> some View {
+        if vm.isFiltered {
             // distinct from an empty library: there is something to undo here
             ContentUnavailableView {
                 Label("No Matches", systemImage: "line.3.horizontal.decrease")
@@ -198,7 +221,7 @@ private extension LibraryScreen {
                     }
                 }
             }
-        } else if entries.isEmpty {
+        } else {
             ContentUnavailableView {
                 Label("Library Empty", systemImage: "books.vertical")
             } description: {
@@ -206,7 +229,14 @@ private extension LibraryScreen {
             } actions: {
                 Button("Browse Sources") { log("browse sources") }
             }
-        } else {
+        }
+    }
+
+    @ViewBuilder
+    func Grid(_ vm: LibraryViewModel) -> some View {
+        let entries = vm.filtered
+
+        if !entries.isEmpty {
             LazyVGrid(columns: columns, spacing: dimensions.spacing.space16) {
                 ForEach(entries) { entry in
                     NavigationLink(value: SeriesEntry.library(entry.id)) {
@@ -251,5 +281,7 @@ private extension LibraryScreen {
         }
         .padding(.horizontal, dimensions.screenMargin)
         .shimmer()
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 }

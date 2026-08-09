@@ -46,6 +46,9 @@ final class DetailsViewModel {
     private var dismissal: Task<Void, Never>?
 
     private static let outcomeDuration: Duration = .seconds(3)
+    // enough rows that the right series is on screen without a search field,
+    // few enough that ranking still means something
+    nonisolated private static let mergeCandidateLimit = 10
 
     // the source that opened this screen, nil for a library entry - which resolves
     // its source from the primary origin once the first snapshot lands instead
@@ -84,7 +87,7 @@ final class DetailsViewModel {
 
     var title: String { snapshot?.title ?? openerStub?.title ?? "" }
     var cover: URL? { snapshot?.cover ?? openerStub?.cover }
-    var synopsis: String? { snapshot?.synopsis }
+    var synopsis: AttributedString? { snapshot?.synopsis }
     var authors: [String] { snapshot?.authors ?? [] }
     var tags: [String] { snapshot?.tags ?? [] }
     var classification: Classification? { snapshot?.classification }
@@ -99,6 +102,9 @@ final class DetailsViewModel {
 
     private(set) var languageOrder: [LanguageOrder.Language] = []
     private(set) var isLoadingLanguages = false
+
+    private(set) var mergeCandidates: [DetailsMerge.Candidate] = []
+    private(set) var isLoadingMergeCandidates = false
 
     var covers: [DetailsCovers.Cover] { snapshot?.covers ?? [] }
     var titles: [DetailsTitles.Title] { snapshot?.titles ?? [] }
@@ -598,6 +604,80 @@ final class DetailsViewModel {
             }
         } catch {
             actionFailure = Failure(error, fallback: "Couldn't Update Progress")
+        }
+    }
+
+    // MARK: - Merge
+
+    // with no query: top ten library series ranked by how alike their titles
+    // are, scored across both sides' full title pools so a romaji copy still
+    // finds its english twin. with a query: the library's own fts search decides
+    // who is in, similarity only decides the order
+    func loadMergeCandidates(query: String = "") async {
+        guard let seriesId else { return }
+        let text = query.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        isLoadingMergeCandidates = true
+        defer { isLoadingMergeCandidates = false }
+
+        do {
+            let (scored, rows) = try await database.reader.read { db in
+                let scored = try Self.mergeMatches(for: seriesId, matching: text, in: db)
+                let rows = try Self.candidates(for: scored.map(\.id), in: db)
+                return (scored, rows)
+            }
+
+            // the caller re-runs this per keystroke and cancels the last one - a
+            // late result must not overwrite a newer query's
+            guard !Task.isCancelled else { return }
+
+            // hydration returns rows in table order; the score decides display order
+            let byId = Dictionary(uniqueKeysWithValues: rows.map { ($0.id, $0) })
+            mergeCandidates = scored.compactMap { match in
+                guard let row = byId[match.id.rawValue] else { return nil }
+                return DetailsMerge.Candidate(
+                    id: row.id,
+                    title: row.title,
+                    authors: row.authors,
+                    synopsis: row.synopsis,
+                    cover: artwork(row.cover, path: row.path),
+                    referer: row.sourceSlug.flatMap { registry.source(slug: $0) }?.descriptor.referer,
+                    status: row.status,
+                    publication: row.publication,
+                    origins: row.origins,
+                    read: row.read,
+                    total: row.total,
+                    score: match.score
+                )
+            }
+        } catch {
+            AppLog.shared.log("merge candidates failed — \(error)", category: "details")
+            mergeCandidates = []
+        }
+    }
+
+    // everything the losing series owns moves across, then its row goes. the
+    // target's own preferences, status and ordering stay untouched
+    func merge(into target: Int64) async {
+        guard let seriesId else { return }
+        let targetId = SeriesRecord.ID(rawValue: target)
+        guard targetId != seriesId else { return }
+
+        isSaving = true
+        defer { isSaving = false }
+
+        do {
+            try await database.writer.write { db in
+                try Self.merge(from: seriesId, to: targetId, in: db)
+            }
+            mergeCandidates = []
+            // the observed row was just deleted, so the screen re-points at the
+            // series everything now belongs to
+            observe(targetId)
+            AppLog.shared.log("merged series \(seriesId.rawValue) into \(targetId.rawValue)", category: "details")
+        } catch {
+            actionFailure = Failure(error, fallback: "Couldn't Merge Series")
+            AppLog.shared.log("merge into \(target) FAILED — \(error)", category: "details")
         }
     }
 
@@ -1106,7 +1186,7 @@ extension DetailsViewModel {
     struct Snapshot {
         let title: String
         let cover: URL?
-        let synopsis: String?
+        let synopsis: AttributedString?
         let authors: [String]
         let tags: [String]
         let classification: Classification?
@@ -1153,7 +1233,7 @@ private extension DetailsViewModel.Snapshot {
 
         title = entry.title
         cover = artwork(entry.cover, entry.path)
-        synopsis = entry.synopsis?.isEmpty == false ? entry.synopsis : nil
+        synopsis = entry.synopsis?.isEmpty == false ? entry.synopsis?.toAttributed() : nil
         authors = Self.split(entry.authors)
         // sources return tags in their own order, so sort for display. localized
         // standard compare is case insensitive and orders any numbers naturally
@@ -1200,6 +1280,7 @@ private extension DetailsViewModel.Snapshot {
             return DetailsSources.Origin(
                 id: row.id,
                 name: row.sourceName ?? row.sourceSlug ?? "Unknown Source",
+                slug: row.slug,
                 host: row.sourceBaseURL?.host() ?? row.sourceSlug ?? "",
                 url: URL(string: row.url),
                 icon: row.sourceSlug.flatMap { registry.source(slug: $0) }?.descriptor.icon,
@@ -1435,6 +1516,64 @@ extension DetailsViewModel {
         return try StoredCover.fetchAll(db, sql: sql, arguments: [seriesId])
     }
 
+    // every library series scored by its best title-pair match against this
+    // one's pool. scoring runs in swift - the pools are small and sqlite has no
+    // string-distance function to push it into. a query narrows membership
+    // through the same fts view the library searches; the top-ten cap applies
+    // only to the unqueried list, since a search already narrowed by hand
+    nonisolated fileprivate static func mergeMatches(
+        for seriesId: SeriesRecord.ID,
+        matching query: String,
+        in db: Database
+    ) throws -> [(id: SeriesRecord.ID, score: Double)] {
+        let own = try TitleRecord
+            .select(TitleRecord.Columns.value, as: String.self)
+            .filter(TitleRecord.Columns.seriesId == seriesId)
+            .fetchAll(db)
+        guard !own.isEmpty else { return [] }
+
+        var sql = """
+            SELECT t.\(TitleRecord.Columns.seriesId.name) AS seriesId,
+                   t.\(TitleRecord.Columns.value.name) AS value
+            FROM \(TitleRecord.databaseTableName) t
+            JOIN \(SeriesRecord.databaseTableName) s ON s.id = t.\(TitleRecord.Columns.seriesId.name)
+            WHERE s.\(SeriesRecord.Columns.inLibrary.name) = 1 AND s.id != ?
+            """
+        var arguments: StatementArguments = [seriesId]
+
+        if !query.isEmpty {
+            // prefix matching, same as the library grid - results narrow as you
+            // type rather than only landing on whole words
+            guard let pattern = FTS5Pattern(matchingAllPrefixesIn: query) else { return [] }
+            sql += """
+
+                AND s.id IN (
+                    SELECT rowid FROM \(SeriesFTS5View.databaseTableName)
+                    WHERE \(SeriesFTS5View.databaseTableName) MATCH ?
+                )
+                """
+            arguments += [pattern]
+        }
+
+        let rows = try Row.fetchAll(db, sql: sql, arguments: arguments)
+
+        var pools: [Int64: [String]] = [:]
+        for row in rows {
+            pools[row["seriesId"], default: []].append(row["value"])
+        }
+
+        let scored = pools
+            .map { id, titles in
+                let best = titles
+                    .flatMap { title in own.map { Similarity.score($0, title) } }
+                    .max() ?? 0
+                return (id: SeriesRecord.ID(rawValue: id), score: best)
+            }
+            .sorted { $0.score > $1.score }
+
+        return query.isEmpty ? Array(scored.prefix(mergeCandidateLimit)) : scored
+    }
+
     nonisolated fileprivate static func candidates(
         for ids: [SeriesRecord.ID],
         in db: Database
@@ -1454,6 +1593,13 @@ extension DetailsViewModel {
                 v.\(RichfulEntryView.Columns.totalChapterCount.name) AS total,
                 v.\(RichfulEntryView.Columns.lastReadDate.name) AS lastReadDate,
                 v.\(RichfulEntryView.Columns.addedDate.name) AS addedDate,
+                v.\(RichfulEntryView.Columns.publication.name) AS publication,
+                (SELECT sr.\(SeriesRecord.Columns.status.name)
+                   FROM \(SeriesRecord.databaseTableName) sr
+                  WHERE sr.id = v.\(RichfulEntryView.Columns.seriesId.name)) AS status,
+                (SELECT COUNT(*)
+                   FROM \(OriginRecord.databaseTableName) oc
+                  WHERE oc.\(OriginRecord.Columns.seriesId.name) = v.\(RichfulEntryView.Columns.seriesId.name)) AS origins,
                 (SELECT src.\(SourceRecord.Columns.slug.name)
                    FROM \(OriginRecord.databaseTableName) o
                    JOIN \(SourceRecord.databaseTableName) src ON src.id = o.\(OriginRecord.Columns.sourceId.name)
@@ -1670,6 +1816,72 @@ extension DetailsViewModel {
         return inserted
     }
 
+    // reparent plus the two things a library row owns that a browse row does
+    // not: collection memberships and read state worth propagating. collections
+    // copy first while the losing row still exists; reparent then moves origins,
+    // titles and covers and explicitly deletes the row; the watermark runs last
+    // over the combined chapter set
+    nonisolated fileprivate static func merge(
+        from series: SeriesRecord.ID,
+        to target: SeriesRecord.ID,
+        in db: Database
+    ) throws {
+        try adoptCollections(from: series, to: target, in: db)
+        try reparent(from: series, to: target, in: db)
+        try propagateReadState(for: target, in: db)
+    }
+
+    // insert-or-ignore against the (seriesId, collectionId) unique key, so a
+    // collection both sides already share stays a single membership
+    nonisolated fileprivate static func adoptCollections(
+        from series: SeriesRecord.ID,
+        to target: SeriesRecord.ID,
+        in db: Database
+    ) throws {
+        let links = try SeriesCollectionRecord
+            .filter(SeriesCollectionRecord.Columns.seriesId == series)
+            .fetchAll(db)
+
+        for link in links {
+            let highest = try SeriesCollectionRecord
+                .filter(SeriesCollectionRecord.Columns.collectionId == link.collectionId)
+                .select(max(SeriesCollectionRecord.Columns.order), as: Int.self)
+                .fetchOne(db) ?? nil
+
+            var adopted = SeriesCollectionRecord(
+                id: nil,
+                seriesId: target,
+                collectionId: link.collectionId,
+                order: (highest ?? -1) + 1
+            )
+            try adopted.insert(db, onConflict: .ignore)
+        }
+    }
+
+    // attaching a source marks everything at or below the series' highest read
+    // number as read; a merge makes the same promise over the union of both
+    // chapter sets. monotonic, so nothing already further along moves backwards
+    nonisolated fileprivate static func propagateReadState(
+        for seriesId: SeriesRecord.ID,
+        in db: Database
+    ) throws {
+        let sql = """
+            SELECT DISTINCT c.\(ChapterRecord.Columns.number.name)
+            FROM \(ChapterRecord.databaseTableName) c
+            JOIN \(OriginRecord.databaseTableName) o ON o.id = c.\(ChapterRecord.Columns.originId.name)
+            WHERE o.\(OriginRecord.Columns.seriesId.name) = ?
+              AND c.\(ChapterRecord.Columns.number.name) <= (
+                SELECT MAX(r.\(ChapterRecord.Columns.number.name))
+                FROM \(ChapterRecord.databaseTableName) r
+                JOIN \(OriginRecord.databaseTableName) ro ON ro.id = r.\(ChapterRecord.Columns.originId.name)
+                WHERE ro.\(OriginRecord.Columns.seriesId.name) = ?
+                  AND r.\(ChapterRecord.Columns.progress.name) >= 1
+              )
+            """
+        let numbers = try Double.fetchAll(db, sql: sql, arguments: [seriesId, seriesId])
+        try ChapterRecord.apply(progress: 1.0, toNumbers: numbers, in: seriesId, monotonic: true, db: db)
+    }
+
     // every origin the held row owns moves across, then the row itself goes. titles
     // and covers carry their origin, so they travel with it. UPDATE OR IGNORE
     // because the target may already hold an identical title or cover url
@@ -1806,6 +2018,9 @@ private struct StoredCandidate: Decodable, FetchableRecord, Sendable {
     let total: Int
     let lastReadDate: Date
     let addedDate: Date
+    let publication: Publication
+    let status: Status
+    let origins: Int
     let sourceSlug: String?
 }
 

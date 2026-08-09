@@ -106,7 +106,7 @@ struct DetailsBackdrop: View {
                     .transition(.opacity)
             }
             .clipped()
-            .animation(.smooth(duration: 0.35), value: cover)
+            .animation(.settle, value: cover)
     }
 
     private var Placeholder: some View {

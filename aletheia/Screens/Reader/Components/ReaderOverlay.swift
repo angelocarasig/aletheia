@@ -27,6 +27,7 @@ struct ReaderOverlay: View {
     var onDismiss: () -> Void
 
     @Environment(\.dimensions) private var dimensions
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State private var scrubbing = false
     @State private var scrubValue: Double = 0
@@ -137,7 +138,7 @@ private extension ReaderOverlay {
                     // the digits up, back rolls them down. nothing has to track
                     // which way the chapter moved
                     .contentTransition(.numericText(value: chapter.number))
-                    .transition(.blurReplace)
+                    .transition(.replace(reduceMotion: reduceMotion))
             } else {
                 // the shape the chapter will take, not a word standing in for it.
                 // matches ReaderSkeleton's fill so the two placeholders read as
@@ -146,7 +147,7 @@ private extension ReaderOverlay {
                     .fill(.white.opacity(Layout.placeholderFill))
                     .frame(width: Layout.placeholderWidth, height: Layout.placeholderHeight)
                     .shimmer()
-                    .transition(.blurReplace)
+                    .transition(.replace(reduceMotion: reduceMotion))
             }
 
             if let subtitle {

@@ -48,6 +48,7 @@ struct DetailsSkeleton: View {
         }
         .shimmer()
         .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 
     private var Header: some View {

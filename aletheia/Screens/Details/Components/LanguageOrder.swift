@@ -60,6 +60,7 @@ struct LanguageOrder: View {
                 }
         }
         .presentationDetents([.medium, .large])
+        .animation(.settle, value: phase)
         // presented before the read lands, so the rows arrive after init. an
         // empty working set seeds wholesale; a populated one merges - counts
         // refresh, the staged order survives, and a language a mid-sheet fetch
@@ -79,17 +80,24 @@ struct LanguageOrder: View {
 // MARK: - Content
 
 private extension LanguageOrder {
+    var phase: LoadPhase {
+        if !working.isEmpty { .content }
+        else if isLoading { .pending }
+        else { .empty }
+    }
+
     @ViewBuilder
     var Content: some View {
         if working.isEmpty, isLoading {
-            ProgressView()
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            SheetSkeleton(rows: 4)
+                .transition(.opacity)
         } else if working.isEmpty {
             ContentUnavailableView(
                 "No Languages",
                 systemImage: "character.bubble",
                 description: Text("No chapters have been fetched for this series yet.")
             )
+            .transition(.opacity)
         } else {
             List {
                 Section {
@@ -103,6 +111,7 @@ private extension LanguageOrder {
             }
             // always active, so the handles are there without an Edit button
             .environment(\.editMode, .constant(.active))
+            .transition(.opacity)
         }
     }
 

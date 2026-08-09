@@ -50,16 +50,16 @@ struct NHentaiSource: AuthenticatingSource {
 
     var presets: [SourcePreset] {
         [
+            .init(id: "new", name: "Recently Added", subtitle: "Freshly uploaded",
+                  order: 0, sort: .init(optionID: "date")),
             .init(id: "popular-today", name: "Popular Today", subtitle: "Most viewed in the last day",
-                  order: 0, sort: .init(optionID: "popular-today")),
+                  order: 1, sort: .init(optionID: "popular-today")),
             .init(id: "popular-week", name: "Popular This Week", subtitle: "Most viewed in the last week",
-                  order: 1, sort: .init(optionID: "popular-week")),
+                  order: 2, sort: .init(optionID: "popular-week")),
             .init(id: "popular-month", name: "Popular This Month", subtitle: "Most viewed in the last month",
-                  order: 2, sort: .init(optionID: "popular-month")),
+                  order: 3, sort: .init(optionID: "popular-month")),
             .init(id: "popular", name: "Popular All Time", subtitle: "Most viewed ever",
-                  order: 3, sort: .init(optionID: "popular")),
-            .init(id: "new", name: "New", subtitle: "Freshly uploaded",
-                  order: 4, sort: .init(optionID: "date"))
+                  order: 4, sort: .init(optionID: "popular"))
         ]
     }
 
@@ -135,6 +135,17 @@ extension NHentaiSource {
     func search(_ query: SearchQuery) async throws -> SearchPage<SeriesStub> {
         let raw = (query.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
 
+        // the magic number: an all-digits query is a gallery code, which the
+        // search index cannot match (query=671147 and id:671147 both return
+        // nothing) - so it resolves through the gallery endpoint instead, live
+        // first, then the takedown archive. a code that resolves nowhere falls
+        // through to text search unchanged
+        if query.page == 1, query.filters.isEmpty,
+           (1...7).contains(raw.count), raw.allSatisfy({ $0.isASCII && $0.isNumber }),
+           let match = await gallery(code: raw) {
+            return SearchPage(items: [match], next: nil)
+        }
+
         // filters ride the query string - nhentai has no filter parameters, only
         // its search grammar. the filter id is the grammar scope, the option id
         // is the name the scope takes, exclusion is a leading minus
@@ -177,6 +188,23 @@ extension NHentaiSource {
             adult: true
         )
     }
+
+    private func gallery(code: String) async -> SeriesStub? {
+        let url = Self.url("galleries/\(code)", [.init(name: "include", value: "images,tags")])
+        if let gallery: Gallery = try? await get(url) {
+            return SeriesStub(
+                slug: String(gallery.id),
+                title: gallery.title.pretty ?? gallery.title.english ?? gallery.title.japanese ?? "Untitled",
+                cover: gallery.cover.map { Self.thumbs.appendingPathComponent($0.path) },
+                adult: true
+            )
+        }
+
+        // a taken-down code still resolves as browse-only metadata, the same
+        // fallback details() takes when opened
+        guard let detail = try? await archived(code) else { return nil }
+        return SeriesStub(slug: detail.slug, title: detail.title, cover: detail.covers.first, adult: true)
+    }
 }
 
 // MARK: - Details
@@ -184,7 +212,7 @@ extension NHentaiSource {
 extension NHentaiSource {
     func details(seriesSlug: String) async throws -> SeriesDetail {
         let url = Self.url("galleries/\(seriesSlug)", [.init(name: "include", value: "images,tags")])
-        var request = URLRequest(url: url)
+        let request = URLRequest(url: url)
         let (data, response) = try await requester.send(request, for: self)
 
         // a taken-down gallery 404s on the API but survives in the archive as

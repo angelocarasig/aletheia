@@ -13,8 +13,8 @@ final class PageCell: UICollectionViewCell {
 
     private let scrollView = UIScrollView()
     private let imageView = UIImageView()
-    private let spinner = UIActivityIndicatorView(style: .medium)
-    private let failure = UIButton(configuration: .plain())
+    private let progress = PageProgressView()
+    private let failure = PageFailureView()
 
     // a cancelled load and a failed load arrive on the same completion path, so
     // the cell checks the url it is currently showing before reporting either.
@@ -52,8 +52,8 @@ final class PageCell: UICollectionViewCell {
         page = nil
         reportedZoom = false
         resetZoom()
-        setFailed(false)
-        spinner.stopAnimating()
+        setFailure(nil)
+        progress.end()
     }
 
     override func layoutSubviews() {
@@ -77,8 +77,8 @@ final class PageCell: UICollectionViewCell {
         self.width = width
         self.token = page.url
 
-        setFailed(false)
-        spinner.startAnimating()
+        setFailure(nil)
+        progress.begin()
 
         imageView.kf.setImage(
             with: page.url,
@@ -86,19 +86,28 @@ final class PageCell: UICollectionViewCell {
                 headers: page.headers,
                 width: width,
                 scale: traitCollection.displayScale
-            )
+            ),
+            progressBlock: { [weak self] received, total in
+                guard let self, self.token == page.url else { return }
+                self.progress.update(received: received, total: total)
+            }
         ) { [weak self] result in
             guard let self, self.token == page.url else { return }
 
-            self.spinner.stopAnimating()
+            // ends unconditionally: a memory-cache hit completes synchronously
+            // inside setImage, before any progress callback exists, so the ring
+            // is driven off this one state rather than off progress events
+            self.progress.end()
 
             switch result {
             case let .success(value):
-                self.setFailed(false)
+                self.setFailure(nil)
                 self.onSized?(page, value.image.size)
             case let .failure(error):
+                // a reused cell cancelling its own load is not a failure the
+                // reader should ever see
                 guard !error.isTaskCancelled else { return }
-                self.setFailed(true)
+                self.setFailure(ReaderPageError(error))
             }
         }
     }
@@ -131,17 +140,11 @@ final class PageCell: UICollectionViewCell {
         contentView.addSubview(scrollView)
         scrollView.addSubview(imageView)
 
-        spinner.translatesAutoresizingMaskIntoConstraints = false
-        spinner.hidesWhenStopped = true
-        contentView.addSubview(spinner)
+        progress.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(progress)
 
         failure.translatesAutoresizingMaskIntoConstraints = false
-        failure.isHidden = true
-        failure.configuration?.image = UIImage(systemName: "arrow.clockwise")
-        failure.configuration?.title = "Tap to retry"
-        failure.configuration?.imagePadding = Dimensions.Spacing.space8
-        failure.configuration?.baseForegroundColor = .secondaryLabel
-        failure.addTarget(self, action: #selector(retry), for: .touchUpInside)
+        failure.onRetry = { [weak self] in self?.retry() }
         contentView.addSubview(failure)
 
         let doubleTap = UITapGestureRecognizer(target: self, action: #selector(handleDoubleTap))
@@ -149,16 +152,19 @@ final class PageCell: UICollectionViewCell {
         imageView.addGestureRecognizer(doubleTap)
 
         NSLayoutConstraint.activate([
-            spinner.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
-            spinner.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
-            failure.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
-            failure.centerYAnchor.constraint(equalTo: contentView.centerYAnchor)
+            progress.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
+            progress.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
+            failure.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+            failure.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            failure.topAnchor.constraint(equalTo: contentView.topAnchor),
+            failure.bottomAnchor.constraint(equalTo: contentView.bottomAnchor)
         ])
     }
 
-    private func setFailed(_ failed: Bool) {
-        failure.isHidden = !failed
-        imageView.isHidden = failed
+    private func setFailure(_ error: ReaderPageError?) {
+        if let error { failure.configure(with: error) }
+        failure.isHidden = error == nil
+        imageView.isHidden = error != nil
     }
 
     // contentSize is set explicitly because the image view is positioned by
@@ -173,7 +179,7 @@ final class PageCell: UICollectionViewCell {
         scrollView.isScrollEnabled = false
     }
 
-    @objc private func retry() {
+    private func retry() {
         guard let page else { return }
         configure(with: page, width: width)
         onRetry?(page)

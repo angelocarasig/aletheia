@@ -19,105 +19,81 @@ struct DetailsCollections: View {
     @Environment(\.dimensions) private var dimensions
 
     private enum Layout {
-        static let cardMinWidth: CGFloat = 120
         static let emptyStateHeight: CGFloat = 180
-        static let containsFillOpacity: Double = 0.25
-        static let idleFillOpacity: Double = 0.05
-        static let newFillOpacity: Double = 0.1
-        static let newSubtitleOpacity: Double = 0.6
+        static let fillOpacity: Double = 0.05
         static let settle: Animation = .smooth(duration: 0.3)
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: dimensions.spacing.space16) {
-            SectionHeader(title: "Collections") { AddButton }
+            SectionHeader("Collections")
 
             if collections.isEmpty {
                 EmptyState
                     .transition(.opacity)
             } else {
-                Cards
+                Chips
                     .transition(.opacity)
             }
         }
         // membership is written elsewhere and arrives through the observation, so
-        // the tap's own transaction is closed by the time a card appears
+        // the tap's own transaction is closed by the time a chip appears
         .animation(Layout.settle, value: collections)
     }
 
-    private var AddButton: some View {
-        Image(systemName: "plus")
-            .font(.body)
-            .fontWeight(.medium)
-            .foregroundStyle(.muted)
-            .frame(width: dimensions.size.control, height: dimensions.size.control)
-            .contentShape(.rect)
-            // the full list, not the create form - the cards are a shortcut for
-            // the few you can see, this is for the rest
-            .tappable(action: onPick)
-    }
-
-    private var Cards: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: dimensions.spacing.space12) {
-                ForEach(collections) { collection in
-                    Card(collection)
-                        .transition(.scale.combined(with: .opacity))
-                }
-
-                AddCard
+    private var Chips: some View {
+        FlowLayout(spacing: dimensions.spacing.space8) {
+            ForEach(collections) { collection in
+                Chip(collection)
+                    .transition(.scale.combined(with: .opacity))
             }
+
+            AddChip
         }
     }
 
-    private func Card(_ collection: Item) -> some View {
-        VStack(alignment: .leading, spacing: dimensions.spacing.space2) {
-            HStack(spacing: dimensions.spacing.space4) {
-                // membership never rides on the fill alone - state needs a
-                // shape channel, not just color (selection-language.md)
-                Image(systemName: collection.contains ? "checkmark.circle.fill" : "circle")
-                    .font(.caption)
-                    .foregroundStyle(collection.contains ? .brand : .muted)
-                    .contentTransition(.symbolEffect(.replace))
+    // only joined collections render here, so presence is the membership
+    // signal - no glyph, no tint (redundant confirmation otherwise)
+    private func Chip(_ collection: Item) -> some View {
+        HStack(spacing: dimensions.spacing.space4) {
+            Text(collection.name)
+                .font(.subheadline)
+                .fontWeight(.medium)
 
-                Text(collection.name)
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
-            }
-
-            Text("^[\(collection.count) item](inflect: true)")
-                .font(.caption2)
+            Text("\(collection.count)")
+                .font(.caption)
                 .foregroundStyle(.muted)
                 .contentTransition(.numericText())
         }
-        .frame(minWidth: Layout.cardMinWidth, alignment: .leading)
-        .padding(dimensions.spacing.space12)
-        .background(fill(for: collection), in: .rect(cornerRadius: dimensions.radius.radius8))
-        .contentShape(.rect)
-        .tappable { onToggle(collection.id) }
+        .padding(.horizontal, dimensions.spacing.space12)
+        .padding(.vertical, dimensions.spacing.space8)
+        .background(.primary.opacity(Layout.fillOpacity), in: .capsule)
+        .contentShape(.capsule)
+        .tappable(action: onPick)
+        .contextMenu {
+            Button("Remove from \(collection.name)", systemImage: "minus.circle") {
+                onToggle(collection.id)
+            }
+        }
     }
 
-    private var AddCard: some View {
-        VStack(alignment: .leading, spacing: dimensions.spacing.space2) {
-            HStack(spacing: dimensions.spacing.space4) {
-                Image(systemName: "plus.circle")
-                    .font(.subheadline)
+    // chips imply collections exist, so this always opens the picker
+    private var AddChip: some View {
+        HStack(spacing: dimensions.spacing.space4) {
+            Image(systemName: "plus")
+                .font(.caption)
+                .fontWeight(.semibold)
 
-                Text("Add")
-                    .font(.subheadline)
-                    .fontWeight(.medium)
-            }
-            .foregroundStyle(.brand)
-
-            Text(hasAny ? "Pick a collection" : "Create collection")
-                .font(.caption2)
-                .foregroundStyle(.brand.opacity(Layout.newSubtitleOpacity))
+            Text("Add")
+                .font(.subheadline)
+                .fontWeight(.medium)
         }
-        .frame(minWidth: Layout.cardMinWidth, alignment: .leading)
-        .padding(dimensions.spacing.space12)
-        .background(.brand.opacity(Layout.newFillOpacity), in: .rect(cornerRadius: dimensions.radius.radius8))
-        .contentShape(.rect)
-        .tappable(action: hasAny ? onPick : onCreate)
+        .foregroundStyle(Palette.brandText)
+        .padding(.horizontal, dimensions.spacing.space12)
+        .padding(.vertical, dimensions.spacing.space8)
+        .background(Palette.brandSubtle, in: .capsule)
+        .contentShape(.capsule)
+        .tappable(action: onPick)
     }
 
     private var EmptyState: some View {
@@ -132,13 +108,6 @@ struct DetailsCollections: View {
                 .buttonStyle(.glassProminent)
         }
         .frame(height: Layout.emptyStateHeight)
-    }
-
-    // explicit Color so .brand / .primary resolve unambiguously across the ternary
-    private func fill(for collection: Item) -> Color {
-        collection.contains
-        ? .brand.opacity(Layout.containsFillOpacity)
-        : .primary.opacity(Layout.idleFillOpacity)
     }
 }
 

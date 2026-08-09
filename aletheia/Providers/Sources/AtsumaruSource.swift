@@ -124,13 +124,17 @@ struct AtsumaruSource: SourceService {
 
     var presets: [SourcePreset] {
         [
-            .init(id: "popular", name: "Popular", subtitle: "Most read on Atsumaru", order: 0,
-                  sort: .init(optionID: "views:desc")),
-            .init(id: "trending", name: "Trending", subtitle: "Climbing right now", order: 1,
-                  sort: .init(optionID: "trending:desc")),
-            .init(id: "new", name: "Recently Added", subtitle: "Newest to the catalogue", order: 2,
+            .init(id: "new", name: "Recently Added", subtitle: "Newest to the catalogue", order: 0,
                   sort: .init(optionID: "dateAdded:desc")),
-            .init(id: "top", name: "Top Rated", subtitle: "Highest rated series", order: 3,
+            // ranked by newest chapter, which no typesense field carries - served
+            // by a home shelf endpoint instead, hence the route
+            .init(id: "updated", name: "Recently Updated", subtitle: "Freshly released chapters", order: 1,
+                  route: "recentlyUpdated"),
+            .init(id: "trending", name: "Trending", subtitle: "Climbing right now", order: 2,
+                  sort: .init(optionID: "trending:desc")),
+            .init(id: "popular", name: "Popular", subtitle: "Most read on Atsumaru", order: 3,
+                  sort: .init(optionID: "views:desc")),
+            .init(id: "top", name: "Top Rated", subtitle: "Highest rated series", order: 4,
                   sort: .init(optionID: "mbRating:desc"))
         ]
     }
@@ -188,6 +192,10 @@ extension AtsumaruSource {
 
 extension AtsumaruSource {
     func search(_ query: SearchQuery) async throws -> SearchPage<SeriesStub> {
+        if query.route == "recentlyUpdated" {
+            return try await recentlyUpdated(page: query.page)
+        }
+
         let response: Documents<Stub> = try await fetch(
             Self.searchURL(query, sort: resolvedSort(for: query), fields: Self.stubFields, gateOpen: allowsAdult(for: query))
         )
@@ -198,6 +206,34 @@ extension AtsumaruSource {
         return SearchPage(
             items: response.hits.map { Self.stub(from: $0.document) },
             next: seen < response.found ? query.page + 1 : nil
+        )
+    }
+
+    // series ranked by newest chapter, off the home shelf rather than typesense.
+    // `adult` is deliberately never sent: a preset carries no filters so the gate
+    // is always shut, and on this route omission IS the exclusion - adult=1 flips
+    // the feed to adult-only, not mixed, so there is nothing between to ask for.
+    // the shelf also mixes in the site's web novels, which the manga collection
+    // does not hold and content() could not read - dropped before mapping
+    private func recentlyUpdated(page: Int) async throws -> SearchPage<SeriesStub> {
+        let response: HomeShelf = try await fetch(Self.api("home2/recentlyUpdated", [
+            .init(name: "offset", value: String(max(0, page - 1) * Self.window)),
+            .init(name: "limit", value: String(Self.window))
+        ]))
+
+        let comics = response.items.filter { $0.medium == "Comic" }
+        return SearchPage(
+            items: comics.map { item in
+                SeriesStub(
+                    slug: item.id,
+                    title: item.title,
+                    cover: Self.poster(item.mediumImage ?? item.image),
+                    adult: item.isAdult ?? false
+                )
+            },
+            // next is judged on the raw window, not the trimmed one - a page of
+            // mostly novels still means the feed continues
+            next: response.items.count == Self.window ? page + 1 : nil
         )
     }
 
@@ -469,6 +505,19 @@ private extension AtsumaruSource {
         let posterMedium: String?
         let mbContentRating: String?
         let isAdult: Bool?
+    }
+
+    struct HomeShelf: Decodable, Sendable {
+        let items: [Item]
+
+        struct Item: Decodable, Sendable {
+            let id: String
+            let title: String
+            let image: String?
+            let mediumImage: String?
+            let isAdult: Bool?
+            let medium: String?
+        }
     }
 
     struct Detail: Decodable, Sendable {
