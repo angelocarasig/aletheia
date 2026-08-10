@@ -118,10 +118,7 @@ struct ActivityScreen: View {
             }
             .task {
                 guard vm == nil else { return }
-                let model = ActivityViewModel(
-                    database: compositor.database,
-                    registry: compositor.registry
-                )
+                let model = ActivityViewModel(database: compositor.database)
                 vm = model
                 model.observe()
             }

@@ -13,12 +13,17 @@ struct HomeScreen: View {
     @Environment(\.dimensions) private var dimensions
 
     @AppStorage(Preferences.Key.blurAdultHome) private var blurAdult = Preferences.Default.blurAdultHome
+    // read only to notice it changing: the gate itself is resolved inside the
+    // observation, and the ten-tap that flips it happens on another tab
+    @AppStorage(Preferences.Key.bypassAdultSources) private var bypassAdult = Preferences.Default.bypassAdultSources
 
     @State private var vm: HomeViewModel?
     @State private var path = NavigationPath()
     @State private var reading: ReadingTarget?
     @State private var browsing = false
     @State private var showingStats = false
+    @State private var showingUpdates = false
+    @State private var showingFailures = false
 
     // the model is built on appearance in the app; a preview hands one in
     // already holding its snapshot, which is what keeps previews off a database
@@ -33,16 +38,13 @@ struct HomeScreen: View {
     }
 
     private enum Layout {
-        static let addedColumns = 2
-        static let addedRows = 2
+        static let addedWidth: CGFloat = 116
+        static let skeletonUpdates = 3
         static let heroSpan = 8
-    }
 
-    // the range reads under the title, so the numbers below never have to carry
-    // the question of what they are counting
-    private var subtitle: Text {
-        guard phase == .content, let vm else { return Text(verbatim: "") }
-        return Text(vm.range.label)
+        // enough to lift the banner off the canvas without competing with a
+        // cover: it is a notice, not an alert
+        static let bannerFill = 0.12
     }
 
     // home is what you already own, so there is no "did you ask for this" signal
@@ -55,6 +57,7 @@ struct HomeScreen: View {
     private var hasExplicit: Bool {
         guard let snapshot = vm?.snapshot else { return false }
         return snapshot.continueReading.contains(where: \.adult)
+            || snapshot.updates.contains(where: \.adult)
             || snapshot.recentlyAdded.contains(where: \.adult)
     }
 
@@ -93,17 +96,7 @@ struct HomeScreen: View {
             }
             .animation(.settle, value: phase)
             .navigationTitle("Home")
-            .navigationSubtitle(subtitle)
             .toolbarTitleDisplayMode(.large)
-            .toolbarTitleMenu {
-                // the window is what the title is scoped by, so it belongs to the
-                // title rather than a trailing button. the control exists only
-                // where there are numbers to rescope - an empty or failed Home
-                // has nothing for a window to change
-                if phase == .content, let vm {
-                    RangePicker(vm)
-                }
-            }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     if hasExplicit {
@@ -125,6 +118,12 @@ struct HomeScreen: View {
             .navigationDestination(isPresented: $showingStats) {
                 StatsScreen()
             }
+            .navigationDestination(isPresented: $showingUpdates) {
+                UpdatesScreen()
+            }
+            .navigationDestination(isPresented: $showingFailures) {
+                FailuresScreen()
+            }
             .task {
                 guard vm == nil else { return }
                 let model = HomeViewModel(
@@ -135,6 +134,9 @@ struct HomeScreen: View {
                 vm = model
                 model.observe()
             }
+            // onChange rather than task(id:), which would also fire on every
+            // return to the tab and restart an observation that is already right
+            .onChange(of: bypassAdult) { vm?.retry() }
         }
     }
 }
@@ -145,35 +147,50 @@ private extension HomeScreen {
     func Content(_ vm: HomeViewModel) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: dimensions.spacing.space24) {
+                // its presence is the whole signal, so it costs nothing at rest
+                // and is unmissable when it fires. a permanent card reading
+                // "all sources healthy" would train the eye to skip the one
+                // place that matters
+                let failing = vm.failingSources
+                if failing > 0 {
+                    FailingBanner(failing)
+                }
+
+                // resume before news: five of six readers went straight for
+                // this and stopped, and the one returning after a gap asked to
+                // be put back in the story rather than in front of a ledger
                 let continueReading = vm.continueReading
                 if !continueReading.isEmpty {
                     ContinueSection(vm, entries: continueReading)
                 }
 
-                if let stats = vm.stats, !stats.isEmpty {
-                    StatStrip(stats)
-                        .padding(.horizontal, dimensions.screenMargin)
+                // the section the screen was missing, and the reason every
+                // comparable app lands on one: open, see what arrived, tap it
+                let updates = vm.updates
+                if !updates.isEmpty {
+                    UpdatesSection(updates)
                 }
 
+                // demoted from a two-column grid to a rail: it is a log of your
+                // own actions, so it earns a shelf and not a screenful
                 let added = vm.recentlyAdded
                 if !added.isEmpty {
                     AddedSection(entries: added)
                 }
-
-                let sessions = vm.sessions
-                if !sessions.isEmpty {
-                    SessionsSection(sessions)
-                        .padding(.horizontal, dimensions.screenMargin)
-                }
             }
             .padding(.vertical, dimensions.spacing.space16)
         }
+        // the rails inside already scroll and show their own edges, so the outer
+        // bar is a second scrollbar describing a different axis of the same view
+        .scrollIndicators(.hidden)
     }
 
     func ContinueSection(_ vm: HomeViewModel, entries: [HomeViewModel.ContinueEntry]) -> some View {
         VStack(alignment: .leading, spacing: dimensions.spacing.space12) {
-            SectionHeader("Continue Reading")
-                .padding(.horizontal, dimensions.screenMargin)
+            SectionHeader(title: "Continue Reading") {
+                Action("chart.bar.xaxis", label: "Reading Activity") { showingStats = true }
+            }
+            .padding(.horizontal, dimensions.screenMargin)
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: dimensions.spacing.space12) {
@@ -220,99 +237,132 @@ private extension HomeScreen {
         }
     }
 
-    func RangePicker(_ vm: HomeViewModel) -> some View {
-        // read here, not inside the binding's getter: a getter runs when the
-        // value is asked for rather than during body evaluation, so the read
-        // never registers as a dependency and the tick would stop moving
-        let range = vm.range
-
-        return Picker("Range", selection: Binding(get: { range }, set: { vm.select($0) })) {
-            ForEach(StatRange.allCases) { option in
-                Text(option.label).tag(option)
-            }
-        }
-        .pickerStyle(.inline)
-    }
 
     // tiles only - the numbers' rows live one tap deeper, and the whole strip
     // is that tap. record-framed: a run is a fact, never a countdown. the window
     // is named once, in the subtitle, rather than on every label
-    func StatStrip(_ stats: HomeViewModel.StatTiles) -> some View {
-        HStack(spacing: dimensions.spacing.space12) {
-            StatTile(value: Text("\(stats.chaptersInRange)"), label: "Chapters")
-            StatTile(value: Text(ReadingFormat.duration(stats.secondsInRange)), label: "Time Read")
-            StatTile(value: Text("^[\(stats.currentRun) day](inflect: true)"), label: "Current Run")
-        }
-        .contentShape(.rect)
-        .tappable { showingStats = true }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("Reading activity. Opens details.")
-    }
-
-    func StatTile(value: Text, label: String) -> some View {
-        VStack(spacing: dimensions.spacing.space4) {
-            value
-                .font(.title3)
-                .fontWeight(.bold)
-
-            Text(label)
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, dimensions.spacing.space12)
-        .background(.primary.opacity(0.05), in: .rect(cornerRadius: dimensions.radius.radius12))
-    }
-
-    // four covers, large: Library shows many small, so scale is what tells the
-    // two apart - and the date under each is what Home adds that Library cannot
-    func AddedSection(entries: [HomeViewModel.AddedEntry]) -> some View {
+    func UpdatesSection(_ updates: [HomeViewModel.UpdateEntry]) -> some View {
         VStack(alignment: .leading, spacing: dimensions.spacing.space12) {
-            SectionHeader("Recently Added")
+            SectionHeader(title: "New Chapters") {
+                Action("list.bullet", label: "All Updates") { showingUpdates = true }
+            }
 
-            LazyVGrid(
-                columns: Array(
-                    repeating: GridItem(.flexible(), spacing: dimensions.screenMargin),
-                    count: Layout.addedColumns
-                ),
-                alignment: .leading,
-                spacing: dimensions.spacing.space24
-            ) {
-                ForEach(entries.prefix(Layout.addedColumns * Layout.addedRows)) { entry in
-                    NavigationLink(value: SeriesEntry.library(entry.id)) {
-                        AddedCard(
-                            title: entry.title,
-                            cover: entry.cover,
-                            unreadCount: entry.unreadCount,
-                            addedDate: entry.addedDate,
+            // grouped so the surfaces blend into each other rather than reading
+            // as four unrelated panes
+            GlassEffectContainer(spacing: dimensions.spacing.space12) {
+                VStack(spacing: dimensions.spacing.space12) {
+                    ForEach(updates) { entry in
+                        UpdateCard(
+                        title: entry.title,
+                        cover: entry.cover,
+                            count: entry.count,
+                            latest: entry.latest,
                             obscured: obscured && entry.adult
                         )
                         .contentShape(.rect)
+                        // opens the chapter, not a screen about the chapter -
+                        // the same resolver Continue Reading taps through
+                        .tappable {
+                            reading = ReadingTarget(seriesId: entry.id, chapterId: entry.target.chapterId)
+                        }
+                        .contextMenu {
+                            Button {
+                                path.append(SeriesEntry.library(entry.id))
+                            } label: {
+                                Label("View Series", systemImage: "book")
+                            }
+                        }
                     }
-                    .buttonStyle(.plain)
                 }
             }
         }
         .padding(.horizontal, dimensions.screenMargin)
     }
 
-    // the sittings behind the tiles, over the same window. five of them, with
-    // the rest of the record one tap deeper
-    func SessionsSection(_ sessions: [ReadingSessionEntry]) -> some View {
-        VStack(alignment: .leading, spacing: dimensions.spacing.space12) {
-            SectionHeader(title: "Recent Sessions") {
-                Text("All")
+    // "couldn't update" names what happened and to what. a bare status word
+    // carries no subject, and both a new reader and one returning after a gap
+    // read it as their own fault
+    func FailingBanner(_ count: Int) -> some View {
+        HStack(spacing: dimensions.spacing.space12) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.subheadline)
+                .foregroundStyle(Palette.warningText)
+
+            VStack(alignment: .leading, spacing: dimensions.spacing.space2) {
+                Text("^[\(count) source](inflect: true) couldn't update")
                     .font(.subheadline)
-                    .foregroundStyle(.brand)
-                    .contentShape(.rect)
-                    .tappable { showingStats = true }
+                    .fontWeight(.medium)
+
+                Text("Series on them are missing new chapters")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
-            ForEach(sessions) { session in
-                SessionRow(session: session)
+            Spacer(minLength: 0)
+
+            Image(systemName: "chevron.forward")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding(dimensions.spacing.space12)
+        .frame(minHeight: dimensions.touchTarget)
+        .background(Palette.warningText.opacity(Layout.bannerFill), in: .rect(cornerRadius: dimensions.radius.radius12))
+        .padding(.horizontal, dimensions.screenMargin)
+        .contentShape(.rect)
+        .tappable { showingFailures = true }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("^[\(count) source](inflect: true) couldn't update")
+        .accessibilityHint("Opens the list of sources needing attention")
+    }
+
+    // a glass circle, not a bare chevron. the arrow that used to carry this was
+    // a 13pt glyph parked at the far screen edge from the words it belonged to,
+    // with nothing behind it, and nobody found it - what makes this readable as
+    // a control is the surface, which is the same thing that makes the chart's
+    // stepper readable. the glyph says which of the two it is
+    func Action(_ glyph: String, label: String, action: @escaping () -> Void) -> some View {
+        Image(systemName: glyph)
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
+            .frame(width: dimensions.touchTarget, height: dimensions.touchTarget)
+            .glassEffect(.regular.interactive(), in: .circle)
+            .contentShape(.circle)
+            .tappable(action: action)
+            .accessibilityLabel(label)
+    }
+
+    // a rail rather than the two-column grid it was: this is a log of what you
+    // added, which is the Library's default sort with a caption on it, and a
+    // grid of it was the largest block on the screen for the least news
+    func AddedSection(entries: [HomeViewModel.AddedEntry]) -> some View {
+        VStack(alignment: .leading, spacing: dimensions.spacing.space12) {
+            SectionHeader("Recently Added")
+                .padding(.horizontal, dimensions.screenMargin)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(alignment: .top, spacing: dimensions.spacing.space12) {
+                    ForEach(entries) { entry in
+                        NavigationLink(value: SeriesEntry.library(entry.id)) {
+                            AddedCard(
+                                title: entry.title,
+                                cover: entry.cover,
+                                unreadCount: entry.unreadCount,
+                                addedDate: entry.addedDate,
+                                obscured: obscured && entry.adult
+                            )
+                            .frame(width: Layout.addedWidth)
+                            .contentShape(.rect)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .scrollTargetLayout()
+                .padding(.horizontal, dimensions.screenMargin)
             }
+            .scrollTargetBehavior(.viewAligned)
         }
     }
+
 }
 
 // MARK: - States
@@ -373,18 +423,11 @@ private extension HomeScreen {
                 }
 
                 VStack(alignment: .leading, spacing: dimensions.spacing.space12) {
-                    SectionHeader("Recently Added")
+                    SectionHeader("New Chapters")
 
-                    LazyVGrid(
-                        columns: Array(
-                            repeating: GridItem(.flexible(), spacing: dimensions.screenMargin),
-                            count: Layout.addedColumns
-                        ),
-                        alignment: .leading,
-                        spacing: dimensions.spacing.space24
-                    ) {
-                        ForEach(0..<(Layout.addedColumns * Layout.addedRows), id: \.self) { _ in
-                            AddedCard(title: nil, cover: nil, unreadCount: 0, addedDate: nil)
+                    VStack(spacing: dimensions.spacing.space16) {
+                        ForEach(0..<Layout.skeletonUpdates, id: \.self) { _ in
+                            UpdateCard(title: "", cover: nil, count: 0, latest: .distantPast)
                         }
                     }
                 }
@@ -413,8 +456,6 @@ private enum Mock {
         "Regressor's Instruction Manual",
         "Tower of Ash"
     ]
-
-    static let stats = HomeViewModel.StatTiles(chaptersInRange: 23, secondsInRange: 9_240, currentRun: 12)
 
     static func title(_ index: Int) -> String {
         titles[index % titles.count]
@@ -462,20 +503,19 @@ private enum Mock {
         }
     }
 
-    static func sessions(_ count: Int) -> [ReadingSessionEntry] {
+    static func updates(_ count: Int) -> [HomeViewModel.UpdateEntry] {
         (0..<count).map { index in
-            let started: Date = .now.addingTimeInterval(TimeInterval(-index * 7_200))
-            let ended: Date = started.addingTimeInterval(TimeInterval(900 + index * 300))
-            return ReadingSessionEntry(
-                id: Int64(index + 1),
-                seriesId: Int64(index + 1),
-                seriesTitle: title(index + 1),
-                pagesRead: 18 + index * 4,
-                chaptersRead: index.isMultiple(of: 2) ? 1 : 0,
-                startedDate: started,
-                endedDate: ended,
-                localDayKey: started.localDayKey,
-                alive: index != 3
+            let id = SeriesRecord.ID(rawValue: Int64(200 + index))
+            return HomeViewModel.UpdateEntry(
+                id: id,
+                title: title(index + 1),
+                cover: nil,
+                // a spread rather than a constant: one new chapter and twelve
+                // are different news, and the row has to hold both
+                count: [3, 1, 12, 2, 7][index % 5],
+                latest: .now.addingTimeInterval(TimeInterval(-index * 5_400)),
+                target: target(index),
+                adult: index.isMultiple(of: 4)
             )
         }
     }
@@ -483,14 +523,14 @@ private enum Mock {
     static func snapshot(
         continuing count: Int = 4,
         added addedCount: Int = 8,
-        sessions sessionCount: Int = 5,
-        stats tiles: HomeViewModel.StatTiles = stats
+        updates updateCount: Int = 5,
+        failing: Int = 0
     ) -> HomeViewModel.Snapshot {
         HomeViewModel.Snapshot(
             continueReading: continuing(count),
+            updates: updates(updateCount),
             recentlyAdded: added(addedCount),
-            sessions: sessions(sessionCount),
-            stats: tiles
+            failingSources: failing
         )
     }
 }
@@ -499,31 +539,16 @@ private enum Mock {
     HomeScreen(vm: .preview(snapshot: Mock.snapshot()))
 }
 
-// the whole strip hides when every number is zero - absence is the signal, and
-// a fresh library should not be greeted with a row of noughts
-#Preview("No Activity Yet") {
-    HomeScreen(
-        vm: .preview(
-            snapshot: Mock.snapshot(sessions: 0, stats: .init(chaptersInRange: 0, secondsInRange: 0, currentRun: 0))
-        )
-    )
+// nothing new anywhere: the updates block goes rather than rendering a header
+// over an empty list, and Continue Reading carries the screen
+#Preview("Nothing Waiting") {
+    HomeScreen(vm: .preview(snapshot: Mock.snapshot(updates: 0)))
 }
 
-#Preview("All Time") {
-    HomeScreen(
-        vm: .preview(
-            snapshot: Mock.snapshot(stats: .init(chaptersInRange: 1_284, secondsInRange: 512_000, currentRun: 3)),
-            range: .all
-        )
-    )
-}
-
-#Preview("Continue Only") {
-    HomeScreen(vm: .preview(snapshot: Mock.snapshot(continuing: 2, added: 0)))
-}
-
-#Preview("Empty") {
-    HomeScreen(vm: .preview(snapshot: Mock.snapshot(continuing: 0, added: 0, sessions: 0)))
+// absent entirely when nothing is failing, which is what lets it be loud when
+// it is not: a notice that is always on screen is one nobody reads
+#Preview("Sources Failing") {
+    HomeScreen(vm: .preview(snapshot: Mock.snapshot(failing: 3)))
 }
 
 #Preview("Failed") {

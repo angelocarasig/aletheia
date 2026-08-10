@@ -66,7 +66,11 @@ enum Preferences {
         // resurrects it, so the value is a date rather than a bare set
         static let homeDismissed = "home.dismissed"
 
-        static let homeStatRange = "home.statRange"
+        // the reading-activity chart remembers how you last looked at it -
+        // flipping back to a default you did not choose, every visit, is the
+        // kind of small rudeness that makes a screen feel like it is not yours
+        static let statsMetric = "stats.metric"
+        static let statsScope = "stats.scope"
 
         // what a library refresh is allowed to skip. all default off: the walk
         // shipped checking everything, and a filter that silently turns itself
@@ -116,9 +120,10 @@ enum Preferences {
         static let librarySort = LibrarySort.added
         static let librarySortAscending = false
 
-        // the week is what a landing strip is for - a glance at what is happening
-        // now, with the longer views a tap away on the same control
-        static let homeStatRange = StatRange.week
+        // chapters, not pages: it is the unit a reader counts in when they talk
+        // about what they read, and the one the rest of the app already uses
+        static let statsMetric = ReadingMetric.chapters
+        static let statsScope = ReadingChart.Scope.week
 
         static let refreshSkipCompleted = false
         static let refreshSkipUnread = false

@@ -14,7 +14,6 @@ import Observation
 @Observable
 final class ActivityViewModel {
     private let database: DatabaseClient
-    private let registry: Compositor.Registry
 
     private(set) var snapshot: Snapshot?
     private(set) var failure: Failure?
@@ -33,9 +32,8 @@ final class ActivityViewModel {
         var id: String { rawValue }
     }
 
-    init(database: DatabaseClient, registry: Compositor.Registry) {
+    init(database: DatabaseClient) {
         self.database = database
-        self.registry = registry
     }
 
     func observe() {
@@ -43,14 +41,10 @@ final class ActivityViewModel {
         let asOf = Date.now
         let windowKey = asOf.addingTimeInterval(-Rule.window).localDayKey
 
-        let adultSlugs = UserDefaults.standard.bool(forKey: Preferences.Key.bypassAdultSources)
-            ? []
-            : registry.sources.filter(\.descriptor.adultOnly).map(\.descriptor.slug)
-
         stream = Task { [weak self, database] in
             let observation = ValueObservation
                 .tracking { db in
-                    try Self.stored(windowKey: windowKey, adultSlugs: adultSlugs, in: db)
+                    try Self.stored(windowKey: windowKey, in: db)
                 }
                 .removeDuplicates()
 
@@ -112,16 +106,13 @@ final class ActivityViewModel {
     // completions come from events (authoritative, and they survive a crashed
     // sitting), pages and time come from sessions. a union of keys keeps a
     // page-only sitting and a crash-orphaned completion both visible
+    // no adult gate here, unlike Home and Library: this is the record of what you
+    // read, and a feed that silently drops days is a feed that cannot be trusted
+    // about the days it does show
     nonisolated private static func stored(
         windowKey: Int,
-        adultSlugs: [String],
         in db: Database
     ) throws -> Snapshot {
-        let excluded = try excludedSeries(adultSlugs: adultSlugs, in: db)
-        let exclusion = excluded.isEmpty
-            ? ""
-            : "AND seriesId NOT IN (\(excluded.map(String.init).joined(separator: ", ")))"
-
         struct EventGroup: Decodable, FetchableRecord {
             let localDayKey: Int
             let seriesId: Int64
@@ -142,7 +133,6 @@ final class ActivityViewModel {
                 FROM \(ReadingEventRecord.databaseTableName)
                 WHERE \(ReadingEventRecord.Columns.kind.name) = ?
                   AND \(ReadingEventRecord.Columns.localDayKey.name) >= ?
-                  \(exclusion)
                 GROUP BY localDayKey, seriesId
                 """,
             arguments: [ReadingEventRecord.Kind.chapterCompleted.rawValue, windowKey]
@@ -172,7 +162,6 @@ final class ActivityViewModel {
                     MAX(\(ReadingSessionRecord.Columns.endedDate.name)) AS latestDate
                 FROM \(ReadingSessionRecord.databaseTableName)
                 WHERE \(ReadingSessionRecord.Columns.localDayKey.name) >= ?
-                  \(exclusion)
                 GROUP BY localDayKey, seriesId
                 """,
             arguments: [windowKey]
@@ -283,21 +272,6 @@ final class ActivityViewModel {
         ))
     }
 
-    nonisolated private static func excludedSeries(
-        adultSlugs: [String],
-        in db: Database
-    ) throws -> Set<Int64> {
-        guard !adultSlugs.isEmpty else { return [] }
-
-        let marks = adultSlugs.map { _ in "?" }.joined(separator: ", ")
-        let sql = """
-            SELECT DISTINCT o.\(OriginRecord.Columns.seriesId.name)
-            FROM \(OriginRecord.databaseTableName) o
-            JOIN \(SourceRecord.databaseTableName) s ON s.id = o.\(OriginRecord.Columns.sourceId.name)
-            WHERE s.\(SourceRecord.Columns.slug.name) IN (\(marks))
-            """
-        return Set(try Int64.fetchAll(db, sql: sql, arguments: StatementArguments(adultSlugs)))
-    }
 }
 
 // MARK: - Snapshot

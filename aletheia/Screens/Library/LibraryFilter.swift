@@ -44,12 +44,15 @@ struct LibraryFilter: Equatable, Codable {
             + sources.count
     }
 
-    func matches(_ entry: LibraryViewModel.Entry) -> Bool {
+    // asOf rather than a date read in here: one recency option compares against
+    // now, and a predicate that reads the clock itself answers differently for
+    // each entry in the same pass
+    func matches(_ entry: LibraryViewModel.Entry, asOf: Date) -> Bool {
         if !statuses.isEmpty, !statuses.contains(entry.status) {
             return false
         }
 
-        if !readStates.isEmpty, !readStates.contains(where: { $0.matches(entry) }) {
+        if !readStates.isEmpty, !readStates.contains(where: { $0.matches(entry, asOf: asOf) }) {
             return false
         }
 
@@ -100,25 +103,41 @@ enum ReadState: String, CaseIterable, Codable {
     case unread
     case inProgress
     case finished
+    case stale
+
+    // long enough that a slow scanlation group is not caught by it, and not a
+    // preference: it is read at match time, so moving it rewrites nothing
+    private enum Rule {
+        static let stale: TimeInterval = 60 * 24 * 60 * 60
+    }
 
     var label: String {
         switch self {
         case .unread: "Unread"
         case .inProgress: "In Progress"
         case .finished: "Caught Up"
+        case .stale: "Not Read Lately"
         }
     }
 
-    func matches(_ entry: LibraryViewModel.Entry) -> Bool {
+    func matches(_ entry: LibraryViewModel.Entry, asOf: Date) -> Bool {
         switch self {
         case .unread: entry.lastReadDate == .distantPast
         case .inProgress: entry.lastReadDate > .distantPast && entry.unreadCount > 0
         case .finished: entry.unreadCount == 0
+        // only against a series still claiming Reading: a reader who said Set
+        // Aside has already answered, and saying it back to them would be the
+        // app disputing their own word. derived on read, so nothing is written
+        // and being wrong costs a row in a list rather than a status
+        case .stale:
+            entry.status == .reading
+                && entry.lastReadDate > .distantPast
+                && asOf.timeIntervalSince(entry.lastReadDate) > Rule.stale
         }
     }
 
     static var ordered: [ReadState] {
-        [.unread, .inProgress, .finished]
+        [.unread, .inProgress, .finished, .stale]
     }
 }
 

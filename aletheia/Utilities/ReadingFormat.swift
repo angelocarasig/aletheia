@@ -12,7 +12,13 @@ import Foundation
 // cannot be allowed to differ by which screen you reached them from
 enum ReadingFormat {
     static func duration(_ seconds: Int) -> String {
-        Duration.seconds(seconds).formatted(
+        // a sitting shorter than a minute is not zero, and rendering it as "0m"
+        // beside "49 pages" reads as broken tracking rather than a rounding
+        // floor - every reader shown it concluded the other numbers were
+        // suspect too, which is a steep price for the truncating unit
+        guard seconds >= 60 else { return seconds > 0 ? "<1m" : "0m" }
+
+        return Duration.seconds(seconds).formatted(
             .units(allowed: [.hours, .minutes], width: .narrow, maximumUnitCount: 2)
         )
     }

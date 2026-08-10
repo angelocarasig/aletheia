@@ -15,6 +15,9 @@ struct LibraryScreen: View {
 
     @AppStorage(Preferences.Key.gridColumns) private var gridColumns = Preferences.Default.gridColumns
     @AppStorage(Preferences.Key.blurAdultLibrary) private var blurAdult = Preferences.Default.blurAdultLibrary
+    // read only to notice it changing: the gate itself is resolved inside load(),
+    // and the ten-tap that flips it happens on another tab
+    @AppStorage(Preferences.Key.bypassAdultSources) private var bypassAdult = Preferences.Default.bypassAdultSources
     @State private var vm: LibraryViewModel?
     @State private var showingCollectionForm = false
     @State private var showingSort = false
@@ -188,6 +191,11 @@ struct LibraryScreen: View {
             // when the next keystroke lands - no debounce clock to keep
             .task(id: vm?.searchText) {
                 await vm?.search()
+            }
+            // onChange rather than task(id:), which would also fire on every
+            // return to the tab and reload a grid that is already right
+            .onChange(of: bypassAdult) {
+                Task { await vm?.load() }
             }
         }
     }

@@ -9,8 +9,13 @@ import SwiftUI
 import Tagged
 
 // a sitting, told the same way wherever it appears
+// the destination is the caller's to declare, not a value pushed at the stack:
+// this row appears on screens presented with navigationDestination(isPresented:),
+// where a value push lands UNDER the screen doing the pushing and only surfaces
+// once it is popped
 struct SessionRow: View {
     let session: ReadingSessionEntry
+    let open: (SeriesEntry) -> Void
 
     @Environment(\.dimensions) private var dimensions
 
@@ -21,10 +26,9 @@ struct SessionRow: View {
     var body: some View {
         // a dead snapshot still names what happened; it just cannot go anywhere
         if session.alive {
-            NavigationLink(value: SeriesEntry.library(SeriesRecord.ID(rawValue: session.seriesId))) {
-                Row
-            }
-            .buttonStyle(.plain)
+            Row
+                .contentShape(.rect)
+                .tappable { open(.library(SeriesRecord.ID(rawValue: session.seriesId))) }
         } else {
             Row
         }
@@ -46,8 +50,13 @@ struct SessionRow: View {
             .frame(maxWidth: .infinity, alignment: .leading)
 
             VStack(alignment: .trailing, spacing: dimensions.spacing.space2) {
+                // always rendered, including under a minute. omitting it left
+                // some rows one line and some two, which broke the baseline the
+                // clock column is scanned down - and a blank read as missing
+                // data rather than as a short sitting
                 Text(ReadingFormat.duration(session.seconds))
                     .font(.subheadline)
+                    .foregroundStyle(session.seconds >= 60 ? .primary : .secondary)
 
                 Text(session.startedDate.formatted(date: .omitted, time: .shortened))
                     .font(.caption2)

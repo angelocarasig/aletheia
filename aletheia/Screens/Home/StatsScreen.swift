@@ -16,10 +16,47 @@ struct StatsScreen: View {
     @Environment(\.dimensions) private var dimensions
 
     @State private var vm: StatsViewModel?
+    // both remembered: a screen that resets how you were looking at it every
+    // time you open it is one you have to re-aim on every visit
+    @AppStorage(Preferences.Key.statsScope) private var scope = Preferences.Default.statsScope
+    @AppStorage(Preferences.Key.statsMetric) private var metric = Preferences.Default.statsMetric
+
+    // the period the chart is showing. the grid dims everything outside it, so
+    // moving the stepper moves the emphasis - one selection, two resolutions
+    @State private var anchor: Date = .now
+    // the bar the chart has picked out, normalised to that bucket's start. owned
+    // here rather than in the chart because the session list is what it scopes
+    @State private var selected: Date?
+    // the Details push has to be declared here: this screen is itself presented
+    // with navigationDestination(isPresented:), so a value push from inside it
+    // lands beneath it
+    @State private var route: SeriesEntry?
+    @State private var expanded = false
+
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    // built on appearance in the app; a preview hands one in already holding a
+    // snapshot, which is what keeps the canvas off a database
+    init(vm: StatsViewModel? = nil) {
+        _vm = State(initialValue: vm)
+    }
 
     private enum Layout {
         static let heatWeeks = 16
         static let fillOpacity = 0.05
+        static let collapsedSessions = 5
+
+        static var heatStart: Date {
+            Calendar.current.date(byAdding: .weekOfYear, value: -(heatWeeks - 1), to: .now) ?? .now
+        }
+    }
+
+    // what the picker is currently showing, expressed as dates the grid can
+    // outline. today, or the calendar week today falls in
+    private var highlight: DateInterval? {
+        let calendar = Calendar.current
+        return calendar.dateInterval(of: scope == .day ? .day : .weekOfYear, for: anchor)
     }
 
     private var phase: LoadPhase {
@@ -68,14 +105,12 @@ struct StatsScreen: View {
             }
         }
         .animation(.settle, value: phase)
+        .navigationDestination(item: $route) { DetailsScreen(entry: $0) }
         .navigationTitle("Reading Activity")
         .navigationBarTitleDisplayMode(.inline)
         .task {
             guard vm == nil else { return }
-            let model = StatsViewModel(
-                database: compositor.database,
-                registry: compositor.registry
-            )
+            let model = StatsViewModel(database: compositor.database)
             vm = model
             model.observe()
         }
@@ -88,35 +123,154 @@ private extension StatsScreen {
     func Content(_ snapshot: StatsViewModel.Snapshot) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: dimensions.spacing.space24) {
-                Totals(snapshot)
+                // ONE block, not two charts. the grid and the bars were the
+                // same data at two spans, a screen apart, in the same blue -
+                // which read as two libraries rather than one system. now the
+                // picker drives both: the bars show the span, and the grid
+                // outlines the days those bars are made of, so a reader can see
+                // where this week sits inside four months without being told.
+                //
+                // no section header either: the readout inside the chart is the
+                // title, and a header above it was the second one for one thing
+                VStack(alignment: .leading, spacing: dimensions.spacing.space16) {
+                    // the block opens on a caption and a grid, so the readout
+                    // inside the chart arrives too late to title anything. a
+                    // header rather than moving the number above the map
+                    SectionHeader("Last 16 Weeks")
 
-                VStack(alignment: .leading, spacing: dimensions.spacing.space12) {
-                    SectionHeader("Reading Days")
-                    ReadingHeatmap(heat: snapshot.heat, weeks: Layout.heatWeeks, asOf: .now)
+                    // grid first: it is the map, and the bars below are the
+                    // detail of whichever part of it the stepper has picked out
+                    ReadingHeatmap(
+                        heat: snapshot.heat(for: metric),
+                        weeks: Layout.heatWeeks,
+                        asOf: .now,
+                        highlight: highlight,
+                        metric: metric,
+                        // tapping a day moves the chart to the period that day
+                        // falls in, at whatever granularity is currently
+                        // selected - the picker says what a tap means, so a tap
+                        // must not silently change the picker
+                        onSelect: { anchor = $0 }
+                    )
+
                     Runs(snapshot)
+
+                    ReadingChart(
+                        sessions: snapshot.recent,
+                        scope: $scope,
+                        metric: $metric,
+                        anchor: $anchor,
+                        asOf: .now,
+                        // the same span the grid draws, so the stepper can reach
+                        // every cell above it and nothing beyond
+                        earliest: Layout.heatStart,
+                        selected: $selected
+                    )
                 }
 
-                if !snapshot.sessions.isEmpty {
-                    Sessions(snapshot.sessions)
+                // a grid tap moves the period, which makes any bar selection
+                // stale - and it writes anchor directly rather than through the
+                // chart's stepper, so the chart never sees it
+                .onChange(of: anchor) { selected = nil }
+
+                // the two lists occupy one slot and swap through each other, so
+                // picking a bar reads as the list changing what it is about
+                // rather than as the screen reflowing under the finger
+                Group {
+                    if let bucket = selectedBucket(snapshot) {
+                        BucketSessions(bucket, sessions: snapshot.recent)
+                            .transition(.replace(reduceMotion: reduceMotion))
+                    } else if !snapshot.sessions.isEmpty {
+                        Sessions(snapshot.sessions)
+                            .transition(.replace(reduceMotion: reduceMotion))
+                    }
+                }
+                .animation(.settle, value: selected)
+
+                // a footer now, and unconditional. it was pulled from the top
+                // because a fresh install showed the same number under "All
+                // Time" and "This Week" and everyone read that as a bug - but
+                // the totals are the one thing here that does not grade you,
+                // and the reader coming back after a gap named them as the only
+                // part they were glad to see. distance solves the collision;
+                // deleting them solved the wrong problem
+                VStack(alignment: .leading, spacing: dimensions.spacing.space12) {
+                    SectionHeader("All Time")
+                    Totals(snapshot)
                 }
             }
             .padding(.horizontal, dimensions.screenMargin)
             .padding(.vertical, dimensions.spacing.space16)
         }
+        // content was passing under the translucent nav and tab bars and staying
+        // legible-ish through them, which is worse than either hiding or showing
+        // it: a section header parked under the bar is unreadable at partial
+        // opacity with no cue that it is scrolled-off rather than missing
+        .scrollIndicators(.hidden)
+        .scrollEdgeEffectStyle(.hard, for: .top)
+        .scrollEdgeEffectStyle(.soft, for: .bottom)
     }
 
+    // three across is the first thing on this screen to break as text grows -
+    // "Time Read" alone overflows a third of the width well before the largest
+    // settings - so past the accessibility sizes the row becomes a column and
+    // each tile takes the full width
+    @ViewBuilder
     func Totals(_ snapshot: StatsViewModel.Snapshot) -> some View {
-        HStack(spacing: dimensions.spacing.space12) {
-            Tile(value: Text("\(snapshot.chaptersAllTime)"), label: "Chapters")
-            Tile(value: Text(ReadingFormat.duration(snapshot.secondsAllTime)), label: "Time Read")
-            Tile(value: Text("\(snapshot.pagesAllTime)"), label: "Pages")
+        let tiles = [
+            (Text("\(snapshot.chaptersAllTime)"), "Chapters"),
+            (Text(ReadingFormat.duration(snapshot.secondsAllTime)), "Time Read"),
+            (Text("\(snapshot.pagesAllTime)"), "Pages")
+        ]
+
+        if dynamicTypeSize >= .accessibility1 {
+            VStack(spacing: dimensions.spacing.space12) {
+                ForEach(Array(tiles.enumerated()), id: \.offset) { _, tile in
+                    Tile(value: tile.0, label: tile.1)
+                }
+            }
+        } else {
+            HStack(spacing: dimensions.spacing.space12) {
+                ForEach(Array(tiles.enumerated()), id: \.offset) { _, tile in
+                    Tile(value: tile.0, label: tile.1)
+                }
+            }
         }
     }
 
+    // a caption on the grid rather than two tiles under it: a run is the grid's
+    // own summary, not a third statistic, and as boxed tiles it read as a
+    // stranded second group with the legend wedged between.
+    //
+    // the second number is a TOTAL, not a personal best. "best 18 days" beside a
+    // current run of 1 is a scoreboard - it hands a returning reader a figure
+    // they have already fallen short of, which is the loss mechanic
+    // home-screen.md rules out and the one thing a reader coming back after a
+    // gap said would stop them opening the app. a total only ever goes up, so
+    // there is nothing to fail at, and it summarises the same grid the run does
+    // on day one both halves said "1 day" and the caption read as one fact
+    // stammered twice. the total is the honest half - it only ever goes up - so
+    // the run joins it only once the two can differ. scoped to the grid above
+    // rather than to all time, so it states what the reader can actually count
+    @ViewBuilder
     func Runs(_ snapshot: StatsViewModel.Snapshot) -> some View {
-        HStack(spacing: dimensions.spacing.space12) {
-            Tile(value: Text("^[\(snapshot.currentRun) day](inflect: true)"), label: "Current Run")
-            Tile(value: Text("^[\(snapshot.longestRun) day](inflect: true)"), label: "Best Run")
+        if snapshot.currentRun > 1, snapshot.currentRun < snapshot.heat.count {
+            HStack(spacing: dimensions.spacing.space4) {
+                Text("^[\(snapshot.currentRun) day](inflect: true) running")
+                    .fontWeight(.medium)
+                    .foregroundStyle(.secondary)
+
+                Text(verbatim: "·")
+                    .foregroundStyle(.muted)
+
+                Text("read on ^[\(snapshot.heat.count) day](inflect: true)")
+                    .foregroundStyle(.muted)
+            }
+            .font(.caption)
+        } else {
+            Text("read on ^[\(snapshot.heat.count) day](inflect: true)")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 
@@ -137,11 +291,85 @@ private extension StatsScreen {
         .background(.primary.opacity(Layout.fillOpacity), in: .rect(cornerRadius: dimensions.radius.radius12))
     }
 
-    func Sessions(_ sessions: [ReadingSessionEntry]) -> some View {
-        VStack(alignment: .leading, spacing: dimensions.spacing.space12) {
-            SectionHeader("Sessions")
+    var granularity: Calendar.Component { scope == .day ? .hour : .day }
 
-            let byDay = Dictionary(grouping: sessions, by: \.localDayKey)
+    // the bar the chart has picked, resolved against the same sittings the bars
+    // were built from. recomputing the spine here rather than passing the bucket
+    // up keeps the chart's selection a plain date
+    func selectedBucket(_ snapshot: StatsViewModel.Snapshot) -> ReadingBuckets.Bucket? {
+        guard let selected else { return nil }
+
+        let buckets = scope == .day
+            ? ReadingBuckets.hourly(snapshot.recent, on: anchor)
+            : ReadingBuckets.daily(snapshot.recent, weekOf: anchor)
+
+        return buckets.first { $0.start == selected }
+    }
+
+    // Recent Reading, re-scoped to one bar. the rows are whole sittings with
+    // their own values, so a sitting that straddled the bucket reads larger than
+    // the caption above it - the caption answers what the bar said, the rows
+    // answer what happened, and the clock time on the row is the difference
+    func BucketSessions(_ bucket: ReadingBuckets.Bucket, sessions: [ReadingSessionEntry]) -> some View {
+        let rows = ReadingBuckets.sittings(sessions, in: bucket, of: granularity)
+
+        return VStack(alignment: .leading, spacing: dimensions.spacing.space12) {
+            // moving from one bar to the next keeps this block on screen, so the
+            // words have to carry the change themselves - without it the header
+            // is the one part of the swap that jumps
+            VStack(alignment: .leading, spacing: dimensions.spacing.space4) {
+                SectionHeader(bucketTitle(bucket))
+                    .contentTransition(.opacity)
+
+                Amount(bucket.value(metric))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .contentTransition(.numericText())
+            }
+
+            if rows.isEmpty {
+                Text(scope == .day ? "No reading in this hour" : "No reading on this day")
+                    .font(.subheadline)
+                    .foregroundStyle(.muted)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.vertical, dimensions.spacing.space16)
+            } else {
+                ForEach(rows) { session in
+                    SessionRow(session: session) { route = $0 }
+                }
+            }
+        }
+    }
+
+    // the date is carried, not just the hour: the bar's own annotation says only
+    // "13:00" and the stepper naming the day has scrolled off by the time this
+    // list is being read
+    func bucketTitle(_ bucket: ReadingBuckets.Bucket) -> String {
+        switch scope {
+        case .day: bucket.start.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated).hour())
+        case .week: bucket.start.formatted(.dateTime.weekday(.wide).day().month(.abbreviated))
+        }
+    }
+
+    // branches, each owning its literal - a String here renders the inflection
+    // markup verbatim with no warning
+    @ViewBuilder
+    func Amount(_ count: Int) -> some View {
+        switch metric {
+        case .pages: Text("^[\(count) page](inflect: true)")
+        case .chapters: Text("^[\(count) chapter](inflect: true)")
+        }
+    }
+
+    // the cap counts rows, not days: five sittings deep is the same amount of
+    // screen whether they happened across one evening or five
+    func Sessions(_ sessions: [ReadingSessionEntry]) -> some View {
+        let visible = expanded ? sessions : Array(sessions.prefix(Layout.collapsedSessions))
+        let byDay = Dictionary(grouping: visible, by: \.localDayKey)
+
+        return VStack(alignment: .leading, spacing: dimensions.spacing.space12) {
+            SectionHeader("Recent Reading")
+
             ForEach(byDay.keys.sorted(by: >), id: \.self) { day in
                 VStack(alignment: .leading, spacing: dimensions.spacing.space8) {
                     Text(ReadingFormat.dayLabel(for: day))
@@ -150,11 +378,161 @@ private extension StatsScreen {
                         .foregroundStyle(.secondary)
 
                     ForEach(byDay[day] ?? []) { session in
-                        SessionRow(session: session)
+                        SessionRow(session: session) { route = $0 }
                     }
                 }
+            }
+
+            if sessions.count > Layout.collapsedSessions {
+                ExpandToggle(sessions.count)
             }
         }
     }
 
+    // the chapter list's control, same shape and same words - two lists on two
+    // screens that both open short should not expand differently
+    func ExpandToggle(_ count: Int) -> some View {
+        HStack(spacing: dimensions.spacing.space8) {
+            Image(systemName: expanded ? "chevron.up" : "chevron.down")
+                .contentTransition(.symbolEffect(.replace))
+
+            Text(expanded ? "Show Less" : "Show All \(count) Sessions")
+        }
+        .font(.subheadline)
+        .foregroundStyle(.brand)
+        .frame(maxWidth: .infinity)
+        .padding(dimensions.spacing.space16)
+        .background(Palette.brand.opacity(Layout.fillOpacity), in: .rect(cornerRadius: dimensions.radius.radius8))
+        .tappable {
+            withAnimation { expanded.toggle() }
+        }
+    }
+
 }
+
+// MARK: - Previews
+
+#if DEBUG
+private enum Mock {
+    static func heat(days: Int, over span: Int = 100) -> [Int: Int] {
+        var heat: [Int: Int] = [:]
+        let calendar = Calendar.current
+        var placed = 0
+        var offset = 0
+        while placed < days, offset < span {
+            if let date = calendar.date(byAdding: .day, value: -offset, to: .now) {
+                heat[date.localDayKey] = [1, 2, 3, 5, 9][placed % 5]
+                placed += 1
+            }
+            offset += offset.isMultiple(of: 3) ? 1 : 2
+        }
+        return heat
+    }
+
+    static func sessions(_ count: Int) -> [ReadingSessionEntry] {
+        (0..<count).map { index in
+            let started: Date = .now.addingTimeInterval(TimeInterval(-index * 7_200))
+            // the first one is deliberately seconds long - the case that used
+            // to render "0m" beside a full page count
+            let length = index == 0 ? 40 : 900 + index * 300
+            return ReadingSessionEntry(
+                id: Int64(index + 1),
+                seriesId: Int64(index + 1),
+                seriesTitle: ["Berserk", "Vagabond", "Blade of the Waning Moon"][index % 3],
+                pagesRead: 49 - index * 6,
+                chaptersRead: index.isMultiple(of: 2) ? 1 : 0,
+                startedDate: started,
+                endedDate: started.addingTimeInterval(TimeInterval(length)),
+                localDayKey: started.localDayKey,
+                alive: true
+            )
+        }
+    }
+
+    // the fortnight the chart buckets - separate from the Sessions fixture,
+    // which is a shorter list meant to be read rather than aggregated
+    static func recent(days: Int) -> [ReadingSessionEntry] {
+        var rows: [ReadingSessionEntry] = []
+        let calendar = Calendar.current
+
+        for day in 0..<max(days, 0) {
+            for slot in 0..<3 {
+                let hour = [8, 13, 20][slot]
+                guard let base = calendar.date(byAdding: .day, value: -day, to: .now),
+                      let start = calendar.date(bySettingHour: hour, minute: 5, second: 0, of: base)
+                else { continue }
+
+                rows.append(
+                    ReadingSessionEntry(
+                        id: Int64(1_000 + day * 10 + slot),
+                        seriesId: 1,
+                        seriesTitle: "Berserk",
+                        pagesRead: 22 + slot * 11 - day,
+                        chaptersRead: 1 + slot % 2,
+                        startedDate: start,
+                        endedDate: start.addingTimeInterval(TimeInterval(700 + slot * 800)),
+                        localDayKey: start.localDayKey,
+                        alive: true
+                    )
+                )
+            }
+        }
+        return rows
+    }
+
+    static func snapshot(
+        heatDays: Int = 34,
+        chapters: Int = 412,
+        seconds: Int = 187_000,
+        pages: Int = 9_640,
+        currentRun: Int = 6,
+        longestRun: Int = 18,
+        sessions sessionCount: Int = 4
+    ) -> StatsViewModel.Snapshot {
+        .init(
+            chaptersAllTime: chapters,
+            secondsAllTime: seconds,
+            pagesAllTime: pages,
+            currentRun: currentRun,
+            longestRun: longestRun,
+            heat: heat(days: heatDays),
+            heatChapters: heat(days: heatDays).mapValues { max(1, $0 / 18) },
+            heatStartKey: 0,
+            sessions: sessions(sessionCount),
+            recent: recent(days: min(heatDays, 13))
+        )
+    }
+}
+
+#Preview("Populated") {
+    NavigationStack {
+        StatsScreen(vm: .preview(snapshot: Mock.snapshot()))
+    }
+}
+
+// the sparse end: one reading day against a full grid of empties, which is what
+// a first-day install actually looks like
+#Preview("Sparse") {
+    NavigationStack {
+        StatsScreen(
+            vm: .preview(
+                snapshot: Mock.snapshot(
+                    heatDays: 1,
+                    chapters: 1,
+                    seconds: 40,
+                    pages: 49,
+                    currentRun: 1,
+                    longestRun: 1,
+                    sessions: 1
+                )
+            )
+        )
+    }
+}
+
+#Preview("Empty") {
+    NavigationStack {
+        StatsScreen(vm: .preview(snapshot: Mock.snapshot(heatDays: 0, chapters: 0, seconds: 0, pages: 0, currentRun: 0, longestRun: 0, sessions: 0)))
+    }
+}
+#endif

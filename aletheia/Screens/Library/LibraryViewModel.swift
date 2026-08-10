@@ -130,8 +130,9 @@ final class LibraryViewModel {
         }
 
         if filter.isActive {
+            let asOf = Date.now
             result = result.filter {
-                filter.matches($0)
+                filter.matches($0, asOf: asOf)
                     && filter.matches(
                         tagIDs: tagMembership[$0.id] ?? [],
                         sourceIDs: sourceMembership[$0.id] ?? []
@@ -148,10 +149,18 @@ final class LibraryViewModel {
         isLoading = true
         defer { isLoading = false }
 
+        // the exclusion rides in the query rather than trimming the result, so the
+        // filter vocabularies below are built from the same rows the grid draws -
+        // a hidden series must not put its tags and sources in the filter sheet
+        let adultSlugs = AdultGate.slugs(in: registry)
+
         do {
             let rows = try await database.reader.read { db in
-                try EntryView
+                let excluded = try AdultGate.excluded(slugs: adultSlugs, in: db)
+
+                return try EntryView
                     .filter(EntryView.Columns.inLibrary == true)
+                    .filter(!excluded.contains(EntryView.Columns.seriesId))
                     .order(EntryView.Columns.addedDate.desc)
                     .fetchAll(db)
             }

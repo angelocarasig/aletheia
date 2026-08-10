@@ -80,6 +80,8 @@ final class FailuresViewModel {
                 o.\(OriginRecord.Columns.fetchError.name) AS reason,
                 o.\(OriginRecord.Columns.fetchAttemptedDate.name) AS attemptedDate,
                 e.\(EntryView.Columns.title.name) AS title,
+                e.\(EntryView.Columns.cover.name) AS cover,
+                e.\(EntryView.Columns.path.name) AS path,
                 src.\(SourceRecord.Columns.name.name) AS sourceName,
                 src.\(SourceRecord.Columns.slug.name) AS sourceSlug
             FROM \(OriginRecord.databaseTableName) o
@@ -96,6 +98,82 @@ final class FailuresViewModel {
     }
 }
 
+// MARK: - Grouping
+
+extension FailuresViewModel {
+    // the same failures read two ways. a source that died takes every series it
+    // carried with it, so grouping by source answers "what broke"; a series
+    // healthy on one source and dead on another is only visible grouped by
+    // series, which answers "what am I missing"
+    enum Grouping: String, CaseIterable, Identifiable {
+        case source
+        case series
+
+        var id: String { rawValue }
+
+        var label: String {
+            switch self {
+            case .source: "By Source"
+            case .series: "By Series"
+            }
+        }
+    }
+
+    struct Section: Identifiable, Equatable {
+        let id: String
+        let title: String
+        let count: Int
+        // the source's own icon where the section is a source; a series section
+        // has no single icon to show, because its whole point is that several
+        // sources disagree about it
+        let sourceSlug: String?
+        let entries: [Entry]
+    }
+
+    func sections(by grouping: Grouping) -> [Section] {
+        let entries = entries ?? []
+
+        switch grouping {
+        case .source:
+            return group(entries, by: \.sourceSlug) { slug, rows in
+                Section(
+                    id: slug,
+                    title: rows[0].sourceName,
+                    count: rows.count,
+                    sourceSlug: slug,
+                    entries: rows.sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
+                )
+            }
+
+        case .series:
+            return group(entries, by: { String($0.seriesId) }) { id, rows in
+                Section(
+                    id: id,
+                    title: rows[0].title,
+                    count: rows.count,
+                    sourceSlug: nil,
+                    entries: rows.sorted { $0.sourceName.localizedStandardCompare($1.sourceName) == .orderedAscending }
+                )
+            }
+        }
+    }
+
+    // widest blast radius first, then alphabetical - a source taking six series
+    // down is the thing to look at before one taking a single series
+    private func group(
+        _ entries: [Entry],
+        by key: (Entry) -> String,
+        into section: (String, [Entry]) -> Section
+    ) -> [Section] {
+        Dictionary(grouping: entries, by: key)
+            .map { section($0.key, $0.value) }
+            .sorted {
+                guard $0.count == $1.count else { return $0.count > $1.count }
+                return $0.title.localizedStandardCompare($1.title) == .orderedAscending
+            }
+    }
+}
+
 extension FailuresViewModel {
     struct Entry: Decodable, FetchableRecord, Identifiable, Equatable, Sendable {
         let id: Int64
@@ -104,6 +182,11 @@ extension FailuresViewModel {
         let reason: String
         let attemptedDate: Date
         let title: String
+        // the remote URL and the downloaded file for the same cover - the local
+        // one wins where it exists, so a failing source does not also mean a
+        // missing thumbnail
+        let cover: URL?
+        let path: String?
         let sourceName: String
         let sourceSlug: String
     }

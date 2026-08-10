@@ -46,6 +46,9 @@ struct DetailsActions: View {
         // which is the rule everywhere the tint is a semantic wash
         var label: Color?
         var detached = false
+        // one control here answers with a word rather than on or off, so it takes
+        // its width from its content and keeps the shared height
+        var wide = false
 
         @Environment(\.dimensions) private var dimensions
 
@@ -53,7 +56,9 @@ struct DetailsActions: View {
             content
                 .fontWeight(.medium)
                 .foregroundStyle(label ?? .primary)
-                .frame(width: dimensions.size.controlL, height: dimensions.size.controlL)
+                .lineLimit(Layout.contentLines)
+                .padding(.horizontal, wide ? dimensions.spacing.space12 : 0)
+                .frame(width: wide ? nil : dimensions.size.controlL, height: dimensions.size.controlL)
                 .glassEffect(
                     glass,
                     in: .rect(cornerRadius: dimensions.radius.radius12, style: .continuous)
@@ -125,8 +130,10 @@ struct DetailsActions: View {
 
     // where the user is with the series, which only means anything once it is
     // theirs - outside the library every series would claim to be "planning".
-    // the glyph carries the state on its own: five statuses, five symbols, so
-    // the tint is a second channel rather than the only one
+    // the only control here whose answer is one of five rather than on or off,
+    // so it is the only one that says its answer in words: a glyph alone cannot
+    // name which of five, and the setup sheet's wording is months behind you by
+    // the time you come back to change it
     private var StatusAction: some View {
         Menu {
             Picker("Status", selection: statusBinding) {
@@ -135,12 +142,19 @@ struct DetailsActions: View {
                 }
             }
         } label: {
-            Image(systemName: status.icon)
+            Label(status.label, systemImage: status.icon)
                 // the write lands from a menu with no animation of its own, so
                 // the glyph needs one here or the replace has nothing to run in
                 .contentTransition(.symbolEffect(.replace))
                 .animation(.settle, value: status)
-                .modifier(Square(tint: status.surface, label: status.onSurface, detached: !inLibrary))
+                .modifier(
+                    Square(
+                        tint: status.surface,
+                        label: status.onSurface,
+                        detached: !inLibrary,
+                        wide: true
+                    )
+                )
         }
         // menus tint their own label with the accent colour whatever the content
         // says, which would overrule the glass's own answer
@@ -238,11 +252,16 @@ private enum Tint {
 extension Status {
     var label: String {
         switch self {
+        // each one is a sentence the reader said about themselves, so it reads as
+        // their words rather than a system state. "set aside" and "not for me"
+        // carry the might-come-back distinction that paused and dropped left to
+        // be guessed, and "finished" keeps the reader's answer apart from the
+        // work's own Completed
         case .reading: "Reading"
-        case .completed: "Completed"
-        case .paused: "Paused"
-        case .dropped: "Dropped"
-        case .planning: "Plan to Read"
+        case .completed: "Finished"
+        case .paused: "Set Aside"
+        case .dropped: "Not for Me"
+        case .planning: "Want to Read"
         }
     }
 

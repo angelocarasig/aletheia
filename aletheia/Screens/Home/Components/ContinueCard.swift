@@ -26,7 +26,6 @@ struct ContinueCard: View {
     private enum Layout {
         static let coverAspect: CGFloat = 11 / 16
         static let coverHeight: CGFloat = 140
-        static let fillOpacity: Double = 0.05
         static let placeholderOpacity: Double = 0.1
     }
 
@@ -40,9 +39,18 @@ struct ContinueCard: View {
                     .lineLimit(3)
                     .multilineTextAlignment(.leading)
 
-                Text(subtitle)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                // the one line that says this opens a chapter rather than a
+                // screen about one - a reader could not tell which, and on a
+                // resume rail that is the card's whole job. accented because
+                // resume and start are different acts, not decoration
+                HStack(spacing: dimensions.spacing.space4) {
+                    Image(systemName: glyph)
+                        .font(.caption)
+
+                    Text(subtitle)
+                        .font(.subheadline)
+                }
+                .foregroundStyle(Palette.brandText)
 
                 if unreadCount > 0 {
                     Text("^[\(unreadCount) chapter](inflect: true) left")
@@ -54,7 +62,19 @@ struct ContinueCard: View {
         }
         .padding(dimensions.spacing.space12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.primary.opacity(Layout.fillOpacity), in: .rect(cornerRadius: dimensions.radius.radius12))
+        .glassEffect(
+            .regular.interactive(),
+            in: .rect(cornerRadius: dimensions.radius.radius12, style: .continuous)
+        )
+    }
+
+    // resuming and starting are different acts and get different marks: one
+    // picks a book back up, the other opens it
+    private var glyph: String {
+        switch target {
+        case .resume: "book.pages"
+        case .start: "book.closed"
+        }
     }
 
     private var subtitle: String {
