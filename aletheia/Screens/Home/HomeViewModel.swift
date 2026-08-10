@@ -176,6 +176,7 @@ final class HomeViewModel {
         let unreadCount: Int
         let lastReadDate: Date
         let addedDate: Date
+        let adult: Bool
 
         init(_ entry: EntryView) {
             seriesId = entry.seriesId
@@ -185,6 +186,10 @@ final class HomeViewModel {
             unreadCount = entry.unreadCount
             lastReadDate = entry.lastReadDate
             addedDate = entry.addedDate
+            // derived from Classification rather than a source's per-item flag,
+            // so this is wider than a search stub's: Explicit folds erotica in
+            // with pornography, and disk carries nothing narrower
+            adult = entry.classification == .Explicit
         }
     }
 
@@ -379,7 +384,8 @@ extension HomeViewModel {
                     cover: assets.local(for: $0.entry.path) ?? $0.entry.cover,
                     unreadCount: $0.entry.unreadCount,
                     lastReadDate: $0.entry.lastReadDate,
-                    target: $0.target
+                    target: $0.target,
+                    adult: $0.entry.adult
                 )
             }
             recentlyAdded = stored.addedRows.map {
@@ -388,7 +394,8 @@ extension HomeViewModel {
                     title: $0.title,
                     cover: assets.local(for: $0.path) ?? $0.cover,
                     unreadCount: $0.unreadCount,
-                    addedDate: $0.addedDate
+                    addedDate: $0.addedDate,
+                    adult: $0.adult
                 )
             }
         }
@@ -401,6 +408,7 @@ extension HomeViewModel {
         let unreadCount: Int
         let lastReadDate: Date
         let target: ContinueTarget
+        let adult: Bool
     }
 
     struct AddedEntry: Identifiable, Hashable {
@@ -409,6 +417,7 @@ extension HomeViewModel {
         let cover: URL?
         let unreadCount: Int
         let addedDate: Date
+        let adult: Bool
     }
 }
 

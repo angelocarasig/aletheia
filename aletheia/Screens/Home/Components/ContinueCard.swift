@@ -17,6 +17,9 @@ struct ContinueCard: View {
     let cover: URL?
     let unreadCount: Int
     let target: ContinueTarget
+    // resolved by the caller from the preference and the reveal together, so the
+    // card never reads either and a rail cannot disagree with itself
+    var obscured: Bool = false
 
     @Environment(\.dimensions) private var dimensions
 
@@ -78,6 +81,7 @@ struct ContinueCard: View {
                     Rectangle().fill(.primary.opacity(Layout.placeholderOpacity))
                 }
             }
+            .obscured(obscured)
             .clipShape(.rect(cornerRadius: dimensions.radius.radius8))
     }
 }

@@ -16,6 +16,9 @@ struct AddedCard: View {
     let cover: URL?
     let unreadCount: Int
     let addedDate: Date?
+    // resolved by the caller from the preference and the reveal together, so the
+    // card never reads either and a rail cannot disagree with itself
+    var obscured: Bool = false
 
     @Environment(\.dimensions) private var dimensions
 
@@ -49,6 +52,7 @@ struct AddedCard: View {
                     Placeholder
                 }
             }
+            .obscured(obscured)
             .clipShape(.rect(cornerRadius: dimensions.radius.radius12))
             // outside the clip so the badge is not cut by the corner radius
             .overlay(alignment: .topTrailing) { Unread }

@@ -44,6 +44,12 @@ final class ReaderEngine {
     // height never depends on it
     private var events: [ReaderChapter.ID: ReaderSeparatorModel.EventStatus] = [:]
 
+    // whether the end of the list should offer to mark the series completed. a
+    // host fact the engine cannot derive - it depends on the series' own status
+    // and on what an origin says about the work - so it is pushed in and simply
+    // rendered, exactly like events above
+    private var completable = false
+
     @ObservationIgnored private weak var controller: ReaderController?
 
     private(set) var configuration: ReaderConfiguration
@@ -68,6 +74,11 @@ final class ReaderEngine {
     // no total to write progress against
     var onChapterFinished: ((ReaderChapter, Int) -> Void)?
     var onSingleTap: ((CGPoint) -> Void)?
+    // the reader offered the end-of-list mark and it was taken. the host owns
+    // the write and pushes the new answer back through setCompletable
+    var onMarkCompleted: (() -> Void)?
+    // the reader asked what happened to the chapters that are not there
+    var onExplainGap: ((ReaderSeparatorModel.Gap) -> Void)?
 
     var chapterList: [ReaderChapter] { chapters }
 
@@ -134,6 +145,12 @@ final class ReaderEngine {
         }
         controller.onSeparatorReached = { [weak self] boundary, direction in
             self?.reachedBoundary(boundary, direction: direction)
+        }
+        controller.onSeparatorComplete = { [weak self] in
+            self?.onMarkCompleted?()
+        }
+        controller.onSeparatorGap = { [weak self] gap in
+            self?.onExplainGap?(gap)
         }
         controller.onSeparatorRetry = { [weak self] boundary in
             guard case let .after(chapter) = boundary else { return }
@@ -382,9 +399,18 @@ final class ReaderEngine {
                 continuity: info.continuity,
                 gap: info.gap,
                 destination: destination(after: id),
-                event: events[id]
+                event: events[id],
+                completable: completable
             )
         }
+    }
+
+    // content only, never height - the action row is reserved whether or not it
+    // holds anything, so the offer can appear and go without moving a page
+    func setCompletable(_ value: Bool) {
+        guard completable != value else { return }
+        completable = value
+        controller?.reloadSeparators()
     }
 
     func setEvent(_ status: ReaderSeparatorModel.EventStatus?, for chapter: ReaderChapter.ID) {

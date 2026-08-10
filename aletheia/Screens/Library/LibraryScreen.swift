@@ -14,6 +14,7 @@ struct LibraryScreen: View {
     @Environment(\.compositor) private var compositor
 
     @AppStorage(Preferences.Key.gridColumns) private var gridColumns = Preferences.Default.gridColumns
+    @AppStorage(Preferences.Key.blurAdultLibrary) private var blurAdult = Preferences.Default.blurAdultLibrary
     @State private var vm: LibraryViewModel?
     @State private var showingCollectionForm = false
     @State private var showingSort = false
@@ -125,7 +126,23 @@ struct LibraryScreen: View {
             // here rather than on Activity: this is where a refresh is started,
             // and the screen it opens is about what that refresh does
             .toolbar {
-                ToolbarItem(placement: .primaryAction) {
+                // absent unless something on this screen could actually be
+                // covered - a reveal with nothing to reveal is a control with
+                // nothing to say. keyed on the entries rather than on whether
+                // they are currently blurred, or using it would remove it
+                ToolbarItem(placement: .topBarTrailing) {
+                    if hasExplicit {
+                        BlurToggle(
+                            isOn: !obscured,
+                            label: "Adult content",
+                            action: { blurAdult = blurAdult.toggled(adultSource: false) }
+                        )
+                    }
+                }
+
+                ToolbarSpacer(.fixed, placement: .topBarTrailing)
+
+                ToolbarItem(placement: .topBarTrailing) {
                     NavigationLink {
                         RefreshSettingsScreen()
                     } label: {
@@ -277,6 +294,18 @@ private extension LibraryScreen {
         }
     }
 
+    // the library is what you own, so there is no "did you ask for this" signal
+    // the way opening an adult source is one - unset covers
+    private var obscured: Bool { blurAdult.blurs(adultSource: false) }
+
+    // derived from Classification rather than a source's per-item flag, so this
+    // is wider than a search stub's: Explicit folds erotica in with pornography.
+    // read off the filtered set, or the control would offer to reveal something
+    // the current filters have already taken off screen
+    private var hasExplicit: Bool {
+        vm?.filtered.contains { $0.classification == .Explicit } ?? false
+    }
+
     @ViewBuilder
     func Grid(_ vm: LibraryViewModel) -> some View {
         let entries = vm.filtered
@@ -289,7 +318,8 @@ private extension LibraryScreen {
                             title: entry.title,
                             cover: entry.cover,
                             unreadCount: entry.unreadCount,
-                            activity: activity(for: entry.id)
+                            activity: activity(for: entry.id),
+                            obscured: obscured && entry.classification == .Explicit
                         )
                     }
                     .buttonStyle(.plain)

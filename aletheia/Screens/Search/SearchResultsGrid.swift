@@ -13,7 +13,7 @@ struct SearchResultsGrid: View {
 
     @Environment(\.dimensions) private var dimensions
     @AppStorage(Preferences.Key.gridColumns) private var gridColumns = Preferences.Default.gridColumns
-    @AppStorage(Preferences.Key.blurAdultContent) private var blurAdult = Preferences.Default.blurAdultContent
+    @AppStorage(Preferences.Key.blurAdultSearch) private var blurAdult = Preferences.Default.blurAdultSearch
     @State private var currentPage = 1
 
     // resolved once here rather than per card: the preference and the reveal are

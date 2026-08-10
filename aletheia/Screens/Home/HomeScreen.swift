@@ -12,6 +12,8 @@ struct HomeScreen: View {
     @Environment(\.compositor) private var compositor
     @Environment(\.dimensions) private var dimensions
 
+    @AppStorage(Preferences.Key.blurAdultHome) private var blurAdult = Preferences.Default.blurAdultHome
+
     @State private var vm: HomeViewModel?
     @State private var path = NavigationPath()
     @State private var reading: ReadingTarget?
@@ -41,6 +43,19 @@ struct HomeScreen: View {
     private var subtitle: Text {
         guard phase == .content, let vm else { return Text(verbatim: "") }
         return Text(vm.range.label)
+    }
+
+    // home is what you already own, so there is no "did you ask for this" signal
+    // the way opening an adult source is one - unset covers
+    private var obscured: Bool { blurAdult.blurs(adultSource: false) }
+
+    // absent unless a rail actually holds one - a reveal with nothing to reveal
+    // is a control with nothing to say. keyed on the entries rather than on
+    // whether they are currently blurred, or using it would remove it
+    private var hasExplicit: Bool {
+        guard let snapshot = vm?.snapshot else { return false }
+        return snapshot.continueReading.contains(where: \.adult)
+            || snapshot.recentlyAdded.contains(where: \.adult)
     }
 
     private var phase: LoadPhase {
@@ -87,6 +102,17 @@ struct HomeScreen: View {
                 // has nothing for a window to change
                 if phase == .content, let vm {
                     RangePicker(vm)
+                }
+            }
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    if hasExplicit {
+                        BlurToggle(
+                            isOn: !obscured,
+                            label: "Adult content",
+                            action: { blurAdult = blurAdult.toggled(adultSource: false) }
+                        )
+                    }
                 }
             }
             .navigationDestination(for: SeriesEntry.self) { DetailsScreen(entry: $0) }
@@ -156,7 +182,8 @@ private extension HomeScreen {
                             title: entry.title,
                             cover: entry.cover,
                             unreadCount: entry.unreadCount,
-                            target: entry.target
+                            target: entry.target,
+                            obscured: obscured && entry.adult
                         )
                         // the card is the hero of the screen, so it takes the
                         // width of the screen less the peek that says there is
@@ -257,7 +284,8 @@ private extension HomeScreen {
                             title: entry.title,
                             cover: entry.cover,
                             unreadCount: entry.unreadCount,
-                            addedDate: entry.addedDate
+                            addedDate: entry.addedDate,
+                            obscured: obscured && entry.adult
                         )
                         .contentShape(.rect)
                     }
@@ -413,7 +441,8 @@ private enum Mock {
                 cover: nil,
                 unreadCount: index * 3,
                 lastReadDate: read,
-                target: target(index)
+                target: target(index),
+                adult: index.isMultiple(of: 4)
             )
         }
     }
@@ -427,7 +456,8 @@ private enum Mock {
                 title: title(index + 3),
                 cover: nil,
                 unreadCount: unread,
-                addedDate: .now.addingTimeInterval(TimeInterval(-index * 86_400))
+                addedDate: .now.addingTimeInterval(TimeInterval(-index * 86_400)),
+                adult: index.isMultiple(of: 4)
             )
         }
     }

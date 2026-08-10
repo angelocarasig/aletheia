@@ -10,7 +10,7 @@ import SwiftUI
 // membership stages locally and commits on Done, matching the chapter
 // section's order sheets - Cancel discards the pending diff
 struct CollectionPicker: View {
-    let collections: [DetailsCollections.Item]
+    let collections: [CollectionPicker.Item]
     let isSaving: Bool
     var onToggle: (Int64) -> Void
     var onCreate: (String, String?) -> Void
@@ -23,7 +23,7 @@ struct CollectionPicker: View {
     @State private var showingCreate = false
 
     init(
-        collections: [DetailsCollections.Item],
+        collections: [CollectionPicker.Item],
         isSaving: Bool,
         onToggle: @escaping (Int64) -> Void,
         onCreate: @escaping (String, String?) -> Void
@@ -95,7 +95,7 @@ struct CollectionPicker: View {
             ScrollView {
                 LazyVStack(spacing: dimensions.spacing.space8) {
                     ForEach(collections) { collection in
-                        Row(collection)
+                        CollectionRow(collection, joined: working.contains(collection.id))
                             .tappable {
                                 touched = true
                                 if working.contains(collection.id) {
@@ -116,38 +116,6 @@ struct CollectionPicker: View {
             // another is a single transaction
             .animation(Layout.settle, value: working)
         }
-    }
-
-    private func Row(_ collection: DetailsCollections.Item) -> some View {
-        let contains = working.contains(collection.id)
-
-        return HStack(spacing: dimensions.spacing.space12) {
-            Image(systemName: contains ? "checkmark.circle.fill" : "circle")
-                .font(.title3)
-                .foregroundStyle(contains ? Palette.brand : Palette.muted)
-                .contentTransition(.symbolEffect(.replace))
-
-            VStack(alignment: .leading, spacing: dimensions.spacing.space2) {
-                Text(collection.name)
-                    .font(.subheadline)
-                    .fontWeight(contains ? .semibold : .regular)
-
-                Text("^[\(collection.count) series](inflect: true)")
-                    .font(.caption2)
-                    .foregroundStyle(.muted)
-                    .contentTransition(.numericText())
-            }
-
-            Spacer(minLength: 0)
-        }
-        .padding(dimensions.spacing.space12)
-        // flat tinted fill, not glass - rows are content, glass is chrome
-        .background(
-            contains ? AnyShapeStyle(Palette.brandSubtle) : AnyShapeStyle(.primary.opacity(Layout.fillOpacity)),
-            in: .rect(cornerRadius: dimensions.radius.radius12)
-        )
-        .contentShape(.rect)
-        .accessibilityAddTraits(contains ? .isSelected : [])
     }
 
     private var Create: some View {
@@ -180,10 +148,70 @@ struct CollectionPicker: View {
     }
 }
 
+extension CollectionPicker {
+    // the membership row as the details screen resolves it: every collection
+    // that exists, each saying whether this series is in it
+    struct Item: Identifiable, Hashable {
+        let id: Int64
+        let name: String
+        let count: Int
+        let contains: Bool
+    }
+}
+
+// membership is non-exclusive, so the marker is a leading check-circle rather
+// than a trailing tick. shared by the staged picker and the instant one in the
+// setup flow - the two differ in when they write, never in how a row reads
+struct CollectionRow: View {
+    let collection: CollectionPicker.Item
+    let joined: Bool
+
+    @Environment(\.dimensions) private var dimensions
+
+    private enum Layout {
+        static let fillOpacity: Double = 0.05
+    }
+
+    init(_ collection: CollectionPicker.Item, joined: Bool) {
+        self.collection = collection
+        self.joined = joined
+    }
+
+    var body: some View {
+        HStack(spacing: dimensions.spacing.space12) {
+            Image(systemName: joined ? "checkmark.circle.fill" : "circle")
+                .font(.title3)
+                .foregroundStyle(joined ? Palette.brand : Palette.muted)
+                .contentTransition(.symbolEffect(.replace))
+
+            VStack(alignment: .leading, spacing: dimensions.spacing.space2) {
+                Text(collection.name)
+                    .font(.subheadline)
+                    .fontWeight(joined ? .semibold : .regular)
+
+                Text("^[\(collection.count) series](inflect: true)")
+                    .font(.caption2)
+                    .foregroundStyle(.muted)
+                    .contentTransition(.numericText())
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(dimensions.spacing.space12)
+        // flat tinted fill, not glass - rows are content, glass is chrome
+        .background(
+            joined ? AnyShapeStyle(Palette.brandSubtle) : AnyShapeStyle(.primary.opacity(Layout.fillOpacity)),
+            in: .rect(cornerRadius: dimensions.radius.radius12)
+        )
+        .contentShape(.rect)
+        .accessibilityAddTraits(joined ? .isSelected : [])
+    }
+}
+
 // MARK: - Previews
 
 private enum Sample {
-    static let many: [DetailsCollections.Item] = [
+    static let many: [CollectionPicker.Item] = [
         .init(id: 1, name: "Currently Reading", count: 12, contains: true),
         .init(id: 2, name: "Isekai", count: 48, contains: false),
         .init(id: 3, name: "Finished", count: 106, contains: false),

@@ -41,9 +41,15 @@ enum Preferences {
         // silently reset the stored value, so the legacy key stays
         static let gridColumns = "gridColumns"
 
-        // a new key rather than the old Bool one: the stored type changed, and a
-        // Bool read back as a raw string is a decode failure, not a default
-        static let blurAdultContent = "content.blurAdult.state"
+        // one key per surface rather than one app-wide answer. search is where
+        // you go looking, home and library are what you already own, and the
+        // room you are in when someone glances over differs by which - a reveal
+        // meant for a search session should not still be on tomorrow's library.
+        // the search key predates the split; renaming it would silently reset
+        // the stored value, so it keeps its string
+        static let blurAdultSearch = "content.blurAdult.state"
+        static let blurAdultLibrary = "content.blurAdult.library"
+        static let blurAdultHome = "content.blurAdult.home"
 
         static let includeAdultSources = "search.includeAdultSources"
 
@@ -89,8 +95,11 @@ enum Preferences {
 
         // presentation only - it never shapes a request. adult results reach a
         // search at all because the reader ticked a filter option marked
-        // .adult, and turning this off does not open that gate
-        static let blurAdultContent = AdultBlur.unset
+        // .adult, and turning this off does not open that gate. all three start
+        // unset, which covers everywhere except inside an adultOnly source
+        static let blurAdultSearch = AdultBlur.unset
+        static let blurAdultLibrary = AdultBlur.unset
+        static let blurAdultHome = AdultBlur.unset
 
         // retrieval, unlike the one above. global search has no filters, so a
         // tick cannot be the gate there - this is the ask, and off means an

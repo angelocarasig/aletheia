@@ -110,6 +110,9 @@ struct ReaderScreen: View {
                 .task { await vm.loadSlots() }
             }
         }
+        .sheet(item: Binding(get: { vm?.explainingGap }, set: { vm?.explainingGap = $0 })) { gap in
+            ReaderGapSheet(gap: gap)
+        }
         .sheet(isPresented: $showingSettings) {
             if let vm, let engine = vm.engine {
                 ReaderSettingsSheet(

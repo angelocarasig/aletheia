@@ -13,8 +13,12 @@ struct DetailsActions: View {
     let canToggle: Bool
     let canRefresh: Bool
     let status: Status
+    // how many collections hold this series. only the zero/non-zero distinction
+    // is drawn, but the count is what the menu needs to describe itself
+    let collectionCount: Int
     var onToggleLibrary: () -> Void
     var onSetStatus: (Status) -> Void
+    var onManageCollections: () -> Void
     var onRefreshChapters: () -> Void
     var onMarkAll: (Bool) -> Void
     var onEditDetails: () -> Void
@@ -25,30 +29,67 @@ struct DetailsActions: View {
     var onDeleteDownloads: () -> Void = {}
 
     @Environment(\.dimensions) private var dimensions
-    @Environment(\.colorScheme) private var colorScheme
 
     private enum Layout {
         static let contentLines = 1
         static let detachedOpacity: Double = 0.5
     }
 
+    // the three fixed-width controls share one shape, so the row reads as a
+    // primary ask followed by a strip of things already answered. glass rather
+    // than a solid slab: at 44pt these are small elements, so each flips light
+    // or dark against whatever the header leaves behind them
+    private struct Square: ViewModifier {
+        var tint: Color?
+        // pinned only where the tint is opaque enough that the surface has
+        // stopped deciding for itself. left nil, glass vends its own answer,
+        // which is the rule everywhere the tint is a semantic wash
+        var label: Color?
+        var detached = false
+
+        @Environment(\.dimensions) private var dimensions
+
+        func body(content: Content) -> some View {
+            content
+                .fontWeight(.medium)
+                .foregroundStyle(label ?? .primary)
+                .frame(width: dimensions.size.controlL, height: dimensions.size.controlL)
+                .glassEffect(
+                    glass,
+                    in: .rect(cornerRadius: dimensions.radius.radius12, style: .continuous)
+                )
+                .opacity(detached ? Layout.detachedOpacity : 1)
+        }
+
+        private var glass: Glass {
+            guard let tint else { return .regular.interactive() }
+            return .regular.tint(tint).interactive()
+        }
+    }
+
+    // one primary and three squares: the squares are the things you already own
+    // the answer to, so they cost a fixed sliver each and the ask takes the rest
     var body: some View {
-        HStack(spacing: dimensions.spacing.space8) {
-            Primary
-            StatusAction
-            Overflow
+        GlassEffectContainer(spacing: dimensions.spacing.space8) {
+            HStack(spacing: dimensions.spacing.space8) {
+                Primary
+                StatusAction
+                CollectionsAction
+                Overflow
+            }
         }
         .frame(height: dimensions.size.controlL)
         .animation(.snappy, value: inLibrary)
         .animation(.snappy, value: isSaving)
         .animation(.snappy, value: status)
+        .animation(.snappy, value: collectionCount)
     }
 
     private var Primary: some View {
         Group {
             if isSaving {
                 ProgressView()
-                    .tint(foreground)
+                    .tint(label(inLibrary))
             } else {
                 Label(
                     inLibrary ? "In Library" : "Add to Library",
@@ -60,14 +101,32 @@ struct DetailsActions: View {
         .fontWeight(.medium)
         .padding(.horizontal, dimensions.spacing.space8)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .foregroundStyle(foreground)
-        .background(background, in: .rect(cornerRadius: dimensions.radius.radius12, style: .continuous))
+        .foregroundStyle(label(inLibrary))
+        .glassEffect(
+            inLibrary ? .regular.tint(Palette.textPrimary).interactive() : .regular.interactive(),
+            in: .rect(cornerRadius: dimensions.radius.radius12, style: .continuous)
+        )
         .tappable(action: onToggleLibrary)
         .disabled(!canToggle)
     }
 
+    // on inverts: the text colour becomes the fill and the canvas colour the
+    // lettering. an accent would say "this is the interesting one", and owned is
+    // the resting state - inversion says it without spending a hue. the tint is
+    // opaque enough to stop glass choosing its own content colour, which is why
+    // these two are the only pinned foregrounds here
+    private func fill(_ on: Bool) -> Color? {
+        on ? .textPrimary : nil
+    }
+
+    private func label(_ on: Bool) -> Color {
+        on ? .canvas : .textPrimary
+    }
+
     // where the user is with the series, which only means anything once it is
-    // theirs - outside the library every series would claim to be "planning"
+    // theirs - outside the library every series would claim to be "planning".
+    // the glyph carries the state on its own: five statuses, five symbols, so
+    // the tint is a second channel rather than the only one
     private var StatusAction: some View {
         Menu {
             Picker("Status", selection: statusBinding) {
@@ -76,32 +135,43 @@ struct DetailsActions: View {
                 }
             }
         } label: {
-            Label(status.label, systemImage: status.icon)
+            Image(systemName: status.icon)
                 // the write lands from a menu with no animation of its own, so
                 // the glyph needs one here or the replace has nothing to run in
                 .contentTransition(.symbolEffect(.replace))
                 .animation(.settle, value: status)
-                .lineLimit(Layout.contentLines)
-                .fontWeight(.medium)
-                // the fill is the inverse of the current scheme, so the tint has
-                // to resolve against that - left alone, dark mode would put a
-                // light blue on white. only the label is inverted; padding and
-                // background wrap it, so they still see the real scheme
-                .foregroundStyle(status.tint)
-                .environment(\.colorScheme, inverted)
-                .padding(.horizontal, dimensions.spacing.space8)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(.textPrimary, in: .rect(cornerRadius: dimensions.radius.radius12, style: .continuous))
-                .opacity(inLibrary ? 1 : Layout.detachedOpacity)
+                .modifier(Square(tint: status.surface, label: status.onSurface, detached: !inLibrary))
         }
-        // the menu does not inherit the label's fill, so it has to be sized here
-        // too or the row ends up shorter than the toggle beside it
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // menus tint their own label with the accent colour whatever the content
+        // says, which would overrule the glass's own answer
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .accessibilityLabel("Reading status")
+        .accessibilityValue(status.label)
         .disabled(!inLibrary || isSaving)
     }
 
     private var statusBinding: Binding<Status> {
         Binding(get: { status }, set: onSetStatus)
+    }
+
+    // membership is non-exclusive, so the filled variant is the channel - a count
+    // on a 44pt square would be unreadable, and the picker states the number
+    private var CollectionsAction: some View {
+        Image(systemName: collectionCount > 0 ? "rectangle.stack.fill" : "rectangle.stack")
+            .contentTransition(.symbolEffect(.replace))
+            .animation(.settle, value: collectionCount > 0)
+            .modifier(
+                Square(
+                    tint: fill(collectionCount > 0),
+                    label: collectionCount > 0 ? label(true) : nil,
+                    detached: !inLibrary
+                )
+            )
+            .tappable(action: onManageCollections)
+            .disabled(!inLibrary || isSaving)
+            .accessibilityLabel("Collections")
+            .accessibilityValue("^[\(collectionCount) collection](inflect: true) joined")
     }
 
     private var Overflow: some View {
@@ -143,26 +213,26 @@ struct DetailsActions: View {
                 Label("Mark All as Unread", systemImage: "x.circle.fill")
             }
         } label: {
+            // always inverted, never off: overflow has no state to report, so
+            // the one fixed anchor in the row is the thing that always looks the
+            // same. it is also what the other two invert *to*, which is what
+            // makes their on-state read as arriving somewhere
             Image(systemName: "ellipsis")
-                .fontWeight(.medium)
-                .frame(width: dimensions.size.controlL, height: dimensions.size.controlL)
-                .foregroundStyle(.canvas)
-                .background(.textPrimary, in: .rect(cornerRadius: dimensions.radius.radius12, style: .continuous))
+                .modifier(Square(tint: fill(true), label: label(true)))
         }
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .accessibilityLabel("More actions")
     }
 
-    // the active state inverts - filled with the text colour, lettered in the canvas colour
-    private var foreground: Color {
-        inLibrary ? .canvas : .textPrimary
-    }
+}
 
-    private var background: Color {
-        inLibrary ? .textPrimary : .surface
-    }
-
-    private var inverted: ColorScheme {
-        colorScheme == .dark ? .light : .dark
-    }
+// the tint marks a state, it does not fill a button - at full strength the
+// status square read as loud as the primary beside it, which inverts the row's
+// hierarchy. the glyph keeps the *Text step, so the colour channel survives the
+// quieter wash
+private enum Tint {
+    static let opacity: Double = 0.25
 }
 
 extension Status {
@@ -186,6 +256,35 @@ extension Status {
         }
     }
 
+    // the surface tint, not the glyph colour - the *Text steps are drawn on a
+    // subtle background, and a glass tint is a fill. status is the one control
+    // that keeps a hue: five states that genuinely differ, where the other two
+    // are on/off and invert instead
+    var surface: Color? {
+        switch self {
+        case .reading: Palette.brand.opacity(Tint.opacity)
+        case .completed: Palette.success.opacity(Tint.opacity)
+        case .paused: Palette.warning.opacity(Tint.opacity)
+        case .dropped: Palette.danger.opacity(Tint.opacity)
+        // no tint: the accent is spent on states that vary, and plan-to-read is
+        // where every series starts
+        case .planning: nil
+        }
+    }
+
+    // a semantic wash is not opaque, so the glyph stays legible drawn in the
+    // same family's text step rather than left to glass. planning has no wash
+    // and no pin
+    var onSurface: Color? {
+        switch self {
+        case .reading: Palette.brandText
+        case .completed: Palette.successText
+        case .paused: Palette.warningText
+        case .dropped: Palette.dangerText
+        case .planning: nil
+        }
+    }
+
     var icon: String {
         switch self {
         case .reading: "book"
@@ -195,4 +294,96 @@ extension Status {
         case .planning: "clock"
         }
     }
+}
+
+// MARK: - Previews
+
+private struct ActionsPreview: View {
+    var inLibrary = true
+    var isSaving = false
+    var canToggle = true
+    var canRefresh = true
+    var status: Status = .reading
+    var collectionCount = 2
+    let caption: String
+
+    @State private var live: Status?
+    @State private var joined: Int?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(caption)
+                .font(.caption)
+                .foregroundStyle(.muted)
+
+            DetailsActions(
+                inLibrary: inLibrary,
+                isSaving: isSaving,
+                canToggle: canToggle,
+                canRefresh: canRefresh,
+                status: live ?? status,
+                collectionCount: joined ?? collectionCount,
+                onToggleLibrary: {},
+                onSetStatus: { live = $0 },
+                onManageCollections: { joined = (joined ?? collectionCount) > 0 ? 0 : 3 },
+                onRefreshChapters: {},
+                onMarkAll: { _ in },
+                onEditDetails: {},
+                onMerge: {}
+            )
+        }
+    }
+}
+
+// every state the row can be in, stacked, so a design change can be judged
+// against all of them at once rather than one screenshot at a time
+#Preview("States") {
+    ScrollView {
+        VStack(alignment: .leading, spacing: 20) {
+            ActionsPreview(inLibrary: false, collectionCount: 0, caption: "Not in library")
+            ActionsPreview(collectionCount: 0, caption: "In library, no collections")
+            ActionsPreview(caption: "In library, 2 collections")
+            ActionsPreview(isSaving: true, caption: "Saving")
+            ActionsPreview(inLibrary: false, canToggle: false, collectionCount: 0, caption: "Can't toggle yet")
+            ActionsPreview(canRefresh: false, caption: "No refreshable origin")
+        }
+        .padding(16)
+    }
+    .background(.canvas)
+}
+
+// the status square is the only control whose glyph and tint both move, so it
+// gets its own sweep - the five sit closest together at this size
+#Preview("Status") {
+    ScrollView {
+        VStack(alignment: .leading, spacing: 20) {
+            ForEach(Status.allCases, id: \.self) { value in
+                ActionsPreview(status: value, collectionCount: 1, caption: value.label)
+            }
+        }
+        .padding(16)
+    }
+    .background(.canvas)
+}
+
+#Preview("Dark") {
+    ScrollView {
+        VStack(alignment: .leading, spacing: 20) {
+            ActionsPreview(inLibrary: false, collectionCount: 0, caption: "Not in library")
+            ActionsPreview(caption: "In library, 2 collections")
+            ActionsPreview(status: .dropped, collectionCount: 0, caption: "Dropped, no collections")
+        }
+        .padding(16)
+    }
+    .background(.canvas)
+    .environment(\.colorScheme, .dark)
+}
+
+// the row lives under the header at full width; a narrow container is where the
+// primary label truncates first, which is what a redesign has to survive
+#Preview("Narrow") {
+    ActionsPreview(caption: "320pt")
+        .padding(16)
+        .frame(width: 320)
+        .background(.canvas)
 }

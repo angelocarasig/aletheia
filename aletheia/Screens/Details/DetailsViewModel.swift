@@ -143,10 +143,10 @@ final class DetailsViewModel {
     // series whose source is no longer installed
     var referer: URL? { snapshot?.referer ?? opener?.descriptor.referer }
 
-    // the section lists what this series is in; the picker needs every collection
+    // the action row counts what this series is in; the picker needs every collection
     // so there is something to add it to
-    var collections: [DetailsCollections.Item] { (snapshot?.collections ?? []).filter(\.contains) }
-    var availableCollections: [DetailsCollections.Item] { snapshot?.collections ?? [] }
+    var collections: [CollectionPicker.Item] { (snapshot?.collections ?? []).filter(\.contains) }
+    var availableCollections: [CollectionPicker.Item] { snapshot?.collections ?? [] }
 
     // MARK: - Entry
 
@@ -600,9 +600,7 @@ final class DetailsViewModel {
                     db: db
                 )
 
-                _ = try SeriesRecord
-                    .filter(key: seriesId.rawValue)
-                    .updateAll(db, SeriesRecord.Columns.lastReadDate.set(to: opened))
+                try SeriesRecord.markRead(seriesId, at: opened, db: db)
             }
         } catch {
             actionFailure = Failure(error, fallback: "Couldn't Open Chapter")
@@ -1191,8 +1189,11 @@ final class DetailsViewModel {
         }
     }
 
-    func toggleLibrary() async {
-        guard let seriesId else { return }
+    // reports whether the write landed: adding opens the setup flow, and that
+    // flow writes status and collections against a row it has to know exists
+    @discardableResult
+    func toggleLibrary() async -> Bool {
+        guard let seriesId else { return false }
 
         isSaving = true
         defer { isSaving = false }
@@ -1202,8 +1203,10 @@ final class DetailsViewModel {
             try await database.writer.write { db in
                 try Self.setInLibrary(value, for: seriesId, in: db)
             }
+            return true
         } catch {
             actionFailure = Failure(error, fallback: "Couldn't Update Library")
+            return false
         }
     }
 }
@@ -1282,7 +1285,7 @@ extension DetailsViewModel {
         let titles: [DetailsTitles.Title]
         let synopses: [DetailsEdit.Synopsis]
         let choices: [DetailsEdit.Metadata]
-        let collections: [DetailsCollections.Item]
+        let collections: [CollectionPicker.Item]
         let refreshables: [Refreshable]
 
         fileprivate let rows: [StoredChapter]
@@ -1366,7 +1369,7 @@ private extension DetailsViewModel.Snapshot {
         }
 
         collections = stored.collections.map {
-            DetailsCollections.Item(id: $0.id, name: $0.name, count: $0.count, contains: $0.contains)
+            CollectionPicker.Item(id: $0.id, name: $0.name, count: $0.count, contains: $0.contains)
         }
 
         // an origin with no synopsis has nothing to offer, so it is not a choice
@@ -1546,7 +1549,7 @@ extension DetailsViewModel {
         return try StoredOrigin.fetchAll(db, sql: sql, arguments: [seriesId])
     }
 
-    // every collection, not just this series' - the section doubles as the picker,
+    // every collection, not just this series' - the picker lists all of them,
     // so a row has to know both its size and whether this series is in it
     nonisolated fileprivate static func collections(
         for seriesId: SeriesRecord.ID,

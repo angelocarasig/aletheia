@@ -25,10 +25,6 @@ struct SourceCard: View {
         static let titleHeight: CGFloat = 12
         static let subtitleHeight: CGFloat = 10
         static let subtitleWidthFactor: CGFloat = 0.6
-        // the artwork must not be legible through it, and a blurred cover still
-        // has to read as a cover rather than as a failed load
-        static let blurRadius: CGFloat = 24
-        static let blurScrim: Double = 0.15
     }
 
     var body: some View {
@@ -56,15 +52,9 @@ struct SourceCard: View {
             }
             // blur before the badge, so a match marker stays readable on a
             // covered card - it is our own annotation, not the artwork
-            .blur(radius: obscured ? Layout.blurRadius : 0)
-            .overlay {
-                if obscured {
-                    Rectangle().fill(.black.opacity(Layout.blurScrim))
-                }
-            }
+            .obscured(obscured)
             .overlay { Badge }
             .clipShape(.rect(cornerRadius: dimensions.radius.radius12))
-            .animation(.smooth(duration: 0.25), value: obscured)
     }
 
     @ViewBuilder

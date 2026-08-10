@@ -24,7 +24,7 @@ struct SearchScreen: View {
     @State private var vm = SearchViewModel()
     @AppStorage(Preferences.Key.includeAdultSources) private var includeAdult = Preferences.Default.includeAdultSources
     @AppStorage(Preferences.Key.bypassAdultSources) private var bypassAdult = Preferences.Default.bypassAdultSources
-    @AppStorage(Preferences.Key.blurAdultContent) private var blurAdult = Preferences.Default.blurAdultContent
+    @AppStorage(Preferences.Key.blurAdultSearch) private var blurAdult = Preferences.Default.blurAdultSearch
     @State private var seriesRoute: SeriesRoute?
     @State private var gridRoute: GridRoute?
     @State private var gvm: SearchGridViewModel?
@@ -252,28 +252,6 @@ struct SearchScreen: View {
     // sources are searched at all, an eye is whether what came back is covered.
     // one symbol for both made "on" ambiguous - on meaning queried, or on meaning
     // visible. filled when active, so the state has a weight channel too
-    // scattered dots rather than an eye: the eye asks whether you may look, this
-    // asks how much of the artwork is resolved. dense dots read as the noise that
-    // is actually on screen, sparse ones as it clearing
-    private struct BlurToggle: View {
-        let isOn: Bool
-        let label: String
-        let action: () -> Void
-
-        var body: some View {
-            Button(action: action) {
-                // low against high, not low against medium - the middle glyph is
-                // near enough to the sparse one that the swap read as a colour
-                // change alone. aqi.low is the sparsest the family goes
-                Image(systemName: isOn ? "aqi.low" : "aqi.high")
-                    .foregroundStyle(isOn ? AnyShapeStyle(.danger) : AnyShapeStyle(.muted))
-            }
-            .contentTransition(.symbolEffect(.replace))
-            .accessibilityLabel(label)
-            .accessibilityValue(isOn ? "Shown" : "Blurred")
-        }
-    }
-
     private struct AdultToggle: View {
         let isOn: Bool
         let on: String

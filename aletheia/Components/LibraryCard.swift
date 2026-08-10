@@ -16,6 +16,9 @@ struct LibraryCard: View {
     var cover: URL?
     var unreadCount: Int = 0
     var activity: Activity?
+    // resolved by the caller from the preference and the reveal together, so the
+    // card never reads either and a grid cannot disagree with itself
+    var obscured: Bool = false
 
     // the same two words the details pill uses: waiting for its turn, or being
     // talked to right now. a card with neither is not in a run at all
@@ -64,6 +67,9 @@ struct LibraryCard: View {
                     Placeholder
                 }
             }
+            // blur before the activity mark, so a card being checked still says
+            // so on a covered cover - it is our own annotation, not the artwork
+            .obscured(obscured)
             .overlay { Checking }
             .clipShape(.rect(cornerRadius: dimensions.radius.radius12))
             // outside the clip so the badge is not cut by the corner radius

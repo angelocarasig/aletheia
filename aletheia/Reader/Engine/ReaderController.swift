@@ -73,6 +73,8 @@ final class ReaderController: UIViewController {
     var separatorModel: ((ReaderBoundary, ReadingDirection) -> ReaderSeparatorModel)?
     var onSeparatorReached: ((ReaderBoundary, ReadingDirection) -> Void)?
     var onSeparatorRetry: ((ReaderBoundary) -> Void)?
+    var onSeparatorComplete: (() -> Void)?
+    var onSeparatorGap: ((ReaderSeparatorModel.Gap) -> Void)?
     var onNeedsChapter: ((Position) -> Void)?
     var onSingleTap: ((CGPoint) -> Void)?
     var onZoomChanged: ((Bool) -> Void)?
@@ -99,6 +101,15 @@ final class ReaderController: UIViewController {
         super.viewDidLoad()
         buildCollectionView()
         buildDataSource()
+
+        // separator extents are constants per content-size category, so a reader
+        // who changes their text size while the app is backgrounded comes back
+        // to bands sized for the old one. cheap to redo - one model build per
+        // boundary, at most windowSize + 1 of them
+        registerForTraitChanges([UITraitPreferredContentSizeCategory.self]) { (self: Self, _) in
+            self.refreshSeparatorExtents()
+            self.collectionView.collectionViewLayout.invalidateLayout()
+        }
     }
 
     override func viewDidLayoutSubviews() {
@@ -533,6 +544,12 @@ final class ReaderController: UIViewController {
                 cell.onRetry = { [weak self] in
                     self?.onSeparatorRetry?(boundary)
                 }
+                cell.onComplete = { [weak self] in
+                    self?.onSeparatorComplete?()
+                }
+                cell.onExplainGap = { [weak self] gap in
+                    self?.onSeparatorGap?(gap)
+                }
                 return cell
             }
         }
@@ -683,7 +700,11 @@ final class ReaderController: UIViewController {
         var extents: [ReaderBoundary: CGFloat] = [:]
         for item in flatItems() {
             guard case let .separator(boundary) = item else { continue }
-            extents[boundary] = separatorModel?(boundary, .forward).height
+            // sized for the reader's own text size: the band's constants are
+            // per content-size category, so a scaled headline gets a box that
+            // scaled with it rather than one it overflows
+            extents[boundary] = separatorModel?(boundary, .forward)
+                .height(for: traitCollection.preferredContentSizeCategory)
                 ?? ReaderSeparatorModel.Metrics.destination
         }
         separatorExtents = extents

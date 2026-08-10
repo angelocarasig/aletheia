@@ -54,6 +54,22 @@ final class ReaderViewModel {
     // reference - the row must stay readable after a purge or merge
     @ObservationIgnored private var seriesTitle = ""
 
+    // set when the reader taps the range in a separator's rule. the sheet is
+    // presented by the screen, so this is the whole of the view model's part
+    var explainingGap: ReaderSeparatorModel.Gap?
+
+    // every installed source with chapters for this series, in the order the
+    // ranking already put them. derived at load from the chapter rows, so it
+    // costs no query of its own
+    @ObservationIgnored private var sourceNames: [String] = []
+
+    // mirrored into the engine rather than read by it: the separator renders
+    // what it is handed, and this is the only thing that decides whether the
+    // end-of-list offer is there
+    @ObservationIgnored private var completable = false {
+        didSet { engine?.setCompletable(completable) }
+    }
+
     // one sitting, accumulated in memory and inserted complete at the flush
     // points - never opened as a row and closed later. `entered` is the page
     // each chapter was at when the sitting began, so pagesRead is the sitting's
@@ -109,9 +125,9 @@ final class ReaderViewModel {
                 return
             }
 
-            let (orientation, tags, title) = try await database.reader.read { [seriesId] db in
-                let orientation = try SeriesRecord
-                    .fetchOne(db, key: seriesId.rawValue)?.orientation ?? .unknown
+            let (orientation, tags, title, offer) = try await database.reader.read { [seriesId] db in
+                let series = try SeriesRecord.fetchOne(db, key: seriesId.rawValue)
+                let orientation = series?.orientation ?? .unknown
                 let tags = try TagRecord
                     .joining(required: TagRecord.seriesTags
                         .filter(SeriesTagRecord.Columns.seriesId == seriesId.rawValue))
@@ -126,9 +142,20 @@ final class ReaderViewModel {
                         """,
                     arguments: [seriesId.rawValue]
                 ) ?? ""
-                return (orientation, tags, title)
+                let offer = try Self.completable(series, in: db)
+                return (orientation, tags, title, offer)
             }
             seriesTitle = title
+            completable = offer
+
+            sourceNames = loaded
+                .compactMap(\.sourceSlug)
+                .reduce(into: [String]()) { names, slug in
+                    guard let name = registry.source(slug: slug)?.descriptor.name,
+                          !names.contains(name)
+                    else { return }
+                    names.append(name)
+                }
 
             loaded.forEach { chapter in
                 stored[ChapterRecord.ID(rawValue: chapter.id)] = chapter.progress
@@ -158,6 +185,9 @@ final class ReaderViewModel {
             )
             bind(engine)
             self.engine = engine
+            // the gate is resolved above, before this exists, so the didSet that
+            // normally mirrors it had nothing to push to
+            engine.setCompletable(completable)
             isReady = true
             sessionStart = .now
 
@@ -461,6 +491,22 @@ final class ReaderViewModel {
         engine.onSingleTap = { [weak self] point in
             self?.handleTap(at: point)
         }
+
+        engine.onMarkCompleted = { [weak self] in
+            Task { await self?.markCompleted() }
+        }
+
+        engine.onExplainGap = { [weak self] gap in
+            guard let self else { return }
+            // the sources the reader actually has for this series, named at the
+            // moment of asking rather than stored on every boundary
+            explainingGap = .init(
+                from: gap.from,
+                to: gap.to,
+                count: gap.count,
+                sources: sourceNames
+            )
+        }
     }
 
     // the engine reports taps in window space so a zone stays where the reader
@@ -509,6 +555,13 @@ final class ReaderViewModel {
                     chapterNumber: chapter.number
                 )
                 try event.insert(db)
+
+                // the other half of "a re-read is still a reading act": the
+                // save above cannot reach this, so a series read start to finish
+                // again would keep whatever status it was parked at and never
+                // refresh its read date. same transaction as the event, since
+                // both are the same completion
+                try SeriesRecord.markRead(seriesId, at: .now, db: db)
             }
             sessionChaptersRead += 1
             engine?.setEvent(.recorded, for: chapter.id)
@@ -555,6 +608,67 @@ final class ReaderViewModel {
         }
     }
 
+    // MARK: Completion
+
+    // two conditions. you have not already said completed - a series that is,
+    // has nothing to offer - and an origin says the work itself is over.
+    //
+    // the origin half is an OR across the two that speak for the series: the
+    // metadata origin you picked, and the primary one it falls back to. either
+    // saying Completed is enough, because this opens an offer rather than making
+    // a claim, and a source that does not track publication state reports
+    // Ongoing forever - so requiring agreement would silence the prompt on every
+    // multi-source series with one lazy source in it
+    nonisolated private static func completable(_ series: SeriesRecord?, in db: Database) throws -> Bool {
+        guard let series, series.status != .completed else { return false }
+
+        // the same order EntryView resolves a primary origin in: usable sources
+        // first, then priority. a dead source must not be the one answering for
+        // the series
+        let primary = try OriginRecord
+            .filter(OriginRecord.Columns.seriesId == series.id)
+            .including(optional: OriginRecord.source)
+            .order(
+                sql: """
+                    (\(SourceRecord.databaseTableName).\(SourceRecord.Columns.id.name) IS NULL
+                     OR \(SourceRecord.databaseTableName).\(SourceRecord.Columns.disabled.name) = 1) ASC,
+                    \(OriginRecord.databaseTableName).\(OriginRecord.Columns.priority.name) ASC,
+                    \(OriginRecord.databaseTableName).\(OriginRecord.Columns.id.name) ASC
+                    """
+            )
+            .asRequest(of: OriginRecord.self)
+            .fetchOne(db)
+
+        let ids = [series.preferredMetadataOriginId, primary?.id].compactMap { $0 }
+        guard !ids.isEmpty else { return false }
+
+        return try OriginRecord
+            .filter(ids.contains(OriginRecord.Columns.id))
+            .filter(OriginRecord.Columns.publication == Publication.Completed.rawValue)
+            .fetchCount(db) > 0
+    }
+
+    // the offer is taken. the write is the same one the details screen makes, so
+    // a series marked here reads as marked everywhere - and markRead's own
+    // exemption means a later re-read cannot undo it
+    func markCompleted() async {
+        guard completable else { return }
+        completable = false
+
+        do {
+            try await database.writer.write { [seriesId] db in
+                _ = try SeriesRecord
+                    .filter(key: seriesId.rawValue)
+                    .updateAll(db, SeriesRecord.Columns.status.set(to: Status.completed.rawValue))
+            }
+        } catch {
+            // the offer comes back rather than disappearing on a write that
+            // never landed
+            completable = true
+            AppLog.shared.log("failed to mark series completed — \(error)", category: "reader")
+        }
+    }
+
     private func save(_ id: ChapterRecord.ID, throttled: Bool) async {
         guard let entry = reached[id], entry.total > 0 else { return }
         guard saved[id] != entry.page else { return }
@@ -580,11 +694,7 @@ final class ReaderViewModel {
                     db: db
                 )
 
-                // the launch purge spares anything with a read date, so this
-                // has to be written whether or not the series is in the library
-                try SeriesRecord
-                    .filter(SeriesRecord.Columns.id == seriesId.rawValue)
-                    .updateAll(db, SeriesRecord.Columns.lastReadDate.set(to: Date.now))
+                try SeriesRecord.markRead(seriesId, at: .now, db: db)
             }
 
             saved[id] = entry.page

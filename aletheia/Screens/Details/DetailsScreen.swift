@@ -27,8 +27,8 @@ struct DetailsScreen: View {
     @State private var searchingAll = false
     @State private var showingEdit = false
     @State private var showingMerge = false
-    @State private var showingCollection = false
     @State private var showingCollections = false
+    @State private var showingSetup = false
     @State private var removing: DetailsSources.Origin?
     @State private var marking: DetailsViewModel.MarkRequest?
     @State private var markCommitted: UUID?
@@ -182,11 +182,22 @@ struct DetailsScreen: View {
                 )
             }
         }
-        .sheet(isPresented: $showingCollection) {
+        .sheet(isPresented: $showingSetup) {
             if let vm {
-                CollectionForm(isSaving: vm.isSaving) { name, description in
-                    Task { await vm.createCollection(name: name, description: description) }
-                }
+                DetailsSetup(
+                    title: vm.title,
+                    status: vm.status,
+                    collections: vm.availableCollections,
+                    isSaving: vm.isSaving,
+                    // stubbed until trackers exist. once one is linked here, its
+                    // status is what the next page opens on
+                    trackedStatus: nil,
+                    onSetStatus: { status in Task { await vm.setStatus(status) } },
+                    onToggleCollection: { id in Task { await vm.toggleCollection(id) } },
+                    onCreateCollection: { name, description in
+                        Task { await vm.createCollection(name: name, description: description) }
+                    }
+                )
             }
         }
         .sheet(isPresented: $showingMerge) {
@@ -544,8 +555,19 @@ struct DetailsScreen: View {
                 canToggle: vm.canToggleLibrary,
                 canRefresh: vm.canRefresh,
                 status: vm.status,
-                onToggleLibrary: { Task { await vm.toggleLibrary() } },
+                collectionCount: vm.collections.count,
+                // the add is committed first and the flow opens over it, so
+                // closing at any page leaves the series added. removing stays a
+                // plain toggle - there is nothing to set up on the way out
+                onToggleLibrary: {
+                    Task {
+                        let adding = !vm.inLibrary
+                        let wrote = await vm.toggleLibrary()
+                        showingSetup = adding && wrote
+                    }
+                },
                 onSetStatus: { status in Task { await vm.setStatus(status) } },
+                onManageCollections: { showingCollections = true },
                 onRefreshChapters: { Task { await vm.refreshChapters() } },
                 onMarkAll: { read in requestMark(vm, read: read, numbers: vm.chapters.map(\.number)) },
                 onEditDetails: { showingEdit = true },
@@ -576,14 +598,6 @@ struct DetailsScreen: View {
                     onRemove: { id in removing = vm.origins.first { $0.id == id } }
                 )
             }
-
-            DetailsCollections(
-                collections: vm.collections,
-                hasAny: !vm.availableCollections.isEmpty,
-                onToggle: { id in Task { await vm.toggleCollection(id) } },
-                onPick: { showingCollections = true },
-                onCreate: { showingCollection = true }
-            )
 
             DetailsMetadata(
                 classification: vm.classification,

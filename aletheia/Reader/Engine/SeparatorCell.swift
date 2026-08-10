@@ -15,6 +15,8 @@ final class SeparatorCell: UICollectionViewCell {
     static let reuseIdentifier = "SeparatorCell"
 
     var onRetry: (() -> Void)?
+    var onComplete: (() -> Void)?
+    var onExplainGap: ((ReaderSeparatorModel.Gap) -> Void)?
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -30,13 +32,18 @@ final class SeparatorCell: UICollectionViewCell {
         super.prepareForReuse()
         contentConfiguration = nil
         onRetry = nil
+        onComplete = nil
+        onExplainGap = nil
     }
 
     func configure(with model: ReaderSeparatorModel) {
         contentConfiguration = UIHostingConfiguration {
-            ReaderSeparatorView(model: model) { [weak self] in
-                self?.onRetry?()
-            }
+            ReaderSeparatorView(
+                model: model,
+                onRetry: { [weak self] in self?.onRetry?() },
+                onComplete: { [weak self] in self?.onComplete?() },
+                onExplainGap: { [weak self] gap in self?.onExplainGap?(gap) }
+            )
         }
         // the view declares its own heights and the layout has already sized
         // this cell from them, so the default margins would double-count
