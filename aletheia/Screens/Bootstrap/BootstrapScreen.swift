@@ -23,8 +23,8 @@ struct BootstrapScreen: View {
             Palette.canvas
                 .ignoresSafeArea()
 
-            if case .failed(let message) = phase {
-                Failure(message)
+            if case .failed(let failure) = phase {
+                Failed(failure)
             } else {
                 Progress
             }
@@ -53,11 +53,11 @@ struct BootstrapScreen: View {
         }
     }
 
-    private func Failure(_ message: String) -> some View {
+    private func Failed(_ failure: Failure) -> some View {
         ContentUnavailableView {
-            Label(phase.label, systemImage: "exclamationmark.triangle")
+            Label(failure.title, systemImage: "exclamationmark.triangle")
         } description: {
-            Text(message)
+            Text(failure.message)
         } actions: {
             Button("Try Again", action: onRetry)
                 .buttonStyle(.glassProminent)
@@ -71,5 +71,13 @@ struct BootstrapScreen: View {
 }
 
 #Preview("Failed") {
-    BootstrapScreen(phase: .failed("The database could not be opened.")) {}
+    BootstrapScreen(
+        phase: .failed(
+            Failure(
+                title: "Couldn't Start",
+                message: "The database could not be opened.",
+                isRetryable: true
+            )
+        )
+    ) {}
 }

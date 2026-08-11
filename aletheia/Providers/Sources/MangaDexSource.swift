@@ -173,7 +173,7 @@ struct MangaDexSource: RevalidatingSource {
                 .init(id: "createdAt:desc", name: "Recently added"),
                 .init(id: "rating:desc", name: "Highest rated"),
                 .init(id: "year:desc", name: "Newest"),
-                .init(id: "title:asc", name: "Title (A–Z)")
+                .init(id: "title:asc", name: "Title (A-Z)")
             ],
             defaultSort: "relevance:desc"
         )

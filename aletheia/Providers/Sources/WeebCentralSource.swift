@@ -148,8 +148,8 @@ struct WeebCentralSource: SourceService {
                 .init(id: "Latest Updates", name: "Latest updates"),
                 .init(id: "Recently Added", name: "Recently added"),
                 .init(id: "Recently Added|Ascending", name: "Oldest added"),
-                .init(id: "Alphabet|Ascending", name: "Title (A–Z)"),
-                .init(id: "Alphabet", name: "Title (Z–A)")
+                .init(id: "Alphabet|Ascending", name: "Title (A-Z)"),
+                .init(id: "Alphabet", name: "Title (Z-A)")
             ],
             defaultSort: "Best Match"
         )

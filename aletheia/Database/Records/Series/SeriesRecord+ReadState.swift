@@ -15,15 +15,6 @@ import Tagged
 // second half
 extension SeriesRecord {
     static func markRead(_ seriesId: SeriesRecord.ID, at date: Date, db: Database) throws {
-        // TODO: sync with trackers here. the move below is the local half of
-        // "you are reading this" - a linked tracker owns the same fact
-        // remotely and has to be told, and its answer may disagree (a service
-        // that already says Completed must not be pushed back to Reading). the
-        // push cannot happen inside this transaction: it is network work, and a
-        // write held open across it blocks every other writer. record the intent
-        // here and drain it outside, so a failed or offline push retries rather
-        // than rolling back a read the user actually did.
-
         // reading is what the act says, so anything that is not already saying it
         // gets moved: planned, paused and dropped are all answers a page turn
         // contradicts. two exemptions, both because the write would say nothing -
@@ -40,5 +31,12 @@ extension SeriesRecord {
         _ = try SeriesRecord
             .filter(key: seriesId.rawValue)
             .updateAll(db, Columns.lastReadDate.set(to: date))
+
+        // a linked service owns the same fact remotely and has to be told, but
+        // the request cannot happen in here - a write held open across a network
+        // call blocks every other writer. so the intent is recorded on the link
+        // and drained outside, which is also what makes an offline read catch up
+        // later rather than being lost
+        try SeriesTrackerRecord.enqueue(for: seriesId, status: .reading, in: db)
     }
 }

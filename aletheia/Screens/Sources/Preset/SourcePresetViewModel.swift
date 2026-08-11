@@ -62,7 +62,7 @@ final class SourcePresetViewModel {
         } catch NetworkError.cancelled {
             phase = .failed
         } catch {
-            AppLog.shared.log("preset '\(preset.id)' load failed — \(error)", category: "sources")
+            AppLog.shared.log("preset '\(preset.id)' load failed - \(error)", category: "sources")
             phase = .failed
         }
     }

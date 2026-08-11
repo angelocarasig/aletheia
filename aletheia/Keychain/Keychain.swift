@@ -5,7 +5,7 @@
 //  Created by Angelo Carasig on 5/8/2026.
 //
 
-/// composable keychain namespaces — each a KeychainStore scoped to its own service.
+/// composable keychain namespaces - each a KeychainStore scoped to its own service.
 ///
 ///     Keychain.sources.save(credential, account: "mangafire")
 ///     Keychain.trackers.load(Token.self, account: "anilist")

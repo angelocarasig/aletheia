@@ -89,7 +89,7 @@ struct DetailsTitles: View {
     }
 
     private var Explanation: some View {
-        Text("The one you pick is shown everywhere — your library, search results, and this screen.")
+        Text("The one you pick is shown everywhere: your library, search results, and this screen.")
             .font(.footnote)
             .foregroundStyle(.muted)
             .frame(maxWidth: .infinity, alignment: .leading)

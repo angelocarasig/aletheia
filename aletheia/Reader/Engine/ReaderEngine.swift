@@ -50,6 +50,18 @@ final class ReaderEngine {
     // rendered, exactly like events above
     private var completable = false
 
+    // WHICH services this series is linked to, set once before the first page
+    // renders. presence is a fact of the series, never of load state, because the
+    // band's height is computed from it - a row that appeared when a push started
+    // would move every item below it mid-read
+    private var trackers: [ReaderSeparatorModel.Tracker] = []
+
+    // and what each of them did about ONE finished chapter, keyed by chapter and
+    // then by service. per chapter rather than per series, because the queue
+    // clears for the series: without this, finishing chapter 45 would send
+    // chapter 44's row back to spinning
+    private var trackerStates: [ReaderChapter.ID: [String: ReaderSeparatorModel.Tracker.State]] = [:]
+
     @ObservationIgnored private weak var controller: ReaderController?
 
     private(set) var configuration: ReaderConfiguration
@@ -79,6 +91,7 @@ final class ReaderEngine {
     var onMarkCompleted: (() -> Void)?
     // the reader asked what happened to the chapters that are not there
     var onExplainGap: ((ReaderSeparatorModel.Gap) -> Void)?
+    var onRetryTracker: ((ReaderChapter.ID, String) -> Void)?
 
     var chapterList: [ReaderChapter] { chapters }
 
@@ -155,6 +168,12 @@ final class ReaderEngine {
         controller.onSeparatorRetry = { [weak self] boundary in
             guard case let .after(chapter) = boundary else { return }
             Task { await self?.retryNext(after: chapter) }
+        }
+        // the engine knows which chapter the boundary belongs to; the host knows
+        // what a service is. so this only resolves the first and hands over
+        controller.onSeparatorRetryTracker = { [weak self] boundary, service in
+            guard case let .after(chapter) = boundary else { return }
+            self?.onRetryTracker?(chapter, service)
         }
     }
 
@@ -400,7 +419,8 @@ final class ReaderEngine {
                 gap: info.gap,
                 destination: destination(after: id),
                 event: events[id],
-                completable: completable
+                completable: completable,
+                trackers: trackerRows(for: id)
             )
         }
     }
@@ -417,6 +437,41 @@ final class ReaderEngine {
         guard events[chapter] != status else { return }
         events[chapter] = status
         controller?.reloadSeparators()
+    }
+
+    // presence, and only presence. called once while the reader is opening, before
+    // anything has been laid out - a separator built before this lands would be
+    // the wrong height for the rest of the session
+    func setTrackers(_ value: [ReaderSeparatorModel.Tracker]) {
+        guard trackers != value else { return }
+        trackers = value
+        controller?.reloadSeparators()
+    }
+
+    // content only, exactly like setEvent: the row already exists and this
+    // changes what its glyph says
+    func setTrackerState(
+        _ state: ReaderSeparatorModel.Tracker.State,
+        for chapter: ReaderChapter.ID,
+        service: String
+    ) {
+        guard trackerStates[chapter]?[service] != state else { return }
+        trackerStates[chapter, default: [:]][service] = state
+        controller?.reloadSeparators()
+    }
+
+    // the default is skipped rather than loading: a boundary the reader has not
+    // crossed pushed nothing, which is what skipped means. a spinner there would
+    // be claiming work that has not been asked for
+    private func trackerRows(for chapter: ReaderChapter.ID) -> [ReaderSeparatorModel.Tracker] {
+        guard !trackers.isEmpty else { return [] }
+
+        let states = trackerStates[chapter] ?? [:]
+        return trackers.map { row in
+            var resolved = row
+            resolved.state = states[row.id] ?? .skipped
+            return resolved
+        }
     }
 
     private func destination(after id: ReaderChapter.ID) -> ReaderSeparatorModel.Destination {
@@ -501,7 +556,7 @@ final class ReaderEngine {
                 self.failures[target.id] = Self.reason(from: error, chapter: target.id)
                 self.controller?.reloadSeparators()
                 AppLog.shared.log(
-                    "preload failed for chapter \(target.id) — \(error)",
+                    "preload failed for chapter \(target.id) - \(error)",
                     category: "reader"
                 )
             }
@@ -511,7 +566,7 @@ final class ReaderEngine {
     private static func reason(from error: Error, chapter: ReaderChapter.ID) -> ReaderError {
         if let error = error as? ReaderError { return error }
         if let error = error as? NetworkError, case .offline = error { return .offline(chapter) }
-        return .fetchFailed(chapter, reason: error.localizedDescription)
+        return .fetchFailed(chapter, reason: Failure(error, fallback: "Failed to Load").sentence)
     }
 
     // progress is written as (page + 1) / total, so the inverse takes one back

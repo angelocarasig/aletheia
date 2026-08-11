@@ -239,7 +239,7 @@ extension Compositor {
                     try Self.work(collection: collection, sort: sort, ascending: ascending, registry: registry, in: db)
                 }
             } catch {
-                log.log("library refresh could not build its work list — \(error)", category: "refresh")
+                log.log("library refresh could not build its work list - \(error)", category: "refresh")
                 return
             }
 
@@ -297,7 +297,7 @@ extension Compositor {
             queued.remove(id)
             completed += 1
             advance()
-            log.log("series \(id) refreshed elsewhere — dropped from the walk", category: "refresh")
+            log.log("series \(id) refreshed elsewhere - dropped from the walk", category: "refresh")
         }
 
         // a series leaves the queue exactly when it starts, so the two sets are
@@ -344,7 +344,7 @@ extension Compositor {
             do {
                 try BGTaskScheduler.shared.submit(request)
             } catch {
-                log.log("scheduled refresh not accepted — \(error)", category: "refresh")
+                log.log("scheduled refresh not accepted - \(error)", category: "refresh")
             }
             #endif
         }
@@ -371,7 +371,7 @@ extension Compositor {
 
             // one run, not one per interval missed. how many were skipped is not
             // a thing anybody needs made up for
-            log.log("automatic refresh was due \(due.formatted()) — running now", category: "refresh")
+            log.log("automatic refresh was due \(due.formatted()) - running now", category: "refresh")
             start(automatic: true)
         }
 
@@ -681,7 +681,7 @@ actor OriginRefresher {
                 try Self.write(detail, for: originId, in: db)
             }
         } catch {
-            log.log("origin \(originId.rawValue) metadata refresh failed — \(error)", category: "refresh")
+            log.log("origin \(originId.rawValue) metadata refresh failed - \(error)", category: "refresh")
         }
     }
 
@@ -789,7 +789,7 @@ actor OriginRefresher {
                     )
             }
 
-            log.log("origin \(originId.rawValue) chapter fetch FAILED — \(error)", category: "refresh")
+            log.log("origin \(originId.rawValue) chapter fetch FAILED - \(error)", category: "refresh")
             return .failed(reason)
         }
     }

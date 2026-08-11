@@ -197,7 +197,7 @@ final class SearchViewModel {
         } catch {
             guard generation == expected, sections.indices.contains(index) else { return }
             sections[index].phase = .failed
-            AppLog.shared.log("global search failed for '\(source.descriptor.slug)' — \(error)", category: "search")
+            AppLog.shared.log("global search failed for '\(source.descriptor.slug)' - \(error)", category: "search")
         }
     }
 }

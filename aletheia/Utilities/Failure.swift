@@ -17,6 +17,13 @@ struct Failure: Equatable, Sendable {
     // whether offering a retry is honest. a chapter with no pages will never
     // have any, and a button that cannot work is worse than no button
     let isRetryable: Bool
+
+    // one line for a slot that has room for one - a queue row's reason, a
+    // ReaderError's failureReason. message is empty when the type states a title
+    // and nothing else, and an empty sentence is worse than a repeated one
+    var sentence: String {
+        message.isEmpty ? title : message
+    }
 }
 
 extension Failure {
@@ -41,7 +48,7 @@ extension Failure {
             title = fallback
             message = "Something unexpected went wrong. Please try again."
             isRetryable = true
-            AppLog.shared.log("unpresentable error reached a screen — \(error)", category: "failure")
+            AppLog.shared.log("unpresentable error reached a screen - \(error)", category: "failure")
         }
     }
 }

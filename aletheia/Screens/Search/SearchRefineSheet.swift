@@ -324,12 +324,12 @@ private struct MultiSelectGroup: View {
         if search.isEmpty, isDeferred {
             let count = options.count - visible.count
             guard count > 0 else { return nil }
-            return Text("^[\(count) option](inflect: true) — search to browse")
+            return Text("^[\(count) option](inflect: true) - search to browse")
         }
 
         let hidden = filtered.count - visible.count
         guard hidden > 0 else { return nil }
-        return Text("^[\(hidden) more match](inflect: true) — narrow your search")
+        return Text("^[\(hidden) more match](inflect: true) - narrow your search")
     }
 
     private var filtered: [SourceFilter.Option] {

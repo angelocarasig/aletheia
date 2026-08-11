@@ -8,7 +8,7 @@
 import SwiftUI
 
 // primitives (Radix 12-step scales, light/dark colorsets) live in
-// Resources/Assets.xcassets/Colors/Radix. views never reference a raw step —
+// Resources/Assets.xcassets/Colors/Radix. views never reference a raw step -
 // only the semantic aliases below.
 enum Palette {
     // brand (blue)
@@ -62,7 +62,7 @@ enum Palette {
         }
     }
 
-    // neutrals (system semantic — free dark mode, contrast, vibrancy)
+    // neutrals (system semantic - free dark mode, contrast, vibrancy)
     static let textPrimary = Color.primary
     static let muted = Color.secondary
     static let canvas = Color(.systemBackground)

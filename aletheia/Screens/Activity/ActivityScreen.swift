@@ -21,6 +21,7 @@ struct ActivityScreen: View {
     @State private var reading: ReadingTarget?
     @State private var showingFailures = false
     @State private var showingDownloads = false
+    @State private var showingTracking = false
 
     private struct ReadingTarget: Identifiable, Hashable {
         let seriesId: SeriesRecord.ID
@@ -104,6 +105,12 @@ struct ActivityScreen: View {
             .navigationDestination(isPresented: $showingDownloads) {
                 DownloadQueueScreen(downloads: compositor.downloads)
             }
+            // the account screen rather than a per-series list: a dead account is
+            // one fact about one service, and signing in is the only thing that
+            // resolves it
+            .navigationDestination(isPresented: $showingTracking) {
+                TrackingScreen()
+            }
             .toolbar {
                 if let vm, phase == .content {
                     ToolbarItem(placement: .primaryAction) {
@@ -185,17 +192,23 @@ private extension ActivityScreen {
                             : 0
                     )
                     : .idle(stored: snapshot.downloadedChapters),
-                failing: snapshot.failingSources
+                failing: snapshot.failingSources,
+                // read live from the credentials rather than from the snapshot:
+                // this is keychain state, not a column, and it changes on a
+                // sign-in that no database write accompanies
+                signedOut: Tracker.allCases.filter(compositor.trackers.needingSignIn.contains)
             ),
             onCancelRefresh: { refresh.cancel() },
             onOpenDownloads: { showingDownloads = true },
             // the count is the awareness; the list is the attribution and the
             // retry. a series can be healthy on one source and dead on another,
             // so naming the series alone would not be enough to act on
-            onOpenFailures: { showingFailures = true }
+            onOpenFailures: { showingFailures = true },
+            onOpenTracking: { showingTracking = true }
         )
         .animation(.settle, value: refresh.isRunning)
         .animation(.settle, value: queued > 0)
+        .animation(.settle, value: compositor.trackers.needingSignIn)
     }
 
     func DaySection(_ group: ActivityViewModel.DayGroup) -> some View {

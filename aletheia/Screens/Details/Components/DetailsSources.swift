@@ -9,9 +9,11 @@ import SwiftUI
 
 struct DetailsSources: View {
     let origins: [Origin]
+    var retrying: Set<Int64> = []
     var onSetPrimary: (Int64) -> Void
     var onReorder: ([Int64]) -> Void
     var onRemove: (Int64) -> Void
+    var onRetry: (Int64) -> Void = { _ in }
 
     @State private var ordering = false
 
@@ -24,6 +26,7 @@ struct DetailsSources: View {
         static let placeholderOpacity: Double = 0.06
         static let unavailableOpacity: Double = 0.5
         static let slugLength = 8
+        static let retryFill: Double = 0.1
         static let settle: Animation = .smooth(duration: 0.3)
     }
 
@@ -114,16 +117,44 @@ struct DetailsSources: View {
     @ViewBuilder
     private func Trouble(_ origin: Origin) -> some View {
         if let reason = origin.failureReason {
-            Group {
-                if let failedDate = origin.failedDate {
-                    Text("\(reason) Last tried \(failedDate.formatted(.relative(presentation: .named))).")
-                } else {
-                    Text(reason)
+            VStack(alignment: .leading, spacing: dimensions.spacing.space4) {
+                Group {
+                    if let failedDate = origin.failedDate {
+                        // one Text, or the sentence stops wrapping
+                        LiveRelative(date: failedDate) { relative in
+                            Text("\(reason) Last tried \(relative).")
+                        }
+                    } else {
+                        Text(reason)
+                    }
                 }
+                .font(.caption2)
+                .foregroundStyle(.warningText)
+                .lineLimit(2)
+
+                Retry(origin)
             }
-            .font(.caption2)
-            .foregroundStyle(.warningText)
-            .lineLimit(2)
+        }
+    }
+
+    // half of the reasons above end with the words "try again", and until this
+    // shipped there was nothing on the row to try again with. the only other
+    // route was Refresh Chapters in the overflow, which checks every origin and
+    // never names the one that failed
+    @ViewBuilder
+    private func Retry(_ origin: Origin) -> some View {
+        if retrying.contains(origin.id) {
+            ProgressView()
+                .controlSize(.small)
+        } else {
+            Text("Try Again")
+                .font(.caption2)
+                .fontWeight(.medium)
+                .foregroundStyle(.brand)
+                .padding(.horizontal, dimensions.spacing.space12)
+                .padding(.vertical, dimensions.spacing.space4)
+                .background(.brand.opacity(Layout.retryFill), in: .capsule)
+                .tappable { onRetry(origin.id) }
         }
     }
 
@@ -163,7 +194,7 @@ struct DetailsSources: View {
     // chapter count off the row, and eight characters is already past the first
     // uuid group, which is where two listings stop looking alike
     private func marker(for slug: String) -> String {
-        slug.count <= Layout.slugLength ? slug : slug.prefix(Layout.slugLength) + "…"
+        slug.count <= Layout.slugLength ? slug : slug.prefix(Layout.slugLength) + "..."
     }
 
     private func Actions(_ origin: Origin) -> some View {
@@ -245,4 +276,143 @@ extension DetailsSources {
             case available, disabled, disconnected, missing
         }
     }
+}
+
+// MARK: - Previews
+
+// every sentence that can reach this row, stepped through one at a time. they
+// are written out rather than read from the error types because that is the
+// point: the column stores the text, so what a reader sees is whatever was
+// true when it failed, not what the enum says today
+private struct SourcesPreview: View {
+    @State private var index = 0
+    @State private var retrying: Set<Int64> = []
+
+    private static let states: [(name: String, reason: String?)] = [
+        ("Healthy", nil),
+        ("Offline", "Check your connection and try again."),
+        ("Timed out", "The server took too long to respond. Try again in a moment."),
+        ("Bad response", "The server responded unexpectedly."),
+        ("Encoding", "This app couldn't build the request."),
+        ("Decoding", "This app couldn't read the server's response."),
+        ("Transport", "A server with the specified hostname could not be found."),
+        ("Nothing came back", "The server responded but returned nothing to read."),
+        ("Verification timed out", "The source's checks didn't finish in time. Try again in a moment."),
+        ("Verification needed", "This source needs to verify your browser before it can be read."),
+        ("Unknown", "Something unexpected went wrong. Please try again."),
+        // the longest sentence any of these can be, which is where the two-line
+        // clamp and the button below it have to still look deliberate
+        ("Two lines", "The server responded but returned nothing to read. This usually means the listing moved.")
+    ]
+
+    private var state: (name: String, reason: String?) { Self.states[index] }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack {
+                Button("Previous") { step(-1) }
+                Button("Next") { step(1) }
+                Spacer()
+                Text("\(index + 1)/\(Self.states.count)")
+                    .font(.caption)
+                    .foregroundStyle(.muted)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+
+            Text(state.name)
+                .font(.caption)
+                .foregroundStyle(.muted)
+
+            DetailsSources(
+                origins: [failing, healthy],
+                retrying: retrying,
+                onSetPrimary: { _ in },
+                onReorder: { _ in },
+                onRemove: { _ in },
+                // held long enough to see, since the spinner is the half of this
+                // control that only exists while a request is in flight
+                onRetry: { id in
+                    retrying.insert(id)
+                    Task {
+                        try? await Task.sleep(for: .seconds(2))
+                        retrying.remove(id)
+                    }
+                }
+            )
+
+            Spacer()
+        }
+        .padding(16)
+        .background(.canvas)
+    }
+
+    private func step(_ delta: Int) {
+        index = (index + delta + Self.states.count) % Self.states.count
+    }
+
+    private var failing: DetailsSources.Origin {
+        .init(
+            id: 1,
+            name: "MangaFire",
+            slug: "one-piece.abc123",
+            host: "mangafire.to",
+            url: URL(string: "https://mangafire.to/manga/one-piece.abc123"),
+            icon: nil,
+            priority: 0,
+            chapterCount: 1102,
+            fetchedDate: .now.addingTimeInterval(-7200),
+            availability: .available,
+            failureReason: state.reason,
+            failedDate: state.reason == nil ? nil : .now.addingTimeInterval(-45)
+        )
+    }
+
+    private var healthy: DetailsSources.Origin {
+        .init(
+            id: 2,
+            name: "WeebCentral",
+            slug: "01J76XY",
+            host: "weebcentral.com",
+            url: URL(string: "https://weebcentral.com/series/01J76XY"),
+            icon: nil,
+            priority: 1,
+            chapterCount: 1098,
+            fetchedDate: .now.addingTimeInterval(-600),
+            availability: .available,
+            failureReason: nil,
+            failedDate: nil
+        )
+    }
+}
+
+#Preview("Failures") {
+    SourcesPreview()
+}
+
+#Preview("Dark") {
+    SourcesPreview()
+        .environment(\.colorScheme, .dark)
+}
+
+// the three ways a source stops being usable, none of which are failures: the
+// row keeps its rank and dims, and none of them offer a retry
+#Preview("Unavailable") {
+    ScrollView {
+        DetailsSources(
+            origins: [
+                .init(id: 1, name: "MangaFire", slug: "one-piece", host: "mangafire.to", url: nil, icon: nil, priority: 0, chapterCount: 1102, fetchedDate: .now, availability: .disabled, failureReason: nil, failedDate: nil),
+                .init(id: 2, name: "WeebCentral", slug: "01J76XY", host: "weebcentral.com", url: nil, icon: nil, priority: 1, chapterCount: 1098, fetchedDate: nil, availability: .disconnected, failureReason: nil, failedDate: nil),
+                .init(id: 3, name: "Atsumaru", slug: "op", host: "atsu.moe", url: nil, icon: nil, priority: 2, chapterCount: 0, fetchedDate: nil, availability: .missing, failureReason: nil, failedDate: nil),
+                // a disabled source that was also failing shows no trouble line:
+                // it is not failing, it is switched off
+                .init(id: 4, name: "MangaDex", slug: "uuid", host: "mangadex.org", url: nil, icon: nil, priority: 3, chapterCount: 900, fetchedDate: nil, availability: .disabled, failureReason: "Check your connection and try again.", failedDate: .now)
+            ],
+            onSetPrimary: { _ in },
+            onReorder: { _ in },
+            onRemove: { _ in }
+        )
+        .padding(16)
+    }
+    .background(.canvas)
 }

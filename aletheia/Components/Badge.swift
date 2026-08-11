@@ -39,7 +39,7 @@ struct Badge: View {
     }
 
     // a literal keeps its inflection markup - passing the same string through a
-    // String parameter renders the ^[…](inflect:) syntax verbatim
+    // String parameter renders the ^[...](inflect:) syntax verbatim
     init(_ key: LocalizedStringKey, tone: Palette.Tone = .brand, size: Size = .standalone) {
         self.label = Text(key)
         self.tone = tone

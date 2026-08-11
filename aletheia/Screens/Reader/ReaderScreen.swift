@@ -63,7 +63,8 @@ struct ReaderScreen: View {
                 seriesId: seriesId,
                 chapterId: chapterId,
                 database: compositor.database,
-                registry: compositor.registry
+                registry: compositor.registry,
+                trackers: compositor.trackers
             )
             vm = model
             await model.load()

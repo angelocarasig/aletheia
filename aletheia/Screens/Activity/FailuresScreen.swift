@@ -253,9 +253,16 @@ private extension FailuresScreen {
                     .frame(maxWidth: .infinity, alignment: .leading)
 
                 HStack {
-                    Text("Last tried \(entry.attemptedDate.formatted(.relative(presentation: .named)))")
-                        .font(.caption2)
-                        .foregroundStyle(.muted)
+                    // live rather than formatted once: this screen is what a
+                    // reader keeps open while retrying, and a stamp that says
+                    // "1m ago" for the whole visit is the one thing here that
+                    // would make a retry look like it never happened
+                    HStack(spacing: dimensions.spacing.space4) {
+                        Text("Last tried")
+                        LiveRelativeText(date: entry.attemptedDate)
+                    }
+                    .font(.caption2)
+                    .foregroundStyle(.muted)
 
                     Spacer(minLength: 0)
 

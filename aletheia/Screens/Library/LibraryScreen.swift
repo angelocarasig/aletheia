@@ -51,8 +51,8 @@ struct LibraryScreen: View {
                             // set is every source. same query, one step out
                             handoff: .init(
                                 tint: .brand,
-                                label: { "Search every source for “\($0)”" },
-                                onSelect: { text in log("handoff to sources — \(text)") }
+                                label: { "Search every source for \"\($0)\"" },
+                                onSelect: { text in log("handoff to sources - \(text)") }
                             )
                         )
                         .padding(.horizontal, dimensions.screenMargin)

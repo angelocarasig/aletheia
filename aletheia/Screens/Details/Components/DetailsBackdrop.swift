@@ -20,25 +20,42 @@ extension DetailsBackdrop {
     // read by the scroll spacer and the skeleton too, so the three stay aligned
     static let heroHeight: CGFloat = 200
 
+    // how far you scroll before the blur and the dim reach full strength.
     // points, never a fraction of the content: a 1925 chapter series and an 8
     // chapter one must feel identical
-    static let rampDistance: CGFloat = 200
+    static let blurDistance: CGFloat = 200
 
     // the scroll callback only fires when its value changes, so rounding bounds
-    // the ramp to a few dozen updates rather than one a frame
-    static let rampStep: CGFloat = 8
+    // the blur to a few dozen updates rather than one a frame
+    static let blurStep: CGFloat = 8
 }
 
 struct DetailsBackdrop: View {
     let cover: URL?
     let referer: URL?
     let scroll: DetailsScroll
+    // how far you scroll before the blur and the dim are at full strength. this
+    // is per-surface because a screen with a tall header has further to scroll
+    // before the artwork is in the way, and the caller's own clamp has to use
+    // the same distance, which is why it is passed rather than read off the type
+    var blurDistance: CGFloat = DetailsBackdrop.blurDistance
+
+    // where the artwork fades out, as fractions of its own 700pt height: 0 is
+    // its top edge, 1 its bottom. above fadeStart it is untouched, below fadeEnd
+    // it is gone, and between them it is on its way out.
+    //
+    // lowering BOTH moves the whole fade up. lowering only fadeStart makes the
+    // fade longer, which is softer rather than higher - the mistake that is easy
+    // to make here, because it looks like nothing moved
+    var fadeStart: CGFloat = Layout.fadeStart
+    var fadeEnd: CGFloat = Layout.fadeEnd
 
     @Environment(\.colorScheme) private var colorScheme
 
-    private enum Layout {
+    fileprivate enum Layout {
         static let height: CGFloat = 700
-        static let scrimStart: CGFloat = 0.50
+        static let fadeStart: CGFloat = 0.50
+        static let fadeEnd: CGFloat = 1
         static let fadeDuration: Double = 0.25
         static let placeholderOpacity: Double = 0.1
         static let sample = CGSize(width: 120, height: 180)
@@ -58,7 +75,7 @@ struct DetailsBackdrop: View {
         DownsamplingImageProcessor(size: Layout.sample) |> BlurImageProcessor(blurRadius: Layout.radius)
 
     private var progress: Double {
-        min(max(scroll.offset / Self.rampDistance, 0), 1)
+        min(max(scroll.offset / blurDistance, 0), 1)
     }
 
     private var dim: Double {
@@ -76,7 +93,7 @@ struct DetailsBackdrop: View {
                 Artwork(geometry.size, processor: Self.softened)
                     .opacity(progress)
 
-                Scrim
+                Fade
 
                 Palette.canvas
                     .opacity(dim)
@@ -115,11 +132,12 @@ struct DetailsBackdrop: View {
             .shimmer()
     }
 
-    private var Scrim: some View {
+    // see-through at fadeStart, solid canvas at fadeEnd
+    private var Fade: some View {
         LinearGradient(
             colors: [.clear, Palette.canvas],
-            startPoint: UnitPoint(x: 0.5, y: Layout.scrimStart),
-            endPoint: .bottom
+            startPoint: UnitPoint(x: 0.5, y: fadeStart),
+            endPoint: UnitPoint(x: 0.5, y: fadeEnd)
         )
     }
 }

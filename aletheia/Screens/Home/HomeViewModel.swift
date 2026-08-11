@@ -111,7 +111,7 @@ final class HomeViewModel {
             } catch {
                 guard let self else { return }
                 self.failure = Failure(error, fallback: "Couldn't Load Home")
-                AppLog.shared.log("home observation failed — \(error)", category: "home")
+                AppLog.shared.log("home observation failed - \(error)", category: "home")
             }
         }
     }

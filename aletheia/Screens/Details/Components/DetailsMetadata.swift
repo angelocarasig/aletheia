@@ -56,7 +56,7 @@ struct DetailsMetadata: View {
             Cell(label: "Fetched", subtitle: "Up to date") {
                 Elapsed(lastFetchedDate)
             }
-            Cell(label: "Last Read", subtitle: "—") {
+            Cell(label: "Last Read", subtitle: "-") {
                 Elapsed(lastReadDate)
             }
         }
@@ -108,7 +108,7 @@ struct DetailsMetadata: View {
     }
 
     private var progress: String {
-        totalCount > 0 ? "\(readCount)/\(totalCount)" : "—"
+        totalCount > 0 ? "\(readCount)/\(totalCount)" : "-"
     }
 
     private var progressSubtitle: String {

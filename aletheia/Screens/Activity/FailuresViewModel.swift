@@ -50,7 +50,7 @@ final class FailuresViewModel {
             } catch {
                 guard let self else { return }
                 self.failure = Failure(error, fallback: "Couldn't Load Failures")
-                AppLog.shared.log("failures observation failed — \(error)", category: "activity")
+                AppLog.shared.log("failures observation failed - \(error)", category: "activity")
             }
         }
     }

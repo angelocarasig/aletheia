@@ -62,7 +62,7 @@ final class StatsViewModel {
             } catch {
                 guard let self else { return }
                 self.failure = Failure(error, fallback: "Couldn't Load Reading Activity")
-                AppLog.shared.log("stats observation failed — \(error)", category: "home")
+                AppLog.shared.log("stats observation failed - \(error)", category: "home")
             }
         }
     }

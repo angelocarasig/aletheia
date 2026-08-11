@@ -19,6 +19,7 @@ struct ActivityNowSection: View {
     var onCancelRefresh: () -> Void = {}
     var onOpenDownloads: () -> Void = {}
     var onOpenFailures: () -> Void = {}
+    var onOpenTracking: () -> Void = {}
 
     @Environment(\.dimensions) private var dimensions
 
@@ -30,6 +31,13 @@ struct ActivityNowSection: View {
         // again, so an x would either hide a live fact or need a third column
         // saying it had been acknowledged
         var failing: Int = 0
+        // services that have stopped syncing until the reader signs in again.
+        // deliberately NOT folded into `failing` above, whose copy is about
+        // sources and whose list is per origin - merging the two populations
+        // makes that sentence false for half of what it counts. one row per dead
+        // account rather than one per affected series: forty rows would all say
+        // the same thing and none of them would be fixable where they stood
+        var signedOut: [Tracker] = []
 
         enum RefreshState: Equatable {
             case idle(lastChecked: Date?)
@@ -54,6 +62,10 @@ struct ActivityNowSection: View {
 
             if model.failing > 0 {
                 FailingRow
+            }
+
+            ForEach(model.signedOut) { tracker in
+                SignedOutRow(tracker)
             }
         }
     }
@@ -99,7 +111,7 @@ private extension ActivityNowSection {
                             .font(.caption)
                             .foregroundStyle(.secondary)
 
-                        Text(seriesTitle ?? "Starting…")
+                        Text(seriesTitle ?? "Starting")
                             .font(.subheadline)
                             .fontWeight(.medium)
                             .lineLimit(1)
@@ -212,6 +224,45 @@ private extension ActivityNowSection {
         .tappable { onOpenFailures() }
     }
 
+    // the one tracker failure a reader has to act on, and the only one that
+    // cannot fix itself: a push that failed will retry, an account that has run
+    // out will not. named rather than counted - "1 account" is a number where the
+    // service's own name is the whole instruction
+    func SignedOutRow(_ tracker: Tracker) -> some View {
+        HStack(spacing: dimensions.spacing.space12) {
+            Image(tracker.icon)
+                .resizable()
+                .scaledToFit()
+                .frame(width: dimensions.size.icon24, height: dimensions.size.icon24)
+                .clipShape(.rect(cornerRadius: dimensions.radius.radius8))
+
+            VStack(alignment: .leading, spacing: dimensions.spacing.space2) {
+                Text("Reconnect \(tracker.name)")
+                    .font(.subheadline)
+                    .fontWeight(.medium)
+                    .lineLimit(1)
+
+                // anilist expires yearly by design and myanimelist only when
+                // something went wrong. the reader does the same thing about
+                // either, so neither says which - and neither says "expired",
+                // which reads as a fault where one of the two is routine
+                Text("Your progress isn't syncing until you sign in again.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            Image(systemName: "chevron.right")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+        }
+        .padding(dimensions.spacing.space12)
+        .background(.primary.opacity(Layout.fillOpacity), in: .rect(cornerRadius: dimensions.radius.radius12))
+        .contentShape(.rect)
+        .tappable { onOpenTracking() }
+    }
+
     func Card(@ViewBuilder content: () -> some View) -> some View {
         HStack(spacing: dimensions.spacing.space12, content: content)
             .padding(dimensions.spacing.space12)
@@ -226,6 +277,34 @@ private extension ActivityNowSection {
         model: .init(
             refresh: .idle(lastChecked: .now.addingTimeInterval(-7200)),
             downloads: .idle(stored: 12)
+        )
+    )
+    .padding()
+}
+
+// the row that cannot fix itself, so it is the one thing here worth interrupting
+// for. shown beside a healthy library on purpose: it has to read as one account's
+// problem rather than as the app being broken
+#Preview("Account signed out") {
+    ActivityNowSection(
+        model: .init(
+            refresh: .idle(lastChecked: .now.addingTimeInterval(-3600)),
+            downloads: .idle(stored: 12),
+            signedOut: [.anilist]
+        )
+    )
+    .padding()
+}
+
+// both at once - two rows rather than one summarising them, because the fix is
+// per account and a combined row could not name which
+#Preview("Both accounts signed out") {
+    ActivityNowSection(
+        model: .init(
+            refresh: .idle(lastChecked: .now.addingTimeInterval(-3600)),
+            downloads: .idle(stored: 12),
+            failing: 2,
+            signedOut: [.anilist, .myAnimeList]
         )
     )
     .padding()

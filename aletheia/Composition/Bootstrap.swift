@@ -20,7 +20,7 @@ final class Bootstrap {
         case seeding
         case cleaning
         case ready
-        case failed(String)
+        case failed(Failure)
 
         var label: String {
             switch self {
@@ -84,13 +84,19 @@ final class Bootstrap {
             // the queue is intent, and intent is what a kill destroys - the bytes
             // already on disk are picked up again for free
             compositor.downloads.restore()
+
+            // the pending columns are durable, so anything that piled up while
+            // offline drains on its own once an account is back
+            compositor.trackers.hydrate()
+            compositor.trackers.restore()
+
             await Notifier.prepare()
 
             self.compositor = compositor
             phase = .ready
         } catch {
-            AppLog.shared.log("bootstrap FAILED — \(error)", category: "bootstrap")
-            phase = .failed(error.localizedDescription)
+            AppLog.shared.log("bootstrap FAILED - \(error)", category: "bootstrap")
+            phase = .failed(Failure(error, fallback: "Couldn't Start"))
         }
     }
 

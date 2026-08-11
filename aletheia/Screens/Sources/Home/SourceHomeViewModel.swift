@@ -45,7 +45,7 @@ final class SourceHomeViewModel {
             let credential = try await requester.forceRefresh(for: auth)
             credentialExpiry = credential.expiresAt
         } catch {
-            AppLog.shared.log("credential refresh failed for '\(source.descriptor.slug)' — \(error)", category: "auth")
+            AppLog.shared.log("credential refresh failed for '\(source.descriptor.slug)' - \(error)", category: "auth")
         }
     }
 
@@ -118,7 +118,7 @@ private struct SeededGenerator: RandomNumberGenerator {
 
 private extension String {
     // FNV-1a (64-bit). deterministic across launches, unlike String.hashValue
-    // which Swift randomizes per process — the day-seeded hero selection needs a
+    // which Swift randomizes per process - the day-seeded hero selection needs a
     // launch-stable seed so it stays fixed for the whole day.
     var stableHash: UInt64 {
         var hash: UInt64 = 0xCBF29CE484222325

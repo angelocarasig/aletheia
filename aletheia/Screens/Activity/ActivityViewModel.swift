@@ -57,7 +57,7 @@ final class ActivityViewModel {
             } catch {
                 guard let self else { return }
                 self.failure = Failure(error, fallback: "Couldn't Load Activity")
-                AppLog.shared.log("activity observation failed — \(error)", category: "activity")
+                AppLog.shared.log("activity observation failed - \(error)", category: "activity")
             }
         }
     }

@@ -11,8 +11,8 @@ import WebKit
 enum RenderError: DescribableError {
     case noContent
 
-    var errorDescription: String? { "Nothing to Read" }
-    var failureReason: String? { "The page loaded but returned no content." }
+    var errorDescription: String? { "Nothing Came Back" }
+    var failureReason: String? { "The server responded but returned nothing to read." }
 }
 
 extension WebRenderer {

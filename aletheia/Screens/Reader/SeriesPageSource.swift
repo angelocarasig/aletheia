@@ -53,16 +53,6 @@ struct SeriesPageSource: ReaderPageSource {
 
         let headers = source.requestHeaders
 
-        // the page number you see on screen is 1-based, so it is logged that way
-        // - the whole point is being able to read "page 7 looks wrong" off the
-        // screen and find the url that served it
-        for page in content {
-            AppLog.shared.log(
-                "page \(page.index + 1)/\(content.count) — \(page.url.absoluteString)",
-                category: "reader.pages"
-            )
-        }
-
         return content.map { page in
             ReaderPage(
                 chapter: chapter,

@@ -82,7 +82,7 @@ final class ContinuedTask {
         }
 
         #if targetEnvironment(simulator)
-        log.log("\(identifier) not submitted — simulator has no continued-processing tasks", category: "tasks")
+        log.log("\(identifier) not submitted - simulator has no continued-processing tasks", category: "tasks")
         #else
         let request = BGContinuedProcessingTaskRequest(
             identifier: identifier,
@@ -92,11 +92,11 @@ final class ContinuedTask {
 
         do {
             try BGTaskScheduler.shared.submit(request)
-            log.log("submitted \(identifier) — \"\(title)\" / \"\(subtitle)\"", category: "tasks")
+            log.log("submitted \(identifier) - \"\(title)\" / \"\(subtitle)\"", category: "tasks")
         } catch {
             // a failed submission is not a failed run: the work is already going
             // in the foreground, it simply will not survive being backgrounded
-            log.log("continued-processing task not granted — \(error)", category: "tasks")
+            log.log("continued-processing task not granted - \(error)", category: "tasks")
         }
         #endif
     }
@@ -124,7 +124,7 @@ final class ContinuedTask {
     // it immediately - there is nothing left to extend
     private func adopt(_ task: BGContinuedProcessingTask, onExpire: @escaping @MainActor () -> Void) {
         guard tick() != nil else {
-            log.log("granted \(identifier) after the run ended — completing it", category: "tasks")
+            log.log("granted \(identifier) after the run ended - completing it", category: "tasks")
             task.setTaskCompleted(success: true)
             return
         }

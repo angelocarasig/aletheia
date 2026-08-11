@@ -106,7 +106,7 @@ actor CoverDownloader {
         } catch {
             // a failed read must never be mistaken for an empty keep set - that
             // would delete every downloaded cover the user has
-            log.log("sweep ABORTED — \(error)", category: "assets")
+            log.log("sweep ABORTED - \(error)", category: "assets")
             return
         }
 
@@ -148,7 +148,7 @@ actor CoverDownloader {
                 written[row.id] = try await store.store(asset)
             } catch {
                 failures[row.id, default: 0] += 1
-                log.log("cover \(row.id) failed — \(error)", category: "assets")
+                log.log("cover \(row.id) failed - \(error)", category: "assets")
             }
         }
 
@@ -169,7 +169,7 @@ actor CoverDownloader {
                 }
             }
         } catch {
-            log.log("could not record \(written.count) cover path(s) — \(error)", category: "assets")
+            log.log("could not record \(written.count) cover path(s) - \(error)", category: "assets")
         }
     }
 }

@@ -30,6 +30,11 @@ struct DetailsScreen: View {
     @State private var showingCollections = false
     @State private var showingSetup = false
     @State private var removing: DetailsSources.Origin?
+    // which service the reader is picking an entry for, and which link they
+    // opened. both are the sheet's subject rather than a bare boolean
+    @State private var linking: Tracker?
+    @State private var managing: DetailsTracking.Link?
+    @State private var showingTracking = false
     @State private var marking: DetailsViewModel.MarkRequest?
     @State private var markCommitted: UUID?
     @State private var showingDisambiguation = false
@@ -88,6 +93,33 @@ struct DetailsScreen: View {
         }
         .navigationDestination(isPresented: $searchingAll) {
             SearchScreen(query: vm?.title ?? "", embedded: true)
+        }
+        // a sheet rather than a push: connecting is an errand off the side of
+        // this series, not a place inside it - and dismissing lands back on the
+        // section with its rows already filled in. a push from here would bury
+        // the series one level down behind an account list
+        .sheet(isPresented: $showingTracking) {
+            NavigationStack {
+                TrackingScreen()
+            }
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
+        }
+        // keyed on the service being linked, so the sheet always knows which of
+        // the two it is picking for
+        .sheet(item: $linking) { tracker in
+            if let vm {
+                TrackerLink(tracker, vm: vm, onFinish: { linking = nil })
+            }
+        }
+        // the same screen a search result opens, reached from the other side:
+        // already linked, so its commit saves rather than links and it carries
+        // unlink. one screen rather than a manage sheet that would be this one
+        // with three controls removed
+        .sheet(item: $managing) { link in
+            if let vm {
+                TrackerManage(link, vm: vm, onFinish: { managing = nil })
+            }
         }
         .sheet(isPresented: $showingDisambiguation) {
             if let vm {
@@ -189,13 +221,27 @@ struct DetailsScreen: View {
                     status: vm.status,
                     collections: vm.availableCollections,
                     isSaving: vm.isSaving,
-                    // stubbed until trackers exist. once one is linked here, its
-                    // status is what the next page opens on
-                    trackedStatus: nil,
+                    accounts: vm.trackerAccounts,
+                    links: vm.links,
+                    localProgress: vm.localProgress,
+                    needingSignIn: vm.trackersNeedingSignIn,
+                    syncing: vm.syncingTrackers,
                     onSetStatus: { status in Task { await vm.setStatus(status) } },
                     onToggleCollection: { id in Task { await vm.toggleCollection(id) } },
                     onCreateCollection: { name, description in
                         Task { await vm.createCollection(name: name, description: description) }
+                    },
+                    // the same routing the section below uses - a service with no
+                    // link searches for one, a linked service opens what it has.
+                    // presented from inside the flow rather than beside it,
+                    // because a second sheet on this view would not open over the
+                    // first one
+                    linkSheet: { tracker, close in
+                        if let link = vm.links.first(where: { $0.tracker == tracker }) {
+                            TrackerManage(link, vm: vm, onFinish: close)
+                        } else {
+                            TrackerLink(tracker, vm: vm, onFinish: close)
+                        }
                     }
                 )
             }
@@ -301,6 +347,7 @@ struct DetailsScreen: View {
                 registry: compositor.registry,
                 assets: compositor.assets,
                 refresher: compositor.refresh,
+                trackers: compositor.trackers,
                 database: database
             )
             self.vm = vm
@@ -311,6 +358,78 @@ struct DetailsScreen: View {
     private var sourceName: String {
         guard case .source(let slug, _) = entry else { return "" }
         return compositor.registry.source(slug: slug)?.descriptor.name ?? slug
+    }
+
+    // MARK: Tracking sheets
+
+    // both are built in two places now - beside the section, and inside the
+    // add-to-library flow - so the construction lives once and the presenter
+    // hands in how to close, since the two contexts are driven by different state
+    @ViewBuilder
+    private func TrackerLink(
+        _ tracker: Tracker,
+        vm: DetailsViewModel,
+        onFinish: @escaping () -> Void
+    ) -> some View {
+        DetailsTrackerLink(
+            tracker: tracker,
+            seriesTitle: vm.title,
+            existing: vm.links.first { $0.tracker == tracker },
+            adult: vm.classification == .Explicit,
+            localProgress: vm.localProgress,
+            scoreFormat: vm.scoreFormat(for: tracker),
+            onSearch: { query in
+                try await vm.searchTrackers(query, on: tracker, adult: vm.classification == .Explicit)
+            },
+            onLoadEntry: { id in try await vm.trackerEntry(tracker, remoteId: id) },
+            onCatchUp: { progress in Task { await vm.catchUp(to: progress) } },
+            onPushLocal: { Task { await vm.pushLocalToTrackers() } },
+            onConflicts: { await vm.trackerConflicts(on: tracker) },
+            onResolve: { text in await vm.resolveTracker(text, on: tracker) },
+            onCommit: { candidate, update in try await vm.link(candidate, on: tracker, update: update) },
+            onUnlink: { removeRemote in
+                onFinish()
+                // resolved at tap time rather than captured: the link did not
+                // exist when this sheet was built
+                guard let link = vm.links.first(where: { $0.tracker == tracker }) else { return }
+                Task { await vm.unlink(link, removeRemote: removeRemote) }
+            },
+            onCancel: onFinish
+        )
+    }
+
+    @ViewBuilder
+    private func TrackerManage(
+        _ link: DetailsTracking.Link,
+        vm: DetailsViewModel,
+        onFinish: @escaping () -> Void
+    ) -> some View {
+        NavigationStack {
+            DetailsTrackerCandidate(
+                tracker: link.tracker,
+                candidate: .init(
+                    id: link.remoteId,
+                    title: link.remoteTitle,
+                    totalChapters: link.total
+                ),
+                localProgress: vm.localProgress,
+                conflict: nil,
+                scoreFormat: link.scoreFormat,
+                linked: true,
+                syncedDate: link.syncedDate,
+                onLoad: { try await vm.trackerEntry(link.tracker, remoteId: link.remoteId) },
+                onCommit: { _, update in try await vm.editTracker(link, update: update) },
+                onUnlink: { removeRemote in
+                    onFinish()
+                    Task { await vm.unlink(link, removeRemote: removeRemote) }
+                },
+                onCatchUp: { progress in Task { await vm.catchUp(to: progress) } },
+                onPushLocal: { Task { await vm.pushLocalToTrackers() } },
+                onClose: onFinish
+            )
+        }
+        .presentationDetents([.large])
+        .presentationDragIndicator(.visible)
     }
 
     @ViewBuilder
@@ -328,8 +447,8 @@ struct DetailsScreen: View {
         // chapter list. rounding bounds the ramp itself to a few updates
         .onScrollGeometryChange(for: CGFloat.self) { geometry in
             let scrolled = geometry.contentOffset.y + geometry.contentInsets.top
-            let ramped = min(max(scrolled, 0), DetailsBackdrop.rampDistance)
-            return (ramped / DetailsBackdrop.rampStep).rounded() * DetailsBackdrop.rampStep
+            let ramped = min(max(scrolled, 0), DetailsBackdrop.blurDistance)
+            return (ramped / DetailsBackdrop.blurStep).rounded() * DetailsBackdrop.blurStep
         } action: { _, offset in
             scroll.offset = offset
         }
@@ -589,13 +708,31 @@ struct DetailsScreen: View {
                 DetailsTags(tags: vm.tags)
             }
 
+            // tracking requires library membership, so off-library it renders
+            // nothing at all rather than a Link row that cannot be operated
+            if vm.inLibrary {
+                DetailsTracking(
+                    accounts: vm.trackerAccounts,
+                    links: vm.links,
+                    localProgress: vm.localProgress,
+                    needingSignIn: vm.trackersNeedingSignIn,
+                    syncing: vm.syncingTrackers,
+                    onLink: { tracker in linking = tracker },
+                    onOpen: { link in managing = link },
+                    onConnect: { showingTracking = true },
+                    onRetry: { link in Task { await vm.retryTracker(link) } }
+                )
+            }
+
             if !vm.origins.isEmpty {
                 DetailsSources(
                     origins: vm.origins,
+                    retrying: vm.retrying,
                     onSetPrimary: { id in Task { await vm.setPrimary(id) } },
                     onReorder: { ids in Task { await vm.reorderOrigins(ids) } },
                     // its chapters go with it, so this one asks first
-                    onRemove: { id in removing = vm.origins.first { $0.id == id } }
+                    onRemove: { id in removing = vm.origins.first { $0.id == id } },
+                    onRetry: { id in Task { await vm.retry(origin: id) } }
                 )
             }
 

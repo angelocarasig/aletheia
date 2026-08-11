@@ -38,7 +38,7 @@ struct ToonilySource: SourceService, AuthenticatingSource {
     let descriptor = SourceDescriptor(
         slug: "toonily",
         name: "Toonily",
-        description: "Read Korean webtoons and manhwa online in English — romance, drama and action titles updated daily.",
+        description: "Read Korean webtoons and manhwa online in English. Romance, drama and action titles updated daily.",
         icon: .toonily,
         languages: [.english],
         baseURL: URL(string: "https://toonily.com")!,
@@ -125,7 +125,7 @@ struct ToonilySource: SourceService, AuthenticatingSource {
                 .init(id: "relevance", name: "Best match"),
                 .init(id: "latest", name: "Latest update"),
                 .init(id: "new-manga", name: "Recently added"),
-                .init(id: "alphabet", name: "Title (A–Z)"),
+                .init(id: "alphabet", name: "Title (A-Z)"),
                 .init(id: "rating", name: "Top rated"),
                 .init(id: "trending", name: "Trending"),
                 .init(id: "views", name: "Most viewed")
@@ -211,7 +211,7 @@ extension ToonilySource {
         return SearchPage(items: stubs, next: exhausted ? nil : query.page + 1)
     }
 
-    // GET /?s=…&post_type=wp-manga - the search-advanced-form, parameter for
+    // GET /?s=...&post_type=wp-manga - the search-advanced-form, parameter for
     // parameter. pagination is wordpress's /page/N/ prefix
     private func searchURL(for query: SearchQuery, gateOpen: Bool) -> URL {
         var items: [URLQueryItem] = [

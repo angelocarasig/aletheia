@@ -46,9 +46,6 @@ struct DetailsActions: View {
         // which is the rule everywhere the tint is a semantic wash
         var label: Color?
         var detached = false
-        // one control here answers with a word rather than on or off, so it takes
-        // its width from its content and keeps the shared height
-        var wide = false
 
         @Environment(\.dimensions) private var dimensions
 
@@ -57,8 +54,7 @@ struct DetailsActions: View {
                 .fontWeight(.medium)
                 .foregroundStyle(label ?? .primary)
                 .lineLimit(Layout.contentLines)
-                .padding(.horizontal, wide ? dimensions.spacing.space12 : 0)
-                .frame(width: wide ? nil : dimensions.size.controlL, height: dimensions.size.controlL)
+                .frame(width: dimensions.size.controlL, height: dimensions.size.controlL)
                 .glassEffect(
                     glass,
                     in: .rect(cornerRadius: dimensions.radius.radius12, style: .continuous)
@@ -130,10 +126,13 @@ struct DetailsActions: View {
 
     // where the user is with the series, which only means anything once it is
     // theirs - outside the library every series would claim to be "planning".
-    // the only control here whose answer is one of five rather than on or off,
-    // so it is the only one that says its answer in words: a glyph alone cannot
-    // name which of five, and the setup sheet's wording is months behind you by
-    // the time you come back to change it
+    //
+    // a square like the two beside it rather than the word it used to spell: the
+    // primary is the only thing on this row still being asked, and a control
+    // stating an answer at twice the width of its neighbours took that place.
+    // what carries the meaning instead is glyph plus tint, and the menu names
+    // all five the moment it opens - which is the only time the exact word
+    // decides anything, since reading it is not what changes it
     private var StatusAction: some View {
         Menu {
             Picker("Status", selection: statusBinding) {
@@ -142,7 +141,10 @@ struct DetailsActions: View {
                 }
             }
         } label: {
+            // iconOnly rather than a bare Image: the word is gone from the screen
+            // and not from VoiceOver, which reads the label it still carries
             Label(status.label, systemImage: status.icon)
+                .labelStyle(.iconOnly)
                 // the write lands from a menu with no animation of its own, so
                 // the glyph needs one here or the replace has nothing to run in
                 .contentTransition(.symbolEffect(.replace))
@@ -151,8 +153,7 @@ struct DetailsActions: View {
                     Square(
                         tint: status.surface,
                         label: status.onSurface,
-                        detached: !inLibrary,
-                        wide: true
+                        detached: !inLibrary
                     )
                 )
         }
@@ -202,7 +203,7 @@ struct DetailsActions: View {
             // merging pulls this series into another one you own, so it only
             // means something once both sides can be library rows
             Button(action: onMerge) {
-                Label("Merge Into…", systemImage: "arrow.triangle.merge")
+                Label("Merge Into", systemImage: "arrow.triangle.merge")
             }
             .disabled(!inLibrary)
 
@@ -272,6 +273,20 @@ extension Status {
         case .paused: .warningText
         case .dropped: .dangerText
         case .planning: .textPrimary
+        }
+    }
+
+    // the same five meanings as a Badge tone, which pairs step 11 text on step 3
+    // background rather than letting a fill colour be drawn as text. planning is
+    // neutral for the reason above: it is where every series starts, so it is not
+    // worth an accent
+    var tone: Palette.Tone {
+        switch self {
+        case .reading: .brand
+        case .completed: .success
+        case .paused: .warning
+        case .dropped: .danger
+        case .planning: .neutral
         }
     }
 

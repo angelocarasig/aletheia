@@ -116,7 +116,7 @@ struct AtsumaruSource: SourceService {
                 .init(id: "dateAdded:desc", name: "Recently added"),
                 .init(id: "releaseDate:desc", name: "Release date"),
                 .init(id: "mbRating:desc", name: "Top rated"),
-                .init(id: "title:asc", name: "Title (A–Z)")
+                .init(id: "title:asc", name: "Title (A-Z)")
             ],
             defaultSort: ""
         )

@@ -238,7 +238,7 @@ private extension ReaderOverlay {
     }
 
     var position: String {
-        guard engine.pageCount > 0 else { return "—" }
+        guard engine.pageCount > 0 else { return "-" }
         // read unconditionally - a ternary short-circuits, so putting this on the
         // false branch drops the dependency for as long as the reader is scrubbing
         let current = engine.page

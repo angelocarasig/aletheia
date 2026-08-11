@@ -59,7 +59,7 @@ struct CollectionForm: View {
                     // the reason replaces the counter rather than stacking under
                     // it - one footer, one thing to fix
                     if isReserved {
-                        Text("“\(trimmed)” is used by the library itself. Pick another name.")
+                        Text("\"\(trimmed)\" is used by the library itself. Pick another name.")
                             .foregroundStyle(Palette.warning)
                     } else {
                         Remaining(name.count, of: Layout.nameLimit)

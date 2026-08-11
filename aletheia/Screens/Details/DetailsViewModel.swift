@@ -19,6 +19,7 @@ final class DetailsViewModel {
     private let registry: Compositor.Registry
     private let assets: Compositor.Assets
     private let refresher: Compositor.Refresh
+    private let trackers: Compositor.Trackers
 
     // a cover swapping from its remote url to its downloaded file changes the
     // kingfisher cache key, which replays the fade. first answer wins for the life
@@ -31,6 +32,9 @@ final class DetailsViewModel {
     private(set) var isSaving = false
     private(set) var isFetchingChapters = false
     private(set) var refreshState: RefreshState = .idle
+    // by origin, because a series can be failing on one source and healthy on
+    // another, and each row retries for itself
+    private(set) var retrying: Set<Int64> = []
     // a mutation the reader asked for that did not happen. separate from
     // `failure`, which replaces the whole screen - here the content is still
     // valid and only the action failed, so it is raised and dismissed
@@ -71,12 +75,14 @@ final class DetailsViewModel {
         registry: Compositor.Registry,
         assets: Compositor.Assets,
         refresher: Compositor.Refresh,
+        trackers: Compositor.Trackers,
         database: DatabaseClient
     ) {
         self.entry = entry
         self.registry = registry
         self.assets = assets
         self.refresher = refresher
+        self.trackers = trackers
         self.database = database
     }
 
@@ -146,6 +152,196 @@ final class DetailsViewModel {
     // the action row counts what this series is in; the picker needs every collection
     // so there is something to add it to
     var collections: [CollectionPicker.Item] { (snapshot?.collections ?? []).filter(\.contains) }
+
+    // MARK: - Tracking
+
+    var links: [DetailsTracking.Link] { snapshot?.links ?? [] }
+
+    // connected accounts, in a fixed order so the two rows never swap places
+    var trackerAccounts: [Tracker] {
+        Tracker.allCases.filter { trackers.accounts[$0] != nil }
+    }
+
+    // connected but unable to push until the reader signs in again. read from the
+    // credential rather than from the in-memory dead set, so it answers the same
+    // on the launch after the token died as it did the moment it died
+    var trackersNeedingSignIn: Set<Tracker> {
+        trackers.needingSignIn
+    }
+
+    var syncingTrackers: Set<Tracker> {
+        guard let seriesId else { return [] }
+        return trackers.syncing(series: seriesId.rawValue)
+    }
+
+    // what a tracker row compares itself against: the same watermark the push
+    // itself sends, so the row and the wire can never disagree about what local
+    // progress is
+    var localProgress: Int { snapshot?.localProgress ?? 0 }
+
+    func searchTrackers(_ query: String, on tracker: Tracker, adult: Bool) async throws -> [TrackerCandidate] {
+        try await trackers.search(tracker, query: query, adult: adult)
+    }
+
+    // which remote entries on this service are already spoken for by a DIFFERENT
+    // series in the library. two library rows pointing at one remote entry means
+    // both push their own progress to it and each keeps undoing the other, and
+    // nothing on the entry itself says which one is winning - so the warning has
+    // to name the other series rather than just flagging a clash
+    func trackerConflicts(on tracker: Tracker) async -> [Int64: String] {
+        let current = seriesId
+        return (try? await database.reader.read { db -> [Int64: String] in
+            let rows = try SeriesTrackerRecord
+                .filter(SeriesTrackerRecord.Columns.tracker == tracker.rawValue)
+                .fetchAll(db)
+                .filter { $0.seriesId != current }
+
+            guard !rows.isEmpty else { return [:] }
+
+            let titles = try RichfulEntryView
+                .filter(rows.map(\.seriesId.rawValue).contains(RichfulEntryView.Columns.seriesId))
+                .fetchAll(db)
+                .reduce(into: [Int64: String]()) { out, entry in
+                    out[entry.seriesId] = entry.title
+                }
+
+            return rows.reduce(into: [Int64: String]()) { out, row in
+                out[row.remoteId] = titles[row.seriesId.rawValue] ?? "another series"
+            }
+        }) ?? [:]
+    }
+
+    // pasting a link or an id is the escape hatch for the case search cannot
+    // reach: a title romanised differently everywhere, or an entry buried past
+    // fifty results. accepts a bare id or any url ending in one
+    func resolveTracker(_ text: String, on tracker: Tracker) async -> TrackerCandidate? {
+        guard let id = Self.remoteId(in: text) else { return nil }
+        guard let entry = try? await trackers.entry(tracker, remoteId: id) else { return nil }
+        return TrackerCandidate(
+            id: entry.remoteId,
+            title: entry.title,
+            totalChapters: entry.totalChapters
+        )
+    }
+
+    // what the reader's own list says about one entry, fetched when they open it
+    // rather than for every search result - fifty of these would be fifty
+    // requests against a budget of thirty a minute
+    func trackerEntry(_ tracker: Tracker, remoteId: Int64) async throws -> TrackerEntry {
+        try await trackers.entry(tracker, remoteId: remoteId)
+    }
+
+    // a URL only. a bare number is a title as often as it is an id - "20", "86",
+    // "1984" are all real series - and treating one as an id turned a search for
+    // them into a single wrong result with no way to tell why
+    nonisolated static func remoteId(in text: String) -> Int64? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.contains("anilist.co") || trimmed.contains("myanimelist.net") else { return nil }
+
+        // .../manga/101177/kanojo-mo-kanojo - the id is the first all-digit
+        // component after the host, never the slug beside it
+        return trimmed
+            .split(whereSeparator: { "/?#".contains($0) })
+            .compactMap { Int64($0) }
+            .first
+    }
+
+    // the account's own scale, or a sane default while signed out - it is a
+    // property of the account rather than of this series, so it is never stored
+    // on the link row
+    func scoreFormat(for tracker: Tracker) -> ScoreFormat {
+        tracker.fixedScoreFormat ?? trackers.accounts[tracker]?.scoreFormat ?? .point10
+    }
+
+    // throws rather than raising its own alert: the control that started this
+    // reports on it, and an alert over an inline failure is the same fact told
+    // twice - the rule the chapter-fetch path already learned
+    func link(_ candidate: TrackerCandidate, on tracker: Tracker, update: TrackerUpdate) async throws {
+        guard let seriesId else { return }
+        isSaving = true
+        defer { isSaving = false }
+
+        try await trackers.link(
+            series: seriesId,
+            tracker: tracker,
+            candidate: candidate,
+            status: update.status ?? status,
+            update: update
+        )
+    }
+
+    func unlink(_ link: DetailsTracking.Link, removeRemote: Bool = false) async {
+        guard let row = try? await stored(link) else { return }
+        isSaving = true
+        defer { isSaving = false }
+
+        do {
+            try await trackers.unlink(row, removeRemote: removeRemote)
+        } catch {
+            actionFailure = Failure(error, fallback: "Couldn't Unlink")
+        }
+    }
+
+    // the one caller allowed to lower a number, and the only path that may write
+    // to an entry the service already calls finished
+    func editTracker(_ link: DetailsTracking.Link, update: TrackerUpdate) async throws {
+        guard let row = try await stored(link) else { throw TrackerError.unavailable }
+        isSaving = true
+        defer { isSaving = false }
+
+        try await trackers.edit(row, update: update)
+    }
+
+    // the remote is ahead and the reader said to accept it
+    // the queue kept every pending column, so this is the walk being asked to
+    // run now rather than at its next wake - not a second way to push
+    func retryTracker(_ link: DetailsTracking.Link) async {
+        guard let row = try? await stored(link) else { return }
+        trackers.retry(row)
+    }
+
+    func catchUp(to link: DetailsTracking.Link) async {
+        await catchUp(to: link.progress)
+    }
+
+    // reuses the batch mark rather than inventing a second way to write read
+    // state, so it enqueues like any other read - the service this number came
+    // from is already at it and declines the write, while a sibling service that
+    // is behind is brought up, which is what the reader asked for
+    func catchUp(to progress: Int) async {
+        let numbers = chapters
+            .map(\.number)
+            .filter { $0 <= Double(progress) }
+
+        await mark(read: true, numbers: numbers)
+    }
+
+    // this app is further along, so every linked service is told - they are all
+    // behind the same read state, and syncing one while leaving the other stale
+    // is how the two drift apart for good.
+    //
+    // enqueue only writes a link whose pending value beats what the service
+    // holds, so a service already at or past the watermark is left untouched
+    func pushLocalToTrackers() async {
+        guard let seriesId else { return }
+
+        do {
+            try await database.writer.write { db in
+                try SeriesTrackerRecord.enqueue(for: seriesId, in: db)
+            }
+        } catch {
+            actionFailure = Failure(error, fallback: "Couldn't Sync")
+            return
+        }
+
+        trackers.flush()
+    }
+
+    private func stored(_ link: DetailsTracking.Link) async throws -> SeriesTrackerRecord? {
+        try await database.reader.read { db in
+            try SeriesTrackerRecord.fetchOne(db, key: link.id)
+        }
+    }
     var availableCollections: [CollectionPicker.Item] { snapshot?.collections ?? [] }
 
     // MARK: - Entry
@@ -266,7 +462,7 @@ final class DetailsViewModel {
             }
         } catch {
             // a background load. the screen keeps what it has rather than nagging
-            AppLog.shared.log("candidates failed — \(error)", category: "details")
+            AppLog.shared.log("candidates failed - \(error)", category: "details")
             await settle()
         }
     }
@@ -383,7 +579,11 @@ final class DetailsViewModel {
                     origins: try Self.origins(for: id, in: db),
                     covers: try Self.covers(for: id, in: db),
                     titles: try Self.titles(for: id, in: db),
-                    collections: try Self.collections(for: id, in: db)
+                    collections: try Self.collections(for: id, in: db),
+                    trackers: try SeriesTrackerRecord
+                        .filter(SeriesTrackerRecord.Columns.seriesId == id.rawValue)
+                        .fetchAll(db),
+                    watermark: try SeriesTrackerRecord.watermark(for: id, in: db)
                 )
             }
 
@@ -391,7 +591,8 @@ final class DetailsViewModel {
                 for try await stored in observation.values(in: database.reader) {
                     guard let self, !Task.isCancelled else { break }
                     guard let stored else { continue }
-                    self.snapshot = Snapshot(stored, registry: registry) { remote, path in
+                    let formats = self.trackers.accounts.mapValues(\.scoreFormat)
+                    self.snapshot = Snapshot(stored, registry: registry, formats: formats) { remote, path in
                         self.artwork(remote, path: path)
                     }
                     self.adopt()
@@ -399,7 +600,7 @@ final class DetailsViewModel {
                 }
             } catch {
                 // a background load. the screen keeps what it has rather than nagging
-                AppLog.shared.log("observation failed — \(error)", category: "details")
+                AppLog.shared.log("observation failed - \(error)", category: "details")
             }
         }
     }
@@ -547,6 +748,26 @@ final class DetailsViewModel {
     // does: this runs inside the observation loop, and awaiting a network fetch
     // there holds that loop open for the length of it - a cover finishing in the
     // meantime would not reach the screen until the chapters did
+    // the same unit everything else calls, so a retry while a library run is
+    // already checking this origin joins that fetch instead of racing it.
+    // offered on every failure rather than only the retryable ones: which is
+    // which is known at the throw and not stored, and four of the reasons this
+    // row can print end with the words "try again"
+    func retry(origin id: Int64) async {
+        guard !retrying.contains(id) else { return }
+        guard let target = refreshables.first(where: { $0.originId == id }) else { return }
+        guard let source = registry.source(slug: target.sourceSlug) else { return }
+
+        retrying.insert(id)
+        defer { retrying.remove(id) }
+
+        _ = await refresher.chapters(
+            source: source,
+            seriesSlug: target.slug,
+            originId: OriginRecord.ID(rawValue: id)
+        )
+    }
+
     private func prime() {
         guard !primed, !isFetchingChapters else { return }
         guard let snapshot, snapshot.chaptersFetchedDate == .distantPast else { return }
@@ -649,6 +870,11 @@ final class DetailsViewModel {
                     monotonic: read,
                     db: db
                 )
+
+                // one push for the batch maximum rather than one per number.
+                // unmarking lowers the watermark, which enqueue simply declines
+                // to write - a tracker is never told to forget a chapter
+                try SeriesTrackerRecord.enqueue(for: seriesId, in: db)
             }
         } catch {
             actionFailure = Failure(error, fallback: "Couldn't Update Progress")
@@ -699,7 +925,7 @@ final class DetailsViewModel {
                 )
             }
         } catch {
-            AppLog.shared.log("merge candidates failed — \(error)", category: "details")
+            AppLog.shared.log("merge candidates failed - \(error)", category: "details")
             mergeCandidates = []
         }
     }
@@ -725,7 +951,7 @@ final class DetailsViewModel {
             AppLog.shared.log("merged series \(seriesId.rawValue) into \(targetId.rawValue)", category: "details")
         } catch {
             actionFailure = Failure(error, fallback: "Couldn't Merge Series")
-            AppLog.shared.log("merge into \(target) FAILED — \(error)", category: "details")
+            AppLog.shared.log("merge into \(target) FAILED - \(error)", category: "details")
         }
     }
 
@@ -797,7 +1023,7 @@ final class DetailsViewModel {
     // the picker, and the observation reflects the write immediately
     func toggleCollection(_ id: Int64) async {
         guard let seriesId else {
-            AppLog.shared.log("collection \(id) toggle skipped — no series yet", category: "details")
+            AppLog.shared.log("collection \(id) toggle skipped - no series yet", category: "details")
             return
         }
         let collectionId = CollectionRecord.ID(rawValue: id)
@@ -838,7 +1064,7 @@ final class DetailsViewModel {
             AppLog.shared.log("collection \(id) toggled for series \(seriesId.rawValue)", category: "details")
         } catch {
             actionFailure = Failure(error, fallback: "Couldn't Update Collection")
-            AppLog.shared.log("collection \(id) toggle FAILED — \(error)", category: "details")
+            AppLog.shared.log("collection \(id) toggle FAILED - \(error)", category: "details")
         }
     }
 
@@ -905,7 +1131,7 @@ final class DetailsViewModel {
             AppLog.shared.log("origin \(originId) removed", category: "details")
         } catch {
             actionFailure = Failure(error, fallback: "Couldn't Remove Source")
-            AppLog.shared.log("origin \(originId) remove FAILED — \(error)", category: "details")
+            AppLog.shared.log("origin \(originId) remove FAILED - \(error)", category: "details")
         }
     }
 
@@ -923,7 +1149,7 @@ final class DetailsViewModel {
             }
         } catch {
             actionFailure = Failure(error, fallback: "Couldn't Reorder Sources")
-            AppLog.shared.log("origin reorder FAILED — \(error)", category: "details")
+            AppLog.shared.log("origin reorder FAILED - \(error)", category: "details")
         }
     }
 
@@ -942,7 +1168,7 @@ final class DetailsViewModel {
             }
         } catch {
             // a background load. the screen keeps what it has rather than nagging
-            AppLog.shared.log("languages failed — \(error)", category: "details")
+            AppLog.shared.log("languages failed - \(error)", category: "details")
         }
     }
 
@@ -980,7 +1206,7 @@ final class DetailsViewModel {
             await loadLanguages()
         } catch {
             actionFailure = Failure(error, fallback: "Couldn't Reorder Languages")
-            AppLog.shared.log("language reorder FAILED — \(error)", category: "details")
+            AppLog.shared.log("language reorder FAILED - \(error)", category: "details")
         }
     }
 
@@ -1041,7 +1267,7 @@ final class DetailsViewModel {
             scanlatorGroups = Self.group(rows, into: origins)
         } catch {
             // a background load. the screen keeps what it has rather than nagging
-            AppLog.shared.log("scanlators failed — \(error)", category: "details")
+            AppLog.shared.log("scanlators failed - \(error)", category: "details")
         }
     }
 
@@ -1066,7 +1292,7 @@ final class DetailsViewModel {
             await loadScanlators()
         } catch {
             actionFailure = Failure(error, fallback: "Couldn't Reorder Groups")
-            AppLog.shared.log("scanlator reorder FAILED — \(error)", category: "details")
+            AppLog.shared.log("scanlator reorder FAILED - \(error)", category: "details")
         }
     }
 
@@ -1287,6 +1513,8 @@ extension DetailsViewModel {
         let choices: [DetailsEdit.Metadata]
         let collections: [CollectionPicker.Item]
         let refreshables: [Refreshable]
+        let links: [DetailsTracking.Link]
+        let localProgress: Int
 
         fileprivate let rows: [StoredChapter]
 
@@ -1308,6 +1536,7 @@ private extension DetailsViewModel.Snapshot {
     init(
         _ stored: Stored,
         registry: Compositor.Registry,
+        formats: [Tracker: ScoreFormat],
         artwork: (URL?, String?) -> URL?
     ) {
         let entry = stored.entry
@@ -1370,6 +1599,26 @@ private extension DetailsViewModel.Snapshot {
 
         collections = stored.collections.map {
             CollectionPicker.Item(id: $0.id, name: $0.name, count: $0.count, contains: $0.contains)
+        }
+
+        localProgress = stored.watermark
+
+        links = stored.trackers.compactMap { row in
+            guard let id = row.id else { return nil }
+            return DetailsTracking.Link(
+                id: id.rawValue,
+                tracker: row.tracker,
+                remoteId: row.remoteId,
+                remoteTitle: row.remoteTitle,
+                status: row.remoteStatus,
+                progress: row.remoteProgress,
+                total: row.totalChapters,
+                score: row.remoteScore,
+                scoreFormat: formats[row.tracker] ?? .point10,
+                syncedDate: row.syncedDate,
+                attemptedDate: row.attemptedDate,
+                failureReason: row.syncError
+            )
         }
 
         // an origin with no synopsis has nothing to offer, so it is not a choice
@@ -1880,6 +2129,10 @@ extension DetailsViewModel {
             """
         let numbers = try Double.fetchAll(db, sql: sql, arguments: [seriesId, seriesId])
         try ChapterRecord.apply(progress: 1.0, toNumbers: numbers, in: seriesId, monotonic: true, db: db)
+
+        // a merge can raise the watermark past what the service last heard, so
+        // the same intent is recorded here as anywhere else reading is written
+        try SeriesTrackerRecord.enqueue(for: seriesId, in: db)
     }
 
     // every origin the held row owns moves across, then the row itself goes. titles
@@ -2006,6 +2259,8 @@ private struct Stored: Sendable {
     let covers: [StoredCover]
     let titles: [StoredTitle]
     let collections: [StoredCollection]
+    let trackers: [SeriesTrackerRecord]
+    let watermark: Int
 }
 
 private struct StoredCandidate: Decodable, FetchableRecord, Sendable {

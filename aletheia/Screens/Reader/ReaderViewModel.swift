@@ -17,6 +17,9 @@ final class ReaderViewModel {
     private let startingChapter: ChapterRecord.ID
     private let database: DatabaseClient
     private let registry: Compositor.Registry
+    // only for whether a service can push at all. every number the separator
+    // draws comes from the link rows, so this is asked one question and no others
+    private let trackers: Compositor.Trackers
 
     // which row serves each chapter, for this reading session only. reopening
     // falls back to best_chapter's ranking
@@ -78,6 +81,17 @@ final class ReaderViewModel {
     @ObservationIgnored private var entered: [ChapterRecord.ID: Int] = [:]
     @ObservationIgnored private var sessionChaptersRead = 0
 
+    // which services this series is linked to, read once at open. a link cannot
+    // be made from inside the reader, so the list is fixed for the session -
+    // which is what lets the separator declare its height before the first page
+    @ObservationIgnored private var trackerRows: [ReaderSeparatorModel.Tracker] = []
+    // chapters finished this sitting whose services have not all answered yet.
+    // a chapter leaves once every row has settled, and its state is then frozen:
+    // the queue clears for the SERIES, so a later push would otherwise drag an
+    // earlier boundary back to spinning
+    @ObservationIgnored private var awaitingTrackers: Set<ReaderChapter.ID> = []
+    @ObservationIgnored private var trackerWatch: Task<Void, Never>?
+
     func sourceIcon(for chapter: ReaderChapter.ID?) -> ImageResource? {
         chapter.flatMap { icons[$0] }
     }
@@ -97,12 +111,14 @@ final class ReaderViewModel {
         seriesId: SeriesRecord.ID,
         chapterId: ChapterRecord.ID,
         database: DatabaseClient,
-        registry: Compositor.Registry
+        registry: Compositor.Registry,
+        trackers: Compositor.Trackers
     ) {
         self.seriesId = seriesId
         self.startingChapter = chapterId
         self.database = database
         self.registry = registry
+        self.trackers = trackers
     }
 
     // MARK: Lifecycle
@@ -148,6 +164,23 @@ final class ReaderViewModel {
             seriesTitle = title
             completable = offer
 
+            trackerRows = try await database.reader.read { [seriesId] db in
+                try SeriesTrackerRecord
+                    .filter(SeriesTrackerRecord.Columns.seriesId == seriesId.rawValue)
+                    .fetchAll(db)
+            }
+            .sorted { $0.tracker.rawValue < $1.tracker.rawValue }
+            .map { link in
+                ReaderSeparatorModel.Tracker(
+                    id: link.tracker.rawValue,
+                    name: link.tracker.name,
+                    icon: link.tracker.icon,
+                    // every row starts as "nothing pushed for this chapter",
+                    // which is true of every boundary until one is crossed
+                    state: .skipped
+                )
+            }
+
             sourceNames = loaded
                 .compactMap(\.sourceSlug)
                 .reduce(into: [String]()) { names, slug in
@@ -188,6 +221,10 @@ final class ReaderViewModel {
             // the gate is resolved above, before this exists, so the didSet that
             // normally mirrors it had nothing to push to
             engine.setCompletable(completable)
+            // before open(), deliberately: presence decides the band's height and
+            // every separator built after this has to agree about it
+            engine.setTrackers(trackerRows)
+            watchTrackers()
             isReady = true
             sessionStart = .now
 
@@ -196,11 +233,13 @@ final class ReaderViewModel {
             await engine.open(opening, progress: progress)
         } catch {
             failure = Failure(error, fallback: "Can't Open This Series")
-            AppLog.shared.log("reader open failed — \(error)", category: "reader")
+            AppLog.shared.log("reader open failed - \(error)", category: "reader")
         }
     }
 
     func close() async {
+        trackerWatch?.cancel()
+        trackerWatch = nil
         await flush()
         await endSession()
     }
@@ -273,7 +312,7 @@ final class ReaderViewModel {
                 registry.source(slug: slug)?.descriptor.icon
             }
         } catch {
-            AppLog.shared.log("failed to load chapter list — \(error)", category: "reader")
+            AppLog.shared.log("failed to load chapter list - \(error)", category: "reader")
         }
     }
 
@@ -292,7 +331,7 @@ final class ReaderViewModel {
                         .updateAll(db, SeriesRecord.Columns.orientation.set(to: mode.rawValue))
                 }
             } catch {
-                AppLog.shared.log("failed to persist orientation — \(error)", category: "reader")
+                AppLog.shared.log("failed to persist orientation - \(error)", category: "reader")
             }
         }
     }
@@ -496,6 +535,9 @@ final class ReaderViewModel {
             Task { await self?.markCompleted() }
         }
 
+        engine.onRetryTracker = { [weak self] chapter, service in
+            self?.retryTracker(service, on: chapter)
+        }
         engine.onExplainGap = { [weak self] gap in
             guard let self else { return }
             // the sources the reader actually has for this series, named at the
@@ -547,7 +589,11 @@ final class ReaderViewModel {
         engine?.setEvent(.recording, for: chapter.id)
 
         do {
-            try await database.writer.write { [seriesId, seriesTitle] db in
+            // the links come back OUT of the same transaction that marked them,
+            // so what the rows are told is what the enqueue actually decided
+            // rather than what finishing a chapter usually means. read after the
+            // write and inside it: a drain cannot clear a column mid-transaction
+            let links = try await database.writer.write { [seriesId, seriesTitle] db -> [SeriesTrackerRecord] in
                 var event = ReadingEventRecord(
                     kind: .chapterCompleted,
                     seriesId: seriesId,
@@ -562,14 +608,176 @@ final class ReaderViewModel {
                 // refresh its read date. same transaction as the event, since
                 // both are the same completion
                 try SeriesRecord.markRead(seriesId, at: .now, db: db)
+
+                return try SeriesTrackerRecord
+                    .filter(SeriesTrackerRecord.Columns.seriesId == seriesId.rawValue)
+                    .fetchAll(db)
             }
             sessionChaptersRead += 1
             engine?.setEvent(.recorded, for: chapter.id)
+            mark(chapter, links: links)
         } catch {
             // nothing landed, so the badge says nothing rather than lying
             engine?.setEvent(nil, for: chapter.id)
-            AppLog.shared.log("failed to record reading event — \(error)", category: "reader")
+            AppLog.shared.log("failed to record reading event - \(error)", category: "reader")
         }
+    }
+
+    // MARK: Trackers
+
+    // the link rows are the whole source of truth here. the pending columns ARE
+    // the queue, so "a push is owed" and "a push is in flight" are one state as
+    // far as a reader watching a boundary is concerned - and neither needs the
+    // sync engine to report anything to this screen
+    private func watchTrackers() {
+        guard !trackerRows.isEmpty, trackerWatch == nil else { return }
+
+        trackerWatch = Task { [weak self, database, seriesId] in
+            let observation = ValueObservation.tracking { db in
+                try SeriesTrackerRecord
+                    .filter(SeriesTrackerRecord.Columns.seriesId == seriesId.rawValue)
+                    .fetchAll(db)
+            }
+
+            do {
+                for try await links in observation.values(in: database.reader) {
+                    guard let self else { return }
+                    AppLog.shared.log(
+                        "reader link observation fired - \(links.map { "\($0.tracker.rawValue):\($0.isDirty ? "dirty" : "clean")" }.joined(separator: " "))",
+                        category: "trackers.timing"
+                    )
+                    self.settle(links)
+                }
+            } catch {
+                AppLog.shared.log("reader tracker observation failed - \(error)", category: "reader")
+            }
+        }
+    }
+
+    // called for a chapter the reader has just finished, with the link rows as
+    // the write left them. only a row carrying a queued push waits: everything
+    // else has its answer already, and a chapter that joins the waiting set with
+    // nothing coming spins until the reader leaves - which is what a re-read did
+    private func mark(_ chapter: ReaderChapter, links: [SeriesTrackerRecord]) {
+        guard !trackerRows.isEmpty else { return }
+
+        var waiting = false
+
+        for row in trackerRows {
+            let tracker = Tracker(rawValue: row.id)
+            let link = tracker.flatMap { value in links.first { $0.tracker == value } }
+
+            // a service with no link row for this series has nothing to say
+            // about it, which is the same silence as a declined enqueue
+            guard let link, let tracker else {
+                engine?.setTrackerState(.skipped, for: chapter.id, service: row.id)
+                continue
+            }
+
+            let state = Self.initialState(
+                of: link,
+                stalled: trackers.needingSignIn.contains(tracker)
+            )
+            engine?.setTrackerState(state, for: chapter.id, service: row.id)
+            waiting = waiting || state == .loading
+        }
+
+        AppLog.shared.log(
+            "chapter \(chapter.number) completed - \(waiting ? "awaiting a push" : "nothing queued")",
+            category: "trackers.timing"
+        )
+
+        if waiting { awaitingTrackers.insert(chapter.id) }
+    }
+
+    // asks the walk to run now rather than at its next wake, and puts the row
+    // back to spinning so the tap has an answer. the chapter rejoins the waiting
+    // set, which is what lets the observation resolve it again - a retry that
+    // left the state frozen would spin forever
+    func retryTracker(_ service: String, on chapter: ReaderChapter.ID) {
+        guard let tracker = Tracker(rawValue: service),
+              trackerRows.contains(where: { $0.id == service })
+        else { return }
+
+        engine?.setTrackerState(.loading, for: chapter, service: service)
+        awaitingTrackers.insert(chapter)
+
+        Task { [seriesId, database, trackers] in
+            guard let link = try? await database.reader.read({ db in
+                try SeriesTrackerRecord
+                    .filter(SeriesTrackerRecord.Columns.seriesId == seriesId.rawValue)
+                    .filter(SeriesTrackerRecord.Columns.tracker == tracker.rawValue)
+                    .fetchOne(db)
+            }) ?? nil else { return }
+
+            trackers.retry(link)
+        }
+    }
+
+    // one pass per change to this series' links, over the chapters still waiting.
+    // a chapter is dropped the moment every row has an answer, and its glyphs are
+    // then frozen - the columns below clear for the series, so chapter 44 would
+    // otherwise start spinning again when chapter 45 was finished
+    private func settle(_ links: [SeriesTrackerRecord]) {
+        guard !awaitingTrackers.isEmpty else { return }
+
+        for chapter in Array(awaitingTrackers) {
+            guard let number = numbers[ChapterRecord.ID(rawValue: chapter)] else {
+                awaitingTrackers.remove(chapter)
+                continue
+            }
+
+            var waiting = false
+            for link in links {
+                let state = Self.state(of: link, forChapter: number, stalled: trackers.needingSignIn.contains(link.tracker))
+                engine?.setTrackerState(state, for: chapter, service: link.tracker.rawValue)
+                waiting = waiting || state == .loading
+            }
+
+            if !waiting { awaitingTrackers.remove(chapter) }
+        }
+    }
+
+    // what a row shows at the moment its chapter is finished, before anything
+    // has been asked of a service. the difference from state(of:) below is the
+    // clean case: there, clean means a push we waited for has landed; here it
+    // means the enqueue declined and no push is coming. the numbers are
+    // identical in both - a service already holding this chapter looks exactly
+    // like one that has just been told - so only having waited can tell them
+    // apart, and a tick that was never earned is the wrong half to guess
+    nonisolated private static func initialState(
+        of link: SeriesTrackerRecord,
+        stalled: Bool
+    ) -> ReaderSeparatorModel.Tracker.State {
+        if let reason = link.syncError { return .errored(reason) }
+        if stalled { return .signedOut }
+        if link.isDirty { return .loading }
+        return .skipped
+    }
+
+    // every state the row can show, read off the columns and nothing else
+    nonisolated private static func state(
+        of link: SeriesTrackerRecord,
+        forChapter number: Double,
+        stalled: Bool
+    ) -> ReaderSeparatorModel.Tracker.State {
+        // the reason travels with the state, because the row shows it in place
+        // of a generic word - "Failed" told the reader only what the glyph
+        // already had
+        if let reason = link.syncError { return .errored(reason) }
+        // split out of skipped: this one never resolves on its own, and it is
+        // the only tracker state in the reader that needs the reader
+        if stalled { return .signedOut }
+        // owed OR in flight. the two are the same thing to someone watching a
+        // boundary, and the debounce means most of this is the former
+        if link.isDirty { return .loading }
+        // the service has heard at least this chapter. floor, because a service
+        // counts whole chapters and 44.5 is a side story
+        if Double(link.remoteProgress) >= number.rounded(.down) { return .tracked }
+        // clean, and still behind: the enqueue declined to write it. an entry
+        // the service already calls finished lands here, which is why this is a
+        // minus rather than a tick
+        return .skipped
     }
 
     // inserted complete or not at all: a sitting that read nothing writes no
@@ -598,7 +806,7 @@ final class ReaderViewModel {
                 try session.insert(db)
             }
         } catch {
-            AppLog.shared.log("failed to record reading session — \(error)", category: "reader")
+            AppLog.shared.log("failed to record reading session - \(error)", category: "reader")
         }
     }
 
@@ -665,7 +873,7 @@ final class ReaderViewModel {
             // the offer comes back rather than disappearing on a write that
             // never landed
             completable = true
-            AppLog.shared.log("failed to mark series completed — \(error)", category: "reader")
+            AppLog.shared.log("failed to mark series completed - \(error)", category: "reader")
         }
     }
 
@@ -701,7 +909,7 @@ final class ReaderViewModel {
             stored[id] = progress
             lastSave = .now
         } catch {
-            AppLog.shared.log("failed to save progress — \(error)", category: "reader")
+            AppLog.shared.log("failed to save progress - \(error)", category: "reader")
         }
     }
 

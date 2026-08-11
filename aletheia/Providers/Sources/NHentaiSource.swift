@@ -271,7 +271,7 @@ extension NHentaiSource {
         // metadata only - no pages, so it renders but cannot be read
         if response.statusCode == 404 {
             AppLog.shared.log(
-                "[nhentai] gallery \(seriesSlug) 404 on API — falling back to metadata archive (no pages, not readable)",
+                "[nhentai] gallery \(seriesSlug) 404 on API - falling back to metadata archive (no pages, not readable)",
                 category: "source"
             )
             return try await archived(seriesSlug)

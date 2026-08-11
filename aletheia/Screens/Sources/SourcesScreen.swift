@@ -40,7 +40,7 @@ struct SourcesScreen: View {
                         placeholder: "Search sources",
                         handoff: .init(
                             tint: .brand,
-                            label: { "Search every source for “\($0)”" },
+                            label: { "Search every source for \"\($0)\"" },
                             onSelect: { text in globalSearch = GlobalSearch(text: text) }
                         )
                     )

@@ -462,7 +462,7 @@ struct SearchScreen: View {
     private func Subtitle(_ section: SearchViewModel.Section) -> some View {
         switch section.phase {
         case .searching:
-            Text("Searching…")
+            Text("Searching")
         case .failed:
             Text("Couldn't search")
         case .loaded:

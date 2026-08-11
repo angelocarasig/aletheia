@@ -24,6 +24,7 @@ struct HomeScreen: View {
     @State private var showingStats = false
     @State private var showingUpdates = false
     @State private var showingFailures = false
+    @State private var showingSettings = false
 
     // the model is built on appearance in the app; a preview hands one in
     // already holding its snapshot, which is what keeps previews off a database
@@ -42,9 +43,9 @@ struct HomeScreen: View {
         static let skeletonUpdates = 3
         static let heroSpan = 8
 
-        // enough to lift the banner off the canvas without competing with a
-        // cover: it is a notice, not an alert
-        static let bannerFill = 0.12
+        // quieter than the banner - an unearned section is a fact about where
+        // the reader is, not something asking to be looked at
+        static let emptyFillOpacity = 0.05
     }
 
     // home is what you already own, so there is no "did you ask for this" signal
@@ -99,6 +100,11 @@ struct HomeScreen: View {
             .toolbarTitleDisplayMode(.large)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
+                    Image(systemName: "gearshape")
+                        .tappable { showingSettings = true }
+                }
+
+                ToolbarItem(placement: .topBarTrailing) {
                     if hasExplicit {
                         BlurToggle(
                             isOn: !obscured,
@@ -123,6 +129,9 @@ struct HomeScreen: View {
             }
             .navigationDestination(isPresented: $showingFailures) {
                 FailuresScreen()
+            }
+            .navigationDestination(isPresented: $showingSettings) {
+                SettingsScreen()
             }
             .task {
                 guard vm == nil else { return }
@@ -156,12 +165,23 @@ private extension HomeScreen {
                     FailingBanner(failing)
                 }
 
+                // once there is a library at all, an absent section is more
+                // confusing than an empty one: the reader who added three
+                // series and read none got a screen with a single rail on it
+                // and no way to tell whether the rest was broken or unearned.
+                // held to a compact row rather than a screen-sized empty, or
+                // two of them would push the only real content off the fold
+                let added = vm.recentlyAdded
+                let settled = !added.isEmpty
+
                 // resume before news: five of six readers went straight for
                 // this and stopped, and the one returning after a gap asked to
                 // be put back in the story rather than in front of a ledger
                 let continueReading = vm.continueReading
                 if !continueReading.isEmpty {
                     ContinueSection(vm, entries: continueReading)
+                } else if settled {
+                    ContinueEmpty
                 }
 
                 // the section the screen was missing, and the reason every
@@ -169,11 +189,12 @@ private extension HomeScreen {
                 let updates = vm.updates
                 if !updates.isEmpty {
                     UpdatesSection(updates)
+                } else if settled {
+                    UpdatesEmpty
                 }
 
                 // demoted from a two-column grid to a rail: it is a log of your
                 // own actions, so it earns a shelf and not a screenful
-                let added = vm.recentlyAdded
                 if !added.isEmpty {
                     AddedSection(entries: added)
                 }
@@ -238,6 +259,56 @@ private extension HomeScreen {
     }
 
 
+    // the header stays, and so does its action - the destination behind it is
+    // about your reading rather than about this rail, so it has something to
+    // show whether or not the rail does. what changes is the body
+    var ContinueEmpty: some View {
+        Section(
+            title: "Continue Reading",
+            glyph: "chart.bar.xaxis",
+            label: "Reading Activity",
+            action: { showingStats = true },
+            message: "Open something from your library and it will wait for you here."
+        )
+    }
+
+    var UpdatesEmpty: some View {
+        Section(
+            title: "New Chapters",
+            glyph: "list.bullet",
+            label: "All Updates",
+            action: { showingUpdates = true },
+            message: "New chapters from your sources land here after a refresh."
+        )
+    }
+
+    // one row's worth, not a screen's worth: ContentUnavailableView sizes
+    // itself for an empty screen, and nothing here is empty except this shelf
+    func Section(
+        title: String,
+        glyph: String,
+        label: String,
+        action: @escaping () -> Void,
+        message: String
+    ) -> some View {
+        VStack(alignment: .leading, spacing: dimensions.spacing.space12) {
+            SectionHeader(title: title) {
+                Action(glyph, label: label, action: action)
+            }
+
+            Text(message)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(dimensions.spacing.space12)
+                .background(
+                    .primary.opacity(Layout.emptyFillOpacity),
+                    in: .rect(cornerRadius: dimensions.radius.radius12, style: .continuous)
+                )
+        }
+        .padding(.horizontal, dimensions.screenMargin)
+    }
+
     // tiles only - the numbers' rows live one tap deeper, and the whole strip
     // is that tap. record-framed: a run is a fact, never a countdown. the window
     // is named once, in the subtitle, rather than on every label
@@ -283,35 +354,16 @@ private extension HomeScreen {
     // carries no subject, and both a new reader and one returning after a gap
     // read it as their own fault
     func FailingBanner(_ count: Int) -> some View {
-        HStack(spacing: dimensions.spacing.space12) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .font(.subheadline)
-                .foregroundStyle(Palette.warningText)
-
-            VStack(alignment: .leading, spacing: dimensions.spacing.space2) {
-                Text("^[\(count) source](inflect: true) couldn't update")
-                    .font(.subheadline)
-                    .fontWeight(.medium)
-
-                Text("Series on them are missing new chapters")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            Spacer(minLength: 0)
-
-            Image(systemName: "chevron.forward")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-        .padding(dimensions.spacing.space12)
-        .frame(minHeight: dimensions.touchTarget)
-        .background(Palette.warningText.opacity(Layout.bannerFill), in: .rect(cornerRadius: dimensions.radius.radius12))
+        Banner(
+            "^[\(count) source](inflect: true) couldn't update",
+            message: "Series on them are missing new chapters",
+            systemImage: "exclamationmark.triangle.fill",
+            action: { showingFailures = true }
+        )
         .padding(.horizontal, dimensions.screenMargin)
-        .contentShape(.rect)
-        .tappable { showingFailures = true }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("^[\(count) source](inflect: true) couldn't update")
+        // the banner combines its own children, so the hint lands on the one
+        // element they became. the label it would otherwise get is the title
+        // and the message read in order, which is what a reader wants here
         .accessibilityHint("Opens the list of sources needing attention")
     }
 

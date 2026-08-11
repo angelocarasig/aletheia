@@ -23,7 +23,9 @@ enum CaptureFailure: DescribableError {
     var failureReason: String? {
         switch self {
         case .timedOut: "The source's checks didn't finish in time. Try again in a moment."
-        case .cancelled: "This source needs to verify your browser before it can be read."
+        // what happened, not the rule it broke: this case is only ever reached
+        // by the reader closing the sheet themselves, and Try Again reopens it
+        case .cancelled: "You closed the verification before it finished."
         }
     }
 }
@@ -74,7 +76,7 @@ final class WebAuthCapturer: NSObject, AuthCapturing {
 
         if specification.interactive {
             presented = true
-            log.log("presenting auth sheet — \(specification.challengeURL.absoluteString)", category: "auth")
+            log.log("presenting auth sheet - \(specification.challengeURL.absoluteString)", category: "auth")
             presenter.show(page: page, maneuver: specification.maneuver) { [weak self] in
                 self?.fail(.cancelled)
             }

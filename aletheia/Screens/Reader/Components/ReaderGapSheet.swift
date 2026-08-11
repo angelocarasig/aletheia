@@ -46,7 +46,7 @@ struct ReaderGapSheet: View {
     private var title: String {
         gap.count == 1
             ? "Chapter \(gap.from.formatted()) Unavailable"
-            : "Chapters \(gap.from.formatted())–\(gap.to.formatted()) Unavailable"
+            : "Chapters \(gap.from.formatted())-\(gap.to.formatted()) Unavailable"
     }
 }
 

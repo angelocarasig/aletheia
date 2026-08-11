@@ -38,7 +38,7 @@ enum FilterSelection: Sendable, Hashable {
     }
 }
 
-// no direction: an option IS a direction. "Title (A–Z)" and "Title (Z–A)" are
+// no direction: an option IS a direction. "Title (A-Z)" and "Title (Z-A)" are
 // two options, not one option and a flag - a source whose api takes them
 // separately encodes that itself, the way every other per-source quirk is
 struct SortSelection: Sendable, Hashable {

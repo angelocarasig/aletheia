@@ -199,7 +199,7 @@ struct ReadingChart: View {
             guard let interval = calendar.dateInterval(of: .weekOfYear, for: anchor) else { return "" }
             if calendar.isDate(asOf, equalTo: anchor, toGranularity: .weekOfYear) { return "This Week" }
             let end = interval.end.addingTimeInterval(-1)
-            return "\(interval.start.formatted(.dateTime.day().month(.abbreviated))) – \(end.formatted(.dateTime.day().month(.abbreviated)))"
+            return "\(interval.start.formatted(.dateTime.day().month(.abbreviated))) - \(end.formatted(.dateTime.day().month(.abbreviated)))"
         }
     }
 

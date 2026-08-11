@@ -25,7 +25,7 @@ final class DatabaseClient: Sendable {
 
     private static let path: URL = Constants.Paths.database
 
-    // schema creation order — FK targets must precede their referrers
+    // schema creation order - FK targets must precede their referrers
     private static let allRecords: [any DatabaseRecord.Type] = [
         SeriesRecord.self,
         SourceRecord.self,
@@ -42,6 +42,7 @@ final class DatabaseClient: Sendable {
         ChapterRecord.self,
         OriginScanlatorPriorityRecord.self,
         SeriesLanguagePriorityRecord.self,
+        SeriesTrackerRecord.self,
         ReadingEventRecord.self,
         ReadingSessionRecord.self,
     ]
@@ -60,9 +61,9 @@ final class DatabaseClient: Sendable {
         config.foreignKeysEnabled = true
 
         config.prepareDatabase { db in
-            try db.execute(sql: "PRAGMA synchronous = NORMAL")        // keep — WAL pairing
-            try db.execute(sql: "PRAGMA wal_autocheckpoint = 2000")   // keep — sync-burst scar
-            try db.execute(sql: "PRAGMA cache_size = -4000")          // keep — see reader note
+            try db.execute(sql: "PRAGMA synchronous = NORMAL")        // keep - WAL pairing
+            try db.execute(sql: "PRAGMA wal_autocheckpoint = 2000")   // keep - sync-burst scar
+            try db.execute(sql: "PRAGMA cache_size = -4000")          // keep - see reader note
 
             #if DEBUG
 //            db.trace { print("[SQL]> \($0)") }

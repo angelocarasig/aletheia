@@ -349,7 +349,7 @@ final class SearchGridViewModel {
         } catch {
             if loadingMore, page > 1 { page -= 1 }
             failure = Failure(error, fallback: "Couldn't Load")
-            AppLog.shared.log("search failed for '\(source.descriptor.slug)' — \(error)", category: "search")
+            AppLog.shared.log("search failed for '\(source.descriptor.slug)' - \(error)", category: "search")
         }
 
         if loadingMore { isLoadingMore = false } else { isLoading = false }

@@ -14,6 +14,9 @@ import SwiftUI
 struct ReaderSeparatorView: View {
     let model: ReaderSeparatorModel
     var onRetry: () -> Void
+    // per service, because one can be failing while the other is fine. distinct
+    // from onRetry above, which retries the CHAPTER this separator could not load
+    var onRetryTracker: (String) -> Void = { _ in }
     var onComplete: () -> Void = {}
     var onExplainGap: (ReaderSeparatorModel.Gap) -> Void = { _ in }
 
@@ -159,7 +162,20 @@ private extension ReaderSeparatorView {
         .animation(.settle, value: model.trackers)
     }
 
+    // only the state that can be changed by a tap becomes a control. wrapping
+    // every row in a Button would give four of five states a press response that
+    // does nothing, which is the affordance lie in its purest form
+    @ViewBuilder
     func TrackerRow(_ tracker: ReaderSeparatorModel.Tracker) -> some View {
+        if tracker.state.isRetryable {
+            TrackerContent(tracker)
+                .tappable { onRetryTracker(tracker.id) }
+        } else {
+            TrackerContent(tracker)
+        }
+    }
+
+    func TrackerContent(_ tracker: ReaderSeparatorModel.Tracker) -> some View {
         HStack(spacing: dimensions.spacing.space8) {
             // the service's own tile, colour intact. this is the one place brand
             // palette is allowed into the band: a logo recoloured to .secondary
@@ -181,17 +197,21 @@ private extension ReaderSeparatorView {
             HStack(spacing: dimensions.spacing.space4) {
                 TrackerState(tracker.state)
 
-                // the word does what the glyph cannot: say which of the four
-                // states this is without the reader learning a vocabulary
+                // the word does what the glyph cannot: say which state this is
+                // without the reader learning a vocabulary - and when something
+                // failed it says WHY, in the slot the generic word had
                 Text(tracker.state.label)
                     .font(.caption2)
+                    .lineLimit(1)
             }
             .foregroundStyle(tracker.state.tint)
         }
         .frame(height: slot(ReaderSeparatorModel.Metrics.trackerRow))
+        .contentShape(.rect)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(tracker.name)
         .accessibilityValue(tracker.state.label)
+        .accessibilityHint(tracker.state.isRetryable ? "Try syncing again" : "")
     }
 
     @ViewBuilder
@@ -218,12 +238,21 @@ private extension ReaderSeparatorView {
                 Image(systemName: "minus.circle")
                     .transition(reduceMotion ? .opacity : AnyTransition(.symbolEffect(.drawOn)))
 
-            // stated, not actionable: the failure persists to Details, where
-            // there is somewhere to act on it. unfilled like its three
-            // siblings: draw-on traces a stroke path, and a solid glyph has
-            // none, so the fill variant crossfaded where the others drew
+            // unfilled like its siblings: draw-on traces a stroke path, and a
+            // solid glyph has none, so the fill variant crossfaded where the
+            // others drew. this one IS actionable - the row retries it
             case .errored:
-                Image(systemName: "exclamationmark.triangle")
+                Image(systemName: "arrow.clockwise")
+                    .fontWeight(.semibold)
+                    .transition(reduceMotion ? .opacity : AnyTransition(.symbolEffect(.drawOn)))
+
+            // the account, not the push - and deliberately not an alarm glyph.
+            // nothing is broken here: a connection ran out, which on one of the
+            // two services is a yearly certainty. the dashed outline reads as
+            // absent rather than as faulty, which is what an exclamation mark
+            // beside a failure glyph two rows up would have said
+            case .signedOut:
+                Image(systemName: "person.crop.circle.dashed")
                     .transition(reduceMotion ? .opacity : AnyTransition(.symbolEffect(.drawOn)))
             }
         }
@@ -427,7 +456,13 @@ private extension ReaderSeparatorModel.Tracker.State {
         case .loading: "Syncing"
         case .tracked: "Synced"
         case .skipped: "Skipped"
-        case .errored: "Failed"
+        // the reason IS the word. "Failed" told the reader the one thing they
+        // could already see from the glyph
+        case let .errored(reason): reason
+        // a statement, not an instruction: this row cannot be tapped and the
+        // screen it would send you to is not reachable from inside the reader.
+        // "Sign in" was a button's word on something that is not a button
+        case .signedOut: "Signed out"
         }
     }
 
@@ -437,8 +472,14 @@ private extension ReaderSeparatorModel.Tracker.State {
         switch self {
         case .loading, .tracked: Palette.muted
         case .skipped: Palette.muted
-        case .errored: Palette.warningText
+        case .errored, .signedOut: Palette.warningText
         }
+    }
+
+    // only one of the two amber states can be acted on from here. signing in
+    // needs a screen this one cannot reach, so it states itself and stops
+    var isRetryable: Bool {
+        if case .errored = self { true } else { false }
     }
 }
 
@@ -452,7 +493,7 @@ private extension ReaderSeparatorModel.Gap {
     var summary: String {
         count == 1
             ? "\(from.formatted()) unavailable"
-            : "\(from.formatted())–\(to.formatted()) unavailable"
+            : "\(from.formatted())-\(to.formatted()) unavailable"
     }
 
     // VoiceOver has none of that flanking context, so it gets the sentence
@@ -564,7 +605,7 @@ private struct Sheet<Content: View>: View {
     Sheet {
         Specimen(title: "Up next", model: .sample())
         Specimen(title: "Loading", model: .sample(.loading(number: 45)))
-        Specimen(title: "Failed — retryable", model: .sample(.failed(.offline(2))))
+        Specimen(title: "Failed - retryable", model: .sample(.failed(.offline(2))))
         Specimen(title: "Caught up", model: .sample(.caughtUp))
         Specimen(
             title: "Start of series",
@@ -572,16 +613,8 @@ private struct Sheet<Content: View>: View {
         )
     }
 }
-
-#Preview("Chapter event") {
-    Sheet {
-        Specimen(title: "Recording", model: .sample(event: .recording))
-        Specimen(title: "Recorded", model: .sample(event: .recorded))
-    }
-}
-
 // the badge draws itself on rather than crossfading, which only reads in motion
-#Preview("Chapter event — live") {
+#Preview("Chapter event") {
     @Previewable @State var event: ReaderSeparatorModel.EventStatus?
 
     Sheet {
@@ -598,93 +631,66 @@ private struct Sheet<Content: View>: View {
         }
     }
 }
-
-// the gap rides the rule rather than taking a row, so these all cost the same
-// height as a boundary with no gap at all. the run of widths is the point: the
-// break has to stay legible from one chapter to a four-figure range
-#Preview("Gap") {
-    Sheet {
-        Specimen(title: "No gap", model: .sample())
-        Specimen(
-            title: "One chapter",
-            model: .sample(.chapter(number: 46, title: "Aftermath"), gap: .init(from: 45, to: 45, count: 1))
-        )
-        Specimen(
-            title: "Short range",
-            model: .sample(.chapter(number: 50, title: "Return"), gap: .init(from: 45, to: 49, count: 5))
-        )
-        Specimen(
-            title: "Long range, four figures",
-            model: .sample(.chapter(number: 1240, title: ""), gap: .init(from: 1102, to: 1239, count: 138))
-        )
-        // the two things that annotate the crossing and the destination, at once
-        Specimen(
-            title: "With continuity",
-            model: .sample(
-                .chapter(number: 50, title: "Return"),
-                continuity: .init(source: "MangaDex", scanlator: "Asura Scans", language: "EN"),
-                gap: .init(from: 45, to: 49, count: 5)
-            )
-        )
-        // a gap immediately before the end of what exists - the two facts are
-        // unrelated and both survive
-        Specimen(
-            title: "Gap into the ending",
-            model: .sample(.caughtUp, gap: .init(from: 45, to: 49, count: 5), completable: true)
-        )
-    }
-}
-
+// the lifecycle, which is the part a static preview cannot show: crossing a
+// boundary starts both services, they settle independently, and the state then
+// FREEZES - the queue clears for the series, so without the freeze finishing the
+// next chapter would send this boundary back to spinning
 #Preview("Trackers") {
+    @Previewable @State var step = 0
+    @Previewable @State var backward = false
+
+    let phases: [(String, ReaderSeparatorModel.EventStatus?, [ReaderSeparatorModel.Tracker.State])] = [
+        ("Not crossed yet", nil, [.skipped, .skipped]),
+        ("Just crossed - event recording, both owed", .recording, [.loading, .loading]),
+        ("Event written, pushes still owed", .recorded, [.loading, .loading]),
+        ("AniList landed", .recorded, [.tracked, .loading]),
+        ("Both landed", .recorded, [.tracked, .tracked]),
+        ("MyAnimeList came back failing", .recorded, [.tracked, .errored("You're offline")]),
+        ("Signed out - needs the reader", .recorded, [.tracked, .signedOut]),
+        ("Entry already finished - nothing to push", .recorded, [.tracked, .skipped])
+    ]
+
+    let phase = phases[step % phases.count]
+
     Sheet {
+        VStack(spacing: 12) {
+            Text(phase.0)
+                .font(.caption)
+                .fontWeight(.semibold)
+                .contentTransition(.opacity)
+
+            Button("Next phase") { withAnimation(.settle) { step += 1 } }
+                .buttonStyle(.glassProminent)
+
+            // presence is linkage, not travel: turning this on must drop the
+            // rows and leave the declared height exactly where it was
+            Toggle("Reading backward", isOn: $backward)
+                .font(.caption)
+        }
+        .padding(.horizontal, 16)
+
         Specimen(
-            title: "Every state",
+            title: "Step \(step % phases.count + 1) of \(phases.count)",
             model: .sample(
-                event: .recorded,
+                backward
+                    ? .chapter(number: 44, title: "The Gathering Storm")
+                    : .chapter(number: 45, title: "Aftermath"),
+                direction: backward ? .backward : .forward,
+                terminal: backward
+                    ? .init(number: 45, title: "Aftermath")
+                    : .init(number: 44, title: "The Gathering Storm"),
+                event: phase.1,
                 trackers: [
-                    .init(id: "a", name: "AniList", icon: "AniList", state: .loading),
-                    .init(id: "b", name: "MyAnimeList", icon: "MyAnimeList", state: .tracked),
-                    // no mark bundled - the row falls back to the name alone
-                    .init(id: "c", name: "Kitsu", state: .skipped),
-                    .init(id: "d", name: "MangaUpdates", state: .errored)
+                    .init(id: "anilist", name: "AniList", icon: "AniList", state: phase.2[0]),
+                    .init(id: "myanimelist", name: "MyAnimeList", icon: "MyAnimeList", state: phase.2[1])
                 ]
             )
         )
-        // the rows keep their height and drop their glyph: presence is linkage,
-        // not travel, and backward pushes nothing
-        Specimen(
-            title: "Backward — no push",
-            model: .sample(
-                .chapter(number: 44, title: "The Gathering Storm"),
-                direction: .backward,
-                terminal: .init(number: 45, title: "Aftermath"),
-                trackers: ReaderSeparatorModel.linked
-            )
-        )
     }
 }
-
-#Preview("Ending") {
-    Sheet {
-        Specimen(title: "Offered", model: .sample(.caughtUp, completable: true))
-        // same sentence, no offer - the one thing it asked has been answered
-        Specimen(title: "Already completed", model: .sample(.caughtUp))
-        // what the offer is meant to sit inside once trackers land
-        Specimen(
-            title: "With trackers",
-            model: .sample(
-                .caughtUp,
-                event: .recorded,
-                completable: true,
-                trackers: ReaderSeparatorModel.linked
-            )
-        )
-    }
-}
-
 // tapping the offer empties the action row without moving anything below it,
 // which is the whole reason the row is reserved
-#Preview("Ending — live") {
+#Preview("Ending") {
     @Previewable @State var completable = true
 
     Sheet {
@@ -695,26 +701,42 @@ private struct Sheet<Content: View>: View {
         )
     }
 }
-
-// every slot at once - the tallest the band ever gets, and the layout the
-// declared height arithmetic has to match
+// the reader pins a dark scheme regardless of system appearance, so this is the
+// appearance the component actually ships in
+// every slot that can change content WITHOUT changing height, driven one at a
+// time. the number under each specimen is the declared height: if it moves while
+// stepping through these, a slot is sizing itself off its content and the band
+// will jump mid-read
 #Preview("Full stack") {
-    Sheet {
+    @Previewable @State var event = false
+    @Previewable @State var completable = false
+    @Previewable @State var trackers = false
+    @Previewable @State var gap = false
+
+    return Sheet {
+        VStack(alignment: .leading, spacing: 12) {
+            Toggle("Reading event", isOn: $event)
+            Toggle("Completion offer", isOn: $completable)
+            Toggle("Tracker rows", isOn: $trackers)
+            Toggle("Missing chapters", isOn: $gap)
+        }
+        .font(.caption)
+        .padding(.horizontal, 16)
+
         Specimen(
-            title: "All slots",
+            title: "Height must not move",
             model: .sample(
-                .chapter(number: 50, title: "Return"),
-                continuity: .init(source: "MangaDex", scanlator: "Asura Scans", language: "EN"),
-                gap: .init(from: 45, to: 49, count: 5),
-                event: .recorded,
-                trackers: ReaderSeparatorModel.linked
+                .caughtUp,
+                continuity: .init(source: "MangaDex", scanlator: "Tempest", language: nil),
+                gap: gap ? .init(from: 45, to: 49, count: 5, sources: ["MangaDex"]) : nil,
+                event: event ? .recorded : nil,
+                completable: completable,
+                trackers: trackers ? ReaderSeparatorModel.linked : []
             )
         )
     }
 }
 
-// the reader pins a dark scheme regardless of system appearance, so this is the
-// appearance the component actually ships in
 #Preview("Dark") {
     Sheet {
         Specimen(title: "Up next", model: .sample(event: .recorded, trackers: ReaderSeparatorModel.linked))

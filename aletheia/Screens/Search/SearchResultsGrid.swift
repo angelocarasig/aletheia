@@ -124,8 +124,8 @@ struct SearchResultsGrid: View {
         return switch (query.isEmpty, vm.applied.isEmpty) {
         case (true, true): "\(vm.sourceName) returned nothing."
         case (true, false): "No series match these filters."
-        case (false, true): "Nothing matched “\(query)”."
-        case (false, false): "Nothing matched “\(query)” with these filters."
+        case (false, true): "Nothing matched \"\(query)\"."
+        case (false, false): "Nothing matched \"\(query)\" with these filters."
         }
     }
 

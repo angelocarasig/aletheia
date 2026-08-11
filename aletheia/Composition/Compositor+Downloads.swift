@@ -377,7 +377,7 @@ extension Compositor {
                 failures += 1
                 release(id)
                 index[id]?.fail(reason)
-                log.log("chapter \(id.rawValue) FAILED — \(reason)", category: "downloads")
+                log.log("chapter \(id.rawValue) FAILED - \(reason)", category: "downloads")
 
             case let .noSpace(id):
                 // one clear stop rather than the whole queue failing the same way
@@ -387,7 +387,7 @@ extension Compositor {
                 failures += 1
                 release(id)
                 index[id]?.fail("Not enough storage left.")
-                log.log("queue halted — not enough storage", category: "downloads")
+                log.log("queue halted - not enough storage", category: "downloads")
             }
 
             persist()
@@ -645,7 +645,7 @@ actor ChapterDownloader {
             }
             log.log("cleared \(ids.count) download path(s)", category: "downloads")
         } catch {
-            log.log("could not clear \(ids.count) download path(s) — \(error)", category: "downloads")
+            log.log("could not clear \(ids.count) download path(s) - \(error)", category: "downloads")
         }
     }
 
@@ -675,7 +675,7 @@ actor ChapterDownloader {
         } catch {
             // a failed read must never be mistaken for an empty keep set - that
             // would delete every downloaded chapter the user has, in one launch
-            log.log("chapter sweep ABORTED — \(error)", category: "downloads")
+            log.log("chapter sweep ABORTED - \(error)", category: "downloads")
         }
     }
 }
@@ -745,10 +745,7 @@ extension ChapterDownloader {
     }
 
     nonisolated private static func reason(for error: Error) -> String {
-        if let describable = error as? any DescribableError {
-            return describable.failureReason ?? describable.errorDescription ?? "\(error)"
-        }
-        return error.localizedDescription
+        Failure(error, fallback: "Couldn't download").sentence
     }
 
     // the directory a queued chapter will write into, which is derivable without

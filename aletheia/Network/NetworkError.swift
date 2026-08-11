@@ -24,14 +24,17 @@ enum NetworkError: DescribableError {
             return "No internet connection available"
         case .timeout:
             return "Request timed out"
-        case .badResponse(let status, _):
-            return "Invalid response with status code: \(status)"
+        case .badResponse:
+            return "Server Returned an Error"
+        // one is us failing to build a request and the other is us failing to
+        // read a reply. they shared a sentence that named the response, which
+        // is the wrong direction for half of the pair
         case .encoding:
-            return "Failed to encode request body"
-        case .decoding(let type, _):
-            return "Failed to decode \(type)"
-        case .failed(let urlError):
-            return "Request failed: \(urlError.localizedDescription)"
+            return "Couldn't Send the Request"
+        case .decoding:
+            return "Unexpected Response"
+        case .failed:
+            return "Couldn't Reach the Server"
         }
     }
 
@@ -45,10 +48,14 @@ enum NetworkError: DescribableError {
             return "Check your connection and try again."
         case .timeout:
             return "The server took too long to respond. Try again in a moment."
-        case .badResponse(let status, _):
-            return "The server responded unexpectedly (status \(status))."
-        case .encoding, .decoding:
-            return "The response wasn't in a format this app understands."
+        // the status code is in the log line that accompanies every one of these,
+        // so dropping it from the sentence loses nothing a person could use
+        case .badResponse:
+            return "The server responded unexpectedly."
+        case .encoding:
+            return "This app couldn't build the request."
+        case .decoding:
+            return "This app couldn't read the server's response."
         case .failed(let urlError):
             return urlError.localizedDescription
         }

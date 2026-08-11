@@ -343,7 +343,7 @@ private struct MergeComparison: View {
                 .font(.caption2)
                 .foregroundStyle(tone.text)
 
-            Text(text.isEmpty ? "—" : text)
+            Text(text.isEmpty ? "-" : text)
                 .font(.footnote)
                 .foregroundStyle(text.isEmpty ? Palette.muted : tone.text)
                 .lineLimit(Layout.valueLines)

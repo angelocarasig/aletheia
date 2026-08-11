@@ -71,14 +71,25 @@ struct ReaderSeparatorModel: Equatable, Sendable {
         var icon: String?
         var state: State
 
-        // four states, all glyph-distinct, so the colour is never the only
+        // five states, all glyph-distinct, so the colour is never the only
         // channel. skipped is not a tick: it would claim an achievement the
-        // push explicitly declined to make
+        // push explicitly declined to make.
+        //
+        // errored carries its own reason rather than a generic word, and it goes
+        // in the slot the word already occupies - a second line would make the
+        // row's height depend on whether something failed, which is the one thing
+        // this band is not allowed to do.
+        //
+        // signedOut is split OUT of skipped because the two have opposite
+        // answers: skipped resolves itself on the next chapter, and this one
+        // never resolves until the reader does something a reader cannot do from
+        // inside the reader
         enum State: Equatable, Sendable {
             case loading
             case tracked
             case skipped
-            case errored
+            case errored(String)
+            case signedOut
         }
     }
 

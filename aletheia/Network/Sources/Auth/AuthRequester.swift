@@ -29,7 +29,7 @@ actor AuthRequester {
             return cached
         }
 
-        log.log("[\(slug)] no valid cached credential — refreshing", category: "auth")
+        log.log("[\(slug)] no valid cached credential - refreshing", category: "auth")
         return try await refresh(for: source)
     }
 
@@ -52,7 +52,7 @@ actor AuthRequester {
             return (data, response)
         }
 
-        log.log("[\(source.descriptor.slug)] challenge detected — refreshing then retrying once", category: "auth")
+        log.log("[\(source.descriptor.slug)] challenge detected - refreshing then retrying once", category: "auth")
         let fresh = try await refresh(for: source)
         var retry = request
         fresh.apply(to: &retry)
@@ -80,7 +80,7 @@ actor AuthRequester {
             try Keychain.sources.save(credential, account: slug)
             log.log("[\(slug)] credential saved to keychain", category: "auth")
         } catch {
-            log.log("[\(slug)] keychain save FAILED — \(error)", category: "auth")
+            log.log("[\(slug)] keychain save FAILED - \(error)", category: "auth")
             throw error
         }
 

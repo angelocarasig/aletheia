@@ -15,6 +15,9 @@ final class SeparatorCell: UICollectionViewCell {
     static let reuseIdentifier = "SeparatorCell"
 
     var onRetry: (() -> Void)?
+    // the service id, so the host can retry the one that failed rather than the
+    // chapter this separator sits after
+    var onRetryTracker: ((String) -> Void)?
     var onComplete: (() -> Void)?
     var onExplainGap: ((ReaderSeparatorModel.Gap) -> Void)?
 
@@ -32,6 +35,7 @@ final class SeparatorCell: UICollectionViewCell {
         super.prepareForReuse()
         contentConfiguration = nil
         onRetry = nil
+        onRetryTracker = nil
         onComplete = nil
         onExplainGap = nil
     }
@@ -41,6 +45,7 @@ final class SeparatorCell: UICollectionViewCell {
             ReaderSeparatorView(
                 model: model,
                 onRetry: { [weak self] in self?.onRetry?() },
+                onRetryTracker: { [weak self] service in self?.onRetryTracker?(service) },
                 onComplete: { [weak self] in self?.onComplete?() },
                 onExplainGap: { [weak self] gap in self?.onExplainGap?(gap) }
             )

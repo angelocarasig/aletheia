@@ -73,6 +73,7 @@ final class ReaderController: UIViewController {
     var separatorModel: ((ReaderBoundary, ReadingDirection) -> ReaderSeparatorModel)?
     var onSeparatorReached: ((ReaderBoundary, ReadingDirection) -> Void)?
     var onSeparatorRetry: ((ReaderBoundary) -> Void)?
+    var onSeparatorRetryTracker: ((ReaderBoundary, String) -> Void)?
     var onSeparatorComplete: (() -> Void)?
     var onSeparatorGap: ((ReaderSeparatorModel.Gap) -> Void)?
     var onNeedsChapter: ((Position) -> Void)?
@@ -209,13 +210,13 @@ final class ReaderController: UIViewController {
 
             AppLog.shared.log(
                 """
-                prepend ch\(chapter): \(chapterPages.count) pages, \(measured) measured — \
+                prepend ch\(chapter): \(chapterPages.count) pages, \(measured) measured - \
                 size \(Int(size.height))→\(Int(collectionView.contentSize.height)) \
                 inserted \(Int(inserted)), \
                 offset \(Int(offset.y))→\(Int(restored.y)), \
                 settled at \(Int(collectionView.contentOffset.y)), \
-                centre ch\(centre?.chapter.description ?? "—") \
-                (visible set said ch\(stale?.chapter.description ?? "—"))
+                centre ch\(centre?.chapter.description ?? "-") \
+                (visible set said ch\(stale?.chapter.description ?? "-"))
                 """,
                 category: "reader.layout"
             )
@@ -543,6 +544,9 @@ final class ReaderController: UIViewController {
                 }
                 cell.onRetry = { [weak self] in
                     self?.onSeparatorRetry?(boundary)
+                }
+                cell.onRetryTracker = { [weak self] service in
+                    self?.onSeparatorRetryTracker?(boundary, service)
                 }
                 cell.onComplete = { [weak self] in
                     self?.onSeparatorComplete?()
