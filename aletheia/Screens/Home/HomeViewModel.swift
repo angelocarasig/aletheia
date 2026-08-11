@@ -34,6 +34,13 @@ final class HomeViewModel {
         // a tease that admits it is one. twelve rows was a slice pretending to
         // be the whole list, and it buried every section under it
         static let updateLimit = 3
+        // short on purpose. a resume surface stops being glanceable somewhere
+        // around six rows, and these two sit under a rail that has already
+        // answered the question for most visits
+        static let shelfLimit = 4
+        // the window the two shelves are drawn from before they are split and
+        // capped. wide enough that a library with a long tail still fills them
+        static let shelfBatch = 60
     }
 
     init(database: DatabaseClient, assets: Compositor.Assets, registry: Compositor.Registry) {
@@ -54,6 +61,10 @@ final class HomeViewModel {
     var recentlyAdded: [AddedEntry] { snapshot?.recentlyAdded ?? [] }
 
     var updates: [UpdateEntry] { snapshot?.updates ?? [] }
+
+    var stalled: [ShelfEntry] { snapshot?.stalled ?? [] }
+
+    var waiting: [ShelfEntry] { snapshot?.waiting ?? [] }
 
     var failingSources: Int { snapshot?.failingSources ?? 0 }
     var failingTrackers: Int { snapshot?.failingTrackers ?? 0 }
@@ -130,6 +141,8 @@ final class HomeViewModel {
         var continueRows: [ContinueRow]
         var updateRows: [UpdateRow]
         var addedRows: [EntryRow]
+        var stalledRows: [ContinueRow]
+        var waitingRows: [ContinueRow]
         var failingSources: Int
         var failingTrackers: Int
     }
@@ -195,11 +208,14 @@ final class HomeViewModel {
             .fetchAll(db)
 
         let continueRows = try continuing(from: library, cutoff: cutoff, hidden: hidden, in: db)
+        let (stalled, waiting) = try shelves(from: library, cutoff: cutoff, in: db)
 
         return Stored(
             continueRows: continueRows,
             updateRows: try updating(excluded: excluded, limit: Rule.updateLimit, in: db),
             addedRows: added.map { EntryRow($0) },
+            stalledRows: stalled,
+            waitingRows: waiting,
             failingSources: try failing(excluded: excluded, in: db),
             failingTrackers: try failingLinks(excluded: excluded, in: db)
         )
@@ -301,6 +317,67 @@ final class HomeViewModel {
         return Array(rows.prefix(Rule.continueLimit))
     }
 
+    // the two shelves under the rail, and they are one query because they are one
+    // partition. every library series sits in exactly one of three places:
+    //
+    //   read inside the window  -> Continue Reading, the rail
+    //   fell out, mid-chapter   -> Pick Back Up
+    //   fell out, between them  -> Waiting For You
+    //
+    // the cutoff is the rail's own, so nothing can be in the rail and a shelf at
+    // once, and ContinueTarget already draws the second line for free: .resume
+    // means the reader stopped inside a chapter, .start means they finished one
+    // cleanly and chapters piled up behind it. no series appears twice, which is
+    // the whole reason these are not two independent filters
+    nonisolated private static func shelves(
+        from library: QueryInterfaceRequest<EntryView>,
+        cutoff: Date,
+        in db: Database
+    ) throws -> (stalled: [ContinueRow], waiting: [ContinueRow]) {
+        // never read at all is not "fell behind" - it is a series you added and
+        // have not started, which Recently Added used to carry and nothing on
+        // this screen claims any more
+        let cold = try library
+            .filter(EntryView.Columns.lastReadDate < cutoff)
+            .filter(EntryView.Columns.lastReadDate > Date.distantPast)
+            .order(EntryView.Columns.lastReadDate.desc)
+            .limit(Rule.shelfBatch)
+            .fetchAll(db)
+
+        guard !cold.isEmpty else { return ([], []) }
+
+        let targets = try ContinueTarget.resolve(for: cold.map(\.seriesId), in: db)
+
+        var stalled: [ContinueRow] = []
+        var waiting: [ContinueRow] = []
+
+        for entry in cold {
+            // no target means every chapter is finished. that is caught up, not
+            // waiting, and it belongs on neither shelf
+            guard let target = targets[entry.seriesId] else { continue }
+            let row = ContinueRow(entry: EntryRow(entry), target: target)
+
+            switch target {
+            case .resume: stalled.append(row)
+            case .start where entry.unreadCount > 0: waiting.append(row)
+            case .start: continue
+            }
+        }
+
+        // most recently abandoned first: the one you stopped last is the one you
+        // still half-remember, which is what makes it the cheapest to re-enter
+        stalled = Array(stalled.prefix(Rule.shelfLimit))
+        // biggest pile first, because the question this shelf answers is "what
+        // have I fallen furthest behind on", not "what is oldest"
+        waiting = Array(
+            waiting
+                .sorted { $0.entry.unreadCount > $1.entry.unreadCount }
+                .prefix(Rule.shelfLimit)
+        )
+
+        return (stalled, waiting)
+    }
+
     // a source that dies quietly takes its series' new chapters with it and says
     // nothing, so it is found weeks later wondering why a favourite went silent.
     // counted by source rather than by origin because that is what the banner
@@ -362,6 +439,8 @@ extension HomeViewModel {
         let continueReading: [ContinueEntry]
         let updates: [UpdateEntry]
         let recentlyAdded: [AddedEntry]
+        let stalled: [ShelfEntry]
+        let waiting: [ShelfEntry]
         let failingSources: Int
         let failingTrackers: Int
 
@@ -370,12 +449,16 @@ extension HomeViewModel {
             continueReading: [ContinueEntry],
             updates: [UpdateEntry],
             recentlyAdded: [AddedEntry],
+            stalled: [ShelfEntry] = [],
+            waiting: [ShelfEntry] = [],
             failingSources: Int = 0,
             failingTrackers: Int = 0
         ) {
             self.continueReading = continueReading
             self.updates = updates
             self.recentlyAdded = recentlyAdded
+            self.stalled = stalled
+            self.waiting = waiting
             self.failingSources = failingSources
             self.failingTrackers = failingTrackers
         }
@@ -416,6 +499,8 @@ extension HomeViewModel {
                     adult: $0.adult
                 )
             }
+            stalled = stored.stalledRows.map { ShelfEntry($0, assets: assets) }
+            waiting = stored.waitingRows.map { ShelfEntry($0, assets: assets) }
         }
     }
 
@@ -439,6 +524,44 @@ extension HomeViewModel {
         let latest: Date
         let target: ContinueTarget
         let adult: Bool
+    }
+
+    // one row on either shelf. the two differ by what the second line says, not
+    // by what they hold, so they share a type - and the caller picks the line
+    struct ShelfEntry: Identifiable, Hashable {
+        let id: SeriesRecord.ID
+        let title: String
+        let cover: URL?
+        let unreadCount: Int
+        let target: ContinueTarget
+        let adult: Bool
+
+        #if DEBUG
+        init(
+            id: SeriesRecord.ID,
+            title: String,
+            cover: URL? = nil,
+            unreadCount: Int,
+            target: ContinueTarget,
+            adult: Bool = false
+        ) {
+            self.id = id
+            self.title = title
+            self.cover = cover
+            self.unreadCount = unreadCount
+            self.target = target
+            self.adult = adult
+        }
+        #endif
+
+        fileprivate init(_ row: ContinueRow, assets: Compositor.Assets) {
+            id = SeriesRecord.ID(rawValue: row.entry.seriesId)
+            title = row.entry.title
+            cover = assets.local(for: row.entry.path) ?? row.entry.cover
+            unreadCount = row.entry.unreadCount
+            target = row.target
+            adult = row.entry.adult
+        }
     }
 
     struct AddedEntry: Identifiable, Hashable {

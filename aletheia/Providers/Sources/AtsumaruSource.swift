@@ -276,7 +276,18 @@ extension AtsumaruSource {
                 .appendingPathComponent(document.id),
             classification: Self.classification(document),
             publication: Self.publication(document.status),
-            covers: [Self.poster(document.poster)].compactMap { $0 },
+            // quality descending, because that is the order the pool is walked
+            // in when one turns out to be gone - covers are inserted in this
+            // order and the promotion takes the first survivor by id.
+            //
+            // details used to return the full-size alone, which is the variant
+            // that goes missing from their cdn - so a series browsed with a
+            // working cover was added to the library with a dead one. it also
+            // broke preferredCoverId's first tier, which matches against the
+            // SEARCH result's url: that url could never be in a pool built from
+            // a field search does not use
+            covers: [Self.poster(document.poster), Self.poster(document.posterMedium)]
+                .compactMap { $0 },
             tags: document.tags ?? [],
             authors: document.authors ?? []
         )
@@ -394,7 +405,11 @@ private extension AtsumaruSource {
 
     static let stubFields = "id,title,poster,posterSmall,posterMedium,mbContentRating,isAdult"
     static let pornographic = "Pornographic"
-    static let detailFields = "id,title,otherNames,synopsis,poster,status,isAdult,mbContentRating,tags,authors"
+    // posterMedium is requested here for the same reason search asks for it: the
+    // full-size poster is the variant that goes missing from their CDN, and it
+    // was the only one details returned - so a series browsed with a working
+    // cover was added to the library with a dead one
+    static let detailFields = "id,title,otherNames,synopsis,poster,posterMedium,status,isAdult,mbContentRating,tags,authors"
 
     static func documentURL(id: String) -> URL {
         collection([
@@ -526,6 +541,7 @@ private extension AtsumaruSource {
         let otherNames: [String]?
         let synopsis: String?
         let poster: String?
+        let posterMedium: String?
         let status: String?
         let isAdult: Bool?
         let mbContentRating: String?

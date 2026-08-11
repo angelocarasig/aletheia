@@ -27,6 +27,16 @@ enum ReadingFormat {
         )
     }
 
+    // whole numbers lose their decimal, half chapters keep it: "Chapter 42",
+    // "Chapter 42.5". a trailing .0 on every row reads as a rendering bug
+    static func chapter(_ number: Double) -> String {
+        let rounded = number.rounded()
+        let value = abs(number - rounded) < 0.001
+            ? String(Int(rounded))
+            : String(format: "%g", number)
+        return "Chapter \(value)"
+    }
+
     static func dayLabel(for key: Int) -> String {
         guard let date = ReadingStreak.date(from: key) else { return "" }
         let calendar = Calendar.current

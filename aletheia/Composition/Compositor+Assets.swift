@@ -7,6 +7,7 @@
 
 import Foundation
 import GRDB
+import Tagged
 
 extension Compositor {
     struct Assets: Sendable {
@@ -117,6 +118,63 @@ actor CoverDownloader {
         await download(backlog)
     }
 
+    // the descending fallback the pool always implied and never had. covers are
+    // add-only and a series points at exactly one of them, so a preferred cover
+    // that turns out to be gone left the series with no artwork while a working
+    // sibling sat in the same table, reachable only by opening the covers sheet
+    // and picking it by hand.
+    //
+    // only when the dead one is the PREFERRED one: a spare cover 404ing changes
+    // nothing about what is on screen, and repointing on it would overrule a
+    // choice the reader made
+    private func promote(from row: Pending) async {
+        let dead = row.id
+        let series = row.seriesId
+        let exhausted = failures
+
+        do {
+            let promoted: Int64? = try await database.writer.write { db in
+                guard let current = try SeriesRecord.fetchOne(db, key: series),
+                      current.preferredCoverId?.rawValue == dead
+                else { return nil }
+
+                // ordered the way the pool was built, which is quality
+                // descending - so the first survivor is the best one left. a
+                // cover already on disk wins outright over one still to try
+                let alternates = try CoverRecord
+                    .filter(CoverRecord.Columns.seriesId == series)
+                    .filter(CoverRecord.Columns.id != dead)
+                    .order(CoverRecord.Columns.id)
+                    .fetchAll(db)
+
+                let next = alternates.first { $0.path != nil }
+                    ?? alternates.first { ($0.id?.rawValue).map { !exhausted.keys.contains($0) } ?? false }
+                    ?? alternates.first
+
+                guard let next, let id = next.id else { return nil }
+
+                _ = try SeriesRecord
+                    .filter(key: series)
+                    .updateAll(db, SeriesRecord.Columns.preferredCoverId.set(to: id.rawValue))
+
+                return id.rawValue
+            }
+
+            guard let promoted else {
+                log.log("cover \(dead) is gone and the series has no alternate", category: "assets")
+                return
+            }
+
+            log.log("cover \(dead) is gone - series \(series) promoted to \(promoted)", category: "assets")
+
+            // the promoted one may have no file yet, and nothing else will come
+            // back for it: this pass has already filtered its queue
+            await enqueue(SeriesRecord.ID(rawValue: series))
+        } catch {
+            log.log("could not promote past cover \(dead) - \(error)", category: "assets")
+        }
+    }
+
     private func download(_ rows: [Pending]) async {
         let queued = rows.filter { row in
             !inFlight.contains(row.id) && (failures[row.id] ?? 0) < Limits.attempts
@@ -149,6 +207,16 @@ actor CoverDownloader {
             } catch {
                 failures[row.id, default: 0] += 1
                 log.log("cover \(row.id) failed - \(error)", category: "assets")
+
+                // a url that is GONE is not a url to try again. counting attempts
+                // against it burns three requests a launch forever, and - worse -
+                // leaves the series pointing at artwork that can never arrive.
+                // the pool already holds the alternates, so the answer is to
+                // repoint rather than to keep asking
+                if Self.isGone(error) {
+                    failures[row.id] = Limits.attempts
+                    await promote(from: row)
+                }
             }
         }
 
@@ -175,8 +243,18 @@ actor CoverDownloader {
 }
 
 extension CoverDownloader {
+    // 404 and 410 are the two answers that mean "not coming back". everything
+    // else - a timeout, a 500, no connection - is the same url on a bad day, and
+    // NetworkError.isRetryable cannot tell them apart because it is true for
+    // every status code
+    fileprivate static func isGone(_ error: Error) -> Bool {
+        guard case let NetworkError.badResponse(status, _) = error else { return false }
+        return status == 404 || status == 410
+    }
+
     fileprivate struct Pending: Decodable, FetchableRecord, Sendable {
         let id: Int64
+        let seriesId: Int64
         let url: URL
         let sourceSlug: String?
     }
@@ -187,6 +265,7 @@ extension CoverDownloader {
         let sql = """
             SELECT
                 c.id AS id,
+                c.\(CoverRecord.Columns.seriesId.name) AS seriesId,
                 c.\(CoverRecord.Columns.url.name) AS url,
                 src.\(SourceRecord.Columns.slug.name) AS sourceSlug
             FROM \(CoverRecord.databaseTableName) c

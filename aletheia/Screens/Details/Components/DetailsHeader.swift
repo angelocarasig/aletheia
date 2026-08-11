@@ -34,6 +34,9 @@ struct DetailsHeader: View {
     }
 
     @State private var measured: CGSize = .zero
+    // reset by the cover changing, or a new preferred cover inherits the old
+    // one's failure and never gets its own attempt
+    @State private var unavailable = false
 
     // the image's own ratio, fitted inside the box. until it reports a size this
     // is the standard cover shape, so the common case never reflows and the
@@ -62,7 +65,29 @@ struct DetailsHeader: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
+    @ViewBuilder
     private var Cover: some View {
+        if unavailable {
+            Unavailable
+        } else {
+            Artwork
+        }
+    }
+
+    private var Unavailable: some View {
+        Placeholder
+            .overlay {
+                Image(systemName: "photo")
+                    .font(.title2)
+                    .foregroundStyle(.tertiary)
+            }
+            .frame(width: coverFrame.width, height: coverFrame.height)
+            .clipShape(.rect(cornerRadius: dimensions.radius.radius16, style: .continuous))
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .tappable(action: onOpenCovers)
+    }
+
+    private var Artwork: some View {
         KFImage(cover)
             .requestModifier(AnyModifier.referer(referer))
             // kingfisher reports the decoded size, which is ratio-true even when
@@ -70,6 +95,10 @@ struct DetailsHeader: View {
             .onSuccess { measured = $0.image.size }
             .resizable()
             .placeholder { Placeholder }
+            // without this a dead url shimmers forever - kingfisher keeps showing
+            // the placeholder on failure, so "loading" and "will never load" drew
+            // identically. the header is where that was most visible
+            .onFailure { _ in unavailable = true }
             .fade(duration: Layout.fadeDuration)
             .scaledToFill()
             // a new preferred cover is a new identity, so it crossfades in over
@@ -82,6 +111,7 @@ struct DetailsHeader: View {
             .animation(.settle, value: coverFrame)
             .animation(.settle, value: cover)
             .tappable(action: onOpenCovers)
+            .onChange(of: cover) { unavailable = false }
     }
 
     private var Placeholder: some View {

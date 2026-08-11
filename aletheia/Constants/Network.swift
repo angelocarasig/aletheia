@@ -16,6 +16,10 @@ extension Constants {
         // progress has not moved for about that long - a request outliving the
         // system's patience takes the whole run down with it
         static let timeout: TimeInterval = 30
+        // a health check that takes as long as a real request tells you nothing
+        // you could not have guessed. imposed by the caller racing it, since the
+        // session's own timeout cannot be shortened per request
+        static let pingTimeout: Duration = .milliseconds(1500)
 
         // the ceiling on a whole transfer, which timeoutInterval cannot express:
         // it measures silence, so a host trickling bytes never trips it. only

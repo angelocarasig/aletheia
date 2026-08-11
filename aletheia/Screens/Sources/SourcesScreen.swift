@@ -155,6 +155,7 @@ struct SourcesScreen: View {
 // a struct rather than a view builder: each row owns its own ping state and task
 private struct SourceRow: View {
     @Environment(\.dimensions) private var dimensions
+    @Environment(\.compositor) private var compositor
     
     let record: SourceRecord
     let source: Source?
@@ -205,7 +206,7 @@ private struct SourceRow: View {
         .tappable(action: onTap)
         .task {
             guard let source, !record.disabled else { return }
-            let result = await source.ping()
+            let result = await source.ping(using: compositor.network)
             withAnimation(.smooth) { ping = result }
         }
     }

@@ -28,6 +28,10 @@ struct LibraryCard: View {
     }
 
     @Environment(\.dimensions) private var dimensions
+
+    // cleared when the url changes, or a recycled cell hands the next series the
+    // previous one's blank
+    @State private var unavailable = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private enum Layout {
@@ -61,8 +65,15 @@ struct LibraryCard: View {
                     KFImage(cover)
                         .resizable()
                         .placeholder { Placeholder.shimmer() }
+                        // a permanently dead url left the shimmer up forever,
+                        // which reads as a card still loading rather than one
+                        // with no artwork
+                        .onFailure { _ in unavailable = true }
                         .fade(duration: 0.25)
                         .scaledToFill()
+                        .opacity(unavailable ? 0 : 1)
+                        .overlay { if unavailable { Missing } }
+                        .onChange(of: cover) { unavailable = false }
                 } else {
                     Placeholder
                 }
@@ -155,6 +166,16 @@ struct LibraryCard: View {
     private var Placeholder: some View {
         Rectangle()
             .fill(.primary.opacity(Layout.placeholderOpacity))
+    }
+
+    // quiet on purpose: artwork that will not load is not something the reader
+    // can act on. the card still names the series and still opens it
+    private var Missing: some View {
+        Placeholder.overlay {
+            Image(systemName: "photo")
+                .font(.title3)
+                .foregroundStyle(.tertiary)
+        }
     }
 
     private func Bar(height: CGFloat) -> some View {

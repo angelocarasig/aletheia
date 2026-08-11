@@ -17,6 +17,9 @@ struct Compositor: Sendable {
     let trackers: Trackers
     let requester: AuthRequester
     let presenter: AuthPresenter
+    // the one funnel every request passes. exposed because a caller that builds
+    // its own gets its own HostGate too, which is the cap silently not applying
+    let network: NetworkConfiguration
 
     // no default - resolving the singleton opens the pool and runs migrations,
     // and that has to happen off the main actor during bootstrap
@@ -42,6 +45,7 @@ struct Compositor: Sendable {
         self.database = database
         self.presenter = presenter
         self.requester = requester
+        self.network = network
         let registry = Registry(sources: sources, database: database)
 
         self.registry = registry

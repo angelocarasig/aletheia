@@ -175,9 +175,9 @@ private extension HomeScreen {
                 // chapters, a stalled tracker loses you a number on someone
                 // else's website, and one sentence covering both would have to
                 // stop saying either
-                let stalled = vm.failingTrackers
-                if stalled > 0 {
-                    StalledBanner(stalled)
+                let unsynced = vm.failingTrackers
+                if unsynced > 0 {
+                    StalledBanner(unsynced)
                 }
 
                 // once there is a library at all, an absent section is more
@@ -212,6 +212,32 @@ private extension HomeScreen {
                 // own actions, so it earns a shelf and not a screenful
                 if !added.isEmpty {
                     AddedSection(entries: added)
+                }
+
+                // the two shelves. they are a partition of everything that fell
+                // out of the rail's window, split by where the reader stopped:
+                // inside a chapter, or cleanly at the end of one. no series is on
+                // both, and neither is in the rail
+                let stalled = vm.stalled
+                if !stalled.isEmpty {
+                    ShelfSection(
+                        title: "Pick Back Up",
+                        entries: stalled,
+                        detail: Self.position,
+                        accessory: { _ in nil }
+                    )
+                }
+
+                let waiting = vm.waiting
+                if !waiting.isEmpty {
+                    ShelfSection(
+                        title: "Waiting For You",
+                        entries: waiting,
+                        detail: Self.next,
+                        // the pile is the whole point of this shelf, so it is the
+                        // one number that gets its own mark
+                        accessory: { Text("\($0.unreadCount)") }
+                    )
                 }
             }
             .padding(.vertical, dimensions.spacing.space16)
@@ -385,6 +411,55 @@ private extension HomeScreen {
     // with nothing behind it, and nobody found it - what makes this readable as
     // a control is the surface, which is the same thing that makes the chart's
     // stepper readable. the glyph says which of the two it is
+    // one builder for both shelves: they differ by their second line and whether
+    // they carry a count, and a second hand-written copy would drift the moment
+    // one of them is touched
+    func ShelfSection(
+        title: String,
+        entries: [HomeViewModel.ShelfEntry],
+        detail: @escaping (HomeViewModel.ShelfEntry) -> String,
+        accessory: @escaping (HomeViewModel.ShelfEntry) -> Text?
+    ) -> some View {
+        VStack(alignment: .leading, spacing: dimensions.spacing.space12) {
+            SectionHeader(title)
+
+            VStack(spacing: dimensions.spacing.space8) {
+                ForEach(entries) { entry in
+                    ShelfRow(
+                        title: entry.title,
+                        cover: entry.cover,
+                        detail: detail(entry),
+                        accessory: accessory(entry),
+                        obscured: obscured && entry.adult
+                    )
+                    .tappable {
+                        reading = ReadingTarget(seriesId: entry.id, chapterId: entry.target.chapterId)
+                    }
+                    .contextMenu {
+                        NavigationLink(value: SeriesEntry.library(entry.id)) {
+                            Label("View Series", systemImage: "book")
+                        }
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, dimensions.screenMargin)
+    }
+
+    // where you are, not how long you have been away. a duration reads as
+    // neglect and a position reads as a place to stand, which is the difference
+    // between a shelf a reader uses and one they scroll past
+    static func position(_ entry: HomeViewModel.ShelfEntry) -> String {
+        guard case let .resume(_, number, progress) = entry.target else {
+            return "Partway through"
+        }
+        return "\(Int(progress * 100))% through \(ReadingFormat.chapter(number))"
+    }
+
+    static func next(_ entry: HomeViewModel.ShelfEntry) -> String {
+        "Next up: \(ReadingFormat.chapter(entry.target.number))"
+    }
+
     // a rail rather than the two-column grid it was: this is a log of what you
     // added, which is the Library's default sort with a caption on it, and a
     // grid of it was the largest block on the screen for the least news
@@ -574,16 +649,40 @@ private enum Mock {
         }
     }
 
+    // the two shelves, built from the same titles so a preview reads as one
+    // library rather than three unrelated ones
+    static func shelf(_ count: Int, resuming: Bool) -> [HomeViewModel.ShelfEntry] {
+        (0..<count).map { index in
+            let chapter = ChapterRecord.ID(rawValue: Int64(900 + index))
+            let target: ContinueTarget = resuming
+                ? .resume(chapterId: chapter, number: Double(40 + index), progress: Double(20 + index * 17) / 100)
+                : .start(chapterId: chapter, number: Double(112 + index * 3))
+            let unread: Int = resuming ? index : (index + 1) * 7
+
+            return HomeViewModel.ShelfEntry(
+                id: SeriesRecord.ID(rawValue: Int64(500 + index)),
+                title: titles[(index + 3) % titles.count],
+                unreadCount: unread,
+                target: target,
+                adult: index.isMultiple(of: 4)
+            )
+        }
+    }
+
     static func snapshot(
         continuing count: Int = 4,
         added addedCount: Int = 8,
         updates updateCount: Int = 5,
+        stalled stalledCount: Int = 3,
+        waiting waitingCount: Int = 4,
         failing: Int = 0
     ) -> HomeViewModel.Snapshot {
         HomeViewModel.Snapshot(
             continueReading: continuing(count),
             updates: updates(updateCount),
             recentlyAdded: added(addedCount),
+            stalled: shelf(stalledCount, resuming: true),
+            waiting: shelf(waitingCount, resuming: false),
             failingSources: failing
         )
     }
@@ -601,6 +700,18 @@ private enum Mock {
 
 // absent entirely when nothing is failing, which is what lets it be loud when
 // it is not: a notice that is always on screen is one nobody reads
+// the two shelves alone, at their caps, which is where the page first has to
+// justify scrolling past the rails
+#Preview("Shelves") {
+    HomeScreen(vm: .preview(snapshot: Mock.snapshot(continuing: 1, added: 2, updates: 0, stalled: 4, waiting: 4)))
+}
+
+// neither shelf has anything: a caught-up library, where both sections are
+// absent rather than empty
+#Preview("Caught Up") {
+    HomeScreen(vm: .preview(snapshot: Mock.snapshot(stalled: 0, waiting: 0)))
+}
+
 #Preview("Sources Failing") {
     HomeScreen(vm: .preview(snapshot: Mock.snapshot(failing: 3)))
 }

@@ -23,6 +23,12 @@ enum ContinueTarget: Hashable, Sendable {
         }
     }
 
+    var number: Double {
+        switch self {
+        case let .resume(_, number, _), let .start(_, number): number
+        }
+    }
+
     private struct Row: Decodable, FetchableRecord, Sendable {
         let seriesId: Int64
         let chapterId: Int64
