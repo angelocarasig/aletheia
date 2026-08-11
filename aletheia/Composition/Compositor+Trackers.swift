@@ -119,7 +119,6 @@ extension Compositor {
                 do {
                     for try await count in observation.values(in: database.reader) {
                         guard let self else { return }
-                        self.log.log("queue observation fired - \(count) dirty", category: "trackers.timing")
                         if count != self.pending { self.pending = count }
                         if count > 0 { self.schedule() }
                     }
@@ -153,12 +152,7 @@ extension Compositor {
         private func start(_ tracker: Tracker) {
             // a lane in flight re-reads the queue as it goes, so anything
             // dirtied under it is already picked up
-            guard drains[tracker] == nil else {
-                log.log("[\(tracker.rawValue)] lane already running - not started", category: "trackers.timing")
-                return
-            }
-
-            log.log("[\(tracker.rawValue)] lane starting", category: "trackers.timing")
+            guard drains[tracker] == nil else { return }
 
             drains[tracker] = Task { [weak self] in
                 await self?.run(tracker)
@@ -167,11 +161,7 @@ extension Compositor {
         }
 
         private func run(_ tracker: Tracker) async {
-            let laneBegan = Date.now
-            defer {
-                log.log("[\(tracker.rawValue)] lane finished in \(Timing.ms(laneBegan))", category: "trackers.timing")
-                refreshCounts()
-            }
+            defer { refreshCounts() }
 
             // one row is attempted at most once per walk. re-reading the queue
             // picks up anything dirtied while the walk was in flight, and the
@@ -183,15 +173,10 @@ extension Compositor {
 
             while !Task.isCancelled {
                 let pending: [SeriesTrackerRecord]
-                let readBegan = Date.now
                 do {
                     pending = try await database.reader.read {
                         try SeriesTrackerRecord.dirty(for: tracker, in: $0)
                     }
-                    log.log(
-                        "[\(tracker.rawValue)] queue read in \(Timing.ms(readBegan)) - \(pending.count) row(s)",
-                        category: "trackers.timing"
-                    )
                 } catch {
                     log.log("[\(tracker.rawValue)] drain FAILED to read queue - \(error)", category: "trackers")
                     return
@@ -228,24 +213,12 @@ extension Compositor {
                     // before it. paced after the last push, the lane sat awake
                     // for the whole spacing with nothing left to space out
                     if let lastPush {
-                        let paceBegan = Date.now
                         await pace(tracker, since: lastPush)
-                        log.log("[\(tracker.rawValue)] paced \(Timing.ms(paceBegan))", category: "trackers.timing")
                     }
-
-                    let pushBegan = Date.now
-                    log.log(
-                        "[\(tracker.rawValue)] push \(link.remoteTitle) - queued \(link.pendingProgress.map(String.init) ?? "-")/\(link.pendingStatus?.rawValue ?? "-")",
-                        category: "trackers.timing"
-                    )
 
                     do {
                         try await worker.push(link)
                         lastPush = .now
-                        log.log(
-                            "[\(tracker.rawValue)] push \(link.remoteTitle) done in \(Timing.ms(pushBegan))",
-                            category: "trackers.timing"
-                        )
                     } catch let error as TrackerError where error.isTerminal {
                         // one clear stop rather than forty identical failures,
                         // the same rule the download queue uses when the disk is
@@ -265,10 +238,6 @@ extension Compositor {
                         // a failed attempt still spent a request, so it still
                         // spaces the next one
                         lastPush = .now
-                        log.log(
-                            "[\(tracker.rawValue)] push \(link.remoteTitle) FAILED after \(Timing.ms(pushBegan)) - \(error)",
-                            category: "trackers.timing"
-                        )
                         continue
                     }
                 }
@@ -385,7 +354,13 @@ extension Compositor {
         }
 
         func retry(_ link: SeriesTrackerRecord) {
-            deadAccounts.remove(link.tracker)
+            retry(link.tracker)
+        }
+
+        // the mark comes off before the lane starts, or it halts on the way in
+        // at the same guard that set it
+        func retry(_ tracker: Tracker) {
+            deadAccounts.remove(tracker)
             flush()
         }
 
@@ -560,7 +535,7 @@ actor TrackerSyncer {
             // the fix for the one bug that loses data. without it: read to forty
             // here, to sixty on the website, then forty-one here, and an absolute
             // write of forty-one lands on top of sixty. costs one request
-            let remote = try await attempt(link.tracker, "read entry") {
+            let remote = try await attempt(link.tracker) {
                 try await service.entry(remoteId: link.remoteId, token: $0)
             }
 
@@ -636,14 +611,7 @@ actor TrackerSyncer {
             return existing
         }
 
-        let fields = [
-            update.progress.map { "progress=\($0)" },
-            update.status.map { "status=\($0.rawValue)" },
-            update.score.map { "score=\($0)" },
-            update.startDate.map { _ in "startDate" }
-        ].compactMap { $0 }.joined(separator: " ")
-
-        return try await attempt(tracker, "write \(fields)") { try await service.save(update, token: $0) }
+        return try await attempt(tracker) { try await service.save(update, token: $0) }
     }
 
     private func store(
@@ -655,9 +623,6 @@ actor TrackerSyncer {
         force: Bool = false
     ) async throws {
         guard let id = link.id else { return }
-
-        let began = Date.now
-        defer { log.log("[\(link.tracker.rawValue)] store in \(Timing.ms(began))", category: "trackers.timing") }
 
         try await database.writer.write { db in
             guard var row = try SeriesTrackerRecord.fetchOne(db, key: id.rawValue) else { return }
@@ -727,35 +692,13 @@ actor TrackerSyncer {
     // a second failure is the reader's to fix
     private func attempt<Value>(
         _ tracker: Tracker,
-        _ label: String = "request",
         _ work: (String) async throws -> Value
     ) async throws -> Value {
-        let began = Date.now
         let token = try await authority.token(for: tracker)
-        let acquired = Date.now
-        log.log(
-            "[\(tracker.rawValue)] \(label) token in \(Timing.ms(began, acquired))",
-            category: "trackers.timing"
-        )
-
         do {
-            let value = try await work(token)
-            log.log(
-                "[\(tracker.rawValue)] \(label) in \(Timing.ms(acquired)) (token \(Timing.ms(began, acquired)))",
-                category: "trackers.timing"
-            )
-            return value
+            return try await work(token)
         } catch TrackerError.reauthenticationRequired {
-            log.log(
-                "[\(tracker.rawValue)] \(label) rejected the token after \(Timing.ms(acquired)) - recovering",
-                category: "trackers.timing"
-            )
-            let recovering = Date.now
             let fresh = try await authority.recover(tracker)
-            log.log(
-                "[\(tracker.rawValue)] recovered in \(Timing.ms(recovering))",
-                category: "trackers.timing"
-            )
             return try await work(fresh)
         }
     }
@@ -784,11 +727,3 @@ actor TrackerSyncer {
     }
 }
 
-// temporary instrumentation for the "why is a chapter-read push slow" hunt.
-// every line goes to trackers.timing so the whole path can be filtered out in
-// one grep, and deleted in one pass when the question is answered
-enum Timing {
-    static func ms(_ from: Date, _ to: Date = .now) -> String {
-        "\(Int(to.timeIntervalSince(from) * 1000))ms"
-    }
-}

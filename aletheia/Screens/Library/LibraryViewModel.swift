@@ -29,9 +29,14 @@ final class LibraryViewModel {
     // is an option that can only ever return nothing
     private(set) var tags: [Option<TagRecord.ID>] = []
     private(set) var sources: [Option<SourceRecord.ID>] = []
+    // empty when nothing in the library is linked, which is what hides the group
+    // rather than offering three chips that can only return the whole library or
+    // none of it
+    private(set) var trackers: [TrackerFilter] = []
 
     private var tagMembership: [SeriesRecord.ID: Set<TagRecord.ID>] = [:]
     private var sourceMembership: [SeriesRecord.ID: Set<SourceRecord.ID>] = [:]
+    private var trackerMembership: [SeriesRecord.ID: Set<Tracker>] = [:]
     private(set) var isLoading = false
     private(set) var isSaving = false
     private(set) var failure: Failure?
@@ -135,7 +140,8 @@ final class LibraryViewModel {
                 filter.matches($0, asOf: asOf)
                     && filter.matches(
                         tagIDs: tagMembership[$0.id] ?? [],
-                        sourceIDs: sourceMembership[$0.id] ?? []
+                        sourceIDs: sourceMembership[$0.id] ?? [],
+                        linked: trackerMembership[$0.id] ?? []
                     )
             }
         }
@@ -197,18 +203,21 @@ final class LibraryViewModel {
         guard !library.isEmpty else {
             tags = []
             sources = []
+            trackers = []
             tagMembership = [:]
             sourceMembership = [:]
+            trackerMembership = [:]
             return
         }
 
         do {
-            let (tagRows, tagLinks, sourceRows, origins) = try await database.reader.read { db in
+            let (tagRows, tagLinks, sourceRows, origins, links) = try await database.reader.read { db in
                 (
                     try TagRecord.fetchAll(db),
                     try SeriesTagRecord.fetchAll(db),
                     try SourceRecord.fetchAll(db),
-                    try OriginRecord.fetchAll(db)
+                    try OriginRecord.fetchAll(db),
+                    try SeriesTrackerRecord.fetchAll(db)
                 )
             }
 
@@ -253,6 +262,16 @@ final class LibraryViewModel {
             options.append(Option(id: LibraryFilter.detachedSource, name: "Disconnected"))
 
             sources = options
+
+            let ownedLinks = links.filter { library.contains($0.seriesId) }
+            trackerMembership = Dictionary(grouping: ownedLinks, by: \.seriesId)
+                .mapValues { Set($0.map(\.tracker)) }
+
+            // the whole group, or none of it. a service nothing is linked to
+            // still earns its chip once anything is - the question "which of
+            // these are on AniList and which are on neither" needs both sides
+            // present to be askable
+            trackers = trackerMembership.isEmpty ? [] : TrackerFilter.ordered
         } catch {
             AppLog.shared.log("library vocabularies failed - \(error)", category: "library")
         }

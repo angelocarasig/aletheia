@@ -77,6 +77,14 @@ struct LibraryScreen: View {
                     named: vm.selectedCollection == nil ? nil : vm.title
                 )
             }
+            // before .safeAreaBar, so the bar is added by the outer modifier and
+            // draws above this - the clusters' own controls stay tappable while
+            // everything they are covering does not
+            .overlay {
+                if collectionsExpanded || actionsExpanded {
+                    Dismisser
+                }
+            }
             // a bar rather than two overlays: it reserves the clearance the last
             // row needs instead of a literal bottom padding, and registers as a
             // control surface so the scroll edge effect reaches it
@@ -126,8 +134,11 @@ struct LibraryScreen: View {
             .navigationSubtitle(subtitle)
             .toolbarTitleDisplayMode(.large)
             .navigationDestination(for: SeriesEntry.self) { DetailsScreen(entry: $0) }
-            // here rather than on Activity: this is where a refresh is started,
-            // and the screen it opens is about what that refresh does
+            // what is in this toolbar changes what you are looking at. how often
+            // the library refreshes does not, and it was already a row in
+            // Settings - so the gear here was a second door into a furnished
+            // room, and one that six readers in a row mistook for the app's own
+            // settings before giving up on finding them
             .toolbar {
                 // absent unless something on this screen could actually be
                 // covered - a reveal with nothing to reveal is a control with
@@ -141,17 +152,6 @@ struct LibraryScreen: View {
                             action: { blurAdult = blurAdult.toggled(adultSource: false) }
                         )
                     }
-                }
-
-                ToolbarSpacer(.fixed, placement: .topBarTrailing)
-
-                ToolbarItem(placement: .topBarTrailing) {
-                    NavigationLink {
-                        RefreshSettingsScreen()
-                    } label: {
-                        Image(systemName: "gearshape")
-                    }
-                    .accessibilityLabel("Library update settings")
                 }
             }
             .sheet(isPresented: $showingSort) {
@@ -167,7 +167,8 @@ struct LibraryScreen: View {
                     LibraryFilterSheet(
                         filter: Binding(get: { vm.filter }, set: { vm.filter = $0 }),
                         tags: vm.tags,
-                        sources: vm.sources
+                        sources: vm.sources,
+                        trackers: vm.trackers
                     )
                 }
             }
@@ -212,6 +213,32 @@ struct LibraryScreen: View {
 // MARK: - Chrome
 
 private extension LibraryScreen {
+    // dismiss-on-touch-outside, the way a menu behaves. two things it is not:
+    //
+    // it is not an .onTapGesture, which fires on RELEASE - so a finger that
+    // lands, drags and lifts elsewhere would leave the panel open, and the
+    // panel would still be covering the thing being reached for. a zero-distance
+    // DragGesture reports on touch DOWN, which is the moment the intent is
+    // already legible.
+    //
+    // and it is not tinted. a scrim that darkens says "this is modal, the thing
+    // behind it is unavailable", and the panel is neither - it is a clear
+    // catcher whose only job is to spend the first touch
+    var Dismisser: some View {
+        Color.clear
+            .contentShape(.rect)
+            .gesture(
+                DragGesture(minimumDistance: 0).onChanged { _ in
+                    guard collectionsExpanded || actionsExpanded else { return }
+                    withAnimation(.smooth) {
+                        collectionsExpanded = false
+                        actionsExpanded = false
+                    }
+                }
+            )
+            .accessibilityHidden(true)
+    }
+
     // the switcher animates its own mutation, so this stays a plain passthrough
     func selection(_ vm: LibraryViewModel) -> Binding<CollectionRecord.ID?> {
         Binding(

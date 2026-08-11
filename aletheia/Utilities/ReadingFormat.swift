@@ -15,8 +15,12 @@ enum ReadingFormat {
         // a sitting shorter than a minute is not zero, and rendering it as "0m"
         // beside "49 pages" reads as broken tracking rather than a rounding
         // floor - every reader shown it concluded the other numbers were
-        // suspect too, which is a steep price for the truncating unit
-        guard seconds >= 60 else { return seconds > 0 ? "<1m" : "0m" }
+        // suspect too, which is a steep price for the truncating unit.
+        //
+        // seconds rather than "<1m", which was the same evasion one step up: it
+        // says the number is too small to state, where the number is 40 and
+        // stating it costs nothing. the unit changes, the fact does not
+        guard seconds >= 60 else { return "\(max(0, seconds))s" }
 
         return Duration.seconds(seconds).formatted(
             .units(allowed: [.hours, .minutes], width: .narrow, maximumUnitCount: 2)

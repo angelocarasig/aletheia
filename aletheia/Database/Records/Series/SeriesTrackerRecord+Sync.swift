@@ -63,11 +63,6 @@ extension SeriesTrackerRecord {
             if advances { link.pendingProgress = pending }
             if moves { link.pendingStatus = status }
 
-            AppLog.shared.log(
-                "[\(link.tracker.rawValue)] enqueued \(link.remoteTitle) - progress \(advances ? String(pending) : "-"), status \(moves ? (status?.rawValue ?? "-") : "-")",
-                category: "trackers.timing"
-            )
-
             try link.update(db)
         }
     }

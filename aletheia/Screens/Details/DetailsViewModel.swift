@@ -768,23 +768,45 @@ final class DetailsViewModel {
         )
     }
 
+    // the screen's own fetch, and the only automatic one a series outside the
+    // library will ever get - the walk takes inLibrary = 1 and nothing else
+    // reaches a row that is merely stored. so it answers two cases with one
+    // condition: never fetched (.distantPast is older than any threshold) and
+    // fetched long enough ago to be worth asking again.
+    //
+    // gated on a sourced entry because that is the journey where freshness is
+    // the point: the reader is online, in a source's catalogue, and asked for
+    // this series. a library-route open stays local, which is what offline-first
+    // means - a series with no chapters there shows its empty state and waits to
+    // be refreshed rather than fetching behind a screen nobody opened for that
     private func prime() {
         guard !primed, !isFetchingChapters else { return }
-        guard let snapshot, snapshot.chaptersFetchedDate == .distantPast else { return }
-        guard let target = snapshot.refreshables.first else { return }
-        guard let source = registry.source(slug: target.sourceSlug) else { return }
+        guard case .source = entry else { return }
+        guard let snapshot else { return }
+        guard snapshot.chaptersFetchedDate < Date.now.addingTimeInterval(-Constants.Refresh.staleAfter) else { return }
+
+        let targets = snapshot.refreshables
+        guard !targets.isEmpty else { return }
 
         primed = true
         isFetchingChapters = true
 
-        Task { [weak self, refresher] in
-            // no pill: this is the skeleton's own fetch, and a failure here is
-            // carried by the source row rather than raised over an empty screen
-            _ = await refresher.chapters(
-                source: source,
-                seriesSlug: target.slug,
-                originId: OriginRecord.ID(rawValue: target.originId)
-            )
+        Task { [weak self, refresher, registry] in
+            // every origin, not the head of the list. a stale origin and a fresh
+            // one render identically, so asking one leaves the rest permanently
+            // behind with nothing on screen able to say so
+            await withTaskGroup(of: Void.self) { group in
+                for target in targets {
+                    guard let source = registry.source(slug: target.sourceSlug) else { continue }
+                    group.addTask {
+                        _ = await refresher.chapters(
+                            source: source,
+                            seriesSlug: target.slug,
+                            originId: OriginRecord.ID(rawValue: target.originId)
+                        )
+                    }
+                }
+            }
             self?.isFetchingChapters = false
         }
     }

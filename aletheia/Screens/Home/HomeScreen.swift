@@ -21,7 +21,6 @@ struct HomeScreen: View {
     @State private var path = NavigationPath()
     @State private var reading: ReadingTarget?
     @State private var browsing = false
-    @State private var showingStats = false
     @State private var showingUpdates = false
     @State private var showingFailures = false
     @State private var showingSettings = false
@@ -99,9 +98,18 @@ struct HomeScreen: View {
             .navigationTitle("Home")
             .toolbarTitleDisplayMode(.large)
             .toolbar {
+                // a person, not a gear. the app had four gearshapes meaning four
+                // different scopes - the whole app, one tab's refresh cadence,
+                // one source, one reading session - and a reader who taps one
+                // and gets a scope they did not expect stops trusting the glyph.
+                // this destination holds the tracker accounts, which is what
+                // makes a person the honest mark for it: gear now only ever
+                // means "this thing here", and the person means "you, and
+                // everything"
                 ToolbarItem(placement: .topBarTrailing) {
-                    Image(systemName: "gearshape")
+                    Image(systemName: "person.crop.circle")
                         .tappable { showingSettings = true }
+                        .accessibilityLabel("Settings")
                 }
 
                 ToolbarItem(placement: .topBarTrailing) {
@@ -120,9 +128,6 @@ struct HomeScreen: View {
             }
             .navigationDestination(isPresented: $browsing) {
                 SearchScreen(query: "", embedded: true)
-            }
-            .navigationDestination(isPresented: $showingStats) {
-                StatsScreen()
             }
             .navigationDestination(isPresented: $showingUpdates) {
                 UpdatesScreen()
@@ -163,6 +168,16 @@ private extension HomeScreen {
                 let failing = vm.failingSources
                 if failing > 0 {
                     FailingBanner(failing)
+                }
+
+                // its own banner rather than a combined count: the two are
+                // different units and different costs. a dead source loses you
+                // chapters, a stalled tracker loses you a number on someone
+                // else's website, and one sentence covering both would have to
+                // stop saying either
+                let stalled = vm.failingTrackers
+                if stalled > 0 {
+                    StalledBanner(stalled)
                 }
 
                 // once there is a library at all, an absent section is more
@@ -208,9 +223,7 @@ private extension HomeScreen {
 
     func ContinueSection(_ vm: HomeViewModel, entries: [HomeViewModel.ContinueEntry]) -> some View {
         VStack(alignment: .leading, spacing: dimensions.spacing.space12) {
-            SectionHeader(title: "Continue Reading") {
-                Action("chart.bar.xaxis", label: "Reading Activity") { showingStats = true }
-            }
+            SectionHeader("Continue Reading")
             .padding(.horizontal, dimensions.screenMargin)
 
             ScrollView(.horizontal, showsIndicators: false) {
@@ -259,15 +272,12 @@ private extension HomeScreen {
     }
 
 
-    // the header stays, and so does its action - the destination behind it is
-    // about your reading rather than about this rail, so it has something to
-    // show whether or not the rail does. what changes is the body
+    // no action any more: Reading Activity moved into the Activity tab on
+    // 2026-08-11, and a Home shortcut to a tab is the one link this screen has
+    // always refused to carry
     var ContinueEmpty: some View {
         Section(
             title: "Continue Reading",
-            glyph: "chart.bar.xaxis",
-            label: "Reading Activity",
-            action: { showingStats = true },
             message: "Open something from your library and it will wait for you here."
         )
     }
@@ -275,26 +285,18 @@ private extension HomeScreen {
     var UpdatesEmpty: some View {
         Section(
             title: "New Chapters",
-            glyph: "list.bullet",
-            label: "All Updates",
-            action: { showingUpdates = true },
             message: "New chapters from your sources land here after a refresh."
         )
     }
 
     // one row's worth, not a screen's worth: ContentUnavailableView sizes
     // itself for an empty screen, and nothing here is empty except this shelf
-    func Section(
-        title: String,
-        glyph: String,
-        label: String,
-        action: @escaping () -> Void,
-        message: String
-    ) -> some View {
+    // no action parameter any more: both destinations this screen used to offer
+    // are gone - Reading Activity moved into the Activity tab, and the updates
+    // list with it - so a section is a title and a sentence
+    func Section(title: String, message: String) -> some View {
         VStack(alignment: .leading, spacing: dimensions.spacing.space12) {
-            SectionHeader(title: title) {
-                Action(glyph, label: label, action: action)
-            }
+            SectionHeader(title)
 
             Text(message)
                 .font(.caption)
@@ -314,9 +316,7 @@ private extension HomeScreen {
     // is named once, in the subtitle, rather than on every label
     func UpdatesSection(_ updates: [HomeViewModel.UpdateEntry]) -> some View {
         VStack(alignment: .leading, spacing: dimensions.spacing.space12) {
-            SectionHeader(title: "New Chapters") {
-                Action("list.bullet", label: "All Updates") { showingUpdates = true }
-            }
+            SectionHeader("New Chapters")
 
             // grouped so the surfaces blend into each other rather than reading
             // as four unrelated panes
@@ -367,22 +367,24 @@ private extension HomeScreen {
         .accessibilityHint("Opens the list of sources needing attention")
     }
 
+    // "isn't reaching" rather than "failed": nothing here is lost, the push is
+    // still queued, and the reader's own read state is untouched
+    func StalledBanner(_ count: Int) -> some View {
+        Banner(
+            "^[\(count) series](inflect: true) isn't syncing",
+            message: "Your progress hasn't reached the tracker yet",
+            systemImage: "app.connected.to.app.below.fill",
+            action: { showingFailures = true }
+        )
+        .padding(.horizontal, dimensions.screenMargin)
+        .accessibilityHint("Opens the list of failures")
+    }
+
     // a glass circle, not a bare chevron. the arrow that used to carry this was
     // a 13pt glyph parked at the far screen edge from the words it belonged to,
     // with nothing behind it, and nobody found it - what makes this readable as
     // a control is the surface, which is the same thing that makes the chart's
     // stepper readable. the glyph says which of the two it is
-    func Action(_ glyph: String, label: String, action: @escaping () -> Void) -> some View {
-        Image(systemName: glyph)
-            .font(.subheadline)
-            .foregroundStyle(.secondary)
-            .frame(width: dimensions.touchTarget, height: dimensions.touchTarget)
-            .glassEffect(.regular.interactive(), in: .circle)
-            .contentShape(.circle)
-            .tappable(action: action)
-            .accessibilityLabel(label)
-    }
-
     // a rail rather than the two-column grid it was: this is a log of what you
     // added, which is the Library's default sort with a caption on it, and a
     // grid of it was the largest block on the screen for the least news

@@ -15,6 +15,7 @@ struct LibraryFilterSheet: View {
     @Binding var filter: LibraryFilter
     var tags: [LibraryViewModel.Option<TagRecord.ID>] = []
     var sources: [LibraryViewModel.Option<SourceRecord.ID>] = []
+    var trackers: [TrackerFilter] = []
 
     @Environment(\.dimensions) private var dimensions
     @Environment(\.dismiss) private var dismiss
@@ -35,6 +36,7 @@ struct LibraryFilterSheet: View {
         static let rating = "Rating"
         static let tags = "Tags"
         static let sources = "Sources"
+        static let trackers = "Tracking"
     }
 
     private enum Threshold {
@@ -108,11 +110,11 @@ struct LibraryFilterSheet: View {
                         selection: $filter.classifications
                     )
 
-                    // both are empty until something is owned, so the group is
-                    // absent rather than an expandable row with nothing in it.
+                    // all three are empty until something is owned, so the group
+                    // is absent rather than an expandable row with nothing in it.
                     // the divider goes with them, or an empty library shows a
                     // rule under the last group with nothing beneath it
-                    if !tags.isEmpty || !sources.isEmpty {
+                    if !tags.isEmpty || !sources.isEmpty || !trackers.isEmpty {
                         Band
                     }
 
@@ -137,6 +139,20 @@ struct LibraryFilterSheet: View {
                             label: \.name,
                             artwork: \.artwork,
                             selection: $filter.sources
+                        )
+                    }
+
+                    // last of the three relationship groups, and last overall: a
+                    // link is the furthest thing here from the series itself
+                    if !trackers.isEmpty {
+                        Group(
+                            Titles.trackers,
+                            icon: "app.connected.to.app.below.fill",
+                            options: trackers,
+                            id: \.self,
+                            label: \.label,
+                            artwork: \.artwork,
+                            selection: $filter.trackers
                         )
                     }
                 }
@@ -178,6 +194,7 @@ struct LibraryFilterSheet: View {
         if !filter.classifications.isEmpty { expanded.insert(Titles.rating) }
         if !filter.tags.isEmpty { expanded.insert(Titles.tags) }
         if !filter.sources.isEmpty { expanded.insert(Titles.sources) }
+        if !filter.trackers.isEmpty { expanded.insert(Titles.trackers) }
 
         if expanded.isEmpty { expanded.insert(Titles.progress) }
     }

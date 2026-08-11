@@ -20,31 +20,52 @@ final class FailuresViewModel {
     private let database: DatabaseClient
     private let registry: Compositor.Registry
     private let refresher: Compositor.Refresh
+    private let trackers: Compositor.Trackers
 
     private(set) var entries: [Entry]?
+    // the other half of the same question. kept apart from `entries` rather than
+    // folded in: a source failure is a series on a source, a tracker failure is a
+    // series on a service, and the grouping control below only makes sense for
+    // the first pair
+    private(set) var links: [TrackerEntry]?
     private(set) var failure: Failure?
     private(set) var retrying: Set<Int64> = []
 
     @ObservationIgnored private var stream: Task<Void, Never>?
 
-    init(database: DatabaseClient, registry: Compositor.Registry, refresher: Compositor.Refresh) {
+    init(
+        database: DatabaseClient,
+        registry: Compositor.Registry,
+        refresher: Compositor.Refresh,
+        trackers: Compositor.Trackers
+    ) {
         self.database = database
         self.registry = registry
         self.refresher = refresher
+        self.trackers = trackers
+    }
+
+    var isEmpty: Bool {
+        (entries?.isEmpty ?? true) && (links?.isEmpty ?? true)
     }
 
     func observe() {
         guard stream == nil else { return }
 
         stream = Task { [weak self, database] in
+            // one observation over both tables: two would each re-render the
+            // screen on the other's writes, and the screen has one empty state
             let observation = ValueObservation
-                .tracking { db in try Self.stored(in: db) }
-                .removeDuplicates()
+                .tracking { db in
+                    (origins: try Self.stored(in: db), links: try Self.links(in: db))
+                }
+                .removeDuplicates { $0 == $1 }
 
             do {
                 for try await stored in observation.values(in: database.reader) {
                     guard let self, !Task.isCancelled else { break }
-                    self.entries = stored
+                    self.entries = stored.origins
+                    self.links = stored.links
                     self.failure = nil
                 }
             } catch {
@@ -53,6 +74,13 @@ final class FailuresViewModel {
                 AppLog.shared.log("failures observation failed - \(error)", category: "activity")
             }
         }
+    }
+
+    // the push is still queued - a failure leaves the pending columns where they
+    // are - so a retry is waking the drain rather than resending anything. the
+    // dead-account mark comes off first, or the lane halts again on the way in
+    func retry(_ entry: TrackerEntry) {
+        trackers.retry(entry.tracker)
     }
 
     // one origin, through the same unit everything else uses - so a retry here
@@ -95,6 +123,29 @@ final class FailuresViewModel {
             """
 
         return try Entry.fetchAll(db, sql: sql)
+    }
+
+    nonisolated private static func links(in db: Database) throws -> [TrackerEntry] {
+        let sql = """
+            SELECT
+                t.id AS id,
+                t.\(SeriesTrackerRecord.Columns.seriesId.name) AS seriesId,
+                t.\(SeriesTrackerRecord.Columns.tracker.name) AS tracker,
+                t.\(SeriesTrackerRecord.Columns.remoteTitle.name) AS remoteTitle,
+                t.\(SeriesTrackerRecord.Columns.syncError.name) AS reason,
+                t.\(SeriesTrackerRecord.Columns.attemptedDate.name) AS attemptedDate,
+                e.\(EntryView.Columns.title.name) AS title,
+                e.\(EntryView.Columns.cover.name) AS cover,
+                e.\(EntryView.Columns.path.name) AS path
+            FROM \(SeriesTrackerRecord.databaseTableName) t
+            JOIN \(EntryView.databaseTableName) e
+              ON e.\(EntryView.Columns.seriesId.name) = t.\(SeriesTrackerRecord.Columns.seriesId.name)
+            WHERE t.\(SeriesTrackerRecord.Columns.syncError.name) IS NOT NULL
+              AND e.\(EntryView.Columns.inLibrary.name) = 1
+            ORDER BY t.\(SeriesTrackerRecord.Columns.attemptedDate.name) DESC, t.id ASC
+            """
+
+        return try TrackerEntry.fetchAll(db, sql: sql)
     }
 }
 
@@ -189,5 +240,23 @@ extension FailuresViewModel {
         let path: String?
         let sourceName: String
         let sourceSlug: String
+    }
+
+    // no per-link retry state: a retry wakes the whole lane, so spinning one row
+    // while its siblings sat still would be drawing a distinction the engine does
+    // not make
+    struct TrackerEntry: Decodable, FetchableRecord, Identifiable, Equatable, Sendable {
+        let id: Int64
+        let seriesId: Int64
+        let tracker: Tracker
+        // what the service calls it, which is not always what we call it - and on
+        // this screen the difference is worth seeing, since a wrong link is one
+        // reason a push keeps failing
+        let remoteTitle: String
+        let reason: String
+        let attemptedDate: Date
+        let title: String
+        let cover: URL?
+        let path: String?
     }
 }

@@ -1,5 +1,5 @@
 //
-//  StatsScreen.swift
+//  ReadingActivitySection.swift
 //  aletheia
 //
 //  Created by Angelo Carasig on 9/8/2026.
@@ -7,11 +7,17 @@
 
 import SwiftUI
 import Tagged
+import Kingfisher
 
-// the rows behind Home's tiles. an aggregate with no drill-down turns every
-// accuracy doubt into a dispute nothing can settle, so the numbers and the
-// sessions that produced them ship as one surface
-struct StatsScreen: View {
+// an aggregate with no drill-down turns every accuracy doubt into a dispute
+// nothing can settle, so the numbers and the sessions that produced them ship as
+// one surface.
+//
+// a section rather than a screen since 2026-08-11: it is the Activity tab's
+// content, under the operational rows. it declares no ScrollView and no padding
+// of its own - the tab owns one scroll for both halves, or the status rows would
+// pin while the charts scrolled under them
+struct ReadingActivitySection: View {
     @Environment(\.compositor) private var compositor
     @Environment(\.dimensions) private var dimensions
 
@@ -32,6 +38,11 @@ struct StatsScreen: View {
     // lands beneath it
     @State private var route: SeriesEntry?
     @State private var expanded = false
+    // sessions or series: the same rows, folded or not. carried over when the
+    // Activity tab stopped duplicating this data - grouping by series is the one
+    // cut that feed had which nothing else did, and at a large library it is
+    // triage ("what have I been ignoring") rather than a memory-lane view
+    @State private var bySeries = false
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -45,6 +56,12 @@ struct StatsScreen: View {
     private enum Layout {
         static let heatWeeks = 16
         static let fillOpacity = 0.05
+        static let groupingWidth: CGFloat = 140
+        // SessionRow's own numbers: the two rows swap through one slot, so a
+        // difference of a few points would read as the list jumping
+        static let coverWidth: CGFloat = 58
+        static let coverHeight: CGFloat = 70
+        static let placeholderOpacity = 0.1
         static let collapsedSessions = 5
 
         static var heatStart: Date {
@@ -105,9 +122,11 @@ struct StatsScreen: View {
             }
         }
         .animation(.settle, value: phase)
+        // declared here rather than by the tab: this is the only thing in the
+        // stack that pushes a series, and the tab is presented with
+        // navigationDestination(isPresented:) elsewhere, where a value push
+        // would land beneath the screen doing the pushing
         .navigationDestination(item: $route) { DetailsScreen(entry: $0) }
-        .navigationTitle("Reading Activity")
-        .navigationBarTitleDisplayMode(.inline)
         .task {
             guard vm == nil else { return }
             let model = StatsViewModel(database: compositor.database)
@@ -119,10 +138,20 @@ struct StatsScreen: View {
 
 // MARK: - Content
 
-private extension StatsScreen {
+private extension ReadingActivitySection {
     func Content(_ snapshot: StatsViewModel.Snapshot) -> some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: dimensions.spacing.space24) {
+        VStack(alignment: .leading, spacing: dimensions.spacing.space24) {
+                // first now, not last. it was a footer because a fresh install
+                // showed the same number under "All Time" and "This Week" and
+                // everyone read that as a bug - but under the operational rows
+                // the collision is gone, and these are the one part of this
+                // section that does not grade you: the reader coming back after
+                // a gap named them the only thing they were glad to see
+                VStack(alignment: .leading, spacing: dimensions.spacing.space12) {
+                    SectionHeader("All Time")
+                    Totals(snapshot)
+                }
+
                 // ONE block, not two charts. the grid and the bars were the
                 // same data at two spans, a screen apart, in the same blue -
                 // which read as two libraries rather than one system. now the
@@ -187,28 +216,7 @@ private extension StatsScreen {
                 }
                 .animation(.settle, value: selected)
 
-                // a footer now, and unconditional. it was pulled from the top
-                // because a fresh install showed the same number under "All
-                // Time" and "This Week" and everyone read that as a bug - but
-                // the totals are the one thing here that does not grade you,
-                // and the reader coming back after a gap named them as the only
-                // part they were glad to see. distance solves the collision;
-                // deleting them solved the wrong problem
-                VStack(alignment: .leading, spacing: dimensions.spacing.space12) {
-                    SectionHeader("All Time")
-                    Totals(snapshot)
-                }
-            }
-            .padding(.horizontal, dimensions.screenMargin)
-            .padding(.vertical, dimensions.spacing.space16)
         }
-        // content was passing under the translucent nav and tab bars and staying
-        // legible-ish through them, which is worse than either hiding or showing
-        // it: a section header parked under the bar is unreadable at partial
-        // opacity with no cue that it is scrolled-off rather than missing
-        .scrollIndicators(.hidden)
-        .scrollEdgeEffectStyle(.hard, for: .top)
-        .scrollEdgeEffectStyle(.soft, for: .bottom)
     }
 
     // three across is the first thing on this screen to break as text grows -
@@ -364,12 +372,37 @@ private extension StatsScreen {
     // the cap counts rows, not days: five sittings deep is the same amount of
     // screen whether they happened across one evening or five
     func Sessions(_ sessions: [ReadingSessionEntry]) -> some View {
+        VStack(alignment: .leading, spacing: dimensions.spacing.space12) {
+            SectionHeader(title: "Recent Reading") {
+                Grouping
+            }
+
+            if bySeries {
+                SeriesList(sessions)
+            } else {
+                DayList(sessions)
+            }
+        }
+        .animation(.settle, value: bySeries)
+    }
+
+    // in the header rather than the toolbar: it scopes this section and nothing
+    // else on the screen, and the toolbar is two scroll-lengths away from what
+    // it would be changing
+    var Grouping: some View {
+        Picker("Grouping", selection: $bySeries) {
+            Text("Days").tag(false)
+            Text("Series").tag(true)
+        }
+        .pickerStyle(.segmented)
+        .frame(width: Layout.groupingWidth)
+    }
+
+    func DayList(_ sessions: [ReadingSessionEntry]) -> some View {
         let visible = expanded ? sessions : Array(sessions.prefix(Layout.collapsedSessions))
         let byDay = Dictionary(grouping: visible, by: \.localDayKey)
 
         return VStack(alignment: .leading, spacing: dimensions.spacing.space12) {
-            SectionHeader("Recent Reading")
-
             ForEach(byDay.keys.sorted(by: >), id: \.self) { day in
                 VStack(alignment: .leading, spacing: dimensions.spacing.space8) {
                     Text(ReadingFormat.dayLabel(for: day))
@@ -389,14 +422,134 @@ private extension StatsScreen {
         }
     }
 
+    // folded from the same rows rather than queried again: a session already
+    // carries its series, so the grouping is a view of what is loaded and not a
+    // second trip. ordered by how recently each series was read, which is what
+    // makes the top of the list the thing you are actually in the middle of
+    func SeriesList(_ sessions: [ReadingSessionEntry]) -> some View {
+        let groups = Self.series(from: sessions)
+        let visible = expanded ? groups : Array(groups.prefix(Layout.collapsedSessions))
+
+        return VStack(alignment: .leading, spacing: dimensions.spacing.space8) {
+            ForEach(visible) { group in
+                SeriesRow(group)
+            }
+
+            if groups.count > Layout.collapsedSessions {
+                ExpandToggle(groups.count, noun: "Series")
+            }
+        }
+    }
+
+    // the same anatomy as SessionRow, because it is the same row folded: artwork,
+    // then what and when, then how much. a grouping toggle that also changed the
+    // shape of every row would read as two screens rather than two views
+    func SeriesRow(_ group: SeriesTotal) -> some View {
+        let row = HStack(spacing: dimensions.spacing.space12) {
+            Cover(group)
+
+            VStack(alignment: .leading, spacing: dimensions.spacing.space2) {
+                HStack(alignment: .firstTextBaseline, spacing: dimensions.spacing.space8) {
+                    Text(group.title)
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                        .lineLimit(1)
+                        .foregroundStyle(group.alive ? .primary : .secondary)
+
+                    Spacer(minLength: 0)
+
+                    // sittings, not days: the row is folded from sessions, and
+                    // two in one evening is two sittings however the calendar
+                    // counts them. it takes the slot the clock holds on a
+                    // session row - both answer "how often", at two grains
+                    Text("^[\(group.sittings) sitting](inflect: true)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .layoutPriority(1)
+                }
+
+                Text(summary(group))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+        }
+        .padding(dimensions.spacing.space12)
+        .background(.primary.opacity(Layout.fillOpacity), in: .rect(cornerRadius: dimensions.radius.radius12))
+
+        return Group {
+            if group.alive {
+                row
+                    .contentShape(.rect)
+                    .tappable { route = .library(SeriesRecord.ID(rawValue: group.seriesId)) }
+            } else {
+                row
+            }
+        }
+    }
+
+    func Cover(_ group: SeriesTotal) -> some View {
+        let local = compositor.assets.local(for: group.path)
+
+        return Color.clear
+            .frame(width: Layout.coverWidth, height: Layout.coverHeight)
+            .overlay {
+                if let cover = local ?? group.cover {
+                    KFImage(cover)
+                        .resizable()
+                        .placeholder { Rectangle().fill(.primary.opacity(Layout.placeholderOpacity)).shimmer() }
+                        .fade(duration: 0.25)
+                        .scaledToFill()
+                } else {
+                    Rectangle()
+                        .fill(.primary.opacity(Layout.placeholderOpacity))
+                        .overlay {
+                            Image(systemName: "book.closed")
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+                        }
+                }
+            }
+            .clipped()
+            .clipShape(.rect(cornerRadius: dimensions.radius.radius8))
+    }
+
+    func summary(_ group: SeriesTotal) -> String {
+        var parts: [String] = []
+        if group.chapters > 0 { parts.append("\(group.chapters) finished") }
+        if group.pages > 0 { parts.append("\(group.pages) pages") }
+        if group.seconds > 0 { parts.append(ReadingFormat.duration(group.seconds)) }
+        return parts.isEmpty ? "Read" : parts.joined(separator: " · ")
+    }
+
+    static func series(from sessions: [ReadingSessionEntry]) -> [SeriesTotal] {
+        Dictionary(grouping: sessions, by: \.seriesId)
+            .compactMap { id, rows -> SeriesTotal? in
+                guard let newest = rows.max(by: { $0.endedDate < $1.endedDate }) else { return nil }
+                return SeriesTotal(
+                    seriesId: id,
+                    title: newest.seriesTitle,
+                    alive: newest.alive,
+                    cover: newest.cover,
+                    path: newest.path,
+                    chapters: rows.reduce(0) { $0 + $1.chaptersRead },
+                    pages: rows.reduce(0) { $0 + $1.pagesRead },
+                    seconds: rows.reduce(0) { $0 + $1.seconds },
+                    latest: newest.endedDate,
+                    sittings: rows.count
+                )
+            }
+            .sorted { $0.latest > $1.latest }
+    }
+
     // the chapter list's control, same shape and same words - two lists on two
     // screens that both open short should not expand differently
-    func ExpandToggle(_ count: Int) -> some View {
+    func ExpandToggle(_ count: Int, noun: String = "Sessions") -> some View {
         HStack(spacing: dimensions.spacing.space8) {
             Image(systemName: expanded ? "chevron.up" : "chevron.down")
                 .contentTransition(.symbolEffect(.replace))
 
-            Text(expanded ? "Show Less" : "Show All \(count) Sessions")
+            Text(expanded ? "Show Less" : "Show All \(count) \(noun)")
         }
         .font(.subheadline)
         .foregroundStyle(.brand)
@@ -444,7 +597,9 @@ private enum Mock {
                 startedDate: started,
                 endedDate: started.addingTimeInterval(TimeInterval(length)),
                 localDayKey: started.localDayKey,
-                alive: true
+                alive: true,
+                    cover: nil,
+                    path: nil
             )
         }
     }
@@ -472,7 +627,9 @@ private enum Mock {
                         startedDate: start,
                         endedDate: start.addingTimeInterval(TimeInterval(700 + slot * 800)),
                         localDayKey: start.localDayKey,
-                        alive: true
+                        alive: true,
+                    cover: nil,
+                    path: nil
                     )
                 )
             }
@@ -506,7 +663,7 @@ private enum Mock {
 
 #Preview("Populated") {
     NavigationStack {
-        StatsScreen(vm: .preview(snapshot: Mock.snapshot()))
+        ScrollView { ReadingActivitySection(vm: .preview(snapshot: Mock.snapshot())).padding(16) }
     }
 }
 
@@ -514,25 +671,50 @@ private enum Mock {
 // a first-day install actually looks like
 #Preview("Sparse") {
     NavigationStack {
-        StatsScreen(
-            vm: .preview(
-                snapshot: Mock.snapshot(
-                    heatDays: 1,
-                    chapters: 1,
-                    seconds: 40,
-                    pages: 49,
-                    currentRun: 1,
-                    longestRun: 1,
-                    sessions: 1
+        ScrollView {
+            ReadingActivitySection(
+                vm: .preview(
+                    snapshot: Mock.snapshot(
+                        heatDays: 1,
+                        chapters: 1,
+                        seconds: 40,
+                        pages: 49,
+                        currentRun: 1,
+                        longestRun: 1,
+                        sessions: 1
+                    )
                 )
             )
-        )
+            .padding(16)
+        }
     }
 }
 
 #Preview("Empty") {
     NavigationStack {
-        StatsScreen(vm: .preview(snapshot: Mock.snapshot(heatDays: 0, chapters: 0, seconds: 0, pages: 0, currentRun: 0, longestRun: 0, sessions: 0)))
+        ScrollView {
+            ReadingActivitySection(vm: .preview(snapshot: Mock.snapshot(heatDays: 0, chapters: 0, seconds: 0, pages: 0, currentRun: 0, longestRun: 0, sessions: 0)))
+                .padding(16)
+        }
     }
 }
 #endif
+
+// one series' share of a window, folded from its sittings. not a database shape:
+// the sessions are already loaded, so this exists only to say what they add up to
+struct SeriesTotal: Identifiable {
+    let seriesId: Int64
+    let title: String
+    let alive: Bool
+    // taken from the newest sitting rather than fetched: every session already
+    // carries its series' artwork, and the newest one holds the freshest cover
+    let cover: URL?
+    let path: String?
+    let chapters: Int
+    let pages: Int
+    let seconds: Int
+    let latest: Date
+    let sittings: Int
+
+    var id: Int64 { seriesId }
+}

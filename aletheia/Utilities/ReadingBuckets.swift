@@ -219,7 +219,9 @@ extension ReadingBuckets {
                 startedDate: from,
                 endedDate: to,
                 localDayKey: to.localDayKey,
-                alive: true
+                alive: true,
+                    cover: nil,
+                    path: nil
             )
         }
 

@@ -642,10 +642,6 @@ final class ReaderViewModel {
             do {
                 for try await links in observation.values(in: database.reader) {
                     guard let self else { return }
-                    AppLog.shared.log(
-                        "reader link observation fired - \(links.map { "\($0.tracker.rawValue):\($0.isDirty ? "dirty" : "clean")" }.joined(separator: " "))",
-                        category: "trackers.timing"
-                    )
                     self.settle(links)
                 }
             } catch {
@@ -681,11 +677,6 @@ final class ReaderViewModel {
             engine?.setTrackerState(state, for: chapter.id, service: row.id)
             waiting = waiting || state == .loading
         }
-
-        AppLog.shared.log(
-            "chapter \(chapter.number) completed - \(waiting ? "awaiting a push" : "nothing queued")",
-            category: "trackers.timing"
-        )
 
         if waiting { awaitingTrackers.insert(chapter.id) }
     }

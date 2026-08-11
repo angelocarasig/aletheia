@@ -624,7 +624,9 @@ private enum Sample {
                         startedDate: start,
                         endedDate: start.addingTimeInterval(TimeInterval(600 + slot * 900)),
                         localDayKey: start.localDayKey,
-                        alive: true
+                        alive: true,
+                    cover: nil,
+                    path: nil
                     )
                 )
             }

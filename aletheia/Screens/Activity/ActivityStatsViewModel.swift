@@ -1,5 +1,5 @@
 //
-//  StatsViewModel.swift
+//  ActivityStatsViewModel.swift
 //  aletheia
 //
 //  Created by Angelo Carasig on 9/8/2026.

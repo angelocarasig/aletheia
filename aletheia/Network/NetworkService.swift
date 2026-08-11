@@ -165,18 +165,7 @@ final class NetworkService: NetworkConfiguration {
     // the one place a request leaves the app: the host gate, the owned session,
     // and the url-error mapping all live here so no path can miss one
     private func perform(_ request: URLRequest) async throws -> (Data, URLResponse) {
-        // temporary: separates time spent parked at the gate from time spent on
-        // the wire. delete with the rest of trackers.timing
-        let queued = Date.now
-        return try await gate.execute(host: request.url?.host()) { [session] in
-            let admitted = Date.now
-            defer {
-                AppLog.shared.log(
-                    "\(request.httpMethod ?? "GET") \(request.url?.host() ?? "?") - gate \(Timing.ms(queued, admitted)), wire \(Timing.ms(admitted))",
-                    category: "trackers.timing"
-                )
-            }
-
+        try await gate.execute(host: request.url?.host()) { [session] in
             do {
                 return try await session.data(for: request)
             } catch let urlError as URLError {

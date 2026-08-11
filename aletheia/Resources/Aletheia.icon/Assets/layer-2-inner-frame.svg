@@ -1,0 +1,6 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <!-- Donut: outer r=324, inner r=296 (28px ring on r=310) -->
+  <path fill="#ffffff" fill-rule="evenodd" d="M512 188 A324 324 0 1 0 512 836 A324 324 0 1 0 512 188 Z M512 216 A296 296 0 1 0 512 808 A296 296 0 1 0 512 216 Z"/>
+  <!-- Diamond frame: outer vertices at 330, inner at 290 (28px stroke, miter corners) -->
+  <path fill="#ffffff" fill-rule="evenodd" d="M512 182 L842 512 L512 842 L182 512 Z M512 222 L802 512 L512 802 L222 512 Z"/>
+</svg>

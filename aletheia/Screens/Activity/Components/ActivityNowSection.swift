@@ -89,9 +89,16 @@ private extension ActivityNowSection {
                         .fontWeight(.medium)
 
                     if let lastChecked {
-                        Text("Checked \(lastChecked.formatted(.relative(presentation: .named)))")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                        // live, because this row sits beside a refresh that can
+                        // start at any moment: a stamp formatted once says
+                        // "checked 1 minute ago" for the whole visit, which is
+                        // the one line on this card that would make a finished
+                        // run look like it never happened
+                        LiveRelative(date: lastChecked) { relative in
+                            Text("Checked \(relative)")
+                        }
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                     } else {
                         Text("Not checked yet")
                             .font(.caption)

@@ -56,6 +56,7 @@ final class HomeViewModel {
     var updates: [UpdateEntry] { snapshot?.updates ?? [] }
 
     var failingSources: Int { snapshot?.failingSources ?? 0 }
+    var failingTrackers: Int { snapshot?.failingTrackers ?? 0 }
 
     var isEmpty: Bool {
         snapshot != nil && continueReading.isEmpty && updates.isEmpty && recentlyAdded.isEmpty
@@ -130,6 +131,7 @@ final class HomeViewModel {
         var updateRows: [UpdateRow]
         var addedRows: [EntryRow]
         var failingSources: Int
+        var failingTrackers: Int
     }
 
     // a series and the chapters that arrived for it after you owned it. the
@@ -198,7 +200,8 @@ final class HomeViewModel {
             continueRows: continueRows,
             updateRows: try updating(excluded: excluded, limit: Rule.updateLimit, in: db),
             addedRows: added.map { EntryRow($0) },
-            failingSources: try failing(excluded: excluded, in: db)
+            failingSources: try failing(excluded: excluded, in: db),
+            failingTrackers: try failingLinks(excluded: excluded, in: db)
         )
     }
 
@@ -324,6 +327,32 @@ final class HomeViewModel {
         ) ?? 0
     }
 
+    // counted by SERIES, not by service - the two services are at most two, so a
+    // count of them says almost nothing, where "four series are not syncing" is
+    // the size of the problem. the dead-account case is not this: it is one fact
+    // about an account and Activity names it directly
+    nonisolated private static func failingLinks(
+        excluded: Set<Int64>,
+        in db: Database
+    ) throws -> Int {
+        let exclusion = excluded.isEmpty
+            ? ""
+            : "AND t.\(SeriesTrackerRecord.Columns.seriesId.name) NOT IN (\(excluded.map(String.init).joined(separator: ", ")))"
+
+        return try Int.fetchOne(
+            db,
+            sql: """
+                SELECT COUNT(DISTINCT t.\(SeriesTrackerRecord.Columns.seriesId.name))
+                FROM \(SeriesTrackerRecord.databaseTableName) t
+                JOIN \(EntryView.databaseTableName) e
+                  ON e.\(EntryView.Columns.seriesId.name) = t.\(SeriesTrackerRecord.Columns.seriesId.name)
+                WHERE t.\(SeriesTrackerRecord.Columns.syncError.name) IS NOT NULL
+                  AND e.\(EntryView.Columns.inLibrary.name) = 1
+                  \(exclusion)
+                """
+        ) ?? 0
+    }
+
 }
 
 // MARK: - Snapshot
@@ -334,23 +363,27 @@ extension HomeViewModel {
         let updates: [UpdateEntry]
         let recentlyAdded: [AddedEntry]
         let failingSources: Int
+        let failingTrackers: Int
 
         #if DEBUG
         init(
             continueReading: [ContinueEntry],
             updates: [UpdateEntry],
             recentlyAdded: [AddedEntry],
-            failingSources: Int = 0
+            failingSources: Int = 0,
+            failingTrackers: Int = 0
         ) {
             self.continueReading = continueReading
             self.updates = updates
             self.recentlyAdded = recentlyAdded
             self.failingSources = failingSources
+            self.failingTrackers = failingTrackers
         }
         #endif
 
         fileprivate init(_ stored: Stored, assets: Compositor.Assets) {
             failingSources = stored.failingSources
+            failingTrackers = stored.failingTrackers
             updates = stored.updateRows.map {
                 UpdateEntry(
                     id: SeriesRecord.ID(rawValue: $0.entry.seriesId),

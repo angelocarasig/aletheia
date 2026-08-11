@@ -23,6 +23,11 @@ struct ReadingSessionEntry: Identifiable, Hashable, Decodable, FetchableRecord, 
     // whether the snapshot still points at a live series row - a merged or
     // removed series keeps its history but loses its navigation
     let alive: Bool
+    // resolved through the same left join as `alive`, so a session whose series
+    // was removed keeps its title and simply has no artwork. history is never
+    // deleted, so in practice the cover is present for everything you still own
+    let cover: URL?
+    let path: String?
 
     var seconds: Int {
         Int(endedDate.timeIntervalSince(startedDate))
@@ -50,9 +55,12 @@ struct ReadingSessionEntry: Identifiable, Hashable, Decodable, FetchableRecord, 
                     rs.\(ReadingSessionRecord.Columns.startedDate.name) AS startedDate,
                     rs.\(ReadingSessionRecord.Columns.endedDate.name) AS endedDate,
                     rs.\(ReadingSessionRecord.Columns.localDayKey.name) AS localDayKey,
-                    (s.id IS NOT NULL) AS alive
+                    (s.id IS NOT NULL) AS alive,
+                    e.\(EntryView.Columns.cover.name) AS cover,
+                    e.\(EntryView.Columns.path.name) AS path
                 FROM \(ReadingSessionRecord.databaseTableName) rs
                 LEFT JOIN \(SeriesRecord.databaseTableName) s ON s.id = rs.\(ReadingSessionRecord.Columns.seriesId.name)
+                LEFT JOIN \(EntryView.databaseTableName) e ON e.\(EntryView.Columns.seriesId.name) = rs.\(ReadingSessionRecord.Columns.seriesId.name)
                 WHERE rs.\(ReadingSessionRecord.Columns.localDayKey.name) >= ?
                   \(exclusion)
                 ORDER BY rs.\(ReadingSessionRecord.Columns.startedDate.name) DESC

@@ -439,11 +439,18 @@ extension DetailsChapters {
             .frame(height: Layout.skeletonBarHeight)
     }
 
+    // two different empties. a fetch that landed and found nothing is a fact
+    // about the source; a fetch that never ran is a fact about us, and saying
+    // "no chapters" there states the source's position on something it was
+    // never asked. the way out is the same in both cases and already on this
+    // screen twice - pull to refresh, and Refresh Chapters in the actions above
     private var EmptyState: some View {
         ContentUnavailableView(
-            "No Chapters",
-            systemImage: "book.closed",
-            description: Text("No chapters available")
+            hasFetched ? "No Chapters" : "No Chapters Yet",
+            systemImage: hasFetched ? "book.closed" : "arrow.clockwise",
+            description: hasFetched
+                ? Text("This source has no chapters for this series.")
+                : Text("This series hasn't been checked for chapters yet. Pull down to refresh.")
         )
         .frame(height: Layout.emptyStateHeight)
     }

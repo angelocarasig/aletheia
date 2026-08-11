@@ -7,6 +7,9 @@
 
 import Foundation
 import Tagged
+// for ImageResource - the tracker chips draw the service marks, and the type is
+// generated into the asset symbol namespace rather than Foundation
+import SwiftUI
 
 // an empty set means "not filtering on this", never "match nothing" - the two
 // read the same in a Set and only one of them is ever what someone meant.
@@ -24,6 +27,7 @@ struct LibraryFilter: Equatable, Codable {
     // same tag, and a deleted one drops out on its own
     var tags: Set<TagRecord.ID> = []
     var sources: Set<SourceRecord.ID> = []
+    var trackers: Set<TrackerFilter> = []
 
     // rowids are positive and autoincrementing, so a negative one can never
     // collide with a real source. stands for "this series has an origin whose
@@ -42,6 +46,7 @@ struct LibraryFilter: Equatable, Codable {
             + readStates.count
             + tags.count
             + sources.count
+            + trackers.count
     }
 
     // asOf rather than a date read in here: one recency option compares against
@@ -73,14 +78,25 @@ struct LibraryFilter: Equatable, Codable {
         return true
     }
 
-    // tags and sources are relationships, not columns on the row, so they are
-    // matched against maps the view model holds rather than against the entry
-    func matches(tagIDs: Set<TagRecord.ID>, sourceIDs: Set<SourceRecord.ID>) -> Bool {
+    // tags, sources and trackers are relationships, not columns on the row, so
+    // they are matched against maps the view model holds rather than against the
+    // entry
+    func matches(
+        tagIDs: Set<TagRecord.ID>,
+        sourceIDs: Set<SourceRecord.ID>,
+        linked: Set<Tracker>
+    ) -> Bool {
         if !tags.isEmpty, tags.isDisjoint(with: tagIDs) {
             return false
         }
 
         if !sources.isEmpty, sources.isDisjoint(with: sourceIDs) {
+            return false
+        }
+
+        // ORed like every other group, which is what makes anilist + untracked
+        // mean "linked there, or linked nowhere" rather than a contradiction
+        if !trackers.isEmpty, !trackers.contains(where: { $0.matches(linked) }) {
             return false
         }
 
@@ -94,6 +110,46 @@ struct LibraryFilter: Equatable, Codable {
         readStates = []
         tags = []
         sources = []
+        trackers = []
+    }
+}
+
+// a link is a relationship, so this sits with tags and sources rather than with
+// the column-backed groups. untracked is a real answer rather than the absence
+// of one - "which of these have I never linked" is the question the group is
+// most often opened for
+enum TrackerFilter: String, CaseIterable, Codable, Hashable {
+    case anilist
+    case myAnimeList
+    case untracked
+
+    var tracker: Tracker? {
+        switch self {
+        case .anilist: .anilist
+        case .myAnimeList: .myAnimeList
+        case .untracked: nil
+        }
+    }
+
+    var label: String {
+        tracker?.name ?? "Not Linked"
+    }
+
+    // the service marks are template-rendered for surfaces that tint them; the
+    // chip draws the full-colour tile, the same one the tracking rows use
+    var artwork: ImageResource? {
+        tracker.flatMap { ImageResource(name: $0.icon, bundle: .main) }
+    }
+
+    func matches(_ linked: Set<Tracker>) -> Bool {
+        guard let tracker else { return linked.isEmpty }
+        return linked.contains(tracker)
+    }
+
+    // services first in the order they were added, then the negative case - it
+    // is the odd one out and reads as a footnote to the list rather than a peer
+    static var ordered: [TrackerFilter] {
+        [.anilist, .myAnimeList, .untracked]
     }
 }
 

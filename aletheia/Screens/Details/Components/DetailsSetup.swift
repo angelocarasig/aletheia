@@ -9,10 +9,53 @@ import SwiftUI
 
 // at file scope rather than nested: DetailsSetup is generic over its link sheet,
 // and a generic type cannot hold static stored properties
+// the press state of the card, published by its own button style so the label
+// can read it. a ButtonStyle cannot re-parameterise the label it is handed, and
+// a gesture alongside a NavigationLink races the link it sits on - the
+// environment is the one channel that goes down rather than across
+private extension EnvironmentValues {
+    @Entry var stepPressed = false
+}
+
+private struct StepButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        // the same squish .tappable gives every other control, or the two Next
+        // cards would press differently from the Done card beside them
+        configuration.label
+            .environment(\.stepPressed, configuration.isPressed)
+            .scaleEffect(configuration.isPressed ? Layout.pressedScale : 1)
+            .opacity(configuration.isPressed ? Layout.pressedOpacity : 1)
+            .animation(.spring(response: 0.2, dampingFraction: 0.8), value: configuration.isPressed)
+    }
+}
+
 private enum Layout {
     static let glyphWidth: CGFloat = 28
     static let fillOpacity: Double = 0.05
     static let savingOpacity: Double = 0.6
+    // enough to read as an overline at caption2 without the word coming apart.
+    // uppercase loses the ascender and descender cues that space letters for
+    // you, which is why tracking is what makes a small uppercase label legible
+    static let overlineTracking: CGFloat = 1.2
+    // the afterimage behind the arrow. two ghosts, each further back, fainter
+    // and blurrier than the last - a trail reads as speed because the eye is
+    // being shown where something WAS, so the falloff matters more than the
+    // count. a third adds nothing at this size but does add a smear
+    static let streakCount = 3
+    static let streakOffset: CGFloat = 5
+    static let streakOpacity: Double = 0.35
+    static let streakBlur: CGFloat = 0.6
+    // where the ghosts start before settling, as a multiple of their resting
+    // offset. far enough to read as arriving, near enough not to leave the card
+    static let streakEntry: CGFloat = 3
+    // held down, the trail lengthens and the head leans into it. released, a
+    // spring pulls it back - the snap is the whole effect, so the return is
+    // stiffer than the stretch
+    static let streakPressed: CGFloat = 2.6
+    static let headLean: CGFloat = 3
+    // PressableButtonStyle's own values, so every card in the flow presses alike
+    static let pressedScale: CGFloat = 0.95
+    static let pressedOpacity: Double = 0.8
 }
 
 // what happens after a series joins the library, not what decides whether it
@@ -53,6 +96,11 @@ struct DetailsSetup<LinkSheet: View>: View {
     // link can predate the add, so every link here is one the reader just made
     // and "the last one" is a fact about what they did rather than a merge
     @State private var adopted: Status?
+    // one-shot, per page: the trail settles inward on appear and then holds. a
+    // repeating version was the obvious reading of "sandevistan" and is the
+    // wrong one for a footer - a control that never stops moving is the thing
+    // the eye cannot leave alone
+    @State private var streaked = false
 
     var body: some View {
         NavigationStack {
@@ -77,7 +125,7 @@ struct DetailsSetup<LinkSheet: View>: View {
                     onClose: dismiss.callAsFunction
                 ) {
                     NavigationLink { Reading } label: { Next("Reading Status") }
-                        .buttonStyle(.plain)
+                        .buttonStyle(StepButtonStyle())
                 }
             )
         .sheet(item: $linking) { tracker in
@@ -197,7 +245,7 @@ struct DetailsSetup<LinkSheet: View>: View {
                 onClose: dismiss.callAsFunction
             ) {
                 NavigationLink { Collections } label: { Next("Collections") }
-                    .buttonStyle(.plain)
+                    .buttonStyle(StepButtonStyle())
             }
         )
     }
@@ -249,7 +297,7 @@ struct DetailsSetup<LinkSheet: View>: View {
                     subtitle: Text("^[\(joinedCount) collection](inflect: true) joined"),
                     isSaving: isSaving,
                     onClose: dismiss.callAsFunction
-                ) { EmptyView() }
+                ) { Finish() }
             )
     }
 
@@ -310,6 +358,8 @@ struct DetailsSetup<LinkSheet: View>: View {
     // read inside a pushed destination is that destination's dismiss and pops
     // one page instead of closing the flow
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.stepPressed) private var pressed
 
     // progression as a row rather than a pinned button. a full-width prominent
     // control is submit grammar, and there is nothing here to submit: the add
@@ -326,15 +376,41 @@ struct DetailsSetup<LinkSheet: View>: View {
     // about state. the current value earns its place twice over, since it also
     // answers the page's question without going there
     private func Next(_ title: String) -> some View {
+        Step(overline: "Next", title: title, glyph: "arrow.right", tone: .brand)
+    }
+
+    // the same card, ended. the last page had no footer at all, so the flow just
+    // stopped - the reader was left to find the X, which is the exit for leaving
+    // early rather than for finishing. a way out that means "I am done" is not
+    // the same control as one that means "never mind"
+    private func Finish() -> some View {
+        // green, because this is the only card in the flow that is not a way
+        // onward. the semantic table gives blue to interactive and green to
+        // complete, and the reader learns the difference in one glance rather
+        // than by reading the word
+        Button { dismiss() } label: {
+            Step(overline: "All set", title: "Done", glyph: "checkmark", tone: .success)
+        }
+        .buttonStyle(StepButtonStyle())
+    }
+
+    private func Step(overline: String, title: String, glyph: String, tone: Palette.Tone) -> some View {
         HStack(spacing: dimensions.spacing.space12) {
-            VStack(alignment: .leading, spacing: dimensions.spacing.space2) {
+            VStack(alignment: .leading, spacing: dimensions.spacing.space4) {
                 // the word that does the work. a destination name with its
                 // current value beneath it is Settings grammar - it describes a
                 // place - and no amount of fill turns that into "forward". this
-                // says what the tap DOES before it says where it goes
-                Text("Next")
+                // says what the tap DOES before it says where it goes.
+                //
+                // an overline: uppercased and letter-spaced, which is what makes
+                // it read as a label ABOUT the line below rather than as a first
+                // line of it. a rule was tried here and dangled - it separated
+                // two things that were never competing, where the gap in size,
+                // weight and tracking already does all the separating needed
+                Text(overline.uppercased())
                     .font(.caption2)
                     .fontWeight(.semibold)
+                    .tracking(Layout.overlineTracking)
                     .foregroundStyle(.secondary)
 
                 Text(title)
@@ -348,19 +424,66 @@ struct DetailsSetup<LinkSheet: View>: View {
             // is more inside this row" - where an arrow is motion. the two look
             // alike and mean different things, and the settings row this was
             // borrowing from is precisely the disclosure case
-            Image(systemName: "arrow.right")
-                .font(.subheadline)
-                .fontWeight(.semibold)
+            Glyph(glyph, trailing: tone == .brand)
         }
-        .foregroundStyle(Palette.brandText)
+        .foregroundStyle(tone.text)
         .padding(.horizontal, dimensions.spacing.space16)
         .padding(.vertical, dimensions.spacing.space12)
         .frame(minHeight: dimensions.touchTarget)
         .background(
-            Palette.brandSubtle,
+            tone.subtle,
             in: .rect(cornerRadius: dimensions.radius.radius12, style: .continuous)
         )
         .contentShape(.rect)
+        .onAppear {
+            guard !reduceMotion else {
+                streaked = true
+                return
+            }
+            withAnimation(.smooth(duration: 0.45)) { streaked = true }
+        }
+    }
+
+    // the afterimage. only on the arrow: a checkmark is a state that arrived,
+    // not a thing in motion, and giving it a trail would say the flow is still
+    // going somewhere. drawn behind, trailing-aligned, so the glyph itself
+    // never moves and the trail grows out of where it already is
+    private func Glyph(_ glyph: String, trailing streak: Bool) -> some View {
+        let base = Image(systemName: glyph)
+            .font(.subheadline)
+            .fontWeight(.semibold)
+            .contentTransition(.symbolEffect(.replace))
+
+        // at rest 1, on the way in 3, held down 2.6 - one multiplier, because the
+        // arrival and the press are the same gesture at different moments and
+        // two separate offsets would fight whenever they overlapped
+        let reach: CGFloat =
+            if !streaked { Layout.streakEntry }
+            else if pressed { Layout.streakPressed }
+            else { 1 }
+
+        return ZStack(alignment: .trailing) {
+            if streak {
+                ForEach(1...Layout.streakCount, id: \.self) { step in
+                    let distance = Layout.streakOffset * CGFloat(step)
+
+                    base
+                        .opacity(Layout.streakOpacity / Double(step))
+                        .blur(radius: Layout.streakBlur * CGFloat(step))
+                        .offset(x: -distance * reach)
+                        .opacity(streaked ? 1 : 0)
+                }
+            }
+
+            // the head leans the way it is going while the trail stretches behind
+            // it, so the press reads as loading a spring rather than as the glyph
+            // sliding off its own trail
+            base.offset(x: streak && pressed ? Layout.headLean : 0)
+        }
+        .animation(.spring(response: 0.25, dampingFraction: 0.6), value: pressed)
+        // the ghosts are the same glyph again, so VoiceOver would otherwise read
+        // the arrow three times
+        .accessibilityHidden(true)
     }
 
     // one frame for all three pages, and one way out of the flow from any of

@@ -21,10 +21,33 @@ struct DetailsHeader: View {
     @Environment(\.dimensions) private var dimensions
 
     private enum Layout {
+        // a cover is fitted into this box rather than forced into one shape.
+        // the height is a standard 11:16 cover at 160pt, so an ordinary cover
+        // draws exactly as it always has; the wider bound is what lets a square
+        // or landscape cover use the room it needs instead of being cropped
         static let coverWidth: CGFloat = 160
         static let coverAspect: CGFloat = 11 / 16
+        static let coverMaxWidth: CGFloat = 200
+        static var coverMaxHeight: CGFloat { coverWidth / coverAspect }
         static let fadeDuration: Double = 0.25
         static let placeholderOpacity: Double = 0.1
+    }
+
+    @State private var measured: CGSize = .zero
+
+    // the image's own ratio, fitted inside the box. until it reports a size this
+    // is the standard cover shape, so the common case never reflows and the
+    // skeleton it replaces is already the right shape
+    private var coverFrame: CGSize {
+        guard measured.width > 0, measured.height > 0 else {
+            return CGSize(width: Layout.coverWidth, height: Layout.coverMaxHeight)
+        }
+
+        let scale = min(
+            Layout.coverMaxWidth / measured.width,
+            Layout.coverMaxHeight / measured.height
+        )
+        return CGSize(width: measured.width * scale, height: measured.height * scale)
     }
 
     var body: some View {
@@ -39,25 +62,24 @@ struct DetailsHeader: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    // a fixed-width cover-shaped block, so the image fills it and the view hugs
-    // the left margin instead of centring inside a square frame
     private var Cover: some View {
-        Color.clear
-            .aspectRatio(Layout.coverAspect, contentMode: .fit)
-            .frame(width: Layout.coverWidth)
-            .overlay {
-                KFImage(cover)
-                    .requestModifier(AnyModifier.referer(referer))
-                    .resizable()
-                    .placeholder { Placeholder }
-                    .fade(duration: Layout.fadeDuration)
-                    .scaledToFill()
-                    // a new preferred cover is a new identity, so it crossfades in
-                    // over the old one rather than swapping hard
-                    .id(cover)
-                    .transition(.opacity)
-            }
+        KFImage(cover)
+            .requestModifier(AnyModifier.referer(referer))
+            // kingfisher reports the decoded size, which is ratio-true even when
+            // a processor has downsampled it - the ratio is all this needs
+            .onSuccess { measured = $0.image.size }
+            .resizable()
+            .placeholder { Placeholder }
+            .fade(duration: Layout.fadeDuration)
+            .scaledToFill()
+            // a new preferred cover is a new identity, so it crossfades in over
+            // the old one rather than swapping hard
+            .id(cover)
+            .transition(.opacity)
+            .frame(width: coverFrame.width, height: coverFrame.height)
             .clipShape(.rect(cornerRadius: dimensions.radius.radius16, style: .continuous))
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .animation(.settle, value: coverFrame)
             .animation(.settle, value: cover)
             .tappable(action: onOpenCovers)
     }

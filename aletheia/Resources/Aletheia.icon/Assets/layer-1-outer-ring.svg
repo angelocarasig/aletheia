@@ -1,0 +1,4 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <!-- Donut: outer r=398, inner r=362 (36px ring on r=380) -->
+  <path fill="#ffffff" fill-rule="evenodd" d="M512 114 A398 398 0 1 0 512 910 A398 398 0 1 0 512 114 Z M512 150 A362 362 0 1 0 512 874 A362 362 0 1 0 512 150 Z"/>
+</svg>
