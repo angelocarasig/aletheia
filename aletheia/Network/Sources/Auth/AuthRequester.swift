@@ -80,7 +80,7 @@ actor AuthRequester {
             try Keychain.sources.save(credential, account: slug)
             log.log("[\(slug)] credential saved to keychain", category: "auth")
         } catch {
-            log.log("[\(slug)] keychain save FAILED - \(error)", category: "auth")
+            log.log("[\(slug)] keychain save FAILED - \(error)", level: .error, category: "auth")
             throw error
         }
 

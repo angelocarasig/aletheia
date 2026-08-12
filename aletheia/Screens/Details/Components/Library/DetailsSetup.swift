@@ -84,12 +84,17 @@ struct DetailsSetup<LinkSheet: View>: View {
     // the second argument is how to close it - the presenter owns dismissal,
     // because the two places this sheet is shown from are driven by different
     // state and neither can dismiss the other's
-    @ViewBuilder var linkSheet: (Tracker, @escaping () -> Void) -> LinkSheet
+    // the second argument is whether the row that was tapped already had a link.
+    // decided at tap time and held, never re-derived from the list: linking
+    // writes a row, and a builder that re-reads the list swaps the screen out
+    // from under the reader at the exact moment their commit lands
+    @ViewBuilder var linkSheet: (Tracker, Bool, @escaping () -> Void) -> LinkSheet
 
     @Environment(\.dimensions) private var dimensions
 
     @State private var creating = false
     @State private var linking: Tracker?
+    @State private var opening = false
     @State private var connecting = false
     // what a service says you are at, adopted from whichever one was linked most
     // recently on the page below. not an arbitration between two services: no
@@ -129,7 +134,7 @@ struct DetailsSetup<LinkSheet: View>: View {
                 }
             )
         .sheet(item: $linking) { tracker in
-            linkSheet(tracker) { linking = nil }
+            linkSheet(tracker, opening) { linking = nil }
         }
         // declared on the page rather than as a NavigationLink inside the empty
         // state, because connecting is what makes that empty state stop existing:
@@ -152,6 +157,12 @@ struct DetailsSetup<LinkSheet: View>: View {
             }) else { return }
 
             adopted = fresh.status
+            // and the same signal closes the link sheet. the page underneath is
+            // the list of services, so the row filling in IS the outcome - the
+            // Synced button that keeps a sheet open elsewhere has nothing to
+            // show here that the flow does not already state one layer up.
+            // only a NEW link, so editing one already made is not yanked shut
+            linking = nil
         }
     }
 
@@ -185,8 +196,8 @@ struct DetailsSetup<LinkSheet: View>: View {
                         showsHeader: false,
                         needingSignIn: needingSignIn,
                         syncing: syncing,
-                        onLink: { linking = $0 },
-                        onOpen: { linking = $0.tracker },
+                        onLink: { linking = $0; opening = false },
+                        onOpen: { linking = $0.tracker; opening = true },
                         // reachable here, not decorative: a service that needs
                         // signing in again offers exactly this from its row, and
                         // it lands on the same pushed screen the empty state does
@@ -561,7 +572,7 @@ private struct SetupPreview: View {
                     if joined.contains(id) { joined.remove(id) } else { joined.insert(id) }
                 },
                 onCreateCollection: { _, _ in },
-                linkSheet: { tracker, _ in Text("Link to \(tracker.name)") }
+                linkSheet: { tracker, _, _ in Text("Link to \(tracker.name)") }
             )
         }
     }

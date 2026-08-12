@@ -233,25 +233,37 @@ struct AniListService: TrackerService {
         }
 
         let envelope = try? JSONDecoder().decode(Envelope<Response>.self, from: data)
+        // decoded on its own pass, and that is the whole fix rather than a
+        // tidy-up: graphql sends data and errors in one body, so a data half
+        // that does not fit Response - {"Media":null} against a non-optional
+        // Media - failed the WHOLE envelope and took the error with it. every
+        // such answer arrived as "the service isn't responding", which is the
+        // one thing it demonstrably was doing
+        let errors = (try? JSONDecoder().decode(Errors.self, from: data))?.errors
 
-        if let error = envelope?.errors?.first {
-            // a dead token is an http 400 with the body {"message":"Invalid
-            // token","status":400}. probed 2026-08-10, along with the case this
-            // must not be confused with: a 401 "Unauthorized." means the header
-            // never arrived at all, which is our bug - re-authenticating on it
-            // would sign the reader out for a mistake they did not make
-            if error.status == 400, error.message.localizedCaseInsensitiveContains("token") {
-                throw TrackerError.reauthenticationRequired
-            }
-            throw TrackerError.rejected(error.message)
+        // a dead token is an http 400 with the body {"message":"Invalid
+        // token","status":400}. probed 2026-08-10, along with the case this
+        // must not be confused with: a 401 "Unauthorized." means the header
+        // never arrived at all, which is our bug - re-authenticating on it
+        // would sign the reader out for a mistake they did not make
+        if let error = errors?.first,
+           error.status == 400,
+           error.message.localizedCaseInsensitiveContains("token") {
+            throw TrackerError.reauthenticationRequired
         }
 
-        guard (200...299).contains(response.statusCode) else {
-            throw TrackerError.unavailable
-        }
+        // an id anilist does not have answers 404 "Not Found." with a null
+        // Media beside it. that is an answer, not an outage, and retrying it
+        // forever gets the same one
+        if errors?.first?.status == 404 { throw TrackerError.notFound }
 
-        guard let data = envelope?.data else { throw TrackerError.unavailable }
-        return data
+        // partial data is still the answer: an error only speaks when nothing
+        // usable came back with it
+        if let payload = envelope?.data { return payload }
+
+        if let error = errors?.first { throw TrackerError.rejected(error.message) }
+
+        throw TrackerError.unavailable
     }
 }
 
@@ -259,12 +271,17 @@ struct AniListService: TrackerService {
 
 private struct Envelope<Data: Decodable>: Decodable {
     let data: Data?
-    let errors: [GraphQLError]?
+}
 
-    struct GraphQLError: Decodable {
-        let message: String
-        let status: Int?
-    }
+// the same body read for its errors alone, so nothing about the shape of the
+// payload can stop the reason reaching the reader
+private struct Errors: Decodable {
+    let errors: [GraphQLError]?
+}
+
+private struct GraphQLError: Decodable {
+    let message: String
+    let status: Int?
 }
 
 private struct ViewerResponse: Decodable {

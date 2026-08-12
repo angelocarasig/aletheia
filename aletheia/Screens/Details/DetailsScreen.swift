@@ -15,10 +15,9 @@ struct DetailsScreen: View {
     @Environment(\.dimensions) private var dimensions
     @Environment(\.compositor) private var compositor
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    @State private var vm: DetailsViewModel?
-    @State private var reading: DetailsViewModel.ReaderTarget?
+    @State private var composer: DetailsComposer?
+    @State private var reading: DetailsComposer.Chapters.Target?
     @State private var showingCovers = false
     @State private var showingSourceOrder = false
     @State private var showingScanlatorOrder = false
@@ -29,34 +28,25 @@ struct DetailsScreen: View {
     @State private var showingMerge = false
     @State private var showingCollections = false
     @State private var showingSetup = false
-    @State private var removing: DetailsSources.Origin?
+    @State private var removing: DetailsComposer.Sources.Origin?
     // which service the reader is picking an entry for, and which link they
     // opened. both are the sheet's subject rather than a bare boolean
     @State private var linking: Tracker?
-    @State private var managing: DetailsTracking.Link?
+    @State private var managing: DetailsComposer.Tracking.Link?
     @State private var showingTracking = false
-    @State private var marking: DetailsViewModel.MarkRequest?
+    @State private var marking: DetailsComposer.Chapters.Request?
     @State private var markCommitted: UUID?
     @State private var showingDisambiguation = false
     // written here, read only inside the backdrop - reading it in this body
     // would re-evaluate the whole chapter list on every scroll step
     @State private var scroll = DetailsScroll()
 
-    private enum Layout {
-        // the source badge inside the refresh pill - sized to the pill's text
-        // line, not to the 44pt row icon it is cropped from
-        static let badgeSize: CGFloat = 20
-        // wide enough for a source name beside a failure sentence, narrow enough
-        // that the pill never spans the screen it floats over
-        static let pillWidth: CGFloat = 320
-    }
-
     // the branch selector and the animation key are the same value on purpose -
     // keying a correlated boolean is how swaps go dead or partial.
     // see docs/features/loading-transitions.md
     private var phase: LoadPhase {
-        if vm?.isReady == true { .content }
-        else if vm?.failure != nil { .failed }
+        if composer?.ready == true { .content }
+        else if composer?.failure != nil { .failed }
         else { .pending }
     }
 
@@ -69,12 +59,12 @@ struct DetailsScreen: View {
 
             switch phase {
             case .content:
-                if let vm {
-                    Loaded(vm)
+                if let composer {
+                    Loaded(composer)
                         .transition(.opacity)
                 }
             case .failed:
-                if let vm, let failure = vm.failure {
+                if let composer, let failure = composer.failure {
                     Unavailable(failure)
                         .transition(.opacity)
                 }
@@ -92,7 +82,7 @@ struct DetailsScreen: View {
             )
         }
         .navigationDestination(isPresented: $searchingAll) {
-            SearchScreen(query: vm?.title ?? "", embedded: true)
+            SearchScreen(query: composer?.series.title ?? "", embedded: true)
         }
         // a sheet rather than a push: connecting is an errand off the side of
         // this series, not a place inside it - and dismissing lands back on the
@@ -108,8 +98,8 @@ struct DetailsScreen: View {
         // keyed on the service being linked, so the sheet always knows which of
         // the two it is picking for
         .sheet(item: $linking) { tracker in
-            if let vm {
-                TrackerLink(tracker, vm: vm, onFinish: { linking = nil })
+            if let composer {
+                TrackerLink(tracker, composer, onFinish: { linking = nil })
             }
         }
         // the same screen a search result opens, reached from the other side:
@@ -117,49 +107,35 @@ struct DetailsScreen: View {
         // unlink. one screen rather than a manage sheet that would be this one
         // with three controls removed
         .sheet(item: $managing) { link in
-            if let vm {
-                TrackerManage(link, vm: vm, onFinish: { managing = nil })
+            if let composer {
+                TrackerManage(link, composer, onFinish: { managing = nil })
             }
         }
         .sheet(isPresented: $showingDisambiguation) {
-            if let vm {
+            if let composer {
                 DetailsDisambiguation(
-                    candidates: vm.candidates,
+                    candidates: composer.identity.candidates,
                     onAttach: { id in
                         showingDisambiguation = false
-                        Task { await vm.attach(to: id) }
+                        Task { await composer.attach(to: id) }
                     },
                     onKeepSeparate: {
                         showingDisambiguation = false
-                        Task { await vm.keepSeparate() }
+                        Task { await composer.separate() }
                     },
                     // there is no series to fall back to, so backing out of the
                     // choice leaves the screen with nothing to show
                     onCancel: {
                         showingDisambiguation = false
-                        vm.cancel()
+                        composer.cancel()
                         dismiss()
                     }
                 )
                 .interactiveDismissDisabled()
             }
         }
-        .onChange(of: vm?.needsDisambiguation ?? false) { _, needs in
+        .onChange(of: composer?.identity.isAmbiguous ?? false) { _, needs in
             showingDisambiguation = needs
-        }
-        // an action the reader took that did not happen. the content behind it is
-        // still valid, so this is raised and dismissed rather than replacing the
-        // screen the way `failure` does
-        .alert(
-            vm?.actionFailure?.title ?? "",
-            isPresented: Binding(
-                get: { vm?.actionFailure != nil },
-                set: { if !$0 { vm?.clearActionFailure() } }
-            )
-        ) {
-            Button("OK", role: .cancel) { vm?.clearActionFailure() }
-        } message: {
-            Text(vm?.actionFailure?.message ?? "")
         }
         .confirmationDialog(
             "Remove \(removing?.name ?? "this source")?",
@@ -169,7 +145,7 @@ struct DetailsScreen: View {
             Button("Remove Source", role: .destructive) {
                 guard let id = removing?.id else { return }
                 removing = nil
-                Task { await vm?.removeOrigin(id) }
+                Task { await composer?.sources.remove(id) }
             }
             Button("Cancel", role: .cancel) { removing = nil }
         } message: {
@@ -201,72 +177,97 @@ struct DetailsScreen: View {
         }
         .sensoryFeedback(.impact(weight: .heavy), trigger: markCommitted)
         .sheet(isPresented: $showingCollections) {
-            if let vm {
+            if let composer {
+                let library = composer.library
+
                 // the picker presents its own create form, so dismissing the
                 // form returns to the list with the new collection already joined
-                CollectionPicker(
-                    collections: vm.availableCollections,
-                    isSaving: vm.isSaving,
-                    onToggle: { id in Task { await vm.toggleCollection(id) } },
-                    onCreate: { name, description in
-                        Task { await vm.createCollection(name: name, description: description) }
-                    }
-                )
+                Busy(saving: library.saving) { busy in
+                    CollectionPicker(
+                        collections: library.collections,
+                        isSaving: busy,
+                        onToggle: { id in Task { await library.toggle(collection: id) } },
+                        onCreate: { name, description in
+                            Task {
+                                await library.create(
+                                    collection: name,
+                                    description: description,
+                                    joining: true
+                                )
+                            }
+                        }
+                    )
+                }
             }
         }
         .sheet(isPresented: $showingSetup) {
-            if let vm {
+            if let composer {
+                let library = composer.library
+                let tracking = composer.tracking
+
                 DetailsSetup(
-                    title: vm.title,
-                    status: vm.status,
-                    collections: vm.availableCollections,
-                    isSaving: vm.isSaving,
-                    accounts: vm.trackerAccounts,
-                    links: vm.links,
-                    localProgress: vm.localProgress,
-                    needingSignIn: vm.trackersNeedingSignIn,
-                    syncing: vm.syncingTrackers,
-                    onSetStatus: { status in Task { await vm.setStatus(status) } },
-                    onToggleCollection: { id in Task { await vm.toggleCollection(id) } },
+                    title: composer.series.title,
+                    status: library.status,
+                    collections: library.collections,
+                    isSaving: library.saving,
+                    accounts: tracking.accounts,
+                    links: tracking.links,
+                    localProgress: tracking.furthest,
+                    needingSignIn: tracking.needingSignIn,
+                    syncing: tracking.syncing,
+                    onSetStatus: { status in Task { await library.set(status: status) } },
+                    onToggleCollection: { id in Task { await library.toggle(collection: id) } },
                     onCreateCollection: { name, description in
-                        Task { await vm.createCollection(name: name, description: description) }
+                        Task {
+                            await library.create(
+                                collection: name,
+                                description: description,
+                                joining: true
+                            )
+                        }
                     },
-                    // the same routing the section below uses - a service with no
-                    // link searches for one, a linked service opens what it has.
-                    // presented from inside the flow rather than beside it,
-                    // because a second sheet on this view would not open over the
-                    // first one
-                    linkSheet: { tracker, close in
-                        if let link = vm.links.first(where: { $0.tracker == tracker }) {
-                            TrackerManage(link, vm: vm, onFinish: close)
+                    // the same routing the section below uses - a service with
+                    // no link searches for one, a linked service opens what it
+                    // has. presented from inside the flow rather than beside it,
+                    // because a second sheet on this view would not open over
+                    // the first one
+                    // reconciliation is off in here: see DetailsTrackerCandidate
+                    linkSheet: { tracker, opening, close in
+                        if opening, let link = tracking.links.first(where: { $0.tracker == tracker }) {
+                            TrackerManage(link, composer, reconciles: false, onFinish: close)
                         } else {
-                            TrackerLink(tracker, vm: vm, onFinish: close)
+                            TrackerLink(tracker, composer, reconciles: false, onFinish: close)
                         }
                     }
                 )
             }
         }
         .sheet(isPresented: $showingMerge) {
-            if let vm {
+            if let composer {
+                let series = composer.series
+
                 DetailsMerge(
                     source: .init(
-                        title: vm.title,
-                        authors: vm.authors.joined(separator: ", "),
-                        synopsis: vm.synopsis.map { String($0.characters) },
-                        cover: vm.cover,
-                        referer: vm.referer,
-                        status: vm.status,
-                        publication: vm.publication,
-                        origins: vm.origins.count,
-                        read: vm.readCount,
-                        total: vm.chapters.count
+                        title: series.title,
+                        authors: series.authors.joined(separator: ", "),
+                        synopsis: series.synopsis.map { String($0.characters) },
+                        cover: series.cover,
+                        referer: series.referer,
+                        status: composer.library.status,
+                        publication: series.publication,
+                        origins: composer.sources.origins.count,
+                        read: series.readCount,
+                        total: series.totalCount
                     ),
-                    candidates: vm.mergeCandidates,
-                    isLoading: vm.isLoadingMergeCandidates,
-                    onSearch: { query in await vm.loadMergeCandidates(query: query) },
+                    candidates: composer.identity.matches,
+                    isLoading: composer.identity.isSearching,
+                    onSearch: { query in
+                        guard let id = composer.seriesId else { return }
+                        await composer.identity.search(query, for: id)
+                    },
                     onMerge: { id in
                         showingMerge = false
-                        Task { await vm.merge(into: id) }
+                        Task { await composer.merge(into: id) }
                     }
                 )
                 .presentationDetents([.medium, .large])
@@ -274,75 +275,91 @@ struct DetailsScreen: View {
             }
         }
         .sheet(isPresented: $showingEdit) {
-            if let vm {
-                DetailsEdit(
-                    titles: vm.titles,
-                    synopses: vm.synopses,
-                    metadata: vm.metadataChoices,
-                    isSaving: vm.isSaving,
-                    onSetTitle: { id in Task { await vm.setPreferredTitle(id) } },
-                    onSetSynopsis: { id in Task { await vm.setPreferredSynopsis(id) } },
-                    onSetMetadata: { id in Task { await vm.setPreferredMetadata(id) } }
-                )
+            if let composer {
+                let series = composer.series
+
+                Busy(saving: series.saving) { busy in
+                    DetailsEdit(
+                        titles: series.titles,
+                        synopses: series.synopses,
+                        metadata: series.choices,
+                        isSaving: busy,
+                        onSetTitle: { id in Task { await series.prefer(title: id) } },
+                        onSetSynopsis: { id in Task { await series.prefer(synopsis: id) } },
+                        onSetMetadata: { id in Task { await series.prefer(metadata: id) } }
+                    )
+                }
             }
         }
         .sheet(isPresented: $showingTitles) {
-            if let vm {
-                DetailsTitles(
-                    titles: vm.titles,
-                    isSaving: vm.isSaving,
-                    onSetPreferred: { id in Task { await vm.setPreferredTitle(id) } }
-                )
+            if let composer {
+                let series = composer.series
+
+                Busy(saving: series.saving) { busy in
+                    DetailsTitles(
+                        titles: series.titles,
+                        isSaving: busy,
+                        onSetPreferred: { id in Task { await series.prefer(title: id) } }
+                    )
+                }
             }
         }
         // the same sheet DetailsSources presents. reordering is what decides
         // which source's copy of a chapter wins, so it belongs to both sections
         .sheet(isPresented: $showingSourceOrder) {
-            if let vm {
+            if let composer {
                 OriginOrder(
-                    origins: vm.origins,
-                    onCommit: { ids in Task { await vm.reorderOrigins(ids) } }
+                    origins: composer.sources.origins,
+                    onCommit: { ids in Task { await composer.sources.reorder(ids) } }
                 )
             }
         }
         .sheet(isPresented: $showingScanlatorOrder) {
-            if let vm {
+            if let composer {
+                let sources = composer.sources
+
                 ScanlatorOrder(
-                    groups: vm.scanlatorGroups,
-                    isLoading: vm.isLoadingScanlators,
+                    groups: sources.scanlatorOrder,
+                    isLoading: sources.isLoadingScanlators,
                     onCommit: { origin, ids in
-                        Task { await vm.reorderScanlators(origin, ids) }
+                        Task { await sources.reorder(scanlators: ids, in: origin) }
                     }
                 )
                 // read on present: this needs every scanlator, including ones
                 // that currently win nothing, which the screen's list does not have
-                .task { await vm.loadScanlators() }
+                .task { await sources.scanlators() }
             }
         }
         .sheet(isPresented: $showingLanguageOrder) {
-            if let vm {
+            if let composer {
+                let sources = composer.sources
+
                 LanguageOrder(
-                    languages: vm.languageOrder,
-                    isLoading: vm.isLoadingLanguages,
-                    onCommit: { codes in Task { await vm.reorderLanguages(codes) } }
+                    languages: sources.languageOrder,
+                    isLoading: sources.isLoadingLanguages,
+                    onCommit: { codes in Task { await sources.reorder(languages: codes) } }
                 )
-                .task { await vm.loadLanguages() }
+                .task { await sources.languages() }
             }
         }
         .sheet(isPresented: $showingCovers) {
-            if let vm {
-                DetailsCovers(
-                    covers: vm.covers,
-                    referer: vm.referer,
-                    isSaving: vm.isSaving,
-                    onSetPreferred: { id in Task { await vm.setPreferredCover(id) } }
-                )
+            if let composer {
+                let series = composer.series
+
+                Busy(saving: series.saving) { busy in
+                    DetailsCovers(
+                        covers: series.covers,
+                        referer: series.referer,
+                        isSaving: busy,
+                        onSetPreferred: { id in Task { await series.prefer(cover: id) } }
+                    )
+                }
             }
         }
         .task {
-            guard vm == nil else { return }
+            guard composer == nil else { return }
 
-            let vm = DetailsViewModel(
+            let composer = DetailsComposer(
                 entry: entry,
                 registry: compositor.registry,
                 assets: compositor.assets,
@@ -350,14 +367,9 @@ struct DetailsScreen: View {
                 trackers: compositor.trackers,
                 database: database
             )
-            self.vm = vm
-            await vm.load()
+            self.composer = composer
+            await composer.load()
         }
-    }
-
-    private var sourceName: String {
-        guard case .source(let slug, _) = entry else { return "" }
-        return compositor.registry.source(slug: slug)?.descriptor.name ?? slug
     }
 
     // MARK: Tracking sheets
@@ -368,42 +380,57 @@ struct DetailsScreen: View {
     @ViewBuilder
     private func TrackerLink(
         _ tracker: Tracker,
-        vm: DetailsViewModel,
+        _ composer: DetailsComposer,
+        reconciles: Bool = true,
         onFinish: @escaping () -> Void
     ) -> some View {
+        let tracking = composer.tracking
+        let adult = composer.series.classification == .Explicit
+
         DetailsTrackerLink(
             tracker: tracker,
-            seriesTitle: vm.title,
-            existing: vm.links.first { $0.tracker == tracker },
-            adult: vm.classification == .Explicit,
-            localProgress: vm.localProgress,
-            scoreFormat: vm.scoreFormat(for: tracker),
+            seriesTitle: composer.series.title,
+            existing: tracking.links.first { $0.tracker == tracker },
+            adult: adult,
+            localProgress: tracking.furthest,
+            scoreFormat: tracking.format(for: tracker),
             onSearch: { query in
-                try await vm.searchTrackers(query, on: tracker, adult: vm.classification == .Explicit)
+                try await tracking.search(tracker, query: query, adult: adult)
             },
-            onLoadEntry: { id in try await vm.trackerEntry(tracker, remoteId: id) },
-            onCatchUp: { progress in Task { await vm.catchUp(to: progress) } },
-            onPushLocal: { Task { await vm.pushLocalToTrackers() } },
-            onConflicts: { await vm.trackerConflicts(on: tracker) },
-            onResolve: { text in await vm.resolveTracker(text, on: tracker) },
-            onCommit: { candidate, update in try await vm.link(candidate, on: tracker, update: update) },
+            onLoadEntry: { id in try await tracking.entry(tracker, remoteId: id) },
+            onCatchUp: { progress in Task { await composer.catchUp(to: progress) } },
+            onPushLocal: { Task { await tracking.push() } },
+            onConflicts: { await tracking.conflicts(tracker) },
+            onResolve: { text in await tracking.resolve(text, on: tracker) },
+            onCommit: { candidate, update in
+                try await tracking.link(
+                    candidate,
+                    on: tracker,
+                    update: update,
+                    status: composer.library.status
+                )
+            },
             onUnlink: { removeRemote in
                 onFinish()
                 // resolved at tap time rather than captured: the link did not
                 // exist when this sheet was built
-                guard let link = vm.links.first(where: { $0.tracker == tracker }) else { return }
-                Task { await vm.unlink(link, removeRemote: removeRemote) }
+                guard let link = tracking.links.first(where: { $0.tracker == tracker }) else { return }
+                Task { await tracking.unlink(link, removeRemote: removeRemote) }
             },
-            onCancel: onFinish
+            onCancel: onFinish,
+            reconciles: reconciles
         )
     }
 
     @ViewBuilder
     private func TrackerManage(
-        _ link: DetailsTracking.Link,
-        vm: DetailsViewModel,
+        _ link: DetailsComposer.Tracking.Link,
+        _ composer: DetailsComposer,
+        reconciles: Bool = true,
         onFinish: @escaping () -> Void
     ) -> some View {
+        let tracking = composer.tracking
+
         NavigationStack {
             DetailsTrackerCandidate(
                 tracker: link.tracker,
@@ -412,19 +439,20 @@ struct DetailsScreen: View {
                     title: link.remoteTitle,
                     totalChapters: link.total
                 ),
-                localProgress: vm.localProgress,
+                localProgress: tracking.furthest,
                 conflict: nil,
                 scoreFormat: link.scoreFormat,
                 linked: true,
+                reconciles: reconciles,
                 syncedDate: link.syncedDate,
-                onLoad: { try await vm.trackerEntry(link.tracker, remoteId: link.remoteId) },
-                onCommit: { _, update in try await vm.editTracker(link, update: update) },
+                onLoad: { try await tracking.entry(link.tracker, remoteId: link.remoteId) },
+                onCommit: { _, update in try await tracking.edit(link, update: update) },
                 onUnlink: { removeRemote in
                     onFinish()
-                    Task { await vm.unlink(link, removeRemote: removeRemote) }
+                    Task { await tracking.unlink(link, removeRemote: removeRemote) }
                 },
-                onCatchUp: { progress in Task { await vm.catchUp(to: progress) } },
-                onPushLocal: { Task { await vm.pushLocalToTrackers() } },
+                onCatchUp: { progress in Task { await composer.catchUp(to: progress) } },
+                onPushLocal: { Task { await tracking.push() } },
                 onClose: onFinish
             )
         }
@@ -432,13 +460,15 @@ struct DetailsScreen: View {
         .presentationDragIndicator(.visible)
     }
 
+    // MARK: Content
+
     @ViewBuilder
-    private func Loaded(_ vm: DetailsViewModel) -> some View {
-        DetailsBackdrop(cover: vm.cover, referer: vm.referer, scroll: scroll)
+    private func Loaded(_ composer: DetailsComposer) -> some View {
+        DetailsBackdrop(cover: composer.series.cover, referer: composer.series.referer, scroll: scroll)
             .transition(.opacity)
 
         ScrollView(.vertical, showsIndicators: false) {
-            Content(vm)
+            DetailsContent(composer: composer, actions: actions(composer))
         }
         .transition(.opacity)
         // clamped inside the transform, not after: the callback only
@@ -453,18 +483,21 @@ struct DetailsScreen: View {
             scroll.offset = offset
         }
         .scrollEdgeEffectStyle(.soft, for: .top)
-        .refreshable { await vm.refresh() }
+        .refreshable { await composer.refresh() }
         // floats over the content rather than displacing it - a refresh runs over
         // a list that already renders, so nothing below should move
         .overlay(alignment: .bottomTrailing) {
-            if vm.refreshState != .idle {
-                Refreshing(vm.refreshState.outcomes)
-                    .transition(.move(edge: .trailing).combined(with: .opacity))
-            } else if case let rebuilt = live(vm), !rebuilt.isEmpty {
+            if composer.refresh.state != .idle {
+                DetailsRefreshPill(
+                    outcomes: composer.refresh.state.outcomes,
+                    refresher: compositor.refresh
+                )
+                .transition(.move(edge: .trailing).combined(with: .opacity))
+            } else if case let rebuilt = live(composer), !rebuilt.isEmpty {
                 // a fetch this screen no longer remembers starting, or a library
                 // run holding this series. pulling to refresh here would join
                 // those fetches rather than start a second set
-                Refreshing(rebuilt)
+                DetailsRefreshPill(outcomes: rebuilt, refresher: compositor.refresh)
                     .transition(.move(edge: .trailing).combined(with: .opacity))
             }
         }
@@ -472,136 +505,61 @@ struct DetailsScreen: View {
         // permanently covers the last chapter row is a bar that hides the thing
         // it is about
         .safeAreaInset(edge: .bottom) {
-            DetailsContinue(chapters: vm.chapters) { chapter in
-                guard let target = vm.read(chapter) else { return }
-                Task { await vm.open(chapter) }
-                reading = target
+            DetailsContinue(chapters: composer.chapters.chapters) { chapter in
+                open(chapter, in: composer)
             }
             .padding(.horizontal, dimensions.screenMargin)
             // lifted off the safe area edge so it reads as floating over the
             // list rather than sitting on the bottom of the screen
             .padding(.bottom, dimensions.spacing.space8)
         }
-        .animation(.settle, value: vm.refreshState)
+        .animation(.settle, value: composer.refresh.state)
         // the other thing the overlay switches on, or the shared-unit pill would
         // appear and leave without a transition
-        .animation(.settle, value: live(vm))
+        .animation(.settle, value: live(composer))
+    }
+
+    private func actions(_ composer: DetailsComposer) -> DetailsContent.Actions {
+        DetailsContent.Actions(
+            openCovers: { showingCovers = true },
+            openTitles: { showingTitles = true },
+            searchAll: { searchingAll = true },
+            openCollections: { showingCollections = true },
+            openSetup: { showingSetup = $0 },
+            openEdit: { showingEdit = true },
+            openMerge: { showingMerge = true },
+            openSourceOrder: { showingSourceOrder = true },
+            openScanlatorOrder: { showingScanlatorOrder = true },
+            openLanguageOrder: { showingLanguageOrder = true },
+            confirmRemove: { removing = $0 },
+            link: { linking = $0 },
+            manage: { managing = $0 },
+            connect: { showingTracking = true },
+            mark: { read, numbers in requestMark(composer, read: read, numbers: numbers) },
+            read: { chapter in open(chapter, in: composer) }
+        )
+    }
+
+    private func open(_ chapter: DetailsComposer.Chapters.Row, in composer: DetailsComposer) {
+        guard let target = composer.chapters.read(chapter) else { return }
+        Task { await composer.chapters.open(chapter) }
+        reading = target
     }
 
     // rebuilt from the shared unit rather than remembered, which is what lets
     // the pill come back after the screen was closed and reopened mid-fetch.
     // only origins still in play appear: an origin that finished while the
-    // screen was gone took its count with the last view model, and inventing a
+    // screen was gone took its count with the last composer, and inventing a
     // row for it would be inventing the answer too
-    private func live(_ vm: DetailsViewModel) -> [DetailsViewModel.RefreshState.Outcome] {
+    private func live(_ composer: DetailsComposer) -> [DetailsComposer.Refresh.Outcome] {
         let refresh = compositor.refresh
-        let waiting = vm.seriesId.map {
+        let waiting = composer.seriesId.map {
             refresh.isQueued(series: $0.rawValue) || refresh.isChecking(series: $0.rawValue)
         } ?? false
 
-        return vm.refreshables.compactMap { target in
-            guard refresh.isChecking(origin: target.originId) || waiting else { return nil }
-            return .init(id: target.originId, name: target.name, icon: target.icon, result: nil)
-        }
-    }
-
-    // one row per source, each answering for itself: a spinner becomes that
-    // source's outcome in place, so a dead source is named rather than collapsing
-    // the whole run into "couldn't refresh". a single-origin series is one row
-    private func Refreshing(_ outcomes: [DetailsViewModel.RefreshState.Outcome]) -> some View {
-        VStack(alignment: .leading, spacing: dimensions.spacing.space8) {
-            ForEach(outcomes) { outcome in
-                Outcome(outcome)
-            }
-        }
-        .padding(.horizontal, dimensions.spacing.space16)
-        .padding(.vertical, dimensions.spacing.space12)
-        .frame(maxWidth: Layout.pillWidth, alignment: .leading)
-        .glassEffect(.regular, in: .rect(cornerRadius: dimensions.radius.radius16))
-        .padding(dimensions.screenMargin)
-    }
-
-    private func Outcome(_ outcome: DetailsViewModel.RefreshState.Outcome) -> some View {
-        // no answer yet is two different things: waiting for a slot at the host,
-        // or actually talking to it. the unit knows which, and a row that says
-        // "checking" while nothing is in flight is the small lie that makes a
-        // slow refresh look broken
-        let started = compositor.refresh.isChecking(origin: outcome.id)
-
-        return HStack(spacing: dimensions.spacing.space8) {
-            Icon(outcome, started: started)
-
-            Text(outcome.name)
-                .font(.subheadline)
-                .fontWeight(.medium)
-                .lineLimit(1)
-
-            Message(outcome.result, started: started)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-        }
-    }
-
-    // every state is a symbol, spinner included, so the outcome can enter by
-    // drawing itself along the stroke the spinner drew off - the reader's
-    // separator badge speaks the same dialect
-    private func Icon(_ outcome: DetailsViewModel.RefreshState.Outcome, started: Bool) -> some View {
-        Group {
-            switch outcome.result {
-            // waiting for a slot is not the same as talking to the host, and a
-            // spinner for something that has not begun is the small lie that
-            // makes a slow refresh look stuck
-            case nil where !started:
-                Image(systemName: "clock")
-                    .foregroundStyle(.muted)
-                    .transition(reduceMotion ? .opacity : AnyTransition(.symbolEffect(.drawOn)))
-
-            case nil:
-                Image(systemName: "progress.indicator")
-                    .foregroundStyle(.secondary)
-                    .symbolEffect(.rotate, options: .repeat(.continuous), isActive: !reduceMotion)
-                    .transition(reduceMotion ? .opacity : AnyTransition(.symbolEffect(.drawOn)))
-
-            case .added:
-                Image(systemName: "plus.circle.fill")
-                    .foregroundStyle(.success)
-                    .transition(reduceMotion ? .opacity : AnyTransition(.symbolEffect(.drawOn)))
-
-            // the inverse of the plus beside it, so the row reads as one
-            // vocabulary: added, nothing added, failed. not a tick - that reads
-            // as an achievement the source did not earn
-            case .unchanged:
-                Image(systemName: "minus.circle")
-                    .foregroundStyle(.muted)
-                    .transition(reduceMotion ? .opacity : AnyTransition(.symbolEffect(.drawOn)))
-
-            case .failed:
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.warning)
-                    .transition(reduceMotion ? .opacity : AnyTransition(.symbolEffect(.drawOn)))
-
-            // stopped, not broken - the same muted weight as "nothing new",
-            // because neither is something the reader has to act on
-            case .cancelled:
-                Image(systemName: "xmark.circle")
-                    .foregroundStyle(.muted)
-                    .transition(reduceMotion ? .opacity : AnyTransition(.symbolEffect(.drawOn)))
-            }
-        }
-        .frame(width: Layout.badgeSize, height: Layout.badgeSize)
-        .animation(.settle, value: outcome.result)
-        .animation(.settle, value: started)
-    }
-
-    @ViewBuilder
-    private func Message(_ result: OriginRefresher.Outcome?, started: Bool) -> some View {
-        switch result {
-        case nil: Text(started ? "Checking" : "Queued")
-        case .added(let count): Text("^[\(count) new chapter](inflect: true)")
-        case .unchanged: Text("Up to date")
-        case .failed(let reason): Text(reason)
-        case .cancelled: Text("Stopped")
+        return composer.refresh.origins.compactMap { target in
+            guard refresh.isChecking(origin: target.id) || waiting else { return nil }
+            return .init(id: target.id, name: target.name, icon: target.icon, result: nil)
         }
     }
 
@@ -619,7 +577,7 @@ struct DetailsScreen: View {
         } actions: {
             if failure.isRetryable {
                 Button("Try Again") {
-                    Task { await vm?.load() }
+                    Task { await composer?.load() }
                 }
             }
         }
@@ -637,148 +595,17 @@ struct DetailsScreen: View {
 
     // one chapter is a common, visible, self-explaining change and goes straight
     // through; anything wider asks first
-    private func requestMark(_ vm: DetailsViewModel, read: Bool, numbers: [Double]) {
-        if let request = vm.markRequest(read: read, numbers: numbers) {
+    private func requestMark(_ composer: DetailsComposer, read: Bool, numbers: [Double]) {
+        if let request = composer.chapters.request(read: read, numbers: numbers) {
             marking = request
         } else {
-            Task { await vm.mark(read: read, numbers: numbers) }
+            Task { await composer.chapters.mark(read: read, numbers: numbers) }
         }
     }
 
-    private func commit(_ request: DetailsViewModel.MarkRequest) {
+    private func commit(_ request: DetailsComposer.Chapters.Request) {
         marking = nil
         markCommitted = request.id
-        Task { await vm?.mark(read: request.read, numbers: request.numbers) }
-    }
-
-    private func Content(_ vm: DetailsViewModel) -> some View {
-        VStack(alignment: .leading, spacing: dimensions.spacing.space20) {
-            // the backdrop shows through here rather than parallaxing - it is a
-            // sibling of the scroll view, not a header inside it
-            Spacer()
-                .frame(height: DetailsBackdrop.heroHeight)
-
-            DetailsHeader(
-                cover: vm.cover,
-                referer: vm.referer,
-                title: vm.title,
-                authors: vm.authors,
-                onOpenCovers: { showingCovers = true },
-                onOpenTitles: { showingTitles = true },
-                onSearchAll: { searchingAll = true }
-            )
-
-            DetailsActions(
-                inLibrary: vm.inLibrary,
-                isSaving: vm.isSaving,
-                canToggle: vm.canToggleLibrary,
-                canRefresh: vm.canRefresh,
-                status: vm.status,
-                collectionCount: vm.collections.count,
-                // the add is committed first and the flow opens over it, so
-                // closing at any page leaves the series added. removing stays a
-                // plain toggle - there is nothing to set up on the way out
-                onToggleLibrary: {
-                    Task {
-                        let adding = !vm.inLibrary
-                        let wrote = await vm.toggleLibrary()
-                        showingSetup = adding && wrote
-                    }
-                },
-                onSetStatus: { status in Task { await vm.setStatus(status) } },
-                onManageCollections: { showingCollections = true },
-                onRefreshChapters: { Task { await vm.refreshChapters() } },
-                onMarkAll: { read in requestMark(vm, read: read, numbers: vm.chapters.map(\.number)) },
-                onEditDetails: { showingEdit = true },
-                onMerge: { showingMerge = true },
-                onDownloadUnread: {
-                    guard let id = vm.seriesId else { return }
-                    compositor.downloads.enqueue(unreadFor: id)
-                },
-                onDeleteDownloads: {
-                    guard let id = vm.seriesId else { return }
-                    compositor.downloads.delete(for: id)
-                }
-            )
-
-            // emptiness is decided at mapping - an empty synopsis arrives as nil
-            DetailsSynopsis(synopsis: vm.synopsis)
-
-            if !vm.tags.isEmpty {
-                DetailsTags(tags: vm.tags)
-            }
-
-            // tracking requires library membership (trackers.md Q6). it used to
-            // render nothing at all off-library, on the grounds that a Link row
-            // which cannot be operated is an affordance that lies - but a section
-            // that is simply absent lies differently, and worse: a reader with two
-            // connected accounts and no tracking on screen concludes the feature
-            // is broken rather than gated. dimmed and inert says both things at
-            // once, and the line underneath says what unlocks it
-            DetailsTracking(
-                accounts: vm.trackerAccounts,
-                links: vm.links,
-                localProgress: vm.localProgress,
-                enabled: vm.inLibrary,
-                needingSignIn: vm.trackersNeedingSignIn,
-                syncing: vm.syncingTrackers,
-                onLink: { tracker in linking = tracker },
-                onOpen: { link in managing = link },
-                onConnect: { showingTracking = true },
-                onRetry: { link in Task { await vm.retryTracker(link) } }
-            )
-
-            if !vm.origins.isEmpty {
-                DetailsSources(
-                    origins: vm.origins,
-                    retrying: vm.retrying,
-                    onSetPrimary: { id in Task { await vm.setPrimary(id) } },
-                    onReorder: { ids in Task { await vm.reorderOrigins(ids) } },
-                    // its chapters go with it, so this one asks first
-                    onRemove: { id in removing = vm.origins.first { $0.id == id } },
-                    onRetry: { id in Task { await vm.retry(origin: id) } }
-                )
-            }
-
-            DetailsMetadata(
-                classification: vm.classification,
-                publication: vm.publication,
-                readCount: vm.readCount,
-                totalCount: vm.chapters.count,
-                lastFetchedDate: vm.lastMetadataFetch,
-                lastReadDate: vm.lastReadDate
-            )
-
-            DetailsChapters(
-                chapters: vm.chapters,
-                isFetching: vm.isFetchingChapters,
-                hasFetched: vm.hasFetchedChapters,
-                sourceCount: vm.origins.count,
-                showAllChapters: vm.showAllChapters,
-                showHalfChapters: vm.showHalfChapters,
-                onShowAllChapters: { on in Task { await vm.setShowAllChapters(on) } },
-                onShowHalfChapters: { on in Task { await vm.setShowHalfChapters(on) } },
-                onSources: { showingSourceOrder = true },
-                onScanlators: { showingScanlatorOrder = true },
-                onLanguages: { showingLanguageOrder = true },
-                onMark: { read, numbers in requestMark(vm, read: read, numbers: numbers) },
-                downloads: compositor.downloads,
-                onDownload: { id in
-                    compositor.downloads.enqueue(chapter: ChapterRecord.ID(rawValue: id))
-                },
-                onCancelDownload: { id in
-                    compositor.downloads.cancel(chapter: ChapterRecord.ID(rawValue: id))
-                },
-                onDelete: { id in
-                    compositor.downloads.delete(chapter: ChapterRecord.ID(rawValue: id))
-                }
-            ) { chapter in
-                guard let target = vm.read(chapter) else { return }
-                Task { await vm.open(chapter) }
-                reading = target
-            }
-        }
-        .padding(.horizontal, dimensions.spacing.space8)
-        .padding(.bottom, dimensions.spacing.space48)
+        Task { await composer?.chapters.mark(read: request.read, numbers: request.numbers) }
     }
 }

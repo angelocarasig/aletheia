@@ -105,7 +105,7 @@ final class SourcesViewModel {
                         .updateAll(db, field.column.set(to: value))
                 }
             } catch {
-                AppLog.shared.log("source update failed (\(slug)) - \(error)", category: "sources")
+                AppLog.shared.log("source update failed (\(slug)) - \(error)", level: .error, category: "sources")
             }
         }
     }

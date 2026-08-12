@@ -233,7 +233,7 @@ final class ReaderViewModel {
             await engine.open(opening, progress: progress)
         } catch {
             failure = Failure(error, fallback: "Can't Open This Series")
-            AppLog.shared.log("reader open failed - \(error)", category: "reader")
+            AppLog.shared.log("reader open failed - \(error)", level: .error, category: "reader")
         }
     }
 
@@ -312,7 +312,7 @@ final class ReaderViewModel {
                 registry.source(slug: slug)?.descriptor.icon
             }
         } catch {
-            AppLog.shared.log("failed to load chapter list - \(error)", category: "reader")
+            AppLog.shared.log("failed to load chapter list - \(error)", level: .error, category: "reader")
         }
     }
 
@@ -331,7 +331,7 @@ final class ReaderViewModel {
                         .updateAll(db, SeriesRecord.Columns.orientation.set(to: mode.rawValue))
                 }
             } catch {
-                AppLog.shared.log("failed to persist orientation - \(error)", category: "reader")
+                AppLog.shared.log("failed to persist orientation - \(error)", level: .error, category: "reader")
             }
         }
     }
@@ -520,7 +520,6 @@ final class ReaderViewModel {
                 "chapter changed to \(chapter.number.formatted()) (explicit: \(explicit))",
                 category: "reader"
             )
-            AppLog.shared.log("TODO session addChapter", category: "reader")
         }
 
         engine.onChapterFinished = { [weak self] chapter, pages in
@@ -619,7 +618,7 @@ final class ReaderViewModel {
         } catch {
             // nothing landed, so the badge says nothing rather than lying
             engine?.setEvent(nil, for: chapter.id)
-            AppLog.shared.log("failed to record reading event - \(error)", category: "reader")
+            AppLog.shared.log("failed to record reading event - \(error)", level: .error, category: "reader")
         }
     }
 
@@ -645,7 +644,7 @@ final class ReaderViewModel {
                     self.settle(links)
                 }
             } catch {
-                AppLog.shared.log("reader tracker observation failed - \(error)", category: "reader")
+                AppLog.shared.log("reader tracker observation failed - \(error)", level: .error, category: "reader")
             }
         }
     }
@@ -797,7 +796,7 @@ final class ReaderViewModel {
                 try session.insert(db)
             }
         } catch {
-            AppLog.shared.log("failed to record reading session - \(error)", category: "reader")
+            AppLog.shared.log("failed to record reading session - \(error)", level: .error, category: "reader")
         }
     }
 
@@ -864,7 +863,7 @@ final class ReaderViewModel {
             // the offer comes back rather than disappearing on a write that
             // never landed
             completable = true
-            AppLog.shared.log("failed to mark series completed - \(error)", category: "reader")
+            AppLog.shared.log("failed to mark series completed - \(error)", level: .error, category: "reader")
         }
     }
 
@@ -900,7 +899,7 @@ final class ReaderViewModel {
             stored[id] = progress
             lastSave = .now
         } catch {
-            AppLog.shared.log("failed to save progress - \(error)", category: "reader")
+            AppLog.shared.log("failed to save progress - \(error)", level: .error, category: "reader")
         }
     }
 

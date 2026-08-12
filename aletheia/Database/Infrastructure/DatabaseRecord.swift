@@ -8,6 +8,10 @@
 import GRDB
 import Tagged
 
+enum RecordError: Error {
+    case missingIdentifier
+}
+
 protocol DatabaseRecord: FetchableRecord, MutablePersistableRecord, TableRecord {
     associatedtype ID = Tagged<Self, Int64>
 

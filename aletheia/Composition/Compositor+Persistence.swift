@@ -33,7 +33,7 @@ extension Compositor {
                 }
                 AppLog.shared.log("cleaned \(deleted) unread series not in library", category: "clean")
             } catch {
-                AppLog.shared.log("clean FAILED - \(error)", category: "clean")
+                AppLog.shared.log("clean FAILED - \(error)", level: .error, category: "clean")
             }
         }
     }

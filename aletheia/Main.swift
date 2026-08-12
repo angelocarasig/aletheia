@@ -17,6 +17,14 @@ struct AletheiaApp: App {
     // first frame, which is exactly where database work must not happen
     @Environment(\.scenePhase) private var scenePhase
 
+    // the one exception, and it does no work: it starts the drain that empties
+    // the log's intake buffer. anything logged before this - bootstrap included -
+    // is held by the unbounded buffer rather than lost, so the cost of being
+    // early is nothing and the cost of being late is the first launch's lines
+    init() {
+        AppLog.shared.start()
+    }
+
     @State private var bootstrap = Bootstrap()
     @State private var tab: AppTab = .home
     @State private var retaps: [AppTab: Int] = [:]

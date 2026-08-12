@@ -449,14 +449,14 @@ private extension HomeScreen {
     // where you are, not how long you have been away. a duration reads as
     // neglect and a position reads as a place to stand, which is the difference
     // between a shelf a reader uses and one they scroll past
-    static func position(_ entry: HomeViewModel.ShelfEntry) -> String {
+    nonisolated static func position(_ entry: HomeViewModel.ShelfEntry) -> String {
         guard case let .resume(_, number, progress) = entry.target else {
             return "Partway through"
         }
         return "\(Int(progress * 100))% through \(ReadingFormat.chapter(number))"
     }
 
-    static func next(_ entry: HomeViewModel.ShelfEntry) -> String {
+    nonisolated static func next(_ entry: HomeViewModel.ShelfEntry) -> String {
         "Next up: \(ReadingFormat.chapter(entry.target.number))"
     }
 

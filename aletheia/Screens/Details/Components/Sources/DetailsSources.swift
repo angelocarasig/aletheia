@@ -249,33 +249,7 @@ struct DetailsSources: View {
 }
 
 extension DetailsSources {
-    struct Origin: Identifiable, Hashable {
-        let id: Int64
-        let name: String
-        let slug: String
-        let host: String
-        let url: URL?
-        let icon: ImageResource?
-        let priority: Int
-        let chapterCount: Int
-        let fetchedDate: Date?
-        let availability: Availability
-        // the last attempt's error, cleared the moment the source answers again -
-        // so this is what is wrong now, never what once was
-        let failureReason: String?
-        let failedDate: Date?
-
-        var unavailable: Bool { availability != .available }
-
-        // a source the user switched off is not a source that is failing
-        var failing: Bool { failureReason != nil && availability == .available }
-
-        // disabled is the user's own doing, disconnected means the source row
-        // went away, missing means it is no longer compiled into the app
-        enum Availability {
-            case available, disabled, disconnected, missing
-        }
-    }
+    typealias Origin = DetailsComposer.Sources.Origin
 }
 
 // MARK: - Previews

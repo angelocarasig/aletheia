@@ -61,7 +61,7 @@ final class UpdatesViewModel {
             } catch {
                 guard let self else { return }
                 self.failure = Failure(error, fallback: "Couldn't Load Updates")
-                AppLog.shared.log("updates observation failed - \(error)", category: "home")
+                AppLog.shared.log("updates observation failed - \(error)", level: .error, category: "home")
             }
         }
     }

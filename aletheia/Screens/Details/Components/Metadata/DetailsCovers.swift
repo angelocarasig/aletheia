@@ -481,18 +481,5 @@ private struct CoverPreview: View {
 }
 
 extension DetailsCovers {
-    struct Cover: Identifiable, Hashable {
-        let id: Int64
-        // the remote url stays the identity, and stays what Share offers - handing
-        // out a file inside the app group container is a different action entirely
-        let url: URL
-        let local: URL?
-        let sourceName: String?
-        // nil when the contributing source is no longer installed. qualified
-        // because Kingfisher declares an ImageResource of its own
-        let sourceIcon: SwiftUI.ImageResource?
-        let isPreferred: Bool
-
-        var artwork: URL { local ?? url }
-    }
+    typealias Cover = DetailsComposer.Series.Cover
 }

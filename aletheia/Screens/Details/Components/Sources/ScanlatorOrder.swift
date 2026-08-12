@@ -163,16 +163,7 @@ private extension ScanlatorOrder {
 // MARK: - Model
 
 extension ScanlatorOrder {
-    struct Origin: Identifiable, Hashable {
-        let id: Int64
-        let name: String
-        let icon: ImageResource?
-        var scanlators: [Scanlator]
-    }
+    typealias Origin = DetailsComposer.Sources.Group
 
-    struct Scanlator: Identifiable, Hashable {
-        let id: Int64
-        let name: String
-        let chapterCount: Int
-    }
+    typealias Scanlator = DetailsComposer.Sources.Scanlator
 }

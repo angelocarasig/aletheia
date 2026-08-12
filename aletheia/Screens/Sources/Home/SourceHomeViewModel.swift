@@ -45,7 +45,7 @@ final class SourceHomeViewModel {
             let credential = try await requester.forceRefresh(for: auth)
             credentialExpiry = credential.expiresAt
         } catch {
-            AppLog.shared.log("credential refresh failed for '\(source.descriptor.slug)' - \(error)", category: "auth")
+            AppLog.shared.log("credential refresh failed for '\(source.descriptor.slug)' - \(error)", level: .error, category: "auth")
         }
     }
 

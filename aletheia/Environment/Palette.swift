@@ -32,7 +32,11 @@ enum Palette {
 
     // success (grass)
     static let success = Color("grass9")
-    static let successSubtle = Color("grass3")
+    // grass4 rather than the step 3 its siblings use: grass3 in dark is
+    // #1B2A1E, near-black with almost no green left in it, where blue3 keeps a
+    // visible tint from its blue channel. the pair reads as two different
+    // weights of fill rather than two colours of one
+    static let successSubtle = Color("grass4")
     static let successText = Color("grass11")
 
     // a semantic role, paired so text and its background always come from the

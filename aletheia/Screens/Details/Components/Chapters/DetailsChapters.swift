@@ -764,28 +764,5 @@ extension DetailsChapters {
 }
 
 extension DetailsChapters {
-    struct Chapter: Identifiable, Hashable {
-        let id: Int64
-        let number: Double
-        let title: String
-        let scanlator: String
-        let language: LanguageCode
-        let publishedDate: Date
-        let progress: Double
-        let url: URL
-
-        // nil when the origin's source is no longer installed
-        let sourceIcon: ImageResource?
-
-        // an uninstalled or disabled source can still show its chapters, but
-        // nothing can fetch pages for them
-        let canRead: Bool
-
-        // this row's own bytes, not this chapter number's. two sources serving
-        // chapter 44 are two rows with two paths, and downloading one says
-        // nothing about the other (offline-availability.md)
-        let downloaded: Bool
-
-        var finished: Bool { progress >= 1 }
-    }
+    typealias Chapter = DetailsComposer.Chapters.Row
 }

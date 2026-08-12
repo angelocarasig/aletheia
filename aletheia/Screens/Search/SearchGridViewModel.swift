@@ -58,7 +58,29 @@ final class SearchGridViewModel {
     var supportedFilters: [SourceFilter] { source.descriptor.supportedFilters }
     var supportedSort: SourceFilter.Sort { source.descriptor.supportedSort }
     var sortOptions: [SourceFilter.Option] { supportedSort.options }
-    var supportsRefine: Bool { !supportedFilters.isEmpty }
+    var supportsRefine: Bool { !supportedFilters.isEmpty && route == nil }
+
+    // the shelf endpoint a preset may route to. carried for the whole life of
+    // the screen: a shelf is a listing, not a search, so there is no state it
+    // could be dropped on.
+    //
+    // it was not carried at all - `performSearch` rebuilt the query by hand and
+    // left it out - so a preset that had one silently fell through to a plain
+    // match-all search, and Atsumaru's Recently Updated carousel and the grid it
+    // pushed into showed different series under one title
+    var route: String? { preset?.route }
+
+    // a preset IS an ordering, so it never offers a second one: switching the
+    // sort inside "Popular" leaves a screen titled Popular showing something
+    // else. the way to a different ordering is back out to the preset that
+    // means it. paperback's extension for this same site reached the same rule
+    // from the other direction - its sort list is empty on a home section
+    var supportsSort: Bool { preset == nil }
+
+    // a shelf answers one fixed question and ignores text and filters outright
+    // (probed: four spellings of a query parameter, and a filter, all change
+    // nothing), so neither control is rendered rather than rendered inert
+    var supportsSearch: Bool { route == nil }
 
     var selectedSortID: String? { sort?.optionID }
 
@@ -327,7 +349,8 @@ final class SearchGridViewModel {
                 text: searchText.isEmpty ? nil : searchText,
                 filters: filters,
                 sort: sort,
-                page: page
+                page: page,
+                route: route
             )
             let result = try await source.search(query)
 
@@ -349,7 +372,7 @@ final class SearchGridViewModel {
         } catch {
             if loadingMore, page > 1 { page -= 1 }
             failure = Failure(error, fallback: "Couldn't Load")
-            AppLog.shared.log("search failed for '\(source.descriptor.slug)' - \(error)", category: "search")
+            AppLog.shared.log("search failed for '\(source.descriptor.slug)' - \(error)", level: .error, category: "search")
         }
 
         if loadingMore { isLoadingMore = false } else { isLoading = false }

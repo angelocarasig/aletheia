@@ -20,7 +20,7 @@ import Kingfisher
 struct DetailsTrackerCandidate: View {
     let tracker: Tracker
     let candidate: TrackerCandidate
-    // this app's watermark, which is what a link would seed the entry with
+    // how far this app has you read, which is what a link would seed the entry with
     let localProgress: Int
     // another series in the library already points at this entry
     let conflict: String?
@@ -30,6 +30,13 @@ struct DetailsTrackerCandidate: View {
     // already linked: the screen becomes a manage screen and the commit saves
     // rather than links
     var linked: Bool = false
+    // off inside the add-to-library flow. the series was added seconds ago, so
+    // local progress is zero by construction and the banner fires on every link
+    // saying the same thing - which is not a disagreement, it is the expected
+    // state of a fresh row. the series page already shows the divergence as a
+    // standing fact on the tracker row, so this is a duplicate asked at the one
+    // moment the reader has no way to answer it
+    var reconciles: Bool = true
     // read from the link row rather than from the entry this screen fetches, so
     // it still answers while that fetch is running and when it fails - which is
     // exactly when "are these numbers current" is worth asking. nil on the way
@@ -232,7 +239,7 @@ struct DetailsTrackerCandidate: View {
             // moved into Details where it reads next to what it undoes
             if let onClose {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Close", systemImage: "xmark", action: onClose)
+                    Button("Close", systemImage: "chevron.down", action: onClose)
                         .labelStyle(.iconOnly)
                 }
             }
@@ -680,7 +687,7 @@ struct DetailsTrackerCandidate: View {
     // the commit it read as a second thing to press before leaving
     @ViewBuilder
     private var Disagreement: some View {
-        if let entry, entry.isListed, entry.progress != localProgress {
+        if reconciles, let entry, entry.isListed, entry.progress != localProgress {
             let remoteAhead = entry.progress > localProgress
 
             // the cloud is the service and the arrow is which way the number
@@ -866,7 +873,7 @@ struct DetailsTrackerCandidate: View {
         .accessibilityHint("Enter a number")
     }
 
-    // zero, not the local watermark. an explicit edit here is the ONE caller
+    // zero, not how far this app has you read. an explicit edit here is the ONE caller
     // allowed to lower a number - everything automatic carries a monotonic guard
     // precisely so that this can be the exception - and a floor at what this app
     // has read made the control unable to correct the mistake a reader would
@@ -1119,7 +1126,11 @@ struct DetailsTrackerCandidate: View {
                 .padding(.horizontal, dimensions.spacing.space8)
                 .frame(maxWidth: .infinity)
                 .frame(height: dimensions.size.controlL)
-                .foregroundStyle(committed ? AnyShapeStyle(Palette.canvas) : AnyShapeStyle(.primary))
+                .foregroundStyle(
+                    committed
+                        ? AnyShapeStyle(Palette.canvas)
+                        : AnyShapeStyle(saveTint)
+                )
                 .glassEffect(
                     committed
                         ? .regular.tint(Palette.textPrimary).interactive()
@@ -1131,24 +1142,53 @@ struct DetailsTrackerCandidate: View {
                         // the same button, now the way out of what it created
                         unlinking = true
                     } else {
-                        Task {
-                            try? await onCommit(subject, update)
-                            committed = true
-                            baseline = current
-                        }
+                        link()
                     }
                 }
+                .disabled(saving == .saving)
                 .animation(.settle, value: committed)
+                .animation(.settle, value: saving)
                 .sensoryFeedback(.success, trigger: committed)
         }
     }
 
+    // the same four things the Save control says, in the same order, because
+    // linking is a write like any other - it just ends somewhere Save does not,
+    // at a state that stays rather than fading back to idle
+    @ViewBuilder
     private var PrimaryLabel: some View {
-        Group {
-            if committed {
-                Label("Synced", systemImage: "checkmark")
-            } else {
+        if committed {
+            Label("Synced", systemImage: "checkmark")
+        } else {
+            switch saving {
+            case .saving:
+                Label("Linking", systemImage: "progress.indicator")
+                    .symbolEffect(.rotate, options: .repeat(.continuous), isActive: !reduceMotion)
+            case let .failed(reason):
+                Label(reason, systemImage: "exclamationmark.triangle")
+            default:
                 Text("Link to \(tracker.name)")
+            }
+        }
+    }
+
+    // the link half of commit(). it reports the same way and differs at the end:
+    // a save says "Saved" and goes quiet, a link becomes the thing it created
+    // and stays. the error was swallowed with try? before, so a link that failed
+    // reported itself as Synced
+    private func link() {
+        guard saving != .saving else { return }
+
+        Task {
+            saving = .saving
+
+            do {
+                try await onCommit(subject, update)
+                baseline = current
+                saving = .idle
+                committed = true
+            } catch {
+                saving = .failed(Failure(error, fallback: "Couldn't link").title)
             }
         }
     }
@@ -1221,7 +1261,7 @@ struct DetailsTrackerCandidate: View {
         progress = max(remote?.progress ?? 0, localProgress)
         score = remote?.score ?? 0
         // an entry the service does not hold yet opens on what linking would
-        // actually write. progress is the local watermark rather than zero,
+        // actually write. progress is how far this app has you read rather than zero,
         // because that is what the push sends whatever this control shows - and
         // a series with nothing read is want-to-read rather than reading, which
         // is the one part of the default that was asserting something untrue

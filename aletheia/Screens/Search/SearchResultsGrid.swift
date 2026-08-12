@@ -264,11 +264,15 @@ struct SearchGridControls: View {
         static let dotInset: CGFloat = 2
     }
 
+    // a shelf preset has neither control, and the row goes with them rather than
+    // leaving a band of empty glass above the grid
     var body: some View {
-        HStack {
-            SortMenu
-            Spacer()
-            if vm.supportsRefine { RefinePill }
+        if vm.supportsSort || vm.supportsRefine {
+            HStack {
+                if vm.supportsSort { SortMenu }
+                Spacer()
+                if vm.supportsRefine { RefinePill }
+            }
         }
     }
 

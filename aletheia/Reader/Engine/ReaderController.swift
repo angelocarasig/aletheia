@@ -223,6 +223,7 @@ final class ReaderController: UIViewController {
         } else {
             AppLog.shared.log(
                 "append ch\(chapter): \(chapterPages.count) pages, \(measured) measured",
+                level: .debug,
                 category: "reader.layout"
             )
         }
@@ -271,6 +272,7 @@ final class ReaderController: UIViewController {
         else {
             AppLog.shared.log(
                 "evict ch\(chapter): anchor lost, offset untouched",
+                level: .debug,
                 category: "reader.layout"
             )
             return
@@ -292,6 +294,7 @@ final class ReaderController: UIViewController {
             offset \(Int(anchored))→\(Int(restored)), \
             settled at \(Int(vertical ? collectionView.contentOffset.y : collectionView.contentOffset.x))
             """,
+            level: .debug,
             category: "reader.layout"
         )
     }
@@ -640,6 +643,7 @@ final class ReaderController: UIViewController {
                     "resize ch\(page.chapter) p\(page.index): \(Int(estimated))→\(Int(actual)) "
                         + "Δ\(Int(actual - estimated)), anchor moved \(Int(moved)), "
                         + "pending \(Int(pendingOffsetAdjustment))",
+                    level: .debug,
                     category: "reader.layout"
                 )
             }
@@ -694,6 +698,7 @@ final class ReaderController: UIViewController {
             "invalidate: size \(Int(before.height))→\(Int(after.height)), "
                 + "offset \(Int(offset.y))→\(Int(settled.y)), "
                 + "adjust \(Int(adjustment)), residual \(Int(residual))",
+            level: .debug,
             category: "reader.layout"
         )
     }

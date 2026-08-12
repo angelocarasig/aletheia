@@ -138,11 +138,5 @@ private extension LanguageOrder {
 // MARK: - Model
 
 extension LanguageOrder {
-    struct Language: Identifiable, Hashable {
-        // the LanguageCode raw value, which is what gets written back
-        let id: String
-        let flag: String
-        let name: String
-        let chapterCount: Int
-    }
+    typealias Language = DetailsComposer.Sources.Language
 }

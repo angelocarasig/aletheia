@@ -15,6 +15,9 @@ struct AtsumaruSource: SourceService {
 
     private static let cdn = URL(string: "https://cdn.atsu.moe")!
     private static let window = 30
+    // the shelf routes page themselves, 40 at a time, and take no size argument
+    private static let shelfWindow = 40
+    private static let shelfTypes = "Manga,Manwha,Manhua,OEL"
 
     // the field set the site's own search sends, weights included. queried
     // fields are ordered most to least authoritative
@@ -160,7 +163,7 @@ extension AtsumaruSource {
               let data = try? Data(contentsOf: url),
               let entries = try? JSONDecoder().decode([Entry].self, from: data)
         else {
-            AppLog.shared.log("vocabulary \(resource).json missing or unreadable", category: "source")
+            AppLog.shared.log("vocabulary \(resource).json missing or unreadable", level: .warning, category: "source")
             return []
         }
 
@@ -209,16 +212,27 @@ extension AtsumaruSource {
         )
     }
 
-    // series ranked by newest chapter, off the home shelf rather than typesense.
+    // series ranked by newest chapter, off a shelf endpoint rather than
+    // typesense - no field in the collection carries chapter activity, so this
+    // ordering cannot be a sort. every other implementation of this site landed
+    // on the same split (mihon, two paperback extensions, a kotatsu fork), and
+    // none exposes it as a sort option.
+    //
     // `adult` is deliberately never sent: a preset carries no filters so the gate
     // is always shut, and on this route omission IS the exclusion - adult=1 flips
     // the feed to adult-only, not mixed, so there is nothing between to ask for.
-    // the shelf also mixes in the site's web novels, which the manga collection
-    // does not hold and content() could not read - dropped before mapping
+    //
+    // `types` is not optional despite looking it - omitted, the route answers
+    // `{"items": []}` rather than everything. and it filters `type`, NOT
+    // `medium`, so a web novel typed OEL comes back anyway (The Mech Touch is
+    // the standing example) - the collection does not hold those and content()
+    // could not read them, so the medium filter below stays. mihon's extension
+    // sends the same whitelist and ships the same leak
     private func recentlyUpdated(page: Int) async throws -> SearchPage<SeriesStub> {
-        let response: HomeShelf = try await fetch(Self.api("home2/recentlyUpdated", [
-            .init(name: "offset", value: String(max(0, page - 1) * Self.window)),
-            .init(name: "limit", value: String(Self.window))
+        let response: HomeShelf = try await fetch(Self.api("infinite/recentlyUpdated", [
+            // zero-based here, unlike everything else on this host
+            .init(name: "page", value: String(max(0, page - 1))),
+            .init(name: "types", value: Self.shelfTypes)
         ]))
 
         let comics = response.items.filter { $0.medium == "Comic" }
@@ -232,8 +246,9 @@ extension AtsumaruSource {
                 )
             },
             // next is judged on the raw window, not the trimmed one - a page of
-            // mostly novels still means the feed continues
-            next: response.items.count == Self.window ? page + 1 : nil
+            // mostly novels still means the feed continues. the shelf sets its
+            // own page size and it is not ours
+            next: response.items.count == Self.shelfWindow ? page + 1 : nil
         )
     }
 
@@ -489,10 +504,26 @@ private extension AtsumaruSource {
 
     // every image path is site-relative and 301s to the cdn. resolving it here
     // spares each one a redirect
+    // the two backends spell one file two ways. typesense answers
+    // "/static/posters/x-medium.avif" and the shelf routes answer
+    // "posters/x-medium.avif" for the same bytes - so resolving either against
+    // the cdn verbatim gets one of them right and 404s the other. everything is
+    // reduced to its bare path and then given the one prefix that works.
+    //
+    // this is what made the Recently Updated covers blank while search covers
+    // loaded: same series, same file, one leading segment apart. mihon's
+    // extension carries the identical normalisation (removePrefix("/") then
+    // removePrefix("static/"), then baseUrl + "/static/"), which is how a second
+    // implementation confirms it is the site and not us
     static func asset(_ path: String?) -> URL? {
         guard let path, !path.isEmpty else { return nil }
         if path.hasPrefix("http") { return URL(string: path) }
-        return URL(string: path, relativeTo: cdn)?.absoluteURL
+
+        var bare = Substring(path)
+        while bare.hasPrefix("/") { bare = bare.dropFirst() }
+        if bare.hasPrefix("static/") { bare = bare.dropFirst("static/".count) }
+
+        return cdn.appending(path: "static").appending(path: String(bare))
     }
 
     static func poster(_ path: String?) -> URL? {

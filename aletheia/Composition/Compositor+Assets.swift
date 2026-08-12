@@ -102,7 +102,7 @@ actor CoverDownloader {
                 try await database.writer.write { db in
                     try CoverRecord.forget(Array(missing), in: db)
                 }
-                log.log("cleared \(missing.count) cover path(s) with no file", category: "assets")
+                log.log("cleared \(missing.count) cover path(s) with no file", level: .warning, category: "assets")
             }
         } catch {
             // a failed read must never be mistaken for an empty keep set - that
@@ -121,7 +121,7 @@ actor CoverDownloader {
                 try Self.backlog(limit: Limits.backlog, in: db)
             }
         } catch {
-            log.log("backlog read FAILED - \(error)", category: "assets")
+            log.log("backlog read FAILED - \(error)", level: .error, category: "assets")
             return
         }
 
@@ -185,7 +185,7 @@ actor CoverDownloader {
             // back for it: this pass has already filtered its queue
             await enqueue(SeriesRecord.ID(rawValue: series))
         } catch {
-            log.log("could not promote past cover \(dead) - \(error)", category: "assets")
+            log.log("could not promote past cover \(dead) - \(error)", level: .error, category: "assets")
         }
     }
 
@@ -220,7 +220,7 @@ actor CoverDownloader {
                 written[row.id] = try await store.store(asset)
             } catch {
                 failures[row.id, default: 0] += 1
-                log.log("cover \(row.id) failed - \(error)", category: "assets")
+                log.log("cover \(row.id) failed - \(error)", level: .error, category: "assets")
 
                 // a url that is GONE is not a url to try again. counting attempts
                 // against it burns three requests a launch forever, and - worse -
@@ -251,7 +251,7 @@ actor CoverDownloader {
                 }
             }
         } catch {
-            log.log("could not record \(written.count) cover path(s) - \(error)", category: "assets")
+            log.log("could not record \(written.count) cover path(s) - \(error)", level: .error, category: "assets")
         }
     }
 }

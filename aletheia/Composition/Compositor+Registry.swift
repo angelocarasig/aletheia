@@ -43,7 +43,7 @@ extension Compositor {
                 }
                 AppLog.shared.log("seeded \(records.count) source(s) into DB", category: "seed")
             } catch {
-                AppLog.shared.log("seed FAILED - \(error)", category: "seed")
+                AppLog.shared.log("seed FAILED - \(error)", level: .error, category: "seed")
             }
         }
     }

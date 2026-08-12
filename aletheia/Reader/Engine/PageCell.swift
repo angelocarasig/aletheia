@@ -151,6 +151,8 @@ final class PageCell: UICollectionViewCell {
         doubleTap.numberOfTapsRequired = 2
         imageView.addGestureRecognizer(doubleTap)
 
+        imageView.addInteraction(UIContextMenuInteraction(delegate: self))
+
         NSLayoutConstraint.activate([
             progress.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
             progress.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
@@ -234,5 +236,88 @@ extension PageCell: UIScrollViewDelegate {
     func scrollViewDidEndZooming(_ scrollView: UIScrollView, with view: UIView?, atScale scale: CGFloat) {
         guard scale <= Layout.minimumZoom else { return }
         resetZoom()
+    }
+}
+
+// MARK: - UIContextMenuInteractionDelegate
+
+extension PageCell: UIContextMenuInteractionDelegate {
+    func contextMenuInteraction(
+        _ interaction: UIContextMenuInteraction,
+        configurationForMenuAtLocation location: CGPoint
+    ) -> UIContextMenuConfiguration? {
+        // the decoded page, not its url: a source url is often signed, expires,
+        // and needs the credential headers to fetch at all, so handing one to
+        // another app gives them something that will not open
+        guard !imageView.isHidden, let image = imageView.image else { return nil }
+
+        return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { [weak self] _ in
+            UIMenu(children: [
+                UIAction(title: "Copy", image: UIImage(systemName: "doc.on.doc")) { _ in
+                    UIPasteboard.general.image = image
+                },
+                UIAction(title: "Save to Photos", image: UIImage(systemName: "square.and.arrow.down")) { _ in
+                    UIImageWriteToSavedPhotosAlbum(image, nil, nil, nil)
+                },
+                UIAction(title: "Share", image: UIImage(systemName: "square.and.arrow.up")) { _ in
+                    self?.share(image)
+                }
+            ])
+        }
+    }
+
+    // the image view fills the cell and the page is drawn aspect-fit inside it,
+    // so the default preview lifts the letterboxing with it - a portrait page on
+    // a wide screen reads as a mostly-empty card
+    func contextMenuInteraction(
+        _ interaction: UIContextMenuInteraction,
+        previewForHighlightingMenuWithConfiguration configuration: UIContextMenuConfiguration
+    ) -> UITargetedPreview? {
+        preview()
+    }
+
+    func contextMenuInteraction(
+        _ interaction: UIContextMenuInteraction,
+        previewForDismissingMenuWithConfiguration configuration: UIContextMenuConfiguration
+    ) -> UITargetedPreview? {
+        preview()
+    }
+
+    private func preview() -> UITargetedPreview {
+        let parameters = UIPreviewParameters()
+        parameters.backgroundColor = .clear
+        parameters.visiblePath = UIBezierPath(rect: drawn)
+        return UITargetedPreview(view: imageView, parameters: parameters)
+    }
+
+    private var drawn: CGRect {
+        let bounds = imageView.bounds
+        guard let size = imageView.image?.size, size.width > 0, size.height > 0 else { return bounds }
+
+        let scale = min(bounds.width / size.width, bounds.height / size.height)
+        let fitted = CGSize(width: size.width * scale, height: size.height * scale)
+
+        return CGRect(
+            x: bounds.midX - fitted.width / 2,
+            y: bounds.midY - fitted.height / 2,
+            width: fitted.width,
+            height: fitted.height
+        )
+    }
+
+    // UIActivityViewController needs a presenter and a cell has none, so it
+    // walks the responder chain rather than being handed one - the alternative
+    // is a closure the controller sets on every cell for this one action
+    private func share(_ image: UIImage) {
+        var responder: UIResponder? = next
+        while let current = responder, !(current is UIViewController) {
+            responder = current.next
+        }
+        guard let controller = responder as? UIViewController else { return }
+
+        let activity = UIActivityViewController(activityItems: [image], applicationActivities: nil)
+        activity.popoverPresentationController?.sourceView = imageView
+        activity.popoverPresentationController?.sourceRect = drawn
+        controller.present(activity, animated: true)
     }
 }

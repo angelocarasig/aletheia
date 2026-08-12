@@ -366,23 +366,9 @@ extension DetailsEdit {
 }
 
 extension DetailsEdit {
-    struct Synopsis: Identifiable, Hashable {
-        // the origin it came from, not the series
-        let id: Int64
-        let sourceName: String?
-        let sourceIcon: ImageResource?
-        let text: String
-        let isPreferred: Bool
-    }
+    typealias Synopsis = DetailsComposer.Series.Synopsis
 
-    struct Metadata: Identifiable, Hashable {
-        let id: Int64
-        let sourceName: String?
-        let sourceIcon: ImageResource?
-        let classification: Classification
-        let publication: Publication
-        let isPreferred: Bool
-    }
+    typealias Metadata = DetailsComposer.Series.Metadata
 }
 
 // MARK: - Previews

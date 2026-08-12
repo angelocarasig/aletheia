@@ -37,10 +37,10 @@ final class WebRenderer {
         for attempt in 1...max(1, attempts) {
             let session = await Session(url: url, credential: credential, capturing: pattern)
             if let body = try await Capture.wait(from: session.bridge, timeout: timeout) {
-                log.log("sniffed \(pattern) (\(body.count) bytes)", category: "render")
+                log.log("sniffed \(pattern) (\(body.count) bytes)", level: .debug, category: "render")
                 return body
             }
-            log.log("sniff timed out for \(pattern) (attempt \(attempt)/\(attempts))", category: "render")
+            log.log("sniff timed out for \(pattern) (attempt \(attempt)/\(attempts))", level: .debug, category: "render")
         }
         throw RenderError.noContent
     }
@@ -58,7 +58,7 @@ final class WebRenderer {
 
         var bodies: [String] = []
         guard let first = try await Capture.wait(from: bridge, timeout: timeout) else {
-            log.log("sniffPaged: no response for \(pattern)", category: "render")
+            log.log("sniffPaged: no response for \(pattern)", level: .debug, category: "render")
             return bodies
         }
         bodies.append(first)
@@ -70,7 +70,7 @@ final class WebRenderer {
             bodies.append(body)
         }
 
-        log.log("sniffPaged \(pattern): \(bodies.count) page(s)", category: "render")
+        log.log("sniffPaged \(pattern): \(bodies.count) page(s)", level: .debug, category: "render")
         return bodies
     }
 
@@ -90,7 +90,7 @@ final class WebRenderer {
 
         var pages: [String] = []
         guard let first = try await waitRendered(bridge, selector: selector, timeout: timeout) else {
-            log.log("renderPaged: \(selector) never appeared", category: "render")
+            log.log("renderPaged: \(selector) never appeared", level: .debug, category: "render")
             return pages
         }
         pages.append(first)
@@ -100,7 +100,7 @@ final class WebRenderer {
             if let html = try await outerHTML(bridge) { pages.append(html) }
         }
 
-        log.log("renderPaged \(selector): \(pages.count) page(s)", category: "render")
+        log.log("renderPaged \(selector): \(pages.count) page(s)", level: .debug, category: "render")
         return pages
     }
 
@@ -119,7 +119,7 @@ final class WebRenderer {
     ) async throws -> String {
         let clock = ContinuousClock()
         let started = clock.now
-        log.log("run: opening \(url.absoluteString)", category: "render")
+        log.log("run: opening \(url.absoluteString)", level: .debug, category: "render")
 
         let session = await Session(
             url: url,
@@ -136,7 +136,7 @@ final class WebRenderer {
         defer { withExtendedLifetime(session) {} }
 
         guard try await session.ready(anchor: selector, within: timeout) else {
-            log.log("run: \(selector ?? "document") never settled", category: "render")
+            log.log("run: \(selector ?? "document") never settled", level: .debug, category: "render")
             throw RenderError.noContent
         }
         let settled = clock.now
@@ -147,6 +147,7 @@ final class WebRenderer {
         // process launch, settle is the site booting, script is the work itself
         log.log(
             "run: build \(Self.ms(built - started))ms · settle \(Self.ms(settled - built))ms · script \(Self.ms(clock.now - settled))ms · \(json.count) bytes",
+            level: .debug,
             category: "render"
         )
         return json
@@ -188,7 +189,7 @@ final class WebRenderer {
             return json
 
         case .overran:
-            log.log("run: script overran \(timeout), abandoning the page", category: "render")
+            log.log("run: script overran \(timeout), abandoning the page", level: .debug, category: "render")
             // best effort - the stuck call may never notice, but a fresh session
             // is cheaper than a wedged one held open
             session.discard()

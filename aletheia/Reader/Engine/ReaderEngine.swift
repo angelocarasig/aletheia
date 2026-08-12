@@ -557,6 +557,7 @@ final class ReaderEngine {
                 self.controller?.reloadSeparators()
                 AppLog.shared.log(
                     "preload failed for chapter \(target.id) - \(error)",
+                    level: .error,
                     category: "reader"
                 )
             }

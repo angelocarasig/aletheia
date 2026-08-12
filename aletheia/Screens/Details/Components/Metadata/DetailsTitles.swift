@@ -194,14 +194,7 @@ struct DetailsTitles: View {
 }
 
 extension DetailsTitles {
-    struct Title: Identifiable, Hashable {
-        let id: Int64
-        let value: String
-        let sourceName: String?
-        // nil when the contributing source is no longer installed
-        let sourceIcon: ImageResource?
-        let isPreferred: Bool
-    }
+    typealias Title = DetailsComposer.Series.Title
 }
 
 // MARK: - Previews

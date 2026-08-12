@@ -232,6 +232,15 @@ struct DetailsTracking: View {
                     // service owns the list, so a disagreement is shown and the
                     // reader decides. the catch-up lives behind the row
                     Text("\(localProgress) here · \(link.progress) on \(tracker.name)")
+                } else if let synced = link.synced {
+                    // the stamp ticks, so it comes off the same clock the
+                    // Trouble line below uses - one Text either way, built from
+                    // the string LiveRelative hands back rather than an HStack
+                    LiveRelative(date: synced) { relative in
+                        Text("\(link.summary) · synced \(relative)")
+                            .contentTransition(.numericText())
+                            .animation(.default, value: relative)
+                    }
                 } else {
                     Text(link.summary)
                 }
@@ -371,53 +380,7 @@ struct DetailsTracking: View {
 // MARK: - Link
 
 extension DetailsTracking {
-    struct Link: Identifiable, Hashable {
-        let id: Int64
-        let tracker: Tracker
-        let remoteId: Int64
-        let remoteTitle: String
-        let status: Status?
-        let progress: Int
-        let total: Int?
-        // canonical 0...100 whatever the account displays it as
-        let score: Int?
-        let scoreFormat: ScoreFormat
-        // the last time this row and the service agreed, in either direction -
-        // a push landing, a pull on link, or a manual edit. distantPast means it
-        // has never happened, which only a link that failed its own seeding can be
-        let syncedDate: Date
-        let attemptedDate: Date
-        let failureReason: String?
-
-        var url: URL? { tracker.url(for: remoteId) }
-
-        var failing: Bool { failureReason != nil }
-
-        // the service has heard less than we have read. never an error - it is
-        // the ordinary state between finishing a chapter and the push landing,
-        // so it only reads as a disagreement once it is more than one behind
-        func behind(_ local: Int) -> Bool {
-            local > progress + 1
-        }
-
-        // the status used to lead this line and now sits in the pill beside the
-        // title, so what is left is the two numbers: how far, and what it scored
-        var summary: String {
-            var parts: [String] = []
-            parts.append(total.map { "\(progress) of \($0)" } ?? "\(progress) read")
-            if let score, score > 0 { parts.append(scoreFormat.label(for: score)) }
-            // abbreviated, because this is the fourth thing on a caption2 line
-            // that has to fit on one line. omitted when it never happened: the
-            // only way to be here is a link whose seeding failed, and that row
-            // is already carrying the reason on the line below
-            if syncedDate > .distantPast {
-                parts.append(
-                    "synced \(syncedDate.formatted(.relative(presentation: .numeric, unitsStyle: .abbreviated)))"
-                )
-            }
-            return parts.joined(separator: " · ")
-        }
-    }
+    typealias Link = DetailsComposer.Tracking.Link
 }
 
 // MARK: - Previews

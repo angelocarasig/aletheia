@@ -19,6 +19,9 @@ struct DownloadQueueScreen: View {
 
     private enum Layout {
         static let fillOpacity = 0.05
+        // shorter than the gap between two pages landing, so a fast chapter
+        // never has one digit still sliding when the next arrives
+        static let tick: TimeInterval = 0.2
     }
 
     var body: some View {
@@ -69,9 +72,15 @@ private extension DownloadQueueScreen {
         let total = downloads.total
 
         return VStack(alignment: .leading, spacing: dimensions.spacing.space4) {
+            // the same treatment as the per-row page count, on a value that
+            // moves once a chapter rather than once a page - the point is that
+            // a number in this screen never cuts, whatever its cadence
             Text("\(completed) of \(total)")
                 .font(.subheadline)
                 .fontWeight(.medium)
+                .monospacedDigit()
+                .contentTransition(.numericText(value: Double(completed)))
+                .animation(.snappy(duration: Layout.tick), value: completed)
 
             ProgressView(value: total > 0 ? Double(completed) / Double(total) : 0)
                 .tint(.brand)
@@ -135,9 +144,21 @@ private extension DownloadQueueScreen {
                 ProgressView(value: download.fraction)
                     .tint(.brand)
 
+                // the count slides rather than cuts. numericText is the right
+                // tool here and CountingText is not: this value arrives one
+                // page at a time from the downloader, so each change is its own
+                // small transition - where the all-time tiles sweep a whole
+                // range once and need a frame-by-frame tween to do it.
+                //
+                // monospaced so the row does not twitch as digits change width,
+                // and the animation is declared on the view because the write
+                // lands from the downloader with no animation of its own
                 Text("\(download.pagesDone) of \(download.pagesTotal) pages")
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
+                    .monospacedDigit()
+                    .contentTransition(.numericText(value: Double(download.pagesDone)))
+                    .animation(.snappy(duration: Layout.tick), value: download.pagesDone)
             }
             .padding(.top, dimensions.spacing.space2)
 

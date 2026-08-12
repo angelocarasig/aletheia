@@ -216,29 +216,7 @@ extension DetailsDisambiguation {
 }
 
 extension DetailsDisambiguation {
-    struct Candidate: Identifiable, Hashable {
-        let id: Int64
-        let title: String
-        let authors: String?
-        let synopsis: String?
-        let cover: URL?
-        let referer: URL?
-        let read: Int
-        let total: Int
-        let lastReadDate: Date?
-        let addedDate: Date
-
-        var started: Bool { read > 0 }
-
-        // a read date when there is one, the added date when there is not - a
-        // series never opened has nothing else to place it in time
-        var meta: String {
-            if let lastReadDate {
-                return "Last read \(lastReadDate.formatted(.relative(presentation: .numeric)))"
-            }
-            return "Added \(addedDate.formatted(.dateTime.month(.abbreviated).year()))"
-        }
-    }
+    typealias Candidate = DetailsComposer.Identity.Candidate
 }
 
 #Preview {

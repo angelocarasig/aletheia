@@ -18,6 +18,9 @@ enum TrackerError: DescribableError, Equatable {
     case throttled(retryAfter: TimeInterval?)
     case cancelled
     case rejected(String)
+    // the service answered, and its answer is that this entry does not exist -
+    // merged away, deleted, or an id pasted from somewhere it never applied
+    case notFound
     case unavailable
 
     // an auth failure stops the drain rather than failing every remaining item,
@@ -29,8 +32,11 @@ enum TrackerError: DescribableError, Equatable {
         }
     }
 
+    // a missing entry is not terminal - one dead id must not halt the lane every
+    // other series is draining through - but it is not retryable either, because
+    // asking again gets the same answer
     var isRetryable: Bool {
-        !isTerminal && self != .cancelled
+        !isTerminal && self != .cancelled && self != .notFound
     }
 
     var errorDescription: String? {
@@ -41,6 +47,7 @@ enum TrackerError: DescribableError, Equatable {
         case .throttled: "Too many requests"
         case .cancelled: "Cancelled"
         case let .rejected(reason): reason
+        case .notFound: "Entry not found"
         case .unavailable: "The service isn't responding"
         }
     }
@@ -55,6 +62,7 @@ enum TrackerError: DescribableError, Equatable {
         case .throttled: "The service asked us to slow down. This will retry on its own."
         case .cancelled: nil
         case .rejected: "The service refused the change."
+        case .notFound: "The service no longer lists this entry. It may have been merged or removed."
         case .unavailable: "It may be down or unreachable. This will retry on its own."
         }
     }

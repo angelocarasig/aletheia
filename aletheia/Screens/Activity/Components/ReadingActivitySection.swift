@@ -43,6 +43,10 @@ struct ReadingActivitySection: View {
     // cut that feed had which nothing else did, and at a large library it is
     // triage ("what have I been ignoring") rather than a memory-lane view
     @State private var bySeries = false
+    // 0 to 1, and every all-time tile multiplies its own total by it
+    @State private var counted: Double = 0
+    @State private var lifted = false
+    @State private var rolled = false
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -63,6 +67,13 @@ struct ReadingActivitySection: View {
         static let coverHeight: CGFloat = 70
         static let placeholderOpacity = 0.1
         static let collapsedSessions = 5
+        // long enough for the deceleration to be legible, short enough that the
+        // real numbers are not being withheld from someone who came to read them
+        static let rollDuration: TimeInterval = 1.1
+        // small: three cards swelling in unison reads as the section breathing,
+        // and anything past a few percent reads as a layout bug instead
+        static let rollLift: CGFloat = 1.05
+        static let snapDuration: TimeInterval = 0.32
 
         static var heatStart: Date {
             Calendar.current.date(byAdding: .weekOfYear, value: -(heatWeeks - 1), to: .now) ?? .now
@@ -225,25 +236,63 @@ private extension ReadingActivitySection {
     // each tile takes the full width
     @ViewBuilder
     func Totals(_ snapshot: StatsViewModel.Snapshot) -> some View {
-        let tiles = [
-            (Text("\(snapshot.chaptersAllTime)"), "Chapters"),
-            (Text(ReadingFormat.duration(snapshot.secondsAllTime)), "Time Read"),
-            (Text("\(snapshot.pagesAllTime)"), "Pages")
+        let tiles: [(target: Double, format: (Double) -> String, label: String)] = [
+            (Double(snapshot.chaptersAllTime), { "\(Int($0))" }, "Chapters"),
+            (Double(snapshot.secondsAllTime), { ReadingFormat.duration(Int($0)) }, "Time Read"),
+            (Double(snapshot.pagesAllTime), { "\(Int($0))" }, "Pages")
         ]
 
-        if dynamicTypeSize >= .accessibility1 {
-            VStack(spacing: dimensions.spacing.space12) {
-                ForEach(Array(tiles.enumerated()), id: \.offset) { _, tile in
-                    Tile(value: tile.0, label: tile.1)
+        Group {
+            if dynamicTypeSize >= .accessibility1 {
+                VStack(spacing: dimensions.spacing.space12) {
+                    ForEach(Array(tiles.enumerated()), id: \.offset) { _, tile in
+                        Tile(label: tile.label) { Rolling(tile) }
+                    }
                 }
-            }
-        } else {
-            HStack(spacing: dimensions.spacing.space12) {
-                ForEach(Array(tiles.enumerated()), id: \.offset) { _, tile in
-                    Tile(value: tile.0, label: tile.1)
+            } else {
+                HStack(spacing: dimensions.spacing.space12) {
+                    ForEach(Array(tiles.enumerated()), id: \.offset) { _, tile in
+                        Tile(label: tile.label) { Rolling(tile) }
+                    }
                 }
             }
         }
+        // once per launch, and the flag lives on the screen because that is
+        // exactly the lifetime asked for: the tab keeps this alive across visits
+        // and the process is what ends it. no preference, nothing persisted -
+        // reopening the app is the whole trigger
+        .task {
+            guard !rolled else { return }
+            rolled = true
+            guard !reduceMotion else {
+                counted = 1
+                return
+            }
+            CountUpHaptic.play(duration: Layout.rollDuration)
+            // the cards swell while the numbers climb and snap back when they
+            // land, so the ramp's last tap is the release of something the eye
+            // watched build rather than a beep at the end of a counter.
+            //
+            // the snap rides withAnimation's completion rather than a sleep -
+            // it fires when the roll genuinely finishes, which is also the beat
+            // the haptic pattern already scheduled its pop on. two clocks, one
+            // instant, and neither is waiting on the other
+            withAnimation(.easeOut(duration: Layout.rollDuration)) {
+                counted = 1
+                lifted = true
+            } completion: {
+                withAnimation(.snappy(duration: Layout.snapDuration, extraBounce: 0.3)) {
+                    lifted = false
+                }
+            }
+        }
+    }
+
+    // the digits and the ramp read the same fraction, so they decelerate
+    // together - one number animated once, rather than three counters and a
+    // schedule that could drift apart
+    func Rolling(_ tile: (target: Double, format: (Double) -> String, label: String)) -> some View {
+        CountingText(value: counted * tile.target, format: tile.format)
     }
 
     // a caption on the grid rather than two tiles under it: a run is the grid's
@@ -282,11 +331,13 @@ private extension ReadingActivitySection {
         }
     }
 
-    // takes Text, not String - a String parameter is one of the four silent
-    // inflection killers, and the run tiles inflect
-    func Tile(value: Text, label: String) -> some View {
+    // a builder rather than a Text, so the value can be a view that animates
+    // itself. it took Text because a String parameter is one of the four silent
+    // inflection killers - a builder keeps that safe, since a Text passed in is
+    // still a literal at its own call site
+    func Tile(label: String, @ViewBuilder value: () -> some View) -> some View {
         VStack(spacing: dimensions.spacing.space4) {
-            value
+            value()
                 .font(.title3)
                 .fontWeight(.bold)
 
@@ -297,6 +348,10 @@ private extension ReadingActivitySection {
         .frame(maxWidth: .infinity)
         .padding(.vertical, dimensions.spacing.space12)
         .background(.primary.opacity(Layout.fillOpacity), in: .rect(cornerRadius: dimensions.radius.radius12))
+        // each card about its own centre rather than the row about the row's:
+        // scaling the group would slide the outer two sideways, which reads as
+        // the layout shifting instead of the cards swelling
+        .scaleEffect(lifted ? Layout.rollLift : 1)
     }
 
     var granularity: Calendar.Component { scope == .day ? .hour : .day }
@@ -717,4 +772,29 @@ struct SeriesTotal: Identifiable {
     let sittings: Int
 
     var id: Int64 { seriesId }
+}
+
+// MARK: - Counting text
+
+// a number that animates through its own range rather than cutting to it.
+// Animatable is what makes that possible without a timer: SwiftUI interpolates
+// `animatableData` and re-invokes `body` per frame, so the curve, the duration
+// and the cancellation all belong to the animation that set the value.
+//
+// monospaced, or the digits change width as they roll and the tile jitters
+// under its own label
+private struct CountingText: View, Animatable {
+    var value: Double
+    let format: (Double) -> String
+
+    var animatableData: Double {
+        get { value }
+        set { value = newValue }
+    }
+
+    var body: some View {
+        Text(format(value))
+            .monospacedDigit()
+            .contentTransition(.numericText())
+    }
 }

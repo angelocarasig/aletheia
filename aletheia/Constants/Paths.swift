@@ -19,6 +19,13 @@ extension Constants {
 
         static let covers: URL = directory("Covers", backedUp: false)
 
+        // diagnostics about this install, so they mean nothing on the next one -
+        // restoring last month's log onto a new device would be actively
+        // confusing. the app group rather than Application Support because every
+        // other path this app owns lives here, and a future extension writing
+        // its own lines wants the same file
+        static let logs: URL = directory("Logs", backedUp: false)
+
         // stored paths are container-relative: the container itself carries a uuid
         // that changes across installs, so an absolute one rots
         //

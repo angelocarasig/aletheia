@@ -239,7 +239,7 @@ extension Compositor {
                     try Self.work(collection: collection, sort: sort, ascending: ascending, registry: registry, in: db)
                 }
             } catch {
-                log.log("library refresh could not build its work list - \(error)", category: "refresh")
+                log.log("library refresh could not build its work list - \(error)", level: .error, category: "refresh")
                 return
             }
 
@@ -681,7 +681,7 @@ actor OriginRefresher {
                 try Self.write(detail, for: originId, in: db)
             }
         } catch {
-            log.log("origin \(originId.rawValue) metadata refresh failed - \(error)", category: "refresh")
+            log.log("origin \(originId.rawValue) metadata refresh failed - \(error)", level: .error, category: "refresh")
         }
     }
 
@@ -760,6 +760,7 @@ actor OriginRefresher {
 
             log.log(
                 "origin \(originId.rawValue) \(listing.summary), \(added) new, had \(stored)",
+                level: .debug,
                 category: "refresh"
             )
 
@@ -789,7 +790,7 @@ actor OriginRefresher {
                     )
             }
 
-            log.log("origin \(originId.rawValue) chapter fetch FAILED - \(error)", category: "refresh")
+            log.log("origin \(originId.rawValue) chapter fetch FAILED - \(error)", level: .error, category: "refresh")
             return .failed(reason)
         }
     }

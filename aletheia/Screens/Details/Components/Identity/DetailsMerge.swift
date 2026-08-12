@@ -625,22 +625,7 @@ extension DetailsMerge {
         let total: Int
     }
 
-    struct Candidate: Identifiable, Hashable {
-        let id: Int64
-        let title: String
-        let authors: String?
-        let synopsis: String?
-        let cover: URL?
-        let referer: URL?
-        let status: Status
-        let publication: Publication
-        let origins: Int
-        let read: Int
-        let total: Int
-        let score: Double
-
-        var match: Int { Int((score * 100).rounded()) }
-    }
+    typealias Candidate = DetailsComposer.Identity.Match
 
     // wraps the target so the confirm step is its own navigation value - pushing
     // a Candidate again would land back on the comparison

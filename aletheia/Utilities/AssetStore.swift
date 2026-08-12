@@ -95,7 +95,7 @@ struct AssetStore: AssetStoring {
                     try manager.removeItem(at: entry)
                     removed += 1
                 } catch {
-                    log.log("could not remove \(entry.lastPathComponent) - \(error)", category: "assets")
+                    log.log("could not remove \(entry.lastPathComponent) - \(error)", level: .error, category: "assets")
                 }
             }
         }

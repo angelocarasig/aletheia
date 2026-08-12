@@ -32,7 +32,7 @@ struct DetailsActions: View {
 
     private enum Layout {
         static let contentLines = 1
-        static let detachedOpacity: Double = 0.5
+        static let detachedOpacity: Double = 0.3
     }
 
     // the three fixed-width controls share one shape, so the row reads as a

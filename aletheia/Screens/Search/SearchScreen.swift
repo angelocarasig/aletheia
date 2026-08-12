@@ -303,11 +303,16 @@ struct SearchScreen: View {
             VStack(spacing: dimensions.spacing.space12) {
                 // no tint for an adult source: the title names it and the blur
                 // control sits beside it, so colouring the field only says
-                // something already said twice
-                Searchbar(
-                    searchText: $gvm.searchText,
-                    placeholder: "Search \(source.descriptor.name)"
-                )
+                // something already said twice.
+                //
+                // absent on a shelf preset: that endpoint discards text, so a
+                // field there would accept a query and return the same rows
+                if gvm.supportsSearch {
+                    Searchbar(
+                        searchText: $gvm.searchText,
+                        placeholder: "Search \(source.descriptor.name)"
+                    )
+                }
 
                 // no applied-filter rail: the refine sheet lists what is on and is
                 // one tap away, and the dot on the pill says that something is

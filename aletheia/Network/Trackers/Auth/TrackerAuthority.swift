@@ -51,7 +51,7 @@ actor TrackerAuthority {
             // anilist's year is up, or myanimelist's refresh token was refused.
             // not an error state to the reader in the first case and rare in the
             // second, but every request from here fails until they sign in again
-            log.log("[\(tracker.rawValue)] token expired with no refresh - reauthentication required", category: "trackers")
+            log.log("[\(tracker.rawValue)] token expired with no refresh - reauthentication required", level: .warning, category: "trackers")
             throw TrackerError.reauthenticationRequired
         }
 
@@ -272,7 +272,7 @@ actor TrackerAuthority {
             stranded.refreshToken = nil
             stranded.expiresDate = .distantPast
             try? store(stranded, for: tracker)
-            log.log("[\(tracker.rawValue)] refresh token rejected - reauthentication required", category: "trackers")
+            log.log("[\(tracker.rawValue)] refresh token rejected - reauthentication required", level: .error, category: "trackers")
             throw TrackerError.reauthenticationRequired
         }
 
@@ -295,7 +295,7 @@ actor TrackerAuthority {
         do {
             try Keychain.trackers.save(credential, account: tracker.rawValue)
         } catch {
-            log.log("[\(tracker.rawValue)] keychain save FAILED - \(error)", category: "trackers")
+            log.log("[\(tracker.rawValue)] keychain save FAILED - \(error)", level: .error, category: "trackers")
             throw error
         }
     }

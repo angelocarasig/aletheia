@@ -20,6 +20,7 @@ struct ActivityScreen: View {
     @State private var vm: ActivityViewModel?
     @State private var showingFailures = false
     @State private var showingDownloads = false
+    @State private var showingUpdates = false
     @State private var showingTracking = false
 
     private struct ReadingTarget: Identifiable, Hashable {
@@ -85,6 +86,11 @@ struct ActivityScreen: View {
             }
             .navigationDestination(isPresented: $showingDownloads) {
                 DownloadQueueScreen(downloads: compositor.downloads)
+            }
+            // the same screen Home pushes, not a second one: a feed of what
+            // arrived has one owner, and this is a second door onto it
+            .navigationDestination(isPresented: $showingUpdates) {
+                UpdatesScreen()
             }
             // the account screen rather than a per-series list: a dead account is
             // one fact about one service, and signing in is the only thing that
@@ -175,6 +181,9 @@ private extension ActivityScreen {
                 signedOut: Tracker.allCases.filter(compositor.trackers.needingSignIn.contains)
             ),
             onCancelRefresh: { refresh.cancel() },
+            // what the walk produced, which is the question the row's own
+            // "Checked 2 hours ago" raises and could not answer
+            onOpenUpdates: { showingUpdates = true },
             onOpenDownloads: { showingDownloads = true },
             // the count is the awareness; the list is the attribution and the
             // retry. a series can be healthy on one source and dead on another,

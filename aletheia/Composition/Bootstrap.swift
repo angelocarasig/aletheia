@@ -95,7 +95,7 @@ final class Bootstrap {
             self.compositor = compositor
             phase = .ready
         } catch {
-            AppLog.shared.log("bootstrap FAILED - \(error)", category: "bootstrap")
+            AppLog.shared.log("bootstrap FAILED - \(error)", level: .error, category: "bootstrap")
             phase = .failed(Failure(error, fallback: "Couldn't Start"))
         }
     }

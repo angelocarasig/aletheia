@@ -16,6 +16,7 @@ struct SettingsScreen: View {
 
     @State private var showingTracking = false
     @State private var showingRefresh = false
+    @State private var showingLogs = false
 
     private enum Layout {
         static let glyphWidth: CGFloat = 28
@@ -41,6 +42,20 @@ struct SettingsScreen: View {
                         detail: "When new chapters are checked for"
                     ) { showingRefresh = true }
                 }
+
+                VStack(alignment: .leading, spacing: dimensions.spacing.space12) {
+                    SectionHeader("Diagnostics")
+
+                    // shipped rather than DEBUG-gated: the run worth reading is
+                    // the one that already crashed, on a device with no Xcode
+                    // attached, which is exactly the build a condition would
+                    // have excluded
+                    Card(
+                        "Logs",
+                        systemImage: "text.alignleft",
+                        detail: "What the app recorded, including last launch"
+                    ) { showingLogs = true }
+                }
             }
             .padding(.horizontal, dimensions.screenMargin)
             .padding(.vertical, dimensions.spacing.space16)
@@ -50,6 +65,7 @@ struct SettingsScreen: View {
         .navigationBarTitleDisplayMode(.inline)
         .navigationDestination(isPresented: $showingTracking) { TrackingScreen() }
         .navigationDestination(isPresented: $showingRefresh) { RefreshSettingsScreen() }
+        .navigationDestination(isPresented: $showingLogs) { LogScreen() }
         .task { compositor.trackers.hydrate() }
     }
 

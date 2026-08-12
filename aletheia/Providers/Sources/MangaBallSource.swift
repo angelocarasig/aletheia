@@ -247,6 +247,7 @@ extension MangaBallSource {
             guard cleaned != text else {
                 AppLog.shared.log(
                     "[mangaball] waf blocked \"\(text)\" and the denylist matched nothing - a new trigger word is live",
+                    level: .warning,
                     category: "source"
                 )
                 throw NetworkError.badResponse(status: response.statusCode, response: response)
@@ -450,7 +451,7 @@ extension MangaBallSource {
     // upstream parse bugs arrive with the same confidence as good data: one
     // sampled series carries a chapter 8217 - the decimal entity for a right
     // single quote surviving as digits - among 261 real ones. left alone it
-    // becomes a best_chapter slot, the read watermark marks the whole series read
+    // becomes a best_chapter slot, the furthest-read number marks the whole series read
     // on open, and the tracker pushes 8217. the bound scales with the series, so
     // a genuinely four-digit webtoon stays inside it
     static func ceiling(for numbers: [Double]) -> Double {

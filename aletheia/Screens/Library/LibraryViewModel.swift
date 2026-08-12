@@ -189,7 +189,7 @@ final class LibraryViewModel {
             await loadVocabularies()
         } catch {
             failure = Failure(error, fallback: "Couldn't Load Library")
-            AppLog.shared.log("library load failed - \(error)", category: "library")
+            AppLog.shared.log("library load failed - \(error)", level: .error, category: "library")
         }
 
         await loadCollections()
@@ -273,7 +273,7 @@ final class LibraryViewModel {
             // present to be askable
             trackers = trackerMembership.isEmpty ? [] : TrackerFilter.ordered
         } catch {
-            AppLog.shared.log("library vocabularies failed - \(error)", category: "library")
+            AppLog.shared.log("library vocabularies failed - \(error)", level: .error, category: "library")
         }
     }
 
@@ -305,7 +305,7 @@ final class LibraryViewModel {
                 )
             }
         } catch {
-            AppLog.shared.log("collections load failed - \(error)", category: "library")
+            AppLog.shared.log("collections load failed - \(error)", level: .error, category: "library")
         }
     }
 
@@ -339,7 +339,7 @@ final class LibraryViewModel {
             guard !Task.isCancelled else { return }
             withAnimation(.smooth) { matches = found }
         } catch {
-            AppLog.shared.log("library search failed - \(error)", category: "library")
+            AppLog.shared.log("library search failed - \(error)", level: .error, category: "library")
             withAnimation(.smooth) { matches = [] }
         }
     }
@@ -358,7 +358,7 @@ final class LibraryViewModel {
             await loadCollections()
         } catch {
             failure = Failure(error, fallback: "Couldn't Load Library")
-            AppLog.shared.log("collection create failed - \(error)", category: "library")
+            AppLog.shared.log("collection create failed - \(error)", level: .error, category: "library")
         }
     }
 

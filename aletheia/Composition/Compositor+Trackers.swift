@@ -103,7 +103,7 @@ extension Compositor {
 
         // one observation rather than a call at every site that records reading.
         // the pending columns are the queue, so anything that writes them - the
-        // reader, a batch mark, an attach watermark, an edit sheet - wakes this
+        // reader, a batch mark, an attach catch-up, an edit sheet - wakes this
         // without having to know it exists
         func restore() {
             guard watch == nil else { return }
@@ -123,7 +123,7 @@ extension Compositor {
                         if count > 0 { self.schedule() }
                     }
                 } catch {
-                    self?.log.log("tracker queue observation FAILED - \(error)", category: "trackers")
+                    self?.log.log("tracker queue observation FAILED - \(error)", level: .error, category: "trackers")
                 }
             }
 
@@ -132,7 +132,7 @@ extension Compositor {
 
         // no delay. a debounce was here to collapse a sitting of chapters into
         // one push, and it collapsed nothing: the queue is only written when the
-        // chapter watermark moves, which is once per chapter finished, and those
+        // furthest-read chapter moves, which is once per chapter finished, and those
         // are minutes apart. what it did do was add its whole length to every
         // sync, in front of a row that says "Syncing" for the duration
         func schedule() {
@@ -178,7 +178,7 @@ extension Compositor {
                         try SeriesTrackerRecord.dirty(for: tracker, in: $0)
                     }
                 } catch {
-                    log.log("[\(tracker.rawValue)] drain FAILED to read queue - \(error)", category: "trackers")
+                    log.log("[\(tracker.rawValue)] drain FAILED to read queue - \(error)", level: .error, category: "trackers")
                     return
                 }
 
@@ -194,7 +194,7 @@ extension Compositor {
                 // it is
                 guard !credential.needsReauthentication else {
                     if deadAccounts.insert(tracker).inserted {
-                        log.log("[\(tracker.rawValue)] needs reauthentication - lane halted", category: "trackers")
+                        log.log("[\(tracker.rawValue)] needs reauthentication - lane halted", level: .warning, category: "trackers")
                     }
                     return
                 }
@@ -428,7 +428,7 @@ actor TrackerSyncer {
         // entry the reader already has at sixty is never dragged down to ours
         let (local, started) = try await database.reader.read { db in
             (
-                try SeriesTrackerRecord.watermark(for: series, in: db),
+                try SeriesTrackerRecord.furthest(for: series, in: db),
                 try Self.startDate(for: series, in: db)
             )
         }

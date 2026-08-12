@@ -114,7 +114,7 @@ extension NHentaiSource {
               let data = try? Data(contentsOf: url),
               let entries = try? JSONDecoder().decode([String: [Entry]].self, from: data)
         else {
-            AppLog.shared.log("vocabulary \(resource).json missing or unreadable", category: "source")
+            AppLog.shared.log("vocabulary \(resource).json missing or unreadable", level: .warning, category: "source")
             return [:]
         }
         return entries
@@ -272,6 +272,7 @@ extension NHentaiSource {
         if response.statusCode == 404 {
             AppLog.shared.log(
                 "[nhentai] gallery \(seriesSlug) 404 on API - falling back to metadata archive (no pages, not readable)",
+                level: .warning,
                 category: "source"
             )
             return try await archived(seriesSlug)

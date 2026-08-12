@@ -10,13 +10,21 @@ import SwiftUI
 // the status zone above the activity feed: always present, never a mystery.
 // idle rows settle to facts (when the library was last checked, what is
 // stored); a running operation takes its row over with the fixed live
-// vocabulary - current item name, x of N, a determinate bar, cancel. controls
-// exist only while they can operate: an idle row is information, not an
-// affordance. live state is in-memory only and never becomes feed rows.
+// vocabulary - current item name, x of N, a determinate bar, cancel. live state
+// is in-memory only and never becomes feed rows.
+//
+// an idle row still opens, revised 2026-08-12. it used to be information only,
+// on the rule that a control exists only while it can operate - but the two
+// idle rows are the only route to two screens that are worth reaching precisely
+// when nothing is running: what arrived on the last walk, and what is already
+// on disk. the rule they were obeying is about a control that cannot ACT, and
+// navigation always can. only the destructive control keeps it: cancel is
+// rendered while a run is live and not otherwise.
 // see docs/features/background-activity.md
 struct ActivityNowSection: View {
     let model: Model
     var onCancelRefresh: () -> Void = {}
+    var onOpenUpdates: () -> Void = {}
     var onOpenDownloads: () -> Void = {}
     var onOpenFailures: () -> Void = {}
     var onOpenTracking: () -> Void = {}
@@ -106,7 +114,14 @@ private extension ActivityNowSection {
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
+
+                Image(systemName: "chevron.right")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
             }
+            .contentShape(.rect)
+            .tappable { onOpenUpdates() }
+            .accessibilityLabel("Library updates")
 
         case let .running(scope, seriesTitle, completed, total):
             VStack(alignment: .leading, spacing: dimensions.spacing.space8) {
@@ -164,7 +179,7 @@ private extension ActivityNowSection {
                         .fontWeight(.medium)
 
                     if stored > 0 {
-                        Text("^[\(stored) chapter](inflect: true) stored")
+                        Text("^[\(stored) chapter](inflect: true) in storage")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     } else {
@@ -174,7 +189,14 @@ private extension ActivityNowSection {
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
+
+                Image(systemName: "chevron.right")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
             }
+            .contentShape(.rect)
+            .tappable { onOpenDownloads() }
+            .accessibilityLabel("Downloads")
 
         case let .active(chapters, progress):
             HStack(spacing: dimensions.spacing.space12) {

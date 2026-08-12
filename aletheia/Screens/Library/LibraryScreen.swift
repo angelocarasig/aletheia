@@ -261,7 +261,7 @@ private extension LibraryScreen {
     }
 
     func log(_ message: String) {
-        AppLog.shared.log("TODO \(message)", category: "library")
+        AppLog.shared.log("TODO \(message)", level: .warning, category: "library")
     }
 }
 

@@ -151,12 +151,7 @@ struct CollectionPicker: View {
 extension CollectionPicker {
     // the membership row as the details screen resolves it: every collection
     // that exists, each saying whether this series is in it
-    struct Item: Identifiable, Hashable {
-        let id: Int64
-        let name: String
-        let count: Int
-        let contains: Bool
-    }
+    typealias Item = DetailsComposer.Library.Collection
 }
 
 // membership is non-exclusive, so the marker is a leading check-circle rather

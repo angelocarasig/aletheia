@@ -20,7 +20,7 @@ struct DetailsTrackerLink: View {
     // what is already linked, so re-linking a service shows what it would replace
     let existing: DetailsTracking.Link?
     let adult: Bool
-    // this app's watermark, shown beside the service's own number
+    // how far this app has you read, shown beside the service's own number
     let localProgress: Int
     let scoreFormat: ScoreFormat
     var onSearch: (String) async throws -> [TrackerCandidate]
@@ -37,6 +37,9 @@ struct DetailsTrackerLink: View {
     // become "Synced" and tapping it again is how the reader backs out
     var onUnlink: (Bool) -> Void
     var onCancel: () -> Void
+    // passed through to the candidate screen this pushes - off inside the
+    // add-to-library flow, where a fresh row has nothing to reconcile
+    var reconciles: Bool = true
 
     @Environment(\.dimensions) private var dimensions
 
@@ -95,6 +98,7 @@ struct DetailsTrackerLink: View {
                         localProgress: localProgress,
                         conflict: conflicts[candidate.id],
                         scoreFormat: scoreFormat,
+                        reconciles: reconciles,
                         onLoad: { try await onLoadEntry(candidate.id) },
                         onCommit: onCommit,
                         onUnlink: onUnlink,
@@ -379,7 +383,7 @@ struct DetailsTrackerLink: View {
         // a pasted link names one entry outright. searching for its digits finds
         // nothing, so the id path is tried first and only falls through when it
         // is not an id at all
-        if DetailsViewModel.remoteId(in: trimmed) != nil {
+        if Tracker.remoteId(in: trimmed) != nil {
             if let resolved = await onResolve(trimmed) {
                 guard !Task.isCancelled else { return }
                 results = [resolved]

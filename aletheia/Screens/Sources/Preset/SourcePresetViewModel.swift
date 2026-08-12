@@ -10,10 +10,14 @@ import Observation
 @MainActor
 @Observable
 final class SourcePresetViewModel {
+    // failed carries its reason rather than being a bare branch marker. the row
+    // draws a full ContentUnavailableView, which has a slot for the sentence
+    // under the title and an honest answer for whether to offer the retry -
+    // both of which the error already knows and a payload-free case threw away
     enum Phase {
         case loading
         case loaded([SeriesStub])
-        case failed
+        case failed(Failure)
     }
 
     private let source: Source
@@ -48,22 +52,30 @@ final class SourcePresetViewModel {
         correlator.observe(items)
     }
 
+    #if DEBUG
+    // previews drive the four branches by hand rather than by loading, so the
+    // one setter lives here beside the property it writes - `phase` is
+    // private(set), and an extension in another file could not reach it
+    func preview(phase: Phase) {
+        self.phase = phase
+    }
+    #endif
+
     func load() async {
         phase = .loading
         do {
             let page = try await source.search(preset.query())
             phase = .loaded(page.items)
             resume()
-        } catch is CancellationError {
+        } catch {
             // navigating away cancels every in-flight preset, which is ordinary
             // and not worth a line each. it arrives as either type - urlsession
             // maps its own cancellation onto NetworkError
-            phase = .failed
-        } catch NetworkError.cancelled {
-            phase = .failed
-        } catch {
-            AppLog.shared.log("preset '\(preset.id)' load failed - \(error)", category: "sources")
-            phase = .failed
+            let cancelled = error is CancellationError || (error as? NetworkError)?.isCancellation == true
+            if !cancelled {
+                AppLog.shared.log("preset '\(preset.id)' load failed - \(error)", level: .error, category: "sources")
+            }
+            phase = .failed(Failure(error, fallback: "Couldn't Load"))
         }
     }
 }

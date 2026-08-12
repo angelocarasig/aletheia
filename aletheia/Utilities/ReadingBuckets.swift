@@ -264,7 +264,7 @@ extension ReadingBuckets {
         assert(week.count == 7)
         assert(week.reduce(0) { $0 + $1.pages } <= 40)
 
-        AppLog.shared.log("reading buckets ok", category: "stats")
+        AppLog.shared.log("reading buckets ok", level: .debug, category: "stats")
     }
 }
 

@@ -77,7 +77,7 @@ final class ContinuedTask {
         // one live task per identifier: a run that picks up more work mid-flight
         // extends the task it already holds rather than asking for a second
         guard task == nil else {
-            log.log("\(identifier) already live, not submitting again", category: "tasks")
+            log.log("\(identifier) already live, not submitting again", level: .warning, category: "tasks")
             return
         }
 
@@ -132,7 +132,7 @@ final class ContinuedTask {
         task.expirationHandler = { [log, identifier] in
             // cancel, system pressure and failure all arrive here identically -
             // the api cannot say which, so neither can we
-            log.log("\(identifier) expired", category: "tasks")
+            log.log("\(identifier) expired", level: .warning, category: "tasks")
             Task { @MainActor in onExpire() }
         }
 

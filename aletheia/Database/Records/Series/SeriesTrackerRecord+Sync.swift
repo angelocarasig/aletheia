@@ -21,7 +21,7 @@ extension SeriesTrackerRecord {
     // per-origin scope - silently changes its answer when the reader reorders
     // their sources. hence flat against chapter joined to origin, max rather than
     // count, and floored. see docs/features/trackers.md §8
-    static func watermark(for seriesId: SeriesRecord.ID, in db: Database) throws -> Int {
+    static func furthest(for seriesId: SeriesRecord.ID, in db: Database) throws -> Int {
         let highest = try Double.fetchOne(db, sql: """
             SELECT MAX(c.\(ChapterRecord.Columns.number.name))
             FROM \(ChapterRecord.databaseTableName) c
@@ -42,7 +42,7 @@ extension SeriesTrackerRecord {
 
         guard !links.isEmpty else { return }
 
-        let progress = try watermark(for: seriesId, in: db)
+        let progress = try furthest(for: seriesId, in: db)
 
         for var link in links where !link.isInert {
             // monotonic in the column as well as at the wire: a sibling row can

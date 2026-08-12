@@ -377,7 +377,7 @@ extension Compositor {
                 failures += 1
                 release(id)
                 index[id]?.fail(reason)
-                log.log("chapter \(id.rawValue) FAILED - \(reason)", category: "downloads")
+                log.log("chapter \(id.rawValue) FAILED - \(reason)", level: .error, category: "downloads")
 
             case let .noSpace(id):
                 // one clear stop rather than the whole queue failing the same way
@@ -645,7 +645,7 @@ actor ChapterDownloader {
             }
             log.log("cleared \(ids.count) download path(s)", category: "downloads")
         } catch {
-            log.log("could not clear \(ids.count) download path(s) - \(error)", category: "downloads")
+            log.log("could not clear \(ids.count) download path(s) - \(error)", level: .error, category: "downloads")
         }
     }
 
@@ -670,7 +670,7 @@ actor ChapterDownloader {
                 try await database.writer.write { db in
                     try ChapterRecord.forget(Array(missing), in: db)
                 }
-                log.log("cleared \(missing.count) chapter path(s) with no files", category: "downloads")
+                log.log("cleared \(missing.count) chapter path(s) with no files", level: .warning, category: "downloads")
             }
         } catch {
             // a failed read must never be mistaken for an empty keep set - that
