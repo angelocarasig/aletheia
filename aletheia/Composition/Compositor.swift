@@ -39,7 +39,8 @@ struct Compositor: Sendable {
             WeebCentralSource(network: network),
             ScansGGSource(network: network),
             NHentaiSource(requester: requester, network: network),
-            ToonilySource(requester: requester)
+            ToonilySource(requester: requester),
+            MangaBallSource(requester: requester)
         ]
 
         self.database = database

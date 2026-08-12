@@ -49,6 +49,13 @@ extension AuthenticatingSource {
     // is what makes the requester capture again and replay, so a wall it cannot
     // recognise reads as an ordinary failure
     func isChallenge(response: HTTPURLResponse, body: Data) -> Bool {
+        isCloudflareChallenge(response: response, body: body)
+    }
+
+    // named separately because an override cannot reach a protocol extension's
+    // default the way a subclass reaches super: a source recognising its own wall
+    // still wants cloudflare's markers underneath, and this is how it asks
+    func isCloudflareChallenge(response: HTTPURLResponse, body: Data) -> Bool {
         if response.value(forHTTPHeaderField: "cf-mitigated")?.lowercased() == "challenge" {
             return true
         }

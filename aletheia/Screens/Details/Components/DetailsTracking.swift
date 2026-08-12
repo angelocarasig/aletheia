@@ -24,6 +24,12 @@ struct DetailsTracking: View {
     // titled Trackers. the rows are the reusable part; the header belongs to a
     // section among other sections, which is not what that page is
     var showsHeader: Bool = true
+    // tracking needs library membership (trackers.md Q6), and the section used to
+    // render nothing at all off-library. a section that vanishes explains nothing
+    // - the reader who owns two accounts and sees no tracking on a series reads it
+    // as broken, which is exactly what happened. it shows, dimmed and inert, with
+    // one line saying what would make it work
+    var enabled: Bool = true
     // connected, but out of road until the reader signs in again - anilist's year
     // running out and myanimelist's refresh token being refused both land here
     var needingSignIn: Set<Tracker> = []
@@ -48,6 +54,10 @@ struct DetailsTracking: View {
         static let tile: CGFloat = 44
         static let fillOpacity: Double = 0.05
         static let settle: Animation = .smooth(duration: 0.3)
+        // far enough down to read as unavailable at a glance, not so far that
+        // the service names stop being legible - the section still has to say
+        // WHAT is waiting for you
+        static let disabledOpacity: Double = 0.4
     }
 
     var body: some View {
@@ -65,7 +75,20 @@ struct DetailsTracking: View {
                     }
                 }
             }
+
+            if !enabled {
+                Text("Add this to your library to track it.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
+        // dimmed AND inert. one without the other is the worse half of each: a
+        // dimmed row that still responds is a lie, and a dead row at full
+        // strength is a control that silently ignores you
+        .opacity(enabled ? 1 : Layout.disabledOpacity)
+        .disabled(!enabled)
+        // the sentence is the state's own explanation, so it fades with it
+        .animation(Layout.settle, value: enabled)
         .animation(Layout.settle, value: links)
         .animation(Layout.settle, value: accounts)
     }
@@ -434,6 +457,7 @@ private struct TrackingPreview: View {
     var localProgress = 42
     var syncing: Set<Tracker> = []
     var needingSignIn: Set<Tracker> = []
+    var enabled = true
     let caption: String
 
     var body: some View {
@@ -446,6 +470,7 @@ private struct TrackingPreview: View {
                 accounts: accounts,
                 links: links,
                 localProgress: localProgress,
+                enabled: enabled,
                 needingSignIn: needingSignIn,
                 syncing: syncing,
                 onLink: { _ in },
@@ -462,6 +487,15 @@ private struct TrackingPreview: View {
     ScrollView {
         VStack(alignment: .leading, spacing: 32) {
             TrackingPreview(accounts: [], caption: "No account connected")
+
+            // the state this section spent its life rendering as nothing at all
+            TrackingPreview(enabled: false, caption: "Not in library - connected")
+
+            TrackingPreview(
+                links: [.sample()],
+                enabled: false,
+                caption: "Not in library - already linked"
+            )
 
             TrackingPreview(caption: "Connected, nothing linked")
 

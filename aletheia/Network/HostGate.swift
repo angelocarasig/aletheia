@@ -16,14 +16,25 @@ import Foundation
 // source id is our own rowid. see docs/features/background-activity.md 8.2.1
 actor HostGate {
     private let limit: Int
+    private let overrides: [String: Int]
     private var active: [String: Int] = [:]
     private var waiting: [String: [Waiter]] = [:]
     // both a hand-off and a cancellation resume the continuation and remove the
     // waiter, so the queue alone cannot say which woke you. membership here does
     private var granted: Set<UUID> = []
 
-    init(limit: Int = Constants.Network.requestsPerHost) {
+    init(
+        limit: Int = Constants.Network.requestsPerHost,
+        overrides: [String: Int] = Constants.Network.requestsPerHostOverrides
+    ) {
         self.limit = limit
+        self.overrides = overrides
+    }
+
+    // a site whose own architecture serialises us gains nothing from a wider
+    // bucket and loses tail latency to it
+    private func limit(for host: String) -> Int {
+        overrides[host] ?? limit
     }
 
     private struct Waiter {
@@ -51,7 +62,7 @@ actor HostGate {
     // caller holds nothing and must not release
     private func acquire(_ host: String) async -> Bool {
         let count = active[host] ?? 0
-        if count < limit {
+        if count < limit(for: host) {
             active[host] = count + 1
             return true
         }

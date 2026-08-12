@@ -708,21 +708,25 @@ struct DetailsScreen: View {
                 DetailsTags(tags: vm.tags)
             }
 
-            // tracking requires library membership, so off-library it renders
-            // nothing at all rather than a Link row that cannot be operated
-            if vm.inLibrary {
-                DetailsTracking(
-                    accounts: vm.trackerAccounts,
-                    links: vm.links,
-                    localProgress: vm.localProgress,
-                    needingSignIn: vm.trackersNeedingSignIn,
-                    syncing: vm.syncingTrackers,
-                    onLink: { tracker in linking = tracker },
-                    onOpen: { link in managing = link },
-                    onConnect: { showingTracking = true },
-                    onRetry: { link in Task { await vm.retryTracker(link) } }
-                )
-            }
+            // tracking requires library membership (trackers.md Q6). it used to
+            // render nothing at all off-library, on the grounds that a Link row
+            // which cannot be operated is an affordance that lies - but a section
+            // that is simply absent lies differently, and worse: a reader with two
+            // connected accounts and no tracking on screen concludes the feature
+            // is broken rather than gated. dimmed and inert says both things at
+            // once, and the line underneath says what unlocks it
+            DetailsTracking(
+                accounts: vm.trackerAccounts,
+                links: vm.links,
+                localProgress: vm.localProgress,
+                enabled: vm.inLibrary,
+                needingSignIn: vm.trackersNeedingSignIn,
+                syncing: vm.syncingTrackers,
+                onLink: { tracker in linking = tracker },
+                onOpen: { link in managing = link },
+                onConnect: { showingTracking = true },
+                onRetry: { link in Task { await vm.retryTracker(link) } }
+            )
 
             if !vm.origins.isEmpty {
                 DetailsSources(

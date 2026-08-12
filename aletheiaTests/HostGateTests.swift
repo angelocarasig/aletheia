@@ -115,6 +115,37 @@ struct HostGateTests {
         #expect(await peak.highest == 3)
     }
 
+    // a site that serialises us on its own session lock gains nothing from a
+    // wider bucket, and the narrowing must not reach any other host
+    @Test("an overridden host uses its own limit")
+    func honoursOverrides() async throws {
+        let gate = HostGate(limit: 3, overrides: ["slow.example": 1])
+        let slow = Peak()
+        let fast = Peak()
+
+        await withTaskGroup(of: Void.self) { group in
+            for _ in 0..<6 {
+                group.addTask {
+                    try? await gate.execute(host: "slow.example") {
+                        await slow.enter()
+                        try? await Task.sleep(for: .milliseconds(20))
+                        await slow.leave()
+                    }
+                }
+                group.addTask {
+                    try? await gate.execute(host: "fast.example") {
+                        await fast.enter()
+                        try? await Task.sleep(for: .milliseconds(20))
+                        await fast.leave()
+                    }
+                }
+            }
+        }
+
+        #expect(await slow.highest == 1)
+        #expect(await fast.highest == 3)
+    }
+
     @Test("a url with no host is not gated")
     func passesHostlessThrough() async throws {
         let gate = HostGate(limit: 1)

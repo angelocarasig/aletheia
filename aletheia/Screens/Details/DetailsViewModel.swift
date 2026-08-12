@@ -1677,6 +1677,22 @@ private extension DetailsViewModel.Snapshot {
             )
         }
 
+        #if DEBUG
+        // temporary: the pool as the screen sees it, so a cover that never
+        // downloads can be told apart from one that downloaded and is not being
+        // pointed at. `path` nil with a preferred mark is the downloader never
+        // reaching it; a path present and still no artwork is a resolve problem
+        for row in stored.covers {
+            AppLog.shared.log(
+                "cover \(row.id)\(row.isPreferred ? " [preferred]" : "") path=\(row.path ?? "nil") url=\(row.url.absoluteString)",
+                category: "covers"
+            )
+        }
+        if stored.covers.isEmpty {
+            AppLog.shared.log("no cover rows for this series", category: "covers")
+        }
+        #endif
+
         // origins are already ordered available first, and a refresh speaks to
         // every one of them that installed code can still reach - the head of the
         // list is only the one whose dates stand for the series
@@ -2047,9 +2063,25 @@ extension DetailsViewModel {
             if preferredTitleId == nil { preferredTitleId = title.id }
         }
 
-        let primary = primaryCover(among: detail.covers, matching: stubCover)
+        // the search result's own cover joins the pool, LAST. it used to be
+        // passed in for matching and then discarded, which meant the one url in
+        // this whole transaction known to work - it had just rendered on the
+        // card the reader tapped - was the only one not kept. a series whose
+        // details response gave a dead url therefore had a pool of exactly one
+        // dead url, nothing to fall back to, and no way to ever recover.
+        //
+        // last rather than first, so a source whose details artwork is better
+        // than its search thumbnail still wins on quality: the preference is
+        // still chosen from detail.covers, and this is the rung underneath.
+        //
+        // it also makes primaryCover's first tier reachable for the first time -
+        // that tier matches against the stub url, in a set that until now could
+        // never contain it
+        let pool = detail.covers + (stubCover.map { detail.covers.contains($0) ? [] : [$0] } ?? [])
+
+        let primary = primaryCover(among: detail.covers, matching: stubCover) ?? stubCover
         var preferredCoverId: CoverRecord.ID?
-        for url in detail.covers {
+        for url in pool {
             let cover = try CoverRecord.findOrCreate(
                 CoverRecord(id: nil, seriesId: seriesId, originId: originId, url: url, path: nil),
                 in: db

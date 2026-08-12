@@ -32,6 +32,15 @@ extension Constants {
         // fronted scrapes, and reader page prefetch runs outside this gate
         static let requestsPerHost = 3
 
+        // hosts that want something other than the default. mangaball serialises
+        // every request against one PHPSESSID on the php session-file lock, so
+        // concurrency there buys about 1.4x and pays in tail latency - and a queue
+        // deeper than `timeout` fails as a bare timeout, which reads as the site
+        // being down. the lock is per session, and our model holds one per source
+        static let requestsPerHostOverrides: [String: Int] = [
+            "mangaball.net": 1
+        ]
+
         // the OS-level floor beneath the gate. http/2 multiplexes, so this caps
         // connections rather than requests and cannot replace the gate
         static let connectionsPerHost = 6

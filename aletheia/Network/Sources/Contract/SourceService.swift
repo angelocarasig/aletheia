@@ -59,6 +59,10 @@ extension SourceService {
 
         headers["User-Agent"] = credential.userAgent
 
+        for (key, value) in credential.headers ?? [:] {
+            headers[key] = value
+        }
+
         if !credential.cookies.isEmpty {
             headers["Cookie"] = credential.cookies
                 .map { "\($0.key)=\($0.value)" }

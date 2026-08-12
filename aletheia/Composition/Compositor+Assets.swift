@@ -111,9 +111,23 @@ actor CoverDownloader {
             return
         }
 
-        let backlog = (try? await database.reader.read { db in
-            try Self.backlog(limit: Limits.backlog, in: db)
-        }) ?? []
+        // not `try?`: a decode failure here returns an empty backlog, which is
+        // indistinguishable from "nothing to download" and silently stops every
+        // cover on the device from ever being fetched. it has already happened
+        // once, when Pending grew a column this query did not select
+        let backlog: [Pending]
+        do {
+            backlog = try await database.reader.read { db in
+                try Self.backlog(limit: Limits.backlog, in: db)
+            }
+        } catch {
+            log.log("backlog read FAILED - \(error)", category: "assets")
+            return
+        }
+
+        if !backlog.isEmpty {
+            log.log("downloading \(backlog.count) missing cover(s)", category: "assets")
+        }
 
         await download(backlog)
     }
@@ -286,6 +300,7 @@ extension CoverDownloader {
         let sql = """
             SELECT
                 c.id AS id,
+                c.\(CoverRecord.Columns.seriesId.name) AS seriesId,
                 c.\(CoverRecord.Columns.url.name) AS url,
                 src.\(SourceRecord.Columns.slug.name) AS sourceSlug
             FROM \(CoverRecord.databaseTableName) c

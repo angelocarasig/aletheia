@@ -125,10 +125,18 @@ final class WebAuthCapturer: NSObject, AuthCapturing {
     private func evaluate(_ cookieStore: WKHTTPCookieStore) async {
         guard continuation != nil, let specification else { return }
 
-        let requiredNames: [String] = specification.requirements.map {
-            switch $0 { case .cookie(let name): name }
+        var required: [String] = []
+        var optional: [String] = []
+        var metas: [(name: String, header: String)] = []
+        for requirement in specification.requirements {
+            switch requirement {
+            case let .cookie(name, isOptional):
+                if isOptional { optional.append(name) } else { required.append(name) }
+            case let .meta(name, header):
+                metas.append((name, header))
+            }
         }
-        guard !requiredNames.isEmpty else { return }
+        guard !required.isEmpty || !metas.isEmpty else { return }
 
         let cookies = await withCheckedContinuation { continuation in
             cookieStore.getAllCookies { continuation.resume(returning: $0) }
@@ -136,19 +144,41 @@ final class WebAuthCapturer: NSObject, AuthCapturing {
 
         var captured: [String: String] = [:]
         var expiries: [Date] = []
-        for name in requiredNames {
+        for name in required {
             guard let cookie = cookies.first(where: { $0.name == name }) else { return }
             captured[name] = cookie.value
             if let expiry = cookie.expiresDate { expiries.append(expiry) }
         }
+        // taken if the browser earned one, never waited on
+        for name in optional {
+            guard let cookie = cookies.first(where: { $0.name == name }) else { continue }
+            captured[name] = cookie.value
+            if let expiry = cookie.expiresDate { expiries.append(expiry) }
+        }
 
-        log.log("captured \(captured.count) cookie(s)", category: "auth")
+        var headers: [String: String] = [:]
+        for meta in metas {
+            guard let value = await content(ofMeta: meta.name), !value.isEmpty else { return }
+            headers[meta.header] = value
+        }
+
+        log.log("captured \(captured.count) cookie(s), \(headers.count) header(s)", category: "auth")
 
         finish(.success(SourceCredential(
             cookies: captured,
+            headers: headers.isEmpty ? nil : headers,
             userAgent: userAgent,
             expiresAt: expiries.min()
         )))
+    }
+
+    // an interstitial has no such tag, so a missing value is "not there yet" and
+    // the poll comes back - same shape as a cookie that has not been set
+    private func content(ofMeta name: String) async -> String? {
+        guard let page else { return nil }
+        let script = "return document.querySelector('meta[name=\"' + name + '\"]')?.getAttribute('content') ?? null"
+        let result = try? await page.callJavaScript(script, arguments: ["name": name], contentWorld: .page)
+        return result as? String
     }
 
     private func fail(_ error: CaptureFailure) {
