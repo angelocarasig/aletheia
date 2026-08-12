@@ -40,12 +40,11 @@ struct ReaderPage: Identifiable, Hashable, Sendable {
 }
 
 // identity is hand-written to EXCLUDE size and headers, and that is
-// load-bearing. this type
-// is the diffable data source's item identifier, so if size took part a
-// dimension arriving late would make the page a different item - diffing as a
-// remove plus an insert, tearing the cell down and reloading its image.
-// headers are out for the same reason with more teeth: a credential refresh
-// rewrites the Cookie on every page at once.
+// load-bearing. this type is the diffable data source's item identifier, so if
+// size took part a dimension arriving late would make the page a different
+// item - diffing as a remove plus an insert, tearing the cell down and
+// reloading its image. headers are out for the same reason with more teeth: a
+// credential refresh rewrites the Cookie on every page at once.
 //
 // a page is the same page whatever we have since learned about its shape
 extension ReaderPage {

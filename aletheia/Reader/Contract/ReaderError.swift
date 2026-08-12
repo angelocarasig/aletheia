@@ -8,8 +8,7 @@
 import Foundation
 
 // every case is typed. the host never has to read a message to decide what
-// happened - v2 string-matched "source is no longer available" out of an
-// underlying error to detect a disconnected origin
+// happened
 enum ReaderError: Error, Equatable, Sendable {
     case notFound(ReaderChapter.ID)
     case noPages(ReaderChapter.ID)

@@ -8,9 +8,7 @@
 import UIKit
 
 // one section per chapter, one item per page. sections are what make chapter
-// insertion and eviction expressible without any index arithmetic - v2 kept a
-// PageMapper translating a flat index space by hand, and the padding it wrote
-// for double-page spreads landed on the wrong side of an appended chapter
+// insertion and eviction expressible without any index arithmetic
 @MainActor
 final class ReaderController: UIViewController {
     typealias DataSource = UICollectionViewDiffableDataSource<ReaderChapter.ID, ReaderItem>
@@ -85,6 +83,9 @@ final class ReaderController: UIViewController {
     // whether there is a chapter after this one at all, which the controller
     // cannot know - it only ever sees what is loaded
     var onCanContinue: (() -> Bool)?
+    // the controller holds chapter ids and never their numbers, and has never
+    // heard of the series at all
+    var shareCaption: ((ReaderChapter.ID) -> (title: String, subtitle: String)?)?
 
     init(configuration: ReaderConfiguration) {
         self.configuration = configuration
@@ -193,10 +194,9 @@ final class ReaderController: UIViewController {
             }
             setOffsetWithoutAnimation(restored)
 
-            // both answers to the same question, one line apart: what the layout
-            // says is centre-screen now, and what the stale visible set would
-            // have said. they diverging by a whole chapter was the bug - if they
-            // agree here, the geometry is settled and the reporter is honest
+            // both answers to the same question: what the layout says is
+            // centre-screen now, and what the stale visible set would have said.
+            // if they agree, the geometry is settled and the reporter is honest
             let centre = centremostPage()
             let stale = collectionView.indexPathsForVisibleItems
                 .min { lhs, rhs in
@@ -234,7 +234,6 @@ final class ReaderController: UIViewController {
     func remove(_ chapter: ReaderChapter.ID) async {
         guard pages[chapter] != nil else { return }
 
-        // covers the anchor-lost early return further down as well
         beginMutation()
         defer { endMutation() }
 
@@ -530,6 +529,9 @@ final class ReaderController: UIViewController {
                         category: "reader"
                     )
                 }
+                cell.onShare = { [weak self] image, page in
+                    self?.share(image, page: page)
+                }
                 cell.configure(with: page, width: self.pageWidth)
                 return cell
 
@@ -653,8 +655,8 @@ final class ReaderController: UIViewController {
     }
 
     private func scheduleInvalidation() {
-        // coalesced: a chapter's images land within a few frames of each other
-        // and v2 ran a full invalidation, inside a 0.3s animation, for each one
+        // coalesced: a chapter's images land within a few frames of each other,
+        // and each one would otherwise cost a full invalidation
         guard !pendingInvalidation else { return }
         pendingInvalidation = true
 
@@ -703,8 +705,6 @@ final class ReaderController: UIViewController {
         )
     }
 
-    // recomputed whenever the set of boundaries or the mode changes. cheap:
-    // one model build per boundary, and there are at most windowSize + 1
     private func refreshSeparatorExtents() {
         var extents: [ReaderBoundary: CGFloat] = [:]
         for item in flatItems() {
@@ -751,8 +751,8 @@ final class ReaderController: UIViewController {
         case let .page(page):
             return height(for: page, width: width)
         case let .separator(boundary):
-            // declared by the model, never measured from the rendered view -
-            // a height discovered after layout is the bug this reader just fixed
+            // declared by the model, never measured from the rendered view - a
+            // height discovered after layout moves the scroll under the reader
             return separatorExtents[boundary] ?? ReaderSeparatorModel.Metrics.destination
         }
     }
@@ -890,6 +890,25 @@ final class ReaderController: UIViewController {
             max(0, collectionView.contentSize.height - collectionView.bounds.height)
         )
         collectionView.setContentOffset(offset, animated: true)
+    }
+
+    // presented from here rather than from the cell: a cell has no view
+    // controller to present from
+    private func share(_ image: UIImage, page: ReaderPage) {
+        let caption = shareCaption?(page.chapter)
+        let item = PageActivityItem(
+            image: image,
+            title: caption?.title ?? "",
+            subtitle: caption?.subtitle ?? "Page \(page.index + 1)"
+        )
+
+        let activity = UIActivityViewController(activityItems: [item], applicationActivities: nil)
+        activity.popoverPresentationController?.sourceView = collectionView
+        activity.popoverPresentationController?.sourceRect = CGRect(
+            origin: CGPoint(x: collectionView.bounds.midX, y: collectionView.bounds.midY),
+            size: .zero
+        )
+        present(activity, animated: true)
     }
 
     @objc private func handleTap(_ gesture: UITapGestureRecognizer) {
@@ -1080,11 +1099,8 @@ extension ReaderController: UICollectionViewDelegate {
     // candidates come from the layout, not from indexPathsForVisibleItems: that
     // set is a product of layoutSubviews and so describes the bounds *before* a
     // programmatic offset write, while the distances are measured against the
-    // bounds after it. the two disagree by more than a viewport exactly when a
-    // prepend restores the offset, which is what reported the spliced-in chapter.
-    // bounds.origin IS contentOffset on a scroll view, so querying with bounds
-    // makes the rect and the frames the same coordinate space by construction,
-    // and both are fresh
+    // bounds after it. bounds.origin IS contentOffset on a scroll view, so
+    // querying with bounds keeps the rect and the frames in one coordinate space
     private func centremostPath() -> IndexPath? {
         let bounds = collectionView.bounds
         guard let candidates = collectionView.collectionViewLayout

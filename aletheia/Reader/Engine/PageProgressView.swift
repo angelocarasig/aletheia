@@ -9,11 +9,7 @@ import UIKit
 
 // a stroked ring that fills as the bytes land, with the percentage inside it.
 // a page is the content surface, so its pending state shows how far along it is
-// rather than an uncontextual spinner - see docs/design.md §1.
-//
-// proportions follow v2's DownloadProgressRingCard: a track at 0.15 alpha under
-// a round-capped fill, both starting at twelve o'clock, with a rounded bold
-// percentage centred in the empty middle
+// rather than an uncontextual spinner - see docs/design.md §1
 final class PageProgressView: UIView {
     private let track = CAShapeLayer()
     private let fill = CAShapeLayer()
@@ -21,7 +17,6 @@ final class PageProgressView: UIView {
 
     private enum Layout {
         static let diameter: CGFloat = 64
-        // v2's ratios against its 140pt ring: 16/140 stroke, 36/140 text
         static let stroke: CGFloat = diameter * (16.0 / 140.0)
         static let text: CGFloat = diameter * (36.0 / 140.0)
         static let trackAlpha: CGFloat = 0.15
@@ -105,8 +100,8 @@ final class PageProgressView: UIView {
         // a decoration rather than a measure
         fill.transform = CATransform3DRotate(CATransform3DIdentity, -.pi / 2, 0, 0, 1)
 
-        // rounded, as v2 draws it - UIKit needs the descriptor where SwiftUI
-        // takes `design: .rounded` inline, and falls back to system if absent
+        // UIKit needs a descriptor where SwiftUI takes `design: .rounded`
+        // inline, and falls back to system if absent
         let base = UIFont.systemFont(ofSize: Layout.text, weight: .bold)
         label.font = base.fontDescriptor.withDesign(.rounded).map {
             UIFont(descriptor: $0, size: Layout.text)

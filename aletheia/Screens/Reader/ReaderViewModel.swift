@@ -212,6 +212,7 @@ final class ReaderViewModel {
                 chapters: loaded.map {
                     ReaderChapter(id: $0.id, number: $0.number, title: $0.title)
                 },
+                series: seriesTitle,
                 boundaries: Self.boundaries(across: loaded),
                 source: SeriesPageSource(database: database, registry: registry, fill: fill),
                 configuration: configuration

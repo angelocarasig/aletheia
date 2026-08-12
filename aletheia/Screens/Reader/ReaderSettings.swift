@@ -40,18 +40,29 @@ enum ReaderSettings {
         set { defaults.set(newValue, forKey: Key.horizontalPadding) }
     }
 
+    // a value stored before the range narrowed can sit outside the slider
     static var autoScrollSpeed: CGFloat {
         get {
-            defaults.object(forKey: Key.autoScrollSpeed) as? CGFloat
+            let stored = defaults.object(forKey: Key.autoScrollSpeed) as? CGFloat
                 ?? ReaderConfiguration.Defaults.autoScrollSpeed
+
+            return min(
+                max(ReaderConfiguration.Defaults.minAutoScrollSpeed, stored),
+                ReaderConfiguration.Defaults.maxAutoScrollSpeed
+            )
         }
         set { defaults.set(newValue, forKey: Key.autoScrollSpeed) }
     }
 
     static var autoAdvanceInterval: TimeInterval {
         get {
-            defaults.object(forKey: Key.autoAdvanceInterval) as? TimeInterval
+            let stored = defaults.object(forKey: Key.autoAdvanceInterval) as? TimeInterval
                 ?? ReaderConfiguration.Defaults.autoAdvanceInterval
+
+            return min(
+                max(ReaderConfiguration.Defaults.minAutoAdvanceInterval, stored),
+                ReaderConfiguration.Defaults.maxAutoAdvanceInterval
+            )
         }
         set { defaults.set(newValue, forKey: Key.autoAdvanceInterval) }
     }

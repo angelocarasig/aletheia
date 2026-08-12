@@ -25,8 +25,8 @@ struct ReaderConfiguration: Equatable, Sendable {
         static let chromeTint: Double = 0.4
         static let maxChromeTint: Double = 0.7
         
-        static let autoScrollSpeed: CGFloat = 100
-        static let minAutoScrollSpeed: CGFloat = 20
+        static let autoScrollSpeed: CGFloat = 300
+        static let minAutoScrollSpeed: CGFloat = 260
         static let maxAutoScrollSpeed: CGFloat = 500
 
         static let maxHorizontalPadding: CGFloat = 48
@@ -36,7 +36,7 @@ struct ReaderConfiguration: Equatable, Sendable {
         // stored value - one number cannot mean both
         static let autoAdvanceInterval: TimeInterval = 5
         static let minAutoAdvanceInterval: TimeInterval = 1
-        static let maxAutoAdvanceInterval: TimeInterval = 30
+        static let maxAutoAdvanceInterval: TimeInterval = 10
         static let prefetchCount = 3
         static let windowSize = 3
         static let preloadThreshold: CGFloat = 500

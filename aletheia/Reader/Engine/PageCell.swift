@@ -17,8 +17,8 @@ final class PageCell: UICollectionViewCell {
     private let failure = PageFailureView()
 
     // a cancelled load and a failed load arrive on the same completion path, so
-    // the cell checks the url it is currently showing before reporting either.
-    // v2 did not, and fast scrolling flashed "failed" over healthy pages
+    // the cell checks the url it is currently showing before reporting either -
+    // without it, fast scrolling flashes "failed" over healthy pages
     private var token: URL?
     private var page: ReaderPage?
     private var width: CGFloat = .zero
@@ -27,6 +27,9 @@ final class PageCell: UICollectionViewCell {
     var onZoomChanged: ((Bool) -> Void)?
     var onSized: ((ReaderPage, CGSize) -> Void)?
     var onRetry: ((ReaderPage) -> Void)?
+    // copy and save need nothing but the image, so they stay here. sharing
+    // needs a presenter and the chapter's name, neither of which a cell has
+    var onShare: ((UIImage, ReaderPage) -> Void)?
 
     private enum Layout {
         static let minimumZoom: CGFloat = 1
@@ -128,8 +131,7 @@ final class PageCell: UICollectionViewCell {
 
         // both iOS 17.4+. the first stops a pan across a zoomed page from
         // flipping to the next one, the second centres undersized content -
-        // together they remove the gesture arbitration and centring maths v2
-        // had to hand-roll
+        // together they replace hand-rolled gesture arbitration and centring
         scrollView.transfersHorizontalScrollingToParent = false
         scrollView.transfersVerticalScrollingToParent = false
         scrollView.contentAlignmentPoint = CGPoint(x: 0.5, y: 0.5)
@@ -223,8 +225,8 @@ extension PageCell: UIScrollViewDelegate {
         let zoomed = scrollView.zoomScale > Layout.minimumZoom
         scrollView.isScrollEnabled = zoomed
 
-        // fires once per edge rather than once per frame of the pinch. v2
-        // reported every frame, each one spawning a task and a state transition
+        // fires once per edge rather than once per frame of the pinch, each of
+        // which would otherwise spawn a task and a state transition
         guard zoomed != reportedZoom else { return }
         reportedZoom = zoomed
         onZoomChanged?(zoomed)
@@ -249,7 +251,7 @@ extension PageCell: UIContextMenuInteractionDelegate {
         // the decoded page, not its url: a source url is often signed, expires,
         // and needs the credential headers to fetch at all, so handing one to
         // another app gives them something that will not open
-        guard !imageView.isHidden, let image = imageView.image else { return nil }
+        guard !imageView.isHidden, let image = imageView.image, let page else { return nil }
 
         return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { [weak self] _ in
             UIMenu(children: [
@@ -260,7 +262,7 @@ extension PageCell: UIContextMenuInteractionDelegate {
                     UIImageWriteToSavedPhotosAlbum(image, nil, nil, nil)
                 },
                 UIAction(title: "Share", image: UIImage(systemName: "square.and.arrow.up")) { _ in
-                    self?.share(image)
+                    self?.onShare?(image, page)
                 }
             ])
         }
@@ -303,21 +305,5 @@ extension PageCell: UIContextMenuInteractionDelegate {
             width: fitted.width,
             height: fitted.height
         )
-    }
-
-    // UIActivityViewController needs a presenter and a cell has none, so it
-    // walks the responder chain rather than being handed one - the alternative
-    // is a closure the controller sets on every cell for this one action
-    private func share(_ image: UIImage) {
-        var responder: UIResponder? = next
-        while let current = responder, !(current is UIViewController) {
-            responder = current.next
-        }
-        guard let controller = responder as? UIViewController else { return }
-
-        let activity = UIActivityViewController(activityItems: [image], applicationActivities: nil)
-        activity.popoverPresentationController?.sourceView = imageView
-        activity.popoverPresentationController?.sourceRect = drawn
-        controller.present(activity, animated: true)
     }
 }

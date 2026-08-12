@@ -11,7 +11,7 @@ import Foundation
 // decoded page is ~11mb, so the whole series can never be resident - only urls
 // are, and those are a few kilobytes per chapter.
 //
-// single-flight is a task map rather than v2's array of continuations: a second
+// single-flight is a task map rather than an array of continuations: a second
 // caller awaits the same task, cancellation comes free, and there is no way to
 // leak a continuation on the error path
 actor ChapterWindow {
@@ -108,12 +108,9 @@ actor ChapterWindow {
 
     // MARK: Private
 
-    // the chapter furthest from the one being read goes. recency only picked
-    // the right victim by accident: touch fires on chapter change, so scrolling
-    // back and forth scrambled it, and it never knew about reading distance.
-    //
-    // reading forward this still evicts behind the reader; reading backward it
-    // now evicts ahead, where removal shifts nothing on screen
+    // the chapter furthest from the one being read goes, not the least recently
+    // touched - recency fires on chapter change, so scrolling back and forth
+    // scrambles it and it never knows about reading distance
     private func evictIfNeeded(protecting keep: ReaderChapter.ID) -> ReaderChapter.ID? {
         guard pages.count > limit else { return nil }
 

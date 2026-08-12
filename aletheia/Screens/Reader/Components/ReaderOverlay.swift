@@ -347,7 +347,7 @@ private extension ReaderOverlay {
                 Slider(
                     value: speedBinding,
                     in: ReaderConfiguration.Defaults.minAutoScrollSpeed...ReaderConfiguration.Defaults.maxAutoScrollSpeed,
-                    step: 10
+                    step: 5
                 )
             } else {
                 // no step: whole seconds no longer divide the range, and a dwell

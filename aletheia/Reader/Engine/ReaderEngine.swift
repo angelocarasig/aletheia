@@ -9,16 +9,15 @@ import Foundation
 import Observation
 
 // owns what is on screen and decides what to load next. the controller owns
-// UIKit and reports; nothing calls back the other way except through here.
-//
-// state is @Observable rather than an AsyncStream of transitions - v2 shipped
-// seventeen states, one of them unreachable, and an error case whose recovery
-// payload was always nil
+// UIKit and reports; nothing calls back the other way except through here
 @MainActor
 @Observable
 final class ReaderEngine {
     private let window: ChapterWindow
     private let chapters: [ReaderChapter]
+    // only ever the share sheet's header. the engine is deliberately ignorant of
+    // the series otherwise - it reads a list of chapters and nothing above them
+    private let series: String
     private let boundaries: [ReaderChapter.ID: ReaderBoundaryInfo]
     private var loading: Set<ReaderChapter.ID> = []
 
@@ -107,11 +106,13 @@ final class ReaderEngine {
 
     init(
         chapters: [ReaderChapter],
+        series: String = "",
         boundaries: [ReaderChapter.ID: ReaderBoundaryInfo] = [:],
         source: any ReaderPageSource,
         configuration: ReaderConfiguration
     ) {
         self.chapters = chapters
+        self.series = series
         self.boundaries = boundaries
         self.configuration = configuration
         self.window = ChapterWindow(
@@ -151,6 +152,11 @@ final class ReaderEngine {
         }
         controller.onCanContinue = { [weak self] in
             self?.canGoNext ?? false
+        }
+        controller.shareCaption = { [weak self] id in
+            guard let self else { return nil }
+            let number = chapters.first { $0.id == id }?.number
+            return (series, number.map { "Chapter \($0.formatted())" } ?? "")
         }
         controller.separatorModel = { [weak self] boundary, direction in
             self?.separator(for: boundary, direction: direction)
@@ -536,7 +542,7 @@ final class ReaderEngine {
             guard await !self.window.isLoaded(target.id) else { return }
 
             self.loading.insert(target.id)
-            // defer, not a trailing removal: v2 threw past its own cleanup and
+            // defer, not a trailing removal: a throw would skip the cleanup and
             // a chapter that failed once could never be preloaded again
             defer { self.loading.remove(target.id) }
 

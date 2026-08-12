@@ -16,8 +16,8 @@ import UIKit
 // THE INVARIANT: which slots are PRESENT depends only on the boundary and the
 // chapter list. never on travel direction, never on load state. a separator
 // whose height changed when the reader turned round, or when a fetch landed,
-// would move every item below it - the exact jump this reader was just fixed
-// for. slots change what they SAY; they never change whether they exist
+// would move every item below it. slots change what they SAY; they never
+// change whether they exist
 struct ReaderSeparatorModel: Equatable, Sendable {
     let boundary: ReaderBoundary
     var direction: ReadingDirection
@@ -164,26 +164,18 @@ extension ReaderSeparatorModel {
     enum Metrics {
         static let padding: CGFloat = 12
         static let spacing: CGFloat = 16
-        // between members of one group. the band's six peers read as six
-        // unrelated announcements; grouping is what makes it two statements,
-        // and the tighter gap is what says the members belong together
+        // between members of one group, tighter than the gap between groups
         static let group: CGFloat = 6
         static let terminal: CGFloat = 52
-        // continuity dropped a step when it became a footnote under the
-        // destination rather than a peer of it
         static let continuity: CGFloat = 20
-        // one row per linked service, v2's grammar: the status sits in a column
-        // rather than trailing each name, which is what stops repeated ticks
-        // reading as noise. linkage is stable for the session, so a height that
-        // depends on how many services are linked is still a declared height
+        // linkage is stable for the session, so a height that depends on how
+        // many services are linked is still a declared height
         static let trackerRow: CGFloat = 22
         static let trackerGap: CGFloat = 4
         static let rule: CGFloat = 24
         // sized to the tallest destination it has to hold - a chapter card with
-        // caption, number and title is ~61 - rather than to a round number. at
-        // 96 the box was 35pt taller than its own content, and a centred block
-        // in an oversized box drifts: the rule read 30pt from the trackers above
-        // it and 45pt from the chapter below, for spacing that is nominally equal
+        // caption, number and title is ~61. a centred block in an oversized box
+        // drifts, so the slack has to stay small
         static let destination: CGFloat = 64
         static let action: CGFloat = 44
 
