@@ -10,9 +10,23 @@ import WebKit
 
 enum RenderError: DescribableError {
     case noContent
+    // distinct from noContent because it is the one that is worth retrying: the
+    // page was never given a chance to answer, rather than answering emptily
+    case timedOut
 
-    var errorDescription: String? { "Nothing Came Back" }
-    var failureReason: String? { "The server responded but returned nothing to read." }
+    var errorDescription: String? {
+        switch self {
+        case .noContent: "Nothing Came Back"
+        case .timedOut: "The Page Stopped Responding"
+        }
+    }
+
+    var failureReason: String? {
+        switch self {
+        case .noContent: "The server responded but returned nothing to read."
+        case .timedOut: "The page took too long to answer. This usually clears on its own."
+        }
+    }
 }
 
 extension WebRenderer {

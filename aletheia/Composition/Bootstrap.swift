@@ -59,9 +59,11 @@ final class Bootstrap {
 
         do {
             phase = .opening
-            let database = try await Self.open()
-
-            let compositor = Compositor(database: database)
+            // the same instance a headless launch handler resolves - built once
+            // per process by whoever asks first, so opening the app mid-run
+            // attaches to the run in flight rather than constructing a second
+            // graph that reports idle
+            let compositor = try await Compositor.shared()
 
             phase = .seeding
             await compositor.registry.seed()
@@ -81,6 +83,14 @@ final class Bootstrap {
             compositor.downloads.register()
             compositor.refresh.catchUp()
 
+            // re-armed at launch as well as at the end of every run. a run that
+            // never reaches its own completion - killed, crashed, jetsammed -
+            // takes the pending request with it and schedules nothing in its
+            // place, so without this the schedule dies silently and stays dead.
+            // not on every foreground: the anchor does not move, so resubmitting
+            // per activation is churn for an identical request
+            compositor.refresh.schedule()
+
             // the queue is intent, and intent is what a kill destroys - the bytes
             // already on disk are picked up again for free
             compositor.downloads.restore()
@@ -98,12 +108,5 @@ final class Bootstrap {
             AppLog.shared.log("bootstrap FAILED - \(error)", level: .error, category: "bootstrap")
             phase = .failed(Failure(error, fallback: "Couldn't Start"))
         }
-    }
-
-    // opening the pool and running the migrator are synchronous with no async
-    // form, so this is the one place that genuinely has to leave the main actor
-    @concurrent
-    private static func open() async throws -> DatabaseClient {
-        try DatabaseClient()
     }
 }

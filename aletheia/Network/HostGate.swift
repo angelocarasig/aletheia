@@ -17,6 +17,7 @@ import Foundation
 actor HostGate {
     private let limit: Int
     private let overrides: [String: Int]
+    private let log: AppLog
     private var active: [String: Int] = [:]
     private var waiting: [String: [Waiter]] = [:]
     // both a hand-off and a cancellation resume the continuation and remove the
@@ -25,10 +26,12 @@ actor HostGate {
 
     init(
         limit: Int = Constants.Network.requestsPerHost,
-        overrides: [String: Int] = Constants.Network.requestsPerHostOverrides
+        overrides: [String: Int] = Constants.Network.requestsPerHostOverrides,
+        log: AppLog = .shared
     ) {
         self.limit = limit
         self.overrides = overrides
+        self.log = log
     }
 
     // a site whose own architecture serialises us gains nothing from a wider
@@ -68,6 +71,29 @@ actor HostGate {
         }
 
         let id = UUID()
+
+        // the only unbounded wait on the request path - every timeout in the app
+        // is on the request itself, which has not been made yet. so a starved
+        // queue is indistinguishable from a slow site unless it says so
+        let queued = Date.now
+        let depth = (waiting[host]?.count ?? 0) + 1
+        let watchdog = Task { [log] in
+            try? await Task.sleep(for: .seconds(5))
+            guard !Task.isCancelled else { return }
+            log.log(
+                "waiting on \(host) for 5s+ - \(depth) deep, \(self.limit(for: host)) slot(s)",
+                level: .warning,
+                category: "network"
+            )
+        }
+        defer {
+            watchdog.cancel()
+            let held = Date.now.timeIntervalSince(queued)
+            if held >= 5 {
+                log.log("released onto \(host) after \(Int(held))s", level: .warning, category: "network")
+            }
+        }
+
         await withTaskCancellationHandler {
             await withCheckedContinuation { continuation in
                 // the handler is armed before this runs, so a cancellation that

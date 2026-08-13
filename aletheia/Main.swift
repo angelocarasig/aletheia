@@ -11,8 +11,23 @@ enum AppTab: Hashable {
     case home, library, search, sources, activity
 }
 
+// the one thing that has to happen during launch rather than during a frame:
+// a launch the system starts for a scheduled task connects no window, and
+// registering after launch ends is fatal rather than late
+final class AppDelegate: NSObject, UIApplicationDelegate {
+    func application(
+        _ application: UIApplication,
+        didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
+    ) -> Bool {
+        Launch.registerScheduledRefresh()
+        return true
+    }
+}
+
 @main
 struct AletheiaApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegate.self) private var delegate
+
     // nothing runs in init - the app value is built on the main actor before the
     // first frame, which is exactly where database work must not happen
     @Environment(\.scenePhase) private var scenePhase
@@ -58,8 +73,22 @@ struct AletheiaApp: App {
             // the half of the schedule nothing can silently switch off: coming
             // back to the app is when a missed automatic run is noticed
             .onChange(of: scenePhase) { _, phase in
-                guard phase == .active else { return }
-                bootstrap.compositor?.refresh.catchUp()
+                switch phase {
+                case .active:
+                    bootstrap.compositor?.refresh.catchUp()
+
+                #if DEBUG
+                // locking the screen backgrounds the app, which is the closest
+                // thing to the conditions a scheduled run really meets
+                case .background:
+                    if let refresh = bootstrap.compositor?.refresh {
+                        Task { await refresh.rehearse() }
+                    }
+                #endif
+
+                default:
+                    break
+                }
             }
         }
     }

@@ -16,9 +16,62 @@ extension WebRenderer {
     struct Bridge {
         let page: WebPage
 
+        // callJavaScript has no timeout of its own: a call into a content process
+        // the system has suspended never returns and never throws. every timeout
+        // above this is a poll loop that checks the clock *between* calls, so one
+        // call that does not come back stops the clock being read at all and the
+        // declared timeout is never evaluated. that is only reachable in the
+        // background - in the foreground the process stays alive and every call
+        // returns - which is why it took a screen-off run to find.
+        //
+        // so the bound lives here, where no caller can forget it, rather than at
+        // the one call site that remembered.
+        //
+        // deliberately longer than every poll budget above it and than any real
+        // call: this is a backstop against a process that is never going to
+        // answer, not a latency budget. sized with Constants.Network.timeout,
+        // since "this peer is gone" is the same judgement either way. a shorter
+        // one would start failing slow-but-alive scripts, which is a worse bug
+        // than the one it fixes
+        static let deadline: Duration = .seconds(30)
+
         @discardableResult
         func call(_ script: String, _ arguments: [String: Any] = [:]) async throws -> Any? {
-            try await page.callJavaScript(script, arguments: arguments, contentWorld: .page)
+            enum Outcome: Sendable {
+                case answered(Any?)
+                case overran
+            }
+
+            let (stream, continuation) = AsyncStream<Outcome>.makeStream()
+
+            let work = Task { @MainActor in
+                let result = try? await page.callJavaScript(script, arguments: arguments, contentWorld: .page)
+                continuation.yield(.answered(result))
+            }
+            let watchdog = Task { @MainActor in
+                try? await Task.sleep(for: Self.deadline)
+                continuation.yield(.overran)
+            }
+            defer {
+                work.cancel()
+                watchdog.cancel()
+            }
+
+            var outcomes = stream.makeAsyncIterator()
+            switch await outcomes.next() {
+            case let .answered(result):
+                return result
+
+            case .overran:
+                // best effort - the stuck call may never notice, but navigating
+                // away is the only lever there is, and a caller that throws can
+                // at least be retried or failed
+                page.load(URLRequest(url: WebRenderer.blank))
+                throw RenderError.timedOut
+
+            case nil:
+                throw RenderError.noContent
+            }
         }
 
         func bool(_ script: String, _ arguments: [String: Any] = [:]) async throws -> Bool {

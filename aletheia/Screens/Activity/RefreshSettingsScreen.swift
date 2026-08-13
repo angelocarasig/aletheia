@@ -25,6 +25,8 @@ struct RefreshSettingsScreen: View {
 
     @Environment(\.compositor) private var compositor
 
+    @State private var refreshStatus: UIBackgroundRefreshStatus = .available
+
     private enum Interval: Int, CaseIterable, Identifiable {
         case never = 0
         case sixHours = 6
@@ -47,6 +49,19 @@ struct RefreshSettingsScreen: View {
 
     var body: some View {
         Form {
+            if showsRefreshDisabled {
+                Section {
+                    Banner(
+                        "Background App Refresh is off",
+                        message: "Turn it on in Settings > General > Background App Refresh, or your library is only checked when you open the app.",
+                        systemImage: "arrow.trianglehead.2.clockwise.rotate.90",
+                        action: openSettings
+                    )
+                    .listRowInsets(EdgeInsets())
+                    .listRowBackground(Color.clear)
+                }
+            }
+
             Section {
                 Picker("Check Automatically", selection: $interval) {
                     ForEach(Interval.allCases) { option in
@@ -78,9 +93,35 @@ struct RefreshSettingsScreen: View {
         .navigationBarTitleDisplayMode(.inline)
         // the request carries the interval, so changing it has to re-arm rather
         // than wait for the next run to notice
-        .onChange(of: interval) { _, _ in
+        .onChange(of: interval) { _, new in
             compositor.refresh.schedule()
+
+            // asked here rather than at launch: the notification only exists for
+            // a run nobody watched, so the request has nothing to explain itself
+            // with until someone has asked for those runs
+            guard new > 0 else { return }
+            Task { await Notifier.promote() }
         }
+        .onReceive(NotificationCenter.default.publisher(
+            for: UIApplication.backgroundRefreshStatusDidChangeNotification
+        )) { _ in
+            refreshStatus = UIApplication.shared.backgroundRefreshStatus
+        }
+        .onAppear { refreshStatus = UIApplication.shared.backgroundRefreshStatus }
+    }
+
+    // only when the setting is asking for something the system is refusing, and
+    // never when restricted: that reader is under parental controls or a managed
+    // profile and has no way to act on it, so apple's own guidance is not to say
+    // anything. denied cannot say whether this app or the whole system is off,
+    // which is why the copy names the path rather than the switch
+    private var showsRefreshDisabled: Bool {
+        interval > 0 && refreshStatus == .denied
+    }
+
+    private func openSettings() {
+        guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+        UIApplication.shared.open(url)
     }
 
     // one sentence per switch, because "skip finished" reads obvious and is not:

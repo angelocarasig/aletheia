@@ -22,20 +22,55 @@ enum Notifier {
             .requestAuthorization(options: [.alert, .sound, .badge, .provisional])
     }
 
-    static func newChapters(_ count: Int, series: Int) async {
-        guard count > 0 else { return }
+    // the same permission, asked at the moment it makes sense. provisional costs
+    // nothing and is worth almost as little - it arrives with no banner and no
+    // sound, so the one notification this app sends lands where nobody is
+    // looking. turning on automatic checks is the reader saying they want the
+    // app working while they are away, which is the only moment the prompt
+    // explains itself
+    static func promote() async {
+        let center = UNUserNotificationCenter.current()
+        let status = await center.notificationSettings().authorizationStatus
 
+        // authorized already delivers properly, and denied is permanent - asking
+        // again does nothing in either case, and iOS shows no prompt
+        guard status == .provisional || status == .notDetermined else { return }
+
+        _ = try? await center.requestAuthorization(options: [.alert, .sound, .badge])
+    }
+
+    static func refreshed(added: Int, series: Int, checked: Int, failures: Int) async {
         let content = UNMutableNotificationContent()
-        content.title = "New Chapters"
-        content.body = series == 1
-            ? "\(count) new \(count == 1 ? "chapter" : "chapters") in one series."
-            : "\(count) new \(count == 1 ? "chapter" : "chapters") across \(series) series."
-        content.sound = .default
 
-        // nil trigger fires immediately; the identifier is stable so a second
-        // run replaces the first rather than stacking
+        if added > 0 {
+            content.title = "New Chapters"
+            content.body = series == 1
+                ? "\(added) new \(added == 1 ? "chapter" : "chapters") in one series."
+                : "\(added) new \(added == 1 ? "chapter" : "chapters") across \(series) series."
+            content.sound = .default
+        } else {
+            // the count is what makes this a result rather than a shrug: it says
+            // the walk happened and how much of the library it got through, which
+            // is the question a reader actually has when nothing arrived
+            content.title = "Library Checked"
+            content.body = checked == 1
+                ? "No new chapters in one series."
+                : "No new chapters in \(checked) series."
+            // no sound: it stays in notification centre until dealt with, but
+            // nothing arriving is not worth a noise
+        }
+
+        if failures > 0 {
+            content.body += failures == 1
+                ? " One source couldn't be reached."
+                : " \(failures) sources couldn't be reached."
+        }
+
+        // nil trigger fires immediately. the identifier is stable so each run
+        // replaces the last rather than stacking - one entry that always reads
+        // as the current state of the library, staying put until dismissed
         let request = UNNotificationRequest(
-            identifier: "refresh.newChapters",
+            identifier: "refresh.result",
             content: content,
             trigger: nil
         )

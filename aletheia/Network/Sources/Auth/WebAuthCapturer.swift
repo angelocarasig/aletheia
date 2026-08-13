@@ -7,6 +7,7 @@
 
 import Foundation
 import WebKit
+import UIKit
 import Observation
 
 enum CaptureFailure: DescribableError {
@@ -74,12 +75,24 @@ final class WebAuthCapturer: NSObject, AuthCapturing {
 
         page.load(URLRequest(url: specification.challengeURL))
 
-        if specification.interactive {
+        // interactive is a fact about the source; whether anyone is there to be
+        // interactive with is a fact about the moment. a scheduled refresh runs
+        // with the screen off, where a sheet presents to nobody, cannot be
+        // completed, and would sit until the timeout burning runtime the rest of
+        // the library needed. the headless half still runs - the poll and the
+        // navigation tracking are what usually satisfy the challenge anyway - so
+        // this loses the fallback, not the capture
+        if specification.interactive && UIApplication.shared.applicationState == .active {
             presented = true
             log.log("presenting auth sheet - \(specification.challengeURL.absoluteString)", category: "auth")
             presenter.show(page: page, maneuver: specification.maneuver) { [weak self] in
                 self?.fail(.cancelled)
             }
+        } else if specification.interactive {
+            log.log(
+                "auth sheet suppressed - nobody is watching, capturing headlessly",
+                category: "auth"
+            )
         }
 
         startPolling(dataStore.httpCookieStore)

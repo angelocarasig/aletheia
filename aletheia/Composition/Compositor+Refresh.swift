@@ -100,6 +100,11 @@ extension Compositor {
         @ObservationIgnored private var added = 0
         @ObservationIgnored private var touched = 0
         @ObservationIgnored private var automatic = false
+        // this run is inside a system task the launch handler still has to
+        // complete, so it does not re-arm the schedule itself. a foreground
+        // automatic run - catchUp noticing a missed interval - is not hosted and
+        // re-arms as usual, which is why the flag is not just "automatic"
+        @ObservationIgnored private var hosted = false
         @ObservationIgnored private var pending: [Series] = []
         // how far each in-flight series has drifted, 0..<ceiling
         @ObservationIgnored private var drift: [Int64: Int64] = [:]
@@ -173,11 +178,17 @@ extension Compositor {
             guard run == nil else { return }
             self.automatic = automatic
 
-            let sort = LibrarySort(
-                rawValue: UserDefaults.standard.string(forKey: Preferences.Key.librarySort) ?? ""
-            ) ?? Preferences.Default.librarySort
-            let ascending = UserDefaults.standard.object(forKey: Preferences.Key.librarySortAscending) as? Bool
-                ?? Preferences.Default.librarySortAscending
+            let order: Order
+            if automatic {
+                order = .rotation
+            } else {
+                let sort = LibrarySort(
+                    rawValue: UserDefaults.standard.string(forKey: Preferences.Key.librarySort) ?? ""
+                ) ?? Preferences.Default.librarySort
+                let ascending = UserDefaults.standard.object(forKey: Preferences.Key.librarySortAscending) as? Bool
+                    ?? Preferences.Default.librarySortAscending
+                order = .library(sort, ascending: ascending)
+            }
 
             scope = name
             current = nil
@@ -192,8 +203,16 @@ extension Compositor {
             // hangs its refresh off the handler, so a submission that fails
             // device-specifically turns into a refresh that silently never runs
             run = Task { [weak self] in
-                await self?.walk(collection: collection, sort: sort, ascending: ascending)
-                await self?.report()
+                await self?.walk(collection: collection, order: order)
+
+                // a run that was stopped has nothing to report: it did not check
+                // the library, it got part way and was cut off, so "no new
+                // chapters in 3 series" would be a claim about 197 series nobody
+                // looked at. cancelling does not stop this closure - the walk
+                // returns early and execution continues here - so the check has
+                // to be explicit
+                if !Task.isCancelled { await self?.report() }
+
                 self?.finish()
             }
 
@@ -224,19 +243,31 @@ extension Compositor {
             task.finish()
         }
 
-        // one notification, only for a run nobody watched, only when it found
-        // something. a run you can see is already telling that story, and
-        // "nothing new" stays silent
+        // one notification per run nobody watched, whether or not it found
+        // anything. a reader following thirty ongoing series does not expect a
+        // quiet day, so "nothing new" is a result rather than an absence - and
+        // it is the only thing that ever says the automatic half is alive.
+        // a run you can see is exempt: it is already telling that story
         private func report() async {
-            guard added > 0, UIApplication.shared.applicationState != .active else { return }
-            await Notifier.newChapters(added, series: touched)
+            guard UIApplication.shared.applicationState != .active else { return }
+
+            // an empty manual run needs no telling - you asked for it, watched
+            // it start, and the screen you came back to has the answer
+            guard added > 0 || automatic else { return }
+
+            await Notifier.refreshed(
+                added: added,
+                series: touched,
+                checked: completed,
+                failures: failures
+            )
         }
 
-        private func walk(collection: CollectionRecord.ID?, sort: LibrarySort, ascending: Bool) async {
+        private func walk(collection: CollectionRecord.ID?, order: Order) async {
             let work: [Series]
             do {
                 work = try await database.reader.read { [registry] db in
-                    try Self.work(collection: collection, sort: sort, ascending: ascending, registry: registry, in: db)
+                    try Self.work(collection: collection, order: order, registry: registry, in: db)
                 }
             } catch {
                 log.log("library refresh could not build its work list - \(error)", level: .error, category: "refresh")
@@ -323,7 +354,9 @@ extension Compositor {
             if automatic { defaults.set(Date.now, forKey: Preferences.Key.refreshedAutomaticallyDate) }
             automatic = false
 
-            schedule()
+            // a hosted run leaves this to the launch handler, which re-arms only
+            // after the task it was launched for is completed
+            if !hosted { schedule() }
         }
 
         // re-armed at the end of every run and at launch, never only on
@@ -381,37 +414,186 @@ extension Compositor {
 
         // MARK: The background task
 
-        // registered before the end of launch, which the api requires - and from
-        // a launch the system started itself, so this has to run whether or not
-        // a screen ever appears
+        // only the continued-processing task, which iOS 26 exempts from having to
+        // register before launch ends - so it stays with the owner that submits
+        // it. the scheduled task is registered by Launch, during launch itself,
+        // because a system-started launch has no screens to reach this from
         func register() {
             task.register { [weak self] in self?.cancel() }
+        }
 
-            #if !targetEnvironment(simulator)
-            // the scheduled half is a different api on purpose: opportunistic,
-            // no ui, minutes of runtime rather than an extension of something
-            // the user is watching
-            BGTaskScheduler.shared.register(
-                forTaskWithIdentifier: Constants.Tasks.scheduledRefresh,
-                using: nil
-            ) { task in
-                Task { @MainActor [weak self] in
-                    guard let self else { return task.setTaskCompleted(success: false) }
+        // the system launched us to run this. the graph was built to get here, so
+        // the run starts now and the task is held open until it ends
+        func adopt(_ task: BGTask) {
+            task.expirationHandler = { Task { @MainActor [weak self] in self?.cancel() } }
+            hosted = true
+            start(automatic: true)
 
-                    task.expirationHandler = { Task { @MainActor in self.cancel() } }
-                    self.start(automatic: true)
+            Task { @MainActor [weak self] in
+                guard let self else { return task.setTaskCompleted(success: false) }
 
-                    // the run owns its own completion, so this waits on it
-                    // rather than returning and letting the system reclaim the
-                    // process mid-walk
-                    while self.isRunning {
-                        try? await Task.sleep(for: .seconds(1))
-                    }
-                    task.setTaskCompleted(success: true)
+                // the run owns its own completion, so this waits on it rather
+                // than returning and letting the system reclaim the process
+                // mid-walk
+                while self.isRunning {
+                    try? await Task.sleep(for: .seconds(1))
+                }
+
+                // completed first, re-armed second, and the order is the whole
+                // point: a request submitted while this task is still open
+                // replaces the one the app was launched to run, and the system
+                // may suspend us on the spot - which would be before
+                // setTaskCompleted, leaving the task open and the next run
+                // scheduled by a process that never said it had finished
+                task.setTaskCompleted(success: true)
+                self.hosted = false
+                self.schedule()
+            }
+        }
+
+#if DEBUG
+        // MARK: Rehearsal
+
+        // a rehearsal of the scheduled run, for a device you are holding.
+        //
+        // nothing can make ios decide to run a BGProcessingTask now - that
+        // decision is its own and the api offers no override - so this fakes the
+        // launch it would have made, using the same private hook the debugger
+        // uses. everything downstream is the real path: the registered handler,
+        // adopt, the hosted flag, rotation ordering, the notification, the
+        // re-arm. only the system's choice of moment is fabricated.
+        //
+        // the five seconds is the point of the exercise rather than a wait for
+        // state to settle: it puts the run after the screen is off, which is
+        // where the real one lives. the background assertion buys roughly thirty
+        // seconds, which is close to what a real run gets before an unlock ends
+        // it - so a walk that does not finish here is representative, not broken.
+        //
+        // never ships. release builds have no reference to any of it
+        func rehearse() async {
+            guard !isRunning else { return }
+            guard UserDefaults.standard.integer(forKey: Preferences.Key.refreshInterval) > 0 else {
+                log.log("rehearsal skipped - automatic checks are off", category: "refresh")
+                return
+            }
+
+            let app = UIApplication.shared
+            var assertion = UIBackgroundTaskIdentifier.invalid
+
+            // taken before the wait, or the process is suspended during it and
+            // the wait never finishes
+            assertion = app.beginBackgroundTask(withName: "refresh.rehearsal") {
+                guard assertion != .invalid else { return }
+                app.endBackgroundTask(assertion)
+                assertion = .invalid
+            }
+
+            // the assertion's budget is the harness's alone - a real scheduled
+            // run is granted minutes rather than this - so it is worth reading
+            // rather than assuming. a truncated rehearsal is this number running
+            // out, not the feature failing
+            let budget = app.backgroundTimeRemaining
+            let allowance = budget > 1e6 ? "unbounded" : "\(Int(budget))s"
+            // the hook fakes the launch of a request that is already pending, and
+            // firing it consumes that request - so a second rehearsal in a row
+            // finds nothing to launch unless the schedule is re-armed first
+            schedule()
+
+            log.log("rehearsal armed - firing in 5s, assertion allows \(allowance)", category: "refresh")
+
+            try? await Task.sleep(for: .seconds(5))
+
+            let pending = await BGTaskScheduler.shared.pendingTaskRequests()
+            guard pending.contains(where: { $0.identifier == Constants.Tasks.scheduledRefresh }) else {
+                log.log(
+                    "rehearsal - nothing pending to launch, is the interval set?",
+                    level: .warning,
+                    category: "refresh"
+                )
+                if assertion != .invalid { app.endBackgroundTask(assertion) }
+                return
+            }
+
+            let scheduler = BGTaskScheduler.shared
+            let hook = NSSelectorFromString("_simulateLaunchForTaskWithIdentifier:")
+
+            if scheduler.responds(to: hook) {
+                log.log("rehearsal firing a simulated launch", category: "refresh")
+                _ = scheduler.perform(hook, with: Constants.Tasks.scheduledRefresh)
+            } else {
+                // the hook is undocumented, so it is allowed to disappear. the
+                // walk is still worth exercising without it - what is lost is the
+                // handler, not the run
+                log.log("rehearsal - no simulate hook, starting the walk directly", level: .warning, category: "refresh")
+                start(automatic: true)
+            }
+
+            // the handler cannot start anything synchronously - it has to resolve
+            // the graph first - so the run does not exist the moment the hook
+            // returns. waiting for the end before the beginning sees "not
+            // running", calls it finished and drops the assertion, which leaves
+            // the real walk running unprotected until the system suspends it
+            var settling = 0
+            while !isRunning && settling < 100 {
+                try? await Task.sleep(for: .milliseconds(100))
+                settling += 1
+            }
+
+            guard isRunning else {
+                log.log("rehearsal - the launch never produced a run", level: .warning, category: "refresh")
+                if assertion != .invalid { app.endBackgroundTask(assertion) }
+                return
+            }
+
+            log.log("rehearsal - run started, holding the assertion open", category: "refresh")
+
+            // a walk that goes quiet is the thing worth seeing, and silence
+            // cannot say whether it is working or wedged. so it says where it is
+            // every ten seconds, and gives up after five minutes rather than
+            // holding the assertion forever on a stuck origin
+            // finish() clears `total` but not `completed`, so a tick that lands
+            // after the run ended reads "16 of 0". holding the last non-zero
+            // total is enough to report honestly, and `completed` can be read
+            // live - snapshotting that one instead just reported the count from
+            // a second before the end
+            var elapsed = 0
+            var walked = 0
+            while isRunning {
+                if total > 0 { walked = total }
+
+                try? await Task.sleep(for: .seconds(1))
+                elapsed += 1
+
+                if elapsed % 10 == 0 {
+                    // the origins, not `current` - that is the last series
+                    // dispatched, which with more than one in flight is as likely
+                    // to name a bystander as the culprit
+                    let stuck = await worker.outstanding()
+                    log.log(
+                        "rehearsal at \(elapsed)s - \(completed)/\(max(walked, total)) done, \(queued.count) queued, waiting on [\(stuck.joined(separator: ", "))]",
+                        category: "refresh"
+                    )
+                }
+
+                if elapsed >= 300 {
+                    log.log("rehearsal giving up after 5m - cancelling", level: .warning, category: "refresh")
+                    cancel()
+                    break
                 }
             }
-            #endif
+
+            let left = app.backgroundTimeRemaining
+            log.log(
+                "rehearsal over at \(completed) of \(walked) after \(elapsed)s, \(left > 1e6 ? "unbounded" : "\(Int(left))s") left",
+                category: "refresh"
+            )
+
+            if assertion != .invalid {
+                app.endBackgroundTask(assertion)
+                assertion = .invalid
+            }
         }
+#endif
 
         private func submit(named name: String?) {
             task.submit(
@@ -485,12 +667,11 @@ extension Compositor.Refresh {
     // the rows rather than using Dictionary(grouping:)
     nonisolated fileprivate static func work(
         collection: CollectionRecord.ID?,
-        sort: LibrarySort,
-        ascending: Bool,
+        order: Order,
         registry: Compositor.Registry,
         in db: Database
     ) throws -> [Series] {
-        let ordering = "e.\(column(for: sort)) \(ascending ? "ASC" : "DESC")"
+        let ordering = order.clause
         let skips = Skips.stored.clauses
         let scope = collection == nil ? "" : """
             AND EXISTS(
@@ -557,6 +738,35 @@ extension Compositor.Refresh {
         return series
     }
 
+    // a run you are watching goes in the order you set. a run nobody is watching
+    // goes least-recently-checked first, because it can be cut short at any
+    // moment - the device unlocking is enough - and a stable order means a
+    // truncated walk always covers the same head of the library, leaving the
+    // tail permanently unchecked. rotating makes a short run cumulative instead
+    enum Order: Sendable {
+        case library(LibrarySort, ascending: Bool)
+        case rotation
+
+        var clause: String {
+            switch self {
+            case let .library(sort, ascending):
+                "e.\(column(for: sort)) \(ascending ? "ASC" : "DESC")"
+
+            // per series, not per origin: the walk's unit is a series and its
+            // origins are checked together, so the oldest attempt among them is
+            // what says how stale the series is. a series skipped by preference
+            // never moves its dates, so turning a skip off sorts those to the
+            // front, which is the wanted answer for free
+            case .rotation:
+                """
+                (SELECT MIN(o2.\(OriginRecord.Columns.fetchAttemptedDate.name))
+                 FROM \(OriginRecord.databaseTableName) o2
+                 WHERE o2.\(OriginRecord.Columns.seriesId.name) = e.\(EntryView.Columns.seriesId.name)) ASC
+                """
+            }
+        }
+    }
+
     // what the walk is allowed to leave alone. read once when a run starts
     // rather than per row, and expressed as sql so a skipped series never
     // becomes work in the first place
@@ -577,11 +787,15 @@ extension Compositor.Refresh {
         var clauses: String {
             var parts: [String] = []
 
-            // the provider's status, not the reader's. it only moves when the
-            // series is opened, since the bulk walk fetches chapters and not
-            // metadata - a series that finished stays "ongoing" here until
-            // visited, which is the honest cost of the cheaper walk
+            // both parties get to call it finished, and either one is enough.
+            // the reader's status is the stronger signal: a source that does not
+            // track publication state reports ongoing forever, and the provider
+            // column only moves when the series is opened, since the bulk walk
+            // fetches chapters and not metadata. requiring agreement would mean
+            // a reader who marked a series completed keeps paying for it on
+            // every walk for as long as the source stays vague
             if completed {
+                parts.append("AND e.\(EntryView.Columns.status.name) != '\(Status.completed.rawValue)'")
                 parts.append("AND e.\(EntryView.Columns.publication.name) != '\(Publication.Completed.rawValue)'")
             }
 
@@ -625,6 +839,9 @@ actor OriginRefresher {
     private let database: DatabaseClient
     private let log: AppLog
     private var inFlight: [OriginRecord.ID: Task<Outcome, Never>] = [:]
+    // when each in-flight origin was dispatched, so a stalled one can say how
+    // long it has been stalled rather than only that it exists
+    private var started: [OriginRecord.ID: Date] = [:]
 
     init(database: DatabaseClient, log: AppLog = .shared) {
         self.database = database
@@ -654,8 +871,15 @@ actor OriginRefresher {
         originId: OriginRecord.ID
     ) async -> Outcome {
         if let existing = inFlight[originId] {
+            log.log("origin \(originId.rawValue) already in flight, joining", level: .debug, category: "refresh")
             return await existing.value
         }
+
+        // only completion was ever logged, so an origin that never appears could
+        // equally have never started or started and hung - two different bugs
+        // wearing one silence
+        log.log("origin \(originId.rawValue) (\(source.descriptor.slug)) starting", level: .debug, category: "refresh")
+        started[originId] = Date.now
 
         // registered before the first suspension. an actor releases between
         // awaits, so a check-then-await-then-insert would let two callers both
@@ -669,6 +893,17 @@ actor OriginRefresher {
         inFlight[originId] = task
 
         return await task.value
+    }
+
+    // what is outstanding right now, oldest first, for a caller that has gone
+    // quiet and needs to say which origin it is waiting on rather than which
+    // series happened to be dispatched last
+    func outstanding() -> [String] {
+        let now = Date.now
+        return inFlight.keys
+            .map { ($0, now.timeIntervalSince(started[$0] ?? now)) }
+            .sorted { $0.1 > $1.1 }
+            .map { "origin \($0.0.rawValue) (\(Int($0.1))s)" }
     }
 
     // metadata is a separate half so a library walk can skip it. a failure here
@@ -707,6 +942,7 @@ actor OriginRefresher {
 
     private func finish(_ originId: OriginRecord.ID) {
         inFlight[originId] = nil
+        started[originId] = nil
     }
 
     private func perform(
@@ -790,7 +1026,14 @@ actor OriginRefresher {
                     )
             }
 
-            log.log("origin \(originId.rawValue) chapter fetch FAILED - \(error)", level: .error, category: "refresh")
+            // the source, not just the origin id: a failure line is the one thing
+            // read without any surrounding context, and a rowid alone cannot say
+            // whether one site is having a bad day or the whole run went wrong
+            log.log(
+                "origin \(originId.rawValue) (\(source.descriptor.slug)) chapter fetch FAILED - \(error)",
+                level: .error,
+                category: "refresh"
+            )
             return .failed(reason)
         }
     }
