@@ -24,8 +24,12 @@ extension DetailsComposer {
         private(set) var failure: Failure?
 
         // enough rows that the right series is on screen without a search
-        // field, few enough that ranking still means something
-        static let limit = 10
+        // field, few enough that ranking still means something.
+        //
+        // nonisolated because it is read by the nonisolated query that does the
+        // ranking: a static inside a @MainActor type inherits that isolation, and
+        // an immutable Int has nothing to protect
+        nonisolated static let limit = 10
 
         private let registry: Compositor.Registry
         private let assets: Compositor.Assets
@@ -398,8 +402,11 @@ extension DetailsComposer.Identity {
     }
 
     // every origin the losing row owns moves across, then the row itself goes.
-    // titles and covers carry their origin, so they travel with it. UPDATE OR
-    // IGNORE because the target may already hold an identical title or url
+    // metadata, titles and covers move by series rather than by origin: a row
+    // whose supplier has since been removed carries no originId, so an
+    // origin-keyed sweep would leave it behind for the delete below to cascade
+    // away. UPDATE OR IGNORE because the target may already hold the same
+    // supplier, title or url, and a true duplicate is correct to drop
     nonisolated static func reparent(
         from series: SeriesRecord.ID,
         into target: SeriesRecord.ID,
@@ -432,13 +439,17 @@ extension DetailsComposer.Identity {
                 arguments: [target, next, originId]
             )
             next += 1
+        }
 
-            for table in [TitleRecord.databaseTableName, CoverRecord.databaseTableName] {
-                try db.execute(
-                    sql: "UPDATE OR IGNORE \(table) SET seriesId = ? WHERE originId = ?",
-                    arguments: [target, originId]
-                )
-            }
+        for table in [
+            MetadataRecord.databaseTableName,
+            TitleRecord.databaseTableName,
+            CoverRecord.databaseTableName
+        ] {
+            try db.execute(
+                sql: "UPDATE OR IGNORE \(table) SET seriesId = ? WHERE seriesId = ?",
+                arguments: [target, series]
+            )
         }
 
         try db.execute(

@@ -77,15 +77,6 @@ struct AletheiaApp: App {
                 case .active:
                     bootstrap.compositor?.refresh.catchUp()
 
-                #if DEBUG
-                // locking the screen backgrounds the app, which is the closest
-                // thing to the conditions a scheduled run really meets
-                case .background:
-                    if let refresh = bootstrap.compositor?.refresh {
-                        Task { await refresh.rehearse() }
-                    }
-                #endif
-
                 default:
                     break
                 }

@@ -28,10 +28,14 @@ struct LibraryCard: View {
     }
 
     @Environment(\.dimensions) private var dimensions
+    // the downsampler's scale factor defaults to 1, so without this a retina
+    // slot decodes at a third of its resolution
+    @Environment(\.displayScale) private var displayScale
 
     // cleared when the url changes, or a recycled cell hands the next series the
     // previous one's blank
     @State private var unavailable = false
+    @State private var slot: CGSize = .zero
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private enum Layout {
@@ -60,20 +64,37 @@ struct LibraryCard: View {
     private var Cover: some View {
         Color.clear
             .aspectRatio(Layout.coverAspect, contentMode: .fit)
+            // rounded because the size is part of the downsampler's cache key,
+            // and a fractional point mints a fresh decode every layout pass
+            .onGeometryChange(for: CGSize.self) { proxy in
+                CGSize(width: proxy.size.width.rounded(), height: proxy.size.height.rounded())
+            } action: { slot = $0 }
             .overlay {
                 if let cover {
-                    KFImage(cover)
-                        .resizable()
-                        .placeholder { Placeholder.shimmer() }
-                        // a permanently dead url left the shimmer up forever,
-                        // which reads as a card still loading rather than one
-                        // with no artwork
-                        .onFailure { _ in unavailable = true }
-                        .fade(duration: 0.25)
-                        .scaledToFill()
-                        .opacity(unavailable ? 0 : 1)
-                        .overlay { if unavailable { Missing } }
-                        .onChange(of: cover) { unavailable = false }
+                    // zero until the first layout pass, and a downsampler built on
+                    // zero caches under a size that describes nothing - so the
+                    // load waits a frame
+                    if slot.width > 0 {
+                        KFImage(cover)
+                            .setProcessor(DownsamplingImageProcessor(size: slot))
+                            .scaleFactor(displayScale)
+                            .backgroundDecode()
+                            .resizable()
+                            .placeholder { Placeholder.shimmer() }
+                            // a permanently dead url left the shimmer up forever,
+                            // which reads as a card still loading rather than one
+                            // with no artwork
+                            .onFailure { _ in unavailable = true }
+                            .fade(duration: 0.25)
+                            .scaledToFill()
+                            .opacity(unavailable ? 0 : 1)
+                            .overlay { if unavailable { Missing } }
+                            .onChange(of: cover) { unavailable = false }
+                    } else {
+                        // shimmering, not static: there is a cover and it is about
+                        // to be asked for
+                        Placeholder.shimmer()
+                    }
                 } else {
                     Placeholder
                 }

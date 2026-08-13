@@ -53,6 +53,8 @@ enum Preferences {
 
         static let includeAdultSources = "search.includeAdultSources"
 
+        static let recentSearches = "search.recent"
+
         static let bypassAdultSources = "sources.bypassAdult"
 
         static let librarySort = "library.sort"

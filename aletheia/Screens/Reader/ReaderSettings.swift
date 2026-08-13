@@ -12,6 +12,10 @@ import Foundation
 enum ReaderSettings {
     private enum Key {
         static let dim = "reader.dim"
+        static let grayscale = "reader.grayscale"
+        static let inverted = "reader.inverted"
+        static let warmth = "reader.warmth"
+        static let keepScreenOn = "reader.keepScreenOn"
         static let chromeTint = "reader.chromeTint"
         static let horizontalPadding = "reader.horizontalPadding"
         static let autoScrollSpeed = "reader.autoScrollSpeed"
@@ -25,6 +29,26 @@ enum ReaderSettings {
     static var dim: Double {
         get { defaults.double(forKey: Key.dim) }
         set { defaults.set(newValue, forKey: Key.dim) }
+    }
+
+    static var grayscale: Bool {
+        get { defaults.bool(forKey: Key.grayscale) }
+        set { defaults.set(newValue, forKey: Key.grayscale) }
+    }
+
+    static var inverted: Bool {
+        get { defaults.bool(forKey: Key.inverted) }
+        set { defaults.set(newValue, forKey: Key.inverted) }
+    }
+
+    static var warmth: Double {
+        get { defaults.double(forKey: Key.warmth) }
+        set { defaults.set(newValue, forKey: Key.warmth) }
+    }
+
+    static var keepScreenOn: Bool {
+        get { defaults.bool(forKey: Key.keepScreenOn) }
+        set { defaults.set(newValue, forKey: Key.keepScreenOn) }
     }
 
     static var chromeTint: Double {

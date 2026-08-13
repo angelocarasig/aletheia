@@ -89,11 +89,21 @@ actor TrackerAuthority {
     }
 
     nonisolated func authorization(for tracker: Tracker) throws -> Authorization {
+        // a pasted-token service has no browser round trip to open. stated
+        // rather than left to a default, because reaching here at all means a
+        // screen asked the wrong question for this service
+        guard !tracker.usesPastedToken else { throw TrackerError.signedOut }
+
         let state = Self.entropy()
         let verifier = Self.entropy()
 
         var components: URLComponents
         switch tracker {
+        case .mangaBaka:
+            // excluded by the guard above; restated because the compiler cannot
+            // see that usesPastedToken names exactly this case
+            throw TrackerError.signedOut
+
         case .anilist:
             guard !Constants.Trackers.anilistClientId.isEmpty else { throw TrackerError.notConfigured }
             components = URLComponents(url: Constants.Trackers.anilistAuthorize, resolvingAgainstBaseURL: false)!
@@ -157,6 +167,11 @@ actor TrackerAuthority {
         var expiresDate: Date?
 
         switch tracker {
+        case .mangaBaka:
+            // unreachable: authorization(for:) refuses to build a url for it, so
+            // no callback can name it
+            throw TrackerError.signedOut
+
         case .anilist:
             guard let accessToken = parameters["access_token"] else {
                 throw TrackerError.rejected("No token was returned.")
@@ -196,7 +211,39 @@ actor TrackerAuthority {
             accessToken: token,
             refreshToken: refreshToken,
             expiresDate: expiresDate,
-            remoteUserId: viewer.id,
+            username: viewer.name,
+            avatar: viewer.avatar,
+            scoreFormat: tracker.fixedScoreFormat ?? viewer.scoreFormat
+        )
+
+        try store(credential, for: tracker)
+        log.log("[\(tracker.rawValue)] signed in as \(viewer.name)", category: "trackers")
+        return credential
+    }
+
+    // the paste path. no callback, no code to exchange, nothing to refresh - the
+    // token the reader pastes is the credential.
+    //
+    // it is validated before it is stored, which the redirect flows do not need
+    // to do: a token that came back from a browser is one the service issued
+    // seconds ago, and a string typed or pasted by hand is evidence of nothing
+    // until something asks. that round trip is also what fills in the account
+    // name and its score scale, so it costs nothing extra
+    func signIn(token pasted: String, for tracker: Tracker) async throws -> TrackerCredential {
+        let token = pasted.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !token.isEmpty else { throw TrackerError.rejected("Paste your token to continue.") }
+        guard let service = services[tracker] else { throw TrackerError.unavailable }
+
+        let viewer = try await service.viewer(token: token)
+
+        let credential = TrackerCredential(
+            accessToken: token,
+            // nothing to rotate, and no declared expiry anywhere in the spec: the
+            // token lives until the reader revokes it. isValid() then answers true
+            // forever, which is correct here and would be mihon's synthesised
+            // expiry bug on a service that does expire
+            refreshToken: nil,
+            expiresDate: nil,
             username: viewer.name,
             avatar: viewer.avatar,
             scoreFormat: tracker.fixedScoreFormat ?? viewer.scoreFormat

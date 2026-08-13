@@ -93,6 +93,17 @@ extension Compositor {
             schedule()
         }
 
+        // the same landing as complete(), reached without a browser. a service
+        // with no public oauth client registration signs in by paste, and the
+        // token is validated by the authority before it is stored - so arriving
+        // here at all means the account is real
+        func signIn(token: String, for tracker: Tracker) async throws {
+            let credential = try await authority.signIn(token: token, for: tracker)
+            accounts[tracker] = credential
+            deadAccounts.remove(tracker)
+            schedule()
+        }
+
         func signOut(_ tracker: Tracker) async {
             await authority.signOut(tracker)
             accounts[tracker] = nil
@@ -247,11 +258,15 @@ extension Compositor {
         // a concurrency cap is not a rate limit: the host gate gives each service
         // three slots and paces neither. anilist is live at thirty a minute
         // against a documented ninety, and myanimelist answers a burst with a
-        // five to ten minute ban and never a 429
+        // five to ten minute ban and never a 429. mangabaka publishes 180 a
+        // minute and this sits well under it, so the pacing here is habit rather
+        // than necessity - it has no rate-limit headers either, so there is
+        // nothing to steer by and open-loop is all any of the three get
         private func pace(_ tracker: Tracker, since last: Date) async {
             let spacing: Duration = switch tracker {
             case .anilist: .milliseconds(60_000 / Constants.Trackers.anilistRequestsPerMinute)
             case .myAnimeList: Constants.Trackers.malRequestSpacing
+            case .mangaBaka: .milliseconds(60_000 / Constants.Trackers.mangaBakaRequestsPerMinute)
             }
 
             // the push that just ran counts toward the gap. a two-request push
@@ -466,9 +481,61 @@ actor TrackerSyncer {
         try await database.writer.write { db in
             var inserted = row
             try inserted.insert(db, onConflict: .replace)
+            // remote rather than seeded: the save mutation answers with a
+            // trimmed media, while the entry read carries the whole thing
+            try Self.absorb(remote, tracker: tracker, series: series, link: inserted.id, in: db)
         }
 
         log.log("[\(tracker.rawValue)] linked \(record.remoteTitle) at \(record.remoteProgress)", category: "trackers")
+    }
+
+    // a linked service is a supplier like any source: one metadata row, plus
+    // whatever it can add to the series' own pools. it can never win automatic
+    // resolution - that runs through origin priority and this has no origin - so
+    // everything here is only ever reachable by an explicit pin.
+    //
+    // tags are the exception and go straight onto the series, because a tag does
+    // not care where it came from
+    nonisolated static func absorb(
+        _ entry: TrackerEntry,
+        tracker: Tracker,
+        series: SeriesRecord.ID,
+        link: SeriesTrackerRecord.ID?,
+        in db: Database
+    ) throws {
+        var metadata = try MetadataRecord.adopt(
+            seriesId: series,
+            supplier: MetadataRecord.supplier(tracker: tracker),
+            trackerId: link,
+            in: db
+        )
+
+        _ = try metadata.updateChanges(db) {
+            $0.synopsis = tracker.storesProse ? (entry.synopsis ?? "") : ""
+            $0.classification = entry.classification
+            $0.publication = entry.publication
+            $0.fetchedDate = .now
+        }
+
+        guard let metadataId = metadata.id else { return }
+
+        for value in entry.titles where !value.isEmpty {
+            _ = try TitleRecord.findOrCreate(
+                TitleRecord(id: nil, seriesId: series, metadataId: metadataId, value: value),
+                in: db
+            )
+        }
+
+        for url in entry.covers {
+            _ = try CoverRecord.findOrCreate(
+                CoverRecord(id: nil, seriesId: series, metadataId: metadataId, url: url, path: nil),
+                in: db
+            )
+        }
+
+        for name in entry.tags {
+            try TagRecord.attach(name, to: series, in: db)
+        }
     }
 
     func unlink(_ link: SeriesTrackerRecord, removeRemote: Bool) async throws {
@@ -530,6 +597,7 @@ actor TrackerSyncer {
 
     func push(_ link: SeriesTrackerRecord) async throws {
         guard let service = services[link.tracker] else { throw TrackerError.unavailable }
+        var link = link
 
         do {
             // the fix for the one bug that loses data. without it: read to forty
@@ -537,6 +605,19 @@ actor TrackerSyncer {
             // write of forty-one lands on top of sixty. costs one request
             let remote = try await attempt(link.tracker) {
                 try await service.entry(remoteId: link.remoteId, token: $0)
+            }
+
+            // a service that merges two entries answers under the successor's id,
+            // and the read above followed the hop. the writes below address
+            // link.remoteId, so without this the entry is read from one id and
+            // written to another - which is worse than not following at all
+            if remote.remoteId != link.remoteId {
+                log.log(
+                    "[\(link.tracker.rawValue)] \(link.remoteTitle) merged \(link.remoteId) -> \(remote.remoteId)",
+                    category: "trackers"
+                )
+                link.adopt(remoteId: remote.remoteId)
+                try await adopt(remoteId: remote.remoteId, on: link)
             }
 
             // the enqueue-side check reads a cached column, which is a guess at
@@ -649,6 +730,19 @@ actor TrackerSyncer {
                 }
             }
 
+            try row.update(db)
+        }
+    }
+
+    // written on its own rather than folded into store(), because the writes that
+    // follow it depend on it having landed - and because a push that fails after
+    // the hop should still leave the repaired id behind for the next attempt
+    private func adopt(remoteId: Int64, on link: SeriesTrackerRecord) async throws {
+        guard let id = link.id else { return }
+
+        try await database.writer.write { db in
+            guard var row = try SeriesTrackerRecord.fetchOne(db, key: id.rawValue) else { return }
+            row.adopt(remoteId: remoteId)
             try row.update(db)
         }
     }

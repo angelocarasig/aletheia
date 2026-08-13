@@ -5,6 +5,7 @@
 //  Created by Angelo Carasig on 4/8/2026.
 //
 
+import Foundation
 import GRDB
 import Tagged
 
@@ -134,5 +135,27 @@ extension DerivableRequest<TagRecord> {
 extension TagRecord {
     static func uniqueFilter(for instance: Self) -> QueryInterfaceRequest<Self> {
         TagRecord.filter(Columns.normalizedName == instance.normalizedName)
+    }
+
+    // normalising is what makes the unique key work, so it belongs with the key
+    // rather than at a call site. a tag arriving from a source and the same tag
+    // arriving from a tracker have to land on one row
+    static func normalised(_ name: String) -> String {
+        name.lowercased().replacingOccurrences(of: " ", with: "")
+    }
+
+    // tags are supplier-agnostic facts about a series, so every writer joins
+    // through here and none of them records where the tag came from
+    @discardableResult
+    static func attach(_ name: String, to series: SeriesRecord.ID, in db: Database) throws -> TagRecord.ID? {
+        let tag = try findOrCreate(
+            TagRecord(id: nil, normalizedName: normalised(name), displayName: name, canonicalId: nil),
+            in: db
+        )
+        guard let tagId = tag.id else { return nil }
+
+        var link = SeriesTagRecord(id: nil, seriesId: series, tagId: tagId)
+        try link.insert(db, onConflict: .ignore)
+        return tagId
     }
 }

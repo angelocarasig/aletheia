@@ -19,6 +19,9 @@ struct DetailsHeader: View {
     var onSearchAll: () -> Void
 
     @Environment(\.dimensions) private var dimensions
+    // the downsampler's scale factor defaults to 1, so without this a retina
+    // slot decodes at a third of its resolution
+    @Environment(\.displayScale) private var displayScale
 
     private enum Layout {
         // a cover is fitted into this box rather than forced into one shape.
@@ -31,6 +34,11 @@ struct DetailsHeader: View {
         static var coverMaxHeight: CGFloat { coverWidth / coverAspect }
         static let fadeDuration: Double = 0.25
         static let placeholderOpacity: Double = 0.1
+        // the box the artwork is fitted inside, so it is the most any cover here
+        // can be drawn at. deliberately NOT coverFrame: that is derived from the
+        // loaded image's own size, so keying the downsampler on it would feed the
+        // result back into the cache key and load a second time
+        static var coverTarget: CGSize { CGSize(width: coverMaxWidth, height: coverMaxHeight) }
     }
 
     @State private var measured: CGSize = .zero
@@ -90,6 +98,9 @@ struct DetailsHeader: View {
     private var Artwork: some View {
         KFImage(cover)
             .requestModifier(AnyModifier.referer(referer))
+            .setProcessor(DownsamplingImageProcessor(size: Layout.coverTarget))
+            .scaleFactor(displayScale)
+            .backgroundDecode()
             // kingfisher reports the decoded size, which is ratio-true even when
             // a processor has downsampled it - the ratio is all this needs
             .onSuccess { measured = $0.image.size }

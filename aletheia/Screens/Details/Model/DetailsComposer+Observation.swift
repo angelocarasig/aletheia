@@ -15,6 +15,7 @@ extension DetailsComposer {
         let entry: RichfulEntryView
         let chapters: [Chapters.Row]
         let origins: [Origin]
+        let suppliers: [Supplier]
         let covers: [Cover]
         let titles: [Title]
         let collections: [Collection]
@@ -31,14 +32,12 @@ extension DetailsComposer.Stored {
         let priority: Int
         let chapterCount: Int
         let chaptersFetchedDate: Date
-        let metadataFetchedDate: Date
+        // an origin whose metadata row was deleted has nothing to answer with.
+        // the row's own content lives on Stored.Supplier - this is only how
+        // recently the source last described the series
+        let metadataFetchedDate: Date?
         let fetchAttemptedDate: Date
         let fetchError: String?
-        let synopsis: String
-        let classification: Classification
-        let publication: Publication
-        let isSynopsis: Bool
-        let isMetadata: Bool
         let sourceSlug: String?
         let sourceName: String?
         let sourceBaseURL: URL?
@@ -48,6 +47,24 @@ extension DetailsComposer.Stored {
         let installed: Bool
     }
 
+    // one row per metadata row, which is what the synopsis, rating and status
+    // pickers choose between. deliberately not derived from origins: a linked
+    // tracker owns a metadata row and no origin at all, so enumerating origins
+    // makes every tracker invisible to the very pickers it exists to feed
+    struct Supplier: Decodable, FetchableRecord, Sendable {
+        let id: Int64
+        let synopsis: String
+        let classification: Classification
+        let publication: Publication
+        let isSynopsis: Bool
+        let isClassification: Bool
+        let isPublication: Bool
+        let sourceSlug: String?
+        let sourceName: String?
+        let tracker: Tracker?
+        let detached: Bool
+    }
+
     struct Collection: Decodable, FetchableRecord, Sendable {
         let id: Int64
         let name: String
@@ -55,11 +72,15 @@ extension DetailsComposer.Stored {
         let contains: Bool
     }
 
+    // a pool row's provenance is its metadata row, and that row is owned by an
+    // origin or a tracker - so both have to be walked or a linked service's
+    // contributions render unlabelled, which is what a dead source looks like
     struct Title: Decodable, FetchableRecord, Sendable {
         let id: Int64
         let value: String
         let sourceSlug: String?
         let sourceName: String?
+        let tracker: Tracker?
         let isPreferred: Bool
     }
 
@@ -69,6 +90,7 @@ extension DetailsComposer.Stored {
         let path: String?
         let sourceSlug: String?
         let sourceName: String?
+        let tracker: Tracker?
         let isPreferred: Bool
     }
 }
@@ -103,6 +125,7 @@ extension DetailsComposer {
                     // bulk insert
                     chapters: Chapters.display(try Chapters.rows(for: id, in: db), registry: registry),
                     origins: try Self.origins(for: id, in: db),
+                    suppliers: try Self.suppliers(for: id, in: db),
                     covers: try Self.covers(for: id, in: db),
                     titles: try Self.titles(for: id, in: db),
                     collections: try Self.collections(for: id, in: db),
@@ -281,14 +304,9 @@ extension DetailsComposer {
                 o.\(OriginRecord.Columns.url.name) AS url,
                 o.\(OriginRecord.Columns.priority.name) AS priority,
                 o.\(OriginRecord.Columns.chaptersFetchedDate.name) AS chaptersFetchedDate,
-                o.\(OriginRecord.Columns.metadataFetchedDate.name) AS metadataFetchedDate,
+                md.\(MetadataRecord.Columns.fetchedDate.name) AS metadataFetchedDate,
                 o.\(OriginRecord.Columns.fetchAttemptedDate.name) AS fetchAttemptedDate,
                 o.\(OriginRecord.Columns.fetchError.name) AS fetchError,
-                o.\(OriginRecord.Columns.synopsis.name) AS synopsis,
-                o.\(OriginRecord.Columns.classification.name) AS classification,
-                o.\(OriginRecord.Columns.publication.name) AS publication,
-                COALESCE(o.id = s.\(SeriesRecord.Columns.preferredSynopsisOriginId.name), 0) AS isSynopsis,
-                COALESCE(o.id = s.\(SeriesRecord.Columns.preferredMetadataOriginId.name), 0) AS isMetadata,
                 src.\(SourceRecord.Columns.slug.name) AS sourceSlug,
                 src.\(SourceRecord.Columns.name.name) AS sourceName,
                 src.\(SourceRecord.Columns.baseURL.name) AS sourceBaseURL,
@@ -304,6 +322,7 @@ extension DetailsComposer {
             FROM \(OriginRecord.databaseTableName) o
             JOIN \(SeriesRecord.databaseTableName) s ON s.id = o.\(OriginRecord.Columns.seriesId.name)
             LEFT JOIN \(SourceRecord.databaseTableName) src ON src.id = o.\(OriginRecord.Columns.sourceId.name)
+            LEFT JOIN \(MetadataRecord.databaseTableName) md ON md.\(MetadataRecord.Columns.originId.name) = o.id
             WHERE o.\(OriginRecord.Columns.seriesId.name) = ?
             ORDER BY
                 (o.\(OriginRecord.Columns.sourceId.name) IS NULL OR COALESCE(src.\(SourceRecord.Columns.disabled.name), 0)) ASC,
@@ -312,6 +331,39 @@ extension DetailsComposer {
             """
 
         return try Stored.Origin.fetchAll(db, sql: sql, arguments: [id])
+    }
+
+    nonisolated static func suppliers(
+        for id: SeriesRecord.ID,
+        in db: Database
+    ) throws -> [Stored.Supplier] {
+        let sql = """
+            SELECT
+                md.id AS id,
+                md.\(MetadataRecord.Columns.synopsis.name) AS synopsis,
+                md.\(MetadataRecord.Columns.classification.name) AS classification,
+                md.\(MetadataRecord.Columns.publication.name) AS publication,
+                COALESCE(md.id = s.\(SeriesRecord.Columns.preferredSynopsisId.name), 0) AS isSynopsis,
+                COALESCE(md.id = s.\(SeriesRecord.Columns.preferredClassificationId.name), 0) AS isClassification,
+                COALESCE(md.id = s.\(SeriesRecord.Columns.preferredPublicationId.name), 0) AS isPublication,
+                src.\(SourceRecord.Columns.slug.name) AS sourceSlug,
+                src.\(SourceRecord.Columns.name.name) AS sourceName,
+                st.\(SeriesTrackerRecord.Columns.tracker.name) AS tracker,
+                (md.\(MetadataRecord.Columns.originId.name) IS NULL
+                 AND md.\(MetadataRecord.Columns.trackerId.name) IS NULL) AS detached
+            FROM \(MetadataRecord.databaseTableName) md
+            JOIN \(SeriesRecord.databaseTableName) s ON s.id = md.\(MetadataRecord.Columns.seriesId.name)
+            LEFT JOIN \(OriginRecord.databaseTableName) o ON o.id = md.\(MetadataRecord.Columns.originId.name)
+            LEFT JOIN \(SourceRecord.databaseTableName) src ON src.id = o.\(OriginRecord.Columns.sourceId.name)
+            LEFT JOIN \(SeriesTrackerRecord.databaseTableName) st ON st.id = md.\(MetadataRecord.Columns.trackerId.name)
+            WHERE md.\(MetadataRecord.Columns.seriesId.name) = ?
+            ORDER BY
+                (md.\(MetadataRecord.Columns.originId.name) IS NULL) ASC,
+                o.\(OriginRecord.Columns.priority.name) ASC,
+                md.id ASC
+            """
+
+        return try Stored.Supplier.fetchAll(db, sql: sql, arguments: [id])
     }
 
     // every collection, not just this series' - the picker lists all of them,
@@ -348,11 +400,14 @@ extension DetailsComposer {
                 t.\(TitleRecord.Columns.value.name) AS value,
                 src.\(SourceRecord.Columns.slug.name) AS sourceSlug,
                 src.\(SourceRecord.Columns.name.name) AS sourceName,
+                st.\(SeriesTrackerRecord.Columns.tracker.name) AS tracker,
                 COALESCE(t.id = s.\(SeriesRecord.Columns.preferredTitleId.name), 0) AS isPreferred
             FROM \(TitleRecord.databaseTableName) t
             JOIN \(SeriesRecord.databaseTableName) s ON s.id = t.\(TitleRecord.Columns.seriesId.name)
-            LEFT JOIN \(OriginRecord.databaseTableName) o ON o.id = t.\(TitleRecord.Columns.originId.name)
+            LEFT JOIN \(MetadataRecord.databaseTableName) md ON md.id = t.\(TitleRecord.Columns.metadataId.name)
+            LEFT JOIN \(OriginRecord.databaseTableName) o ON o.id = md.\(MetadataRecord.Columns.originId.name)
             LEFT JOIN \(SourceRecord.databaseTableName) src ON src.id = o.\(OriginRecord.Columns.sourceId.name)
+            LEFT JOIN \(SeriesTrackerRecord.databaseTableName) st ON st.id = md.\(MetadataRecord.Columns.trackerId.name)
             WHERE t.\(TitleRecord.Columns.seriesId.name) = ?
             ORDER BY t.id ASC
             """
@@ -371,11 +426,14 @@ extension DetailsComposer {
                 c.\(CoverRecord.Columns.path.name) AS path,
                 src.\(SourceRecord.Columns.slug.name) AS sourceSlug,
                 src.\(SourceRecord.Columns.name.name) AS sourceName,
+                st.\(SeriesTrackerRecord.Columns.tracker.name) AS tracker,
                 COALESCE(c.id = s.\(SeriesRecord.Columns.preferredCoverId.name), 0) AS isPreferred
             FROM \(CoverRecord.databaseTableName) c
             JOIN \(SeriesRecord.databaseTableName) s ON s.id = c.\(CoverRecord.Columns.seriesId.name)
-            LEFT JOIN \(OriginRecord.databaseTableName) o ON o.id = c.\(CoverRecord.Columns.originId.name)
+            LEFT JOIN \(MetadataRecord.databaseTableName) md ON md.id = c.\(CoverRecord.Columns.metadataId.name)
+            LEFT JOIN \(OriginRecord.databaseTableName) o ON o.id = md.\(MetadataRecord.Columns.originId.name)
             LEFT JOIN \(SourceRecord.databaseTableName) src ON src.id = o.\(OriginRecord.Columns.sourceId.name)
+            LEFT JOIN \(SeriesTrackerRecord.databaseTableName) st ON st.id = md.\(MetadataRecord.Columns.trackerId.name)
             WHERE c.\(CoverRecord.Columns.seriesId.name) = ?
             ORDER BY c.id ASC
             """
@@ -422,22 +480,33 @@ extension DetailsComposer {
             sourceId: sourceId,
             slug: detail.slug,
             url: detail.url.absoluteString,
-            synopsis: detail.synopsis,
-            priority: priority,
-            classification: detail.classification,
-            publication: detail.publication,
-            
-            // this origin exists because a details response just arrived
-            metadataFetchedDate: .now
+            priority: priority
         )
         try origin.insert(db)
         guard let originId = origin.id else { throw RecordError.missingIdentifier }
+
+        // what this source says the series is. the origin owns chapters and the
+        // fetch; this row owns the description, and a tracker can own a sibling
+        let source = try SourceRecord.fetchOne(db, key: sourceId.rawValue)
+        var metadata = MetadataRecord(
+            seriesId: seriesId,
+            originId: originId,
+            supplier: MetadataRecord.supplier(source: source?.slug ?? "\(sourceId.rawValue)", origin: detail.slug),
+            synopsis: detail.synopsis,
+            classification: detail.classification,
+            publication: detail.publication,
+
+            // this row exists because a details response just arrived
+            fetchedDate: .now
+        )
+        try metadata.insert(db)
+        guard let metadataId = metadata.id else { throw RecordError.missingIdentifier }
 
         // the source's own title goes in first, and becomes the preferred one
         var preferredTitleId: TitleRecord.ID?
         for value in [detail.title] + detail.altTitles {
             let title = try TitleRecord.findOrCreate(
-                TitleRecord(id: nil, seriesId: seriesId, originId: originId, value: value),
+                TitleRecord(id: nil, seriesId: seriesId, metadataId: metadataId, value: value),
                 in: db
             )
             if preferredTitleId == nil { preferredTitleId = title.id }
@@ -463,7 +532,7 @@ extension DetailsComposer {
         var preferredCoverId: CoverRecord.ID?
         for url in pool {
             let cover = try CoverRecord.findOrCreate(
-                CoverRecord(id: nil, seriesId: seriesId, originId: originId, url: url, path: nil),
+                CoverRecord(id: nil, seriesId: seriesId, metadataId: metadataId, url: url, path: nil),
                 in: db
             )
             if url == primary { preferredCoverId = cover.id }
@@ -477,13 +546,7 @@ extension DetailsComposer {
         }
 
         for name in detail.tags {
-            let tag = try TagRecord.findOrCreate(
-                TagRecord(id: nil, normalizedName: sanitised(name), displayName: name, canonicalId: nil),
-                in: db
-            )
-            guard let tagId = tag.id else { continue }
-            var link = SeriesTagRecord(id: nil, seriesId: seriesId, tagId: tagId)
-            try link.insert(db, onConflict: .ignore)
+            try TagRecord.attach(name, to: seriesId, in: db)
         }
 
         // an attached origin joins a series that already has its preferences
@@ -493,8 +556,9 @@ extension DetailsComposer {
 
         series.preferredTitleId = preferredTitleId
         series.preferredCoverId = preferredCoverId
-        series.preferredSynopsisOriginId = originId
-        series.preferredMetadataOriginId = originId
+        series.preferredSynopsisId = metadataId
+        series.preferredClassificationId = metadataId
+        series.preferredPublicationId = metadataId
         try series.update(db)
 
         return (seriesId, originId)
@@ -513,7 +577,4 @@ extension DetailsComposer {
         return covers.first { $0.deletingPathExtension().lastPathComponent == stem } ?? covers.first
     }
 
-    nonisolated static func sanitised(_ tag: String) -> String {
-        tag.lowercased().replacingOccurrences(of: " ", with: "")
-    }
 }

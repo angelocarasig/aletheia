@@ -14,7 +14,10 @@ struct CoverRecord: Codable, DatabaseRecord, UniqueRecord, StorableRecord {
     private(set) var id: ID?
 
     private(set) var seriesId: SeriesRecord.ID
-    private(set) var originId: OriginRecord.ID?
+    // provenance, not ownership. null means the supplier's metadata row was
+    // deleted, and the cover stays in the pool unlabelled - the same thing
+    // originId meant before metadata existed
+    private(set) var metadataId: MetadataRecord.ID?
 
     var url: URL
     var path: String?
@@ -37,7 +40,7 @@ extension CoverRecord {
     enum Columns {
         static let id = Column(CodingKeys.id)
         static let seriesId = Column(CodingKeys.seriesId)
-        static let originId = Column(CodingKeys.originId)
+        static let metadataId = Column(CodingKeys.metadataId)
 
         static let url = Column(CodingKeys.url)
         static let path = Column(CodingKeys.path)
@@ -48,8 +51,8 @@ extension CoverRecord {
             t.autoIncrementedPrimaryKey(Columns.id.name)
 
             t.belongsTo(SeriesRecord.databaseTableName, onDelete: .cascade)
-            t.column(Columns.originId.name, .integer)
-                .references(OriginRecord.databaseTableName, onDelete: .setNull)
+            t.column(Columns.metadataId.name, .integer)
+                .references(MetadataRecord.databaseTableName, onDelete: .setNull)
 
             t.column(Columns.url.name, .text).notNull()
             t.column(Columns.path.name, .text)
@@ -60,7 +63,7 @@ extension CoverRecord {
 
     static func createIndexes(db: Database) throws {
         try db.create(index: "idx_cover_seriesId", on: databaseTableName, columns: [Columns.seriesId.name], ifNotExists: true)
-        try db.create(index: "idx_cover_originId", on: databaseTableName, columns: [Columns.originId.name], ifNotExists: true)
+        try db.create(index: "idx_cover_metadataId", on: databaseTableName, columns: [Columns.metadataId.name], ifNotExists: true)
     }
 
     mutating func didInsert(_ inserted: InsertionSuccess) {
@@ -79,10 +82,10 @@ extension CoverRecord {
 }
 
 extension CoverRecord {
-    static let origin = belongsTo(OriginRecord.self)
+    static let metadata = belongsTo(MetadataRecord.self)
 
-    var origin: QueryInterfaceRequest<OriginRecord> {
-        request(for: CoverRecord.origin)
+    var metadata: QueryInterfaceRequest<MetadataRecord> {
+        request(for: CoverRecord.metadata)
     }
 }
 

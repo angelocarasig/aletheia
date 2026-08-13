@@ -18,6 +18,7 @@ struct TrackingScreen: View {
     @State private var connecting: Tracker?
     @State private var failure: Failure?
     @State private var disconnecting: Tracker?
+    @State private var pasting: Tracker?
 
     private enum Layout {
         static let tile: CGFloat = 36
@@ -72,6 +73,19 @@ struct TrackingScreen: View {
             // disconnect invites the reader to assume worse
             Text("Your links stay, and nothing is removed from your list. Progress just stops syncing until you sign in again.")
         }
+        .sheet(item: $pasting) { tracker in
+            TrackerTokenSheet(tracker: tracker) { token in
+                do {
+                    try await compositor.trackers.signIn(token: token, for: tracker)
+                    return nil
+                } catch {
+                    // handed back rather than raised as an alert: the sheet is
+                    // still open with the token in it, and an alert over a field
+                    // that needs correcting is a message where a state belongs
+                    return Failure(error, fallback: "Couldn't Connect")
+                }
+            }
+        }
         .task { compositor.trackers.hydrate() }
     }
 
@@ -117,6 +131,13 @@ struct TrackingScreen: View {
 
     private func connect(_ tracker: Tracker) {
         guard connecting == nil else { return }
+
+        // no browser grant for this one: the reader pastes a token, and the sheet
+        // owns the whole attempt including its failures
+        guard !tracker.usesPastedToken else {
+            pasting = tracker
+            return
+        }
 
         Task {
             connecting = tracker
@@ -293,7 +314,6 @@ private extension TrackerCredential {
             accessToken: "token",
             refreshToken: refreshable ? "refresh" : nil,
             expiresDate: .now.addingTimeInterval(60 * 60 * 24 * 30),
-            remoteUserId: 1,
             username: username,
             avatar: nil,
             scoreFormat: .point10

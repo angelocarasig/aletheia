@@ -36,7 +36,6 @@ struct AniListService: TrackerService {
         let viewer = response.Viewer
 
         return TrackerViewer(
-            id: viewer.id,
             name: viewer.name,
             avatar: viewer.avatar?.large.flatMap(URL.init(string:)),
             scoreFormat: viewer.mediaListOptions?.scoreFormat ?? .point10
@@ -106,6 +105,9 @@ struct AniListService: TrackerService {
             coverImage { extraLarge }
             status
             isAdult
+            genres
+            synonyms
+            tags { name rank isAdult isGeneralSpoiler isMediaSpoiler }
             format
             startDate { year }
             description(asHtml: false)
@@ -215,15 +217,25 @@ struct AniListService: TrackerService {
         if !variables.isEmpty { body["variables"] = variables }
         request.httpBody = try? JSONSerialization.data(withJSONObject: body)
 
+        // one endpoint for every operation here, so the path says nothing a log
+        // reader does not already know - the operation name does. it is the first
+        // line of the query, which is where graphql puts it
+        let operation = Self.operation(in: query)
+
         let data: Data
         let response: HTTPURLResponse
+
+        TrackerLog.sent(tracker, "POST", operation)
+
         do {
             (data, response) = try await network.send(request)
+            TrackerLog.received(tracker, "POST", operation, status: response.statusCode, bytes: data.count)
         } catch is CancellationError {
             throw TrackerError.cancelled
         } catch NetworkError.cancelled {
             throw TrackerError.cancelled
         } catch {
+            TrackerLog.unreachable(tracker, "POST", operation, error)
             throw TrackerError.unavailable
         }
 
@@ -263,7 +275,35 @@ struct AniListService: TrackerService {
 
         if let error = errors?.first { throw TrackerError.rejected(error.message) }
 
+        // nothing usable and nothing said why, which on this service means the
+        // data half did not fit Response. the same class of failure the envelope
+        // split above was written for, so the body is recorded rather than lost
+        TrackerLog.undecodable(
+            tracker,
+            operation,
+            expected: Response.self,
+            error: DecodingError.dataCorrupted(
+                .init(codingPath: [], debugDescription: "no data and no errors in the envelope")
+            ),
+            body: data
+        )
         throw TrackerError.unavailable
+    }
+
+    // the operation name out of `query Foo(...)` or `mutation Bar(...)`, which is
+    // all that distinguishes one request to this endpoint from another
+    private static func operation(in query: String) -> String {
+        guard let line = query
+            .split(separator: "\n", omittingEmptySubsequences: true)
+            .first(where: { $0.contains("query ") || $0.contains("mutation ") })
+        else { return "graphql" }
+
+        let name = line
+            .trimmingCharacters(in: .whitespaces)
+            .prefix { $0 != "(" && $0 != "{" }
+            .trimmingCharacters(in: .whitespaces)
+
+        return name.isEmpty ? "graphql" : name
     }
 }
 
@@ -330,9 +370,20 @@ private struct Media: Decodable {
     let mediaListEntry: Listing?
     let description: String?
     let staff: Staff?
+    let genres: [String]?
+    let synonyms: [String]?
+    let tags: [Tag]?
 
     struct Cover: Decodable { let extraLarge: String? }
     struct FuzzyDate: Decodable { let year: Int? }
+
+    struct Tag: Decodable {
+        let name: String
+        let rank: Int?
+        let isAdult: Bool?
+        let isGeneralSpoiler: Bool?
+        let isMediaSpoiler: Bool?
+    }
 
     struct Staff: Decodable {
         let edges: [Edge]?
@@ -376,6 +427,28 @@ private struct Media: Decodable {
         return text.isEmpty ? nil : text
     }
 
+    // isAdult is the only reliable signal here and genre is not: the canonical
+    // Nozoki Ana entry is isAdult with genres [Drama, Ecchi, Romance] and no
+    // Hentai at all, so a genre gate misses it outright. Ecchi maps to
+    // Suggestive because anilist applies it to real fanservice rather than
+    // incidentally. anything else abstains - anilist has no vocabulary for
+    // asserting that something is safe, so silence is no opinion, never Safe
+    var rating: Classification {
+        if isAdult == true { return .Explicit }
+        if genres?.contains("Ecchi") == true { return .Suggestive }
+        return .Unknown
+    }
+
+    // both spoiler flags gate display and 60 is the conventional rank floor -
+    // 20% of tag instances are media spoilers and 48% of series carry at least
+    // one, so rendering the raw list spoils half a library
+    var vocabulary: [String] {
+        (tags ?? [])
+            .filter { ($0.rank ?? 0) >= 60 }
+            .filter { $0.isGeneralSpoiler != true && $0.isMediaSpoiler != true }
+            .map(\.name)
+    }
+
     var entry: TrackerEntry {
         TrackerEntry(
             remoteId: id,
@@ -388,6 +461,10 @@ private struct Media: Decodable {
             format: shape,
             publication: status.publication,
             adult: isAdult ?? false,
+            titles: title.pool + (synonyms ?? []),
+            covers: [coverImage?.extraLarge.flatMap(URL.init(string:))].compactMap { $0 },
+            tags: vocabulary,
+            classification: rating,
             entryId: mediaListEntry?.id,
             status: mediaListEntry?.status.flatMap(Status.init(anilist:)),
             progress: mediaListEntry?.progress ?? 0,
@@ -444,6 +521,15 @@ private struct Title: Decodable {
     // english is null far more often than its prominence suggests
     var preferred: String {
         english ?? romaji ?? native ?? "Untitled"
+    }
+
+    // all three, deduplicated. the title pool is where a tracker most outclasses
+    // a source - 6.5 titles a series against roughly one
+    var pool: [String] {
+        var seen = Set<String>()
+        return [romaji, english, native]
+            .compactMap { $0 }
+            .filter { !$0.isEmpty && seen.insert($0).inserted }
     }
 }
 

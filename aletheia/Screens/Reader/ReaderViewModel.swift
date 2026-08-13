@@ -203,6 +203,10 @@ final class ReaderViewModel {
             var configuration = ReaderConfiguration()
             configuration.mode = orientation.resolved(tags: tags)
             configuration.dim = ReaderSettings.dim
+            configuration.grayscale = ReaderSettings.grayscale
+            configuration.inverted = ReaderSettings.inverted
+            configuration.warmth = ReaderSettings.warmth
+            configuration.keepScreenOn = ReaderSettings.keepScreenOn
             configuration.chromeTint = ReaderSettings.chromeTint
             configuration.horizontalPadding = ReaderSettings.horizontalPadding
             configuration.autoScrollSpeed = ReaderSettings.autoScrollSpeed
@@ -341,6 +345,34 @@ final class ReaderViewModel {
         guard var configuration = engine?.configuration else { return }
         configuration.dim = value
         ReaderSettings.dim = value
+        engine?.update(configuration)
+    }
+
+    func setGrayscale(_ value: Bool) {
+        guard var configuration = engine?.configuration else { return }
+        configuration.grayscale = value
+        ReaderSettings.grayscale = value
+        engine?.update(configuration)
+    }
+
+    func setInverted(_ value: Bool) {
+        guard var configuration = engine?.configuration else { return }
+        configuration.inverted = value
+        ReaderSettings.inverted = value
+        engine?.update(configuration)
+    }
+
+    func setWarmth(_ value: Double) {
+        guard var configuration = engine?.configuration else { return }
+        configuration.warmth = value
+        ReaderSettings.warmth = value
+        engine?.update(configuration)
+    }
+
+    func setKeepScreenOn(_ value: Bool) {
+        guard var configuration = engine?.configuration else { return }
+        configuration.keepScreenOn = value
+        ReaderSettings.keepScreenOn = value
         engine?.update(configuration)
     }
 
@@ -838,12 +870,23 @@ final class ReaderViewModel {
             .asRequest(of: OriginRecord.self)
             .fetchOne(db)
 
-        let ids = [series.preferredMetadataOriginId, primary?.id].compactMap { $0 }
+        // the pinned publication supplier, or the primary origin's own row. an OR
+        // rather than agreement, because a source that does not track publication
+        // state reports Ongoing forever and would silence the prompt on every
+        // multi-source series carrying one lazy source
+        let primaryMetadata = try primary?.id.flatMap { originId in
+            try MetadataRecord
+                .filter(MetadataRecord.Columns.originId == originId)
+                .fetchOne(db)?
+                .id
+        }
+
+        let ids = [series.preferredPublicationId, primaryMetadata].compactMap { $0 }
         guard !ids.isEmpty else { return false }
 
-        return try OriginRecord
-            .filter(ids.contains(OriginRecord.Columns.id))
-            .filter(OriginRecord.Columns.publication == Publication.Completed.rawValue)
+        return try MetadataRecord
+            .filter(ids.contains(MetadataRecord.Columns.id))
+            .filter(MetadataRecord.Columns.publication == Publication.Completed.rawValue)
             .fetchCount(db) > 0
     }
 

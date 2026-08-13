@@ -27,6 +27,7 @@ struct MyAnimeListService: TrackerService {
     private static let fields = [
         "id", "title", "main_picture", "num_chapters", "status", "start_date",
         "nsfw", "synopsis", "media_type", "authors{first_name,last_name}",
+        "alternative_titles", "genres",
         "my_list_status{status,score,num_chapters_read,start_date}"
     ].joined(separator: ",")
 
@@ -35,7 +36,6 @@ struct MyAnimeListService: TrackerService {
     func viewer(token: String) async throws -> TrackerViewer {
         let user: User = try await get("/users/@me", token: token)
         return TrackerViewer(
-            id: user.id,
             name: user.name,
             avatar: user.picture.flatMap(URL.init(string:)),
             // fixed at ten points for every account, so nothing is read for it
@@ -189,23 +189,45 @@ struct MyAnimeListService: TrackerService {
         }
 
         // ban and maintenance responses are html, so a decode failure here is as
-        // likely to be a throttle as a schema drift
-        guard let decoded = try? JSONDecoder().decode(Response.self, from: data) else {
+        // likely to be a throttle as a schema drift - which is exactly why the
+        // body is logged rather than discarded
+        do {
+            return try JSONDecoder().decode(Response.self, from: data)
+        } catch {
+            TrackerLog.undecodable(
+                tracker,
+                Self.path(of: request),
+                expected: Response.self,
+                error: error,
+                body: data
+            )
             throw TrackerError.unavailable
         }
-        return decoded
     }
 
     private func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        let method = request.httpMethod ?? "GET"
+        let path = Self.path(of: request)
+
+        TrackerLog.sent(tracker, method, path)
+
         do {
-            return try await network.send(request)
+            let (data, response) = try await network.send(request)
+            TrackerLog.received(tracker, method, path, status: response.statusCode, bytes: data.count)
+            return (data, response)
         } catch is CancellationError {
             throw TrackerError.cancelled
         } catch NetworkError.cancelled {
             throw TrackerError.cancelled
         } catch {
+            TrackerLog.unreachable(tracker, method, path, error)
             throw TrackerError.unavailable
         }
+    }
+
+    private static func path(of request: URLRequest) -> String {
+        guard let url = request.url else { return "?" }
+        return url.path() + (url.query().map { "?\($0)" } ?? "")
     }
 
     // the 401/403 split is about whether a credential was parsed at all, not
@@ -246,7 +268,6 @@ struct MyAnimeListService: TrackerService {
 // MARK: - Wire
 
 private struct User: Decodable {
-    let id: Int64
     let name: String
     let picture: String?
 }
@@ -271,8 +292,17 @@ private struct Manga: Decodable {
     let synopsis: String?
     let authors: [Author]?
     let my_list_status: ListStatus?
+    let alternative_titles: Alternatives?
+    let genres: [Genre]?
 
     struct Picture: Decodable { let large: String? }
+    struct Genre: Decodable { let name: String }
+
+    struct Alternatives: Decodable {
+        let synonyms: [String]?
+        let en: String?
+        let ja: String?
+    }
 
     // wrapped one level deeper than every other field here, and either name may
     // be missing - a mononymous artist has a first name and nothing else
@@ -338,6 +368,24 @@ private struct Manga: Decodable {
         }
     }
 
+    // nsfw alone is not enough: it never emitted black across 636 probes, and
+    // Umibe no Onnanoko carries their own Erotica genre while still reporting
+    // white. the genre list is the stronger signal on this service. anything
+    // else abstains rather than asserting Safe
+    var rating: Classification {
+        let names = Set((genres ?? []).map(\.name))
+        if nsfw == "black" || names.contains("Hentai") || names.contains("Erotica") { return .Explicit }
+        if nsfw == "gray" || names.contains("Ecchi") { return .Suggestive }
+        return .Unknown
+    }
+
+    var pool: [String] {
+        var seen = Set<String>()
+        let all = [title, alternative_titles?.en, alternative_titles?.ja]
+            .compactMap { $0 } + (alternative_titles?.synonyms ?? [])
+        return all.filter { !$0.isEmpty && seen.insert($0).inserted }
+    }
+
     var entry: TrackerEntry {
         TrackerEntry(
             remoteId: id,
@@ -350,6 +398,10 @@ private struct Manga: Decodable {
             format: shape,
             publication: publication,
             adult: nsfw == "black",
+            titles: pool,
+            covers: [main_picture?.large.flatMap(URL.init(string:))].compactMap { $0 },
+            tags: (genres ?? []).map(\.name),
+            classification: rating,
             // there is no entry id - the media id addresses the entry - so
             // presence is what stands in for one
             entryId: my_list_status == nil ? nil : id,

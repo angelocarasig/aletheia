@@ -913,7 +913,7 @@ actor OriginRefresher {
         do {
             let detail = try await source.details(seriesSlug: seriesSlug)
             try await database.writer.write { db in
-                try Self.write(detail, for: originId, in: db)
+                try Self.write(detail, for: originId, source: source.descriptor.slug, in: db)
             }
         } catch {
             log.log("origin \(originId.rawValue) metadata refresh failed - \(error)", level: .error, category: "refresh")
@@ -1047,27 +1047,37 @@ extension OriginRefresher {
     nonisolated fileprivate static func write(
         _ detail: SeriesDetail,
         for originId: OriginRecord.ID,
+        source: String,
         in db: Database
     ) throws {
-        guard var origin = try OriginRecord.fetchOne(db, key: originId.rawValue) else { return }
+        guard let origin = try OriginRecord.fetchOne(db, key: originId.rawValue) else { return }
 
-        _ = try origin.updateChanges(db) {
+        var metadata = try MetadataRecord.adopt(
+            seriesId: origin.seriesId,
+            supplier: MetadataRecord.supplier(source: source, origin: origin.slug),
+            originId: originId,
+            in: db
+        )
+
+        _ = try metadata.updateChanges(db) {
             $0.synopsis = detail.synopsis
             $0.classification = detail.classification
             $0.publication = detail.publication
-            $0.metadataFetchedDate = .now
+            $0.fetchedDate = .now
         }
+
+        guard let metadataId = metadata.id else { return }
 
         for value in [detail.title] + detail.altTitles {
             _ = try TitleRecord.findOrCreate(
-                TitleRecord(id: nil, seriesId: origin.seriesId, originId: originId, value: value),
+                TitleRecord(id: nil, seriesId: origin.seriesId, metadataId: metadataId, value: value),
                 in: db
             )
         }
 
         for url in detail.covers {
             _ = try CoverRecord.findOrCreate(
-                CoverRecord(id: nil, seriesId: origin.seriesId, originId: originId, url: url, path: nil),
+                CoverRecord(id: nil, seriesId: origin.seriesId, metadataId: metadataId, url: url, path: nil),
                 in: db
             )
         }

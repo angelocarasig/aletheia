@@ -17,6 +17,11 @@ struct SourceCard: View {
     var obscured: Bool = false
 
     @Environment(\.dimensions) private var dimensions
+    // the downsampler's scale factor defaults to 1, so without this a retina
+    // slot decodes at a third of its resolution
+    @Environment(\.displayScale) private var displayScale
+
+    @State private var slot: CGSize = .zero
 
     private enum Layout {
         static let coverAspect: CGFloat = 11 / 16
@@ -38,14 +43,29 @@ struct SourceCard: View {
     private var Cover: some View {
         Color.clear
             .aspectRatio(Layout.coverAspect, contentMode: .fit)
+            // rounded because the size is part of the downsampler's cache key,
+            // and a fractional point mints a fresh decode every layout pass
+            .onGeometryChange(for: CGSize.self) { proxy in
+                CGSize(width: proxy.size.width.rounded(), height: proxy.size.height.rounded())
+            } action: { slot = $0 }
             .overlay {
                 if let cover = stub?.cover {
-                    KFImage(cover)
-                        .requestModifier(AnyModifier.referer(referer))
-                        .resizable()
-                        .placeholder { Placeholder.shimmer() }
-                        .fade(duration: 0.25)
-                        .scaledToFill()
+                    // zero until the first layout pass, and a downsampler built on
+                    // zero caches under a size that describes nothing - so the
+                    // load waits a frame
+                    if slot.width > 0 {
+                        KFImage(cover)
+                            .requestModifier(AnyModifier.referer(referer))
+                            .setProcessor(DownsamplingImageProcessor(size: slot))
+                            .scaleFactor(displayScale)
+                            .backgroundDecode()
+                            .resizable()
+                            .placeholder { Placeholder.shimmer() }
+                            .fade(duration: 0.25)
+                            .scaledToFill()
+                    } else {
+                        Placeholder.shimmer()
+                    }
                 } else {
                     Placeholder
                 }

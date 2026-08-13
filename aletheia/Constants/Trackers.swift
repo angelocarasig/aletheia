@@ -30,6 +30,30 @@ extension Constants {
         static let malAuthorize = URL(string: "https://myanimelist.net/v1/oauth2/authorize")!
         static let malToken = URL(string: "https://myanimelist.net/v1/oauth2/token")!
 
+        // api.mangabaka.dev is dead and answers every request with a 500 carrying
+        // a plain-english move notice, so a client checking only status codes
+        // reads a permanent redirect as an outage
+        static let mangaBakaAPI = URL(string: "https://api.mangabaka.org")!
+
+        // there is no oauth here for us. mangabaka runs a real provider, but its
+        // token endpoint offers no public-client auth method and nothing registers
+        // an application, so the personal access token is the supported path and
+        // the reader pastes one. see docs/features/tracker-mangabaka.md §2
+        static let mangaBakaSettings = URL(string: "https://mangabaka.org/u/settings")!
+
+        // every token carries this, which is what lets the paste field turn away a
+        // wrong string before it costs a request
+        static let mangaBakaTokenPrefix = "mb-"
+
+        // 180/min on /my/*, six times anilist's real ceiling, so this is headroom
+        // rather than a limit. only uncached requests count and /my/* is never
+        // cached, so this is the number that applies to every push.
+        //
+        // search is a separate and much tighter bucket - 30/min - which is a
+        // debounce question on the link sheet rather than a pacing one here
+        static let mangaBakaRequestsPerMinute = 120
+        static let mangaBakaSearchRequestsPerMinute = 30
+
         // myanimelist 307s any user-agent containing tachiyomi or app.mihon to an
         // empty 204 through an undocumented substring blocklist. ours is checked
         // against it

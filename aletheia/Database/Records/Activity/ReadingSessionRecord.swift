@@ -74,6 +74,15 @@ extension ReadingSessionRecord {
             columns: [Columns.localDayKey.name],
             ifNotExists: true
         )
+
+        // time spent on one series. reading_event carries the same pair and this
+        // table was the half that went without
+        try db.create(
+            index: "idx_reading_session_seriesId_startedDate",
+            on: databaseTableName,
+            columns: [Columns.seriesId.name, Columns.startedDate.name],
+            ifNotExists: true
+        )
     }
 
     mutating func didInsert(_ inserted: InsertionSuccess) {

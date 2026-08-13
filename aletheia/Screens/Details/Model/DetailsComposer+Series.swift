@@ -112,8 +112,8 @@ extension DetailsComposer {
                 Title(
                     id: row.id,
                     value: row.value,
-                    sourceName: row.sourceName,
-                    sourceIcon: icon(row.sourceSlug),
+                    sourceName: name(source: row.sourceName, tracker: row.tracker),
+                    sourceIcon: glyph(slug: row.sourceSlug, tracker: row.tracker),
                     isPreferred: row.isPreferred
                 )
             }
@@ -124,8 +124,8 @@ extension DetailsComposer {
                     id: row.id,
                     url: row.url,
                     local: artwork(nil, path: row.path),
-                    sourceName: row.sourceName,
-                    sourceIcon: icon(row.sourceSlug),
+                    sourceName: name(source: row.sourceName, tracker: row.tracker),
+                    sourceIcon: glyph(slug: row.sourceSlug, tracker: row.tracker),
                     isPreferred: row.isPreferred
                 )
             }
@@ -133,27 +133,29 @@ extension DetailsComposer {
 
             // an origin with no synopsis has nothing to offer, so it is not a
             // choice
-            let mappedSynopses = stored.origins.compactMap { row -> Synopsis? in
+            let mappedSynopses = stored.suppliers.compactMap { row -> Synopsis? in
                 guard !row.synopsis.isEmpty else { return nil }
 
                 return Synopsis(
                     id: row.id,
-                    sourceName: row.sourceName ?? row.sourceSlug,
-                    sourceIcon: icon(row.sourceSlug),
+                    sourceName: name(source: row.sourceName, tracker: row.tracker),
+                    sourceIcon: glyph(slug: row.sourceSlug, tracker: row.tracker),
                     text: row.synopsis,
                     isPreferred: row.isSynopsis
                 )
             }
             if synopses != mappedSynopses { synopses = mappedSynopses }
 
-            let mappedChoices = stored.origins.map { row in
+            let mappedChoices = stored.suppliers.map { row in
                 Metadata(
                     id: row.id,
-                    sourceName: row.sourceName ?? row.sourceSlug,
-                    sourceIcon: icon(row.sourceSlug),
+                    sourceName: name(source: row.sourceName, tracker: row.tracker),
+                    sourceIcon: glyph(slug: row.sourceSlug, tracker: row.tracker),
                     classification: row.classification,
                     publication: row.publication,
-                    isPreferred: row.isMetadata
+                    isClassification: row.isClassification,
+                    isPublication: row.isPublication,
+                    detached: row.detached
                 )
             }
             if choices != mappedChoices { choices = mappedChoices }
@@ -161,6 +163,22 @@ extension DetailsComposer {
 
         private func icon(_ slug: String?) -> ImageResource? {
             slug.flatMap { registry.source(slug: $0) }?.descriptor.icon
+        }
+
+        // provenance resolves through a metadata row, and that row is owned by an
+        // origin or a tracker - so every pool and every picker asks both. taking
+        // the parts rather than a row type because four different stored shapes
+        // carry the same fields.
+        //
+        // no slug fallback: name and slug come off the same joined source row, so
+        // either both arrive or neither does
+        private func name(source: String?, tracker: Tracker?) -> String? {
+            tracker?.name ?? source
+        }
+
+        private func glyph(slug: String?, tracker: Tracker?) -> ImageResource? {
+            if let tracker { return ImageResource(name: tracker.icon, bundle: .main) }
+            return icon(slug)
         }
 
         // from DetailsWriting
@@ -190,18 +208,25 @@ extension DetailsComposer {
             await write(.title(id))
         }
 
-        // whose description is shown, picked by origin rather than by row - a
-        // source writes one synopsis per series, so the origin names it
-        func prefer(synopsis originId: Int64?) async {
-            await write(.synopsis(originId))
+        // whose description is shown. a supplier writes one synopsis per series,
+        // so its metadata row names it
+        func prefer(synopsis metadataId: Int64?) async {
+            await write(.synopsis(metadataId))
         }
 
-        // whose content rating and publication status are shown, same reasoning
-        func prefer(metadata originId: Int64?) async {
-            await write(.metadata(originId))
+        // whose content rating is shown. separate from publication because a
+        // tracker is often the better publication authority and the worse
+        // classification one
+        func prefer(classification metadataId: Int64?) async {
+            await write(.classification(metadataId))
         }
 
-        // the one write behind all four. nil clears the pick and hands the
+        // whose publication status is shown
+        func prefer(publication metadataId: Int64?) async {
+            await write(.publication(metadataId))
+        }
+
+        // the one write behind all five. nil clears the pick and hands the
         // choice back to origin priority, which always resolves to something,
         // so clearing can never leave the screen with nothing to show
         private func write(_ preference: Preference) async {
@@ -259,7 +284,7 @@ extension DetailsComposer.Series {
     }
 
     struct Synopsis: Identifiable, Hashable {
-        // the origin it came from, not the series
+        // the metadata row it came from, not the series or the origin
         let id: Int64
         let sourceName: String?
         let sourceIcon: ImageResource?
@@ -267,13 +292,19 @@ extension DetailsComposer.Series {
         let isPreferred: Bool
     }
 
+    // one row per supplier, carrying both fields and a flag each. the row is the
+    // unit because both values live on it - a supplier cannot be pinned for one
+    // and absent for the other
     struct Metadata: Identifiable, Hashable {
         let id: Int64
         let sourceName: String?
         let sourceIcon: ImageResource?
         let classification: Classification
         let publication: Publication
-        let isPreferred: Bool
+        let isClassification: Bool
+        let isPublication: Bool
+        // no supplier left, so it can only ever be reached by an explicit pin
+        let detached: Bool
     }
 }
 
@@ -285,20 +316,26 @@ extension DetailsComposer.Series {
         case cover(Int64?)
         case title(Int64?)
         case synopsis(Int64?)
-        case metadata(Int64?)
+        // one pin each rather than one for both: the best publication authority
+        // is often the worst classification one, and a shared pin would force
+        // both answers from the same supplier
+        case classification(Int64?)
+        case publication(Int64?)
 
         var column: Column {
             switch self {
             case .cover: SeriesRecord.Columns.preferredCoverId
             case .title: SeriesRecord.Columns.preferredTitleId
-            case .synopsis: SeriesRecord.Columns.preferredSynopsisOriginId
-            case .metadata: SeriesRecord.Columns.preferredMetadataOriginId
+            case .synopsis: SeriesRecord.Columns.preferredSynopsisId
+            case .classification: SeriesRecord.Columns.preferredClassificationId
+            case .publication: SeriesRecord.Columns.preferredPublicationId
             }
         }
 
         var id: Int64? {
             switch self {
-            case .cover(let id), .title(let id), .synopsis(let id), .metadata(let id): id
+            case .cover(let id), .title(let id), .synopsis(let id),
+                 .classification(let id), .publication(let id): id
             }
         }
 
@@ -306,7 +343,7 @@ extension DetailsComposer.Series {
             switch self {
             case .cover: "Couldn't Set Cover"
             case .title: "Couldn't Set Title"
-            case .synopsis, .metadata: "Couldn't Save Preference"
+            case .synopsis, .classification, .publication: "Couldn't Save Preference"
             }
         }
     }

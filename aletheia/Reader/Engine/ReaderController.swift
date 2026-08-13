@@ -876,13 +876,12 @@ final class ReaderController: UIViewController {
     }
 
     private func scrollByViewport(forward: Bool) {
-        // clamped to the page under the reader, not just the viewport: a webtoon
-        // slice shorter than the screen would otherwise be jumped clean over
-        let viewport = collectionView.bounds.height
-        let page = centremostPath()
-            .flatMap { dataSource.itemIdentifier(for: $0) }
-            .map { extent(of: $0, width: pageWidth) } ?? viewport
-        let step = min(page, viewport) * Nudge.factor
+        // the viewport and nothing else. measuring the item under the reader
+        // makes the distance depend on how the source happened to slice the
+        // chapter - short slices step short, a separator steps a third of a
+        // screen - and a strip is one column, so a viewport step cannot skip
+        // anything the way it could between discrete pages
+        let step = collectionView.bounds.height * Nudge.factor
         var offset = collectionView.contentOffset
         offset.y += forward ? step : -step
         offset.y = min(

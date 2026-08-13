@@ -1,23 +1,26 @@
 //
-//  MangaFireSource.swift
+//  MangaFireDeprecatedSource.swift
 //  aletheia
 //
-//  Created by Angelo Carasig on 13/8/2026.
+//  Created by Angelo Carasig on 5/8/2026.
 //
 
 import Foundation
 
-// a signed json api, no renderer and no credential. mangafire rewrote itself in
-// july 2026 - the /browse html this source used to scrape is now an spa shell,
-// and every capability moved to /api/ behind a vrf signature. MangaFireSigner
-// carries that signature; nothing here runs javascript.
+// superseded 2026-08-13 by MangaFireSource, which signs the json api directly.
+// kept, unregistered, for two reasons: it is the only worked example of the
+// renderer lane now that nothing else uses WebRenderer, and it is the fallback
+// if mangafire rotates the vrf tables - the site's own bundle does the signing
+// here, so a key change costs this file nothing.
 //
-// series are opaque string hids, chapters are integers. see
-// docs/sources/mangafire.md
-struct MangaFireSource: SourceService {
-    let network: NetworkConfiguration
-
-    private static let chapterPageSize = 200
+// it targets the pre-July-2026 site: /browse html, the DOM chapter pager, and
+// the `sort=key:dir` vocabulary the api replaced with `order[key]=dir`. assume
+// it is stale rather than merely old. see docs/sources/mangafire.md
+struct MangaFireDeprecatedSource: SourceService, AuthenticatingSource {
+    let requester: AuthRequester
+    let renderer: WebRenderer
+    
+    private let detailsPath = "title"
 
     let descriptor = SourceDescriptor(
         slug: "mangafire",
@@ -53,22 +56,6 @@ struct MangaFireSource: SourceService {
                 ],
                 canExclude: false
             ),
-            // new to the api lane - /browse had no status parameter at all
-            .multiSelect(
-                id: "statuses",
-                name: "Status",
-                options: [
-                    .init(id: "releasing", name: "Releasing"),
-                    .init(id: "finished", name: "Finished"),
-                    .init(id: "on_hiatus", name: "On Hiatus"),
-                    .init(id: "discontinued", name: "Discontinued"),
-                    .init(id: "not_yet_released", name: "Not Yet Released")
-                ],
-                canExclude: false
-            ),
-            // the only filter that validates nothing: a bogus id is ignored and
-            // the unfiltered set comes back, where every other filter here 422s.
-            // measured 2026-08-13
             .multiSelect(
                 id: "demographics",
                 name: "Demographic",
@@ -200,29 +187,27 @@ struct MangaFireSource: SourceService {
                 ],
                 canExclude: false
             ),
-            // the four we can represent. mangafire also serves pt-br, fr, es and
-            // es-la, which chapters() drops rather than mislabel
             .multiSelect(
                 id: "languages",
                 name: "Language",
-                options: LanguageCode.allCases.map { .init(id: $0.rawValue, name: $0.displayName) },
+                options: [
+                    .init(id: "en", name: "English"),
+                    .init(id: "ja", name: "Japanese")
+                ],
                 canExclude: false
             )
         ],
-        // the api takes `order[key]=dir` as separate parameters, where /browse
-        // took `sort=key:dir`. the option id stays in the old shape because it
-        // is one token the ui can carry, and search() splits it - per-source
-        // encoding belongs in the source
         supportedSort: .init(
             options: [
                 .init(id: "relevance:desc", name: "Best match"),
-                .init(id: "chapter_updated_at:desc", name: "Latest update"),
+                .init(id: "updated_at:desc", name: "Latest update"),
                 .init(id: "created_at:desc", name: "Recently added"),
                 .init(id: "title:asc", name: "Title (A-Z)"),
                 .init(id: "title:desc", name: "Title (Z-A)"),
                 .init(id: "year:desc", name: "Year (newest)"),
                 .init(id: "year:asc", name: "Year (oldest)"),
                 .init(id: "score:desc", name: "Highest rated"),
+                .init(id: "trending:desc", name: "Trending"),
                 .init(id: "views_7d:desc", name: "Most viewed · 7 days"),
                 .init(id: "views_30d:desc", name: "Most viewed · 30 days"),
                 .init(id: "views_total:desc", name: "Most viewed · all time"),
@@ -234,74 +219,59 @@ struct MangaFireSource: SourceService {
 
     var presets: [SourcePreset] {
         [
-            .init(id: "latest", name: "Latest Updates", subtitle: "Freshly released chapters", order: 0,
-                  sort: .init(optionID: "chapter_updated_at:desc")),
-            .init(id: "new", name: "New Releases", subtitle: "Recently added series", order: 1,
+            .init(id: "trending", name: "Trending", subtitle: "What everyone's reading now", order: 0,
+                  sort: .init(optionID: "trending:desc")),
+            .init(id: "latest", name: "Latest Updates", subtitle: "Freshly released chapters", order: 1,
+                  sort: .init(optionID: "updated_at:desc")),
+            .init(id: "new", name: "New Releases", subtitle: "Recently added series", order: 2,
                   sort: .init(optionID: "created_at:desc")),
-            .init(id: "top-rated", name: "Top Rated", subtitle: "Highest scored on MangaFire", order: 2,
+            .init(id: "top-rated", name: "Top Rated", subtitle: "Highest scored on MangaFire", order: 3,
                   sort: .init(optionID: "score:desc")),
-            .init(id: "trending", name: "Trending", subtitle: "What everyone's reading now", order: 3,
-                  sort: .init(optionID: "views_30d:desc")),
             .init(id: "popular", name: "All-Time Popular", subtitle: "Most viewed of all time", order: 4,
                   sort: .init(optionID: "views_total:desc"))
         ]
     }
 
-    // the site root serves the same spa shell for every unknown path, so a 200
-    // from it says nothing about whether the api is answering. ping the api
-    // instead - the signature is deterministic, so this url is constant
-    var pingURL: URL {
-        Self.endpoint("/api/titles", [URLQueryItem(name: "limit", value: "1")])
-    }
-}
-
-// MARK: - Requests
-
-extension MangaFireSource {
-    // the signature covers a canonical string built from the path and the
-    // sorted, *decoded* query - not this url. MangaFireSigner owns that
-    // difference; everything here just hands it the items it is about to send.
-    //
-    // the wire needs no sorting of its own: the server re-derives the canonical
-    // form, so scrambling the order across keys still verifies (measured). what
-    // it cannot survive is reordering values *within* one repeated key, since
-    // the index in `key[0]`/`key[1]` binds to position - which is why the
-    // signer's sort is stable and this hands the items over untouched
-    private static func endpoint(_ path: String, _ items: [URLQueryItem]) -> URL {
-        var components = URLComponents(url: URL(string: "https://mangafire.to")!, resolvingAgainstBaseURL: false)!
-        components.path = path
-        components.queryItems = items + [MangaFireSigner.sign(path: path, items: items)]
-        return components.url!
-    }
-
-    private func fetch<Model: Decodable & Sendable>(_ path: String, _ items: [URLQueryItem] = []) async throws -> Model {
-        try await network.get(
-            url: Self.endpoint(path, items),
-            headers: ["Accept": "application/json"]
+    var specification: AuthSpecification {
+        AuthSpecification(
+            requirements: [
+                .cookie(name: "cf_clearance"),
+                .cookie(name: "session")
+            ],
+            challengeURL: descriptor.baseURL,
+            userAgent: nil,
+            maneuver: "Leave this window open to capture cookies. This window will close automatically.",
+            interactive: false
         )
     }
+
 }
 
 // MARK: - Search
 
-extension MangaFireSource {
+extension MangaFireDeprecatedSource {
     func search(_ query: SearchQuery) async throws -> SearchPage<SeriesStub> {
-        let response: TitlesResponse = try await fetch("/api/titles", items(for: query))
+        let url = browseURL(for: query)
+        let credential = try await requester.credential(for: self)
+        let json = try await renderer.sniff(url, credential: credential, matching: "/api/titles")
+        let response = try JSONDecoder().decode(TitlesResponse.self, from: Data(json.utf8))
 
-        // rung 2: the list payload carries no rating - contentRating exists only
-        // on the details call - so the request answers for the whole result set.
+        // rung 2: the list payload carries no rating - twelve fields, none of
+        // them a tier, identical on a pornographic-only query. so the request
+        // answers instead, which it can because content_rating is a server-side
+        // whitelist and we always send one.
         //
-        // this is now load-bearing rather than lucky. the old renderer lane
-        // inherited mangafire's own localStorage default of safe+suggestive; the
-        // api has no default at all, and an omitted content_rating returns
-        // everything including the 2871 pornographic titles
+        // ticking clean and pornographic together is a legitimate but genuinely
+        // mixed request, and there is nothing per item to separate them. it
+        // stamps adult and over-blurs the clean half; one tap undoes it, where
+        // the other way round undoes the preference itself
         let adult = Self.stampsAdult(for: query, gateOpen: allowsAdult(for: query))
 
         let items = response.items.map { item in
             SeriesStub(
                 slug: item.hid,
                 title: item.title,
-                cover: item.poster?.medium.flatMap { URL(string: $0) },
+                cover: item.poster.medium.flatMap { URL(string: $0) },
                 adult: adult
             )
         }
@@ -311,8 +281,8 @@ extension MangaFireSource {
     private static let clean = ["safe", "suggestive", "erotica"]
 
     // whatever the reader picked is what came back, so the answer is whether any
-    // of it is pornographic. with no pick at all the gate is shut and the
-    // request sent the clean whitelist
+    // of it is pornographic. with no pick at all the gate is shut and browseURL
+    // sent the clean whitelist
     private static func stampsAdult(for query: SearchQuery, gateOpen: Bool) -> Bool {
         guard gateOpen else { return false }
         guard case let .multiSelect(_, included, _)? = query.filters.first(where: { $0.id == "content_rating" })
@@ -321,98 +291,110 @@ extension MangaFireSource {
         return included.contains("pornographic")
     }
 
-    private func items(for query: SearchQuery) -> [URLQueryItem] {
-        var items: [URLQueryItem] = [
-            URLQueryItem(name: "page", value: String(max(1, query.page))),
-            URLQueryItem(name: "limit", value: "50")
-        ]
-
-        // never omitted. an absent content_rating is not a neutral request here,
-        // it is every rating
-        if !query.filters.contains(where: { $0.id == "content_rating" }) {
-            let allowed = allowsAdult(for: query) ? Self.clean + ["pornographic"] : Self.clean
-            items += allowed.map { URLQueryItem(name: "content_rating[]", value: $0) }
-        }
-
-        if let text = query.text, !text.isEmpty {
-            items.append(URLQueryItem(name: "keyword", value: text))
-        }
-
-        let sort = resolvedSort(for: query).optionID
-        let parts = sort.split(separator: ":", maxSplits: 1)
-        if let key = parts.first {
-            items.append(URLQueryItem(name: "order[\(key)]", value: parts.count > 1 ? String(parts[1]) : "desc"))
-        }
-
-        for filter in query.filters {
-            switch filter {
-            case let .number(id, value):
-                items.append(URLQueryItem(name: id, value: String(value)))
-
-            case let .text(id, value):
-                items.append(URLQueryItem(name: id, value: value))
-
-            case let .select(id, optionID):
-                items.append(URLQueryItem(name: id, value: optionID))
-
-            case let .multiSelect(id, included, excluded):
-                if id == "genres" {
-                    items += included.map { URLQueryItem(name: "genres_in[]", value: $0) }
-                    items += excluded.map { URLQueryItem(name: "genres_ex[]", value: $0) }
-                } else {
-                    items += included.map { URLQueryItem(name: "\(id)[]", value: $0) }
-                }
-            }
-        }
-
-        return items
-    }
-
-    private struct TitlesResponse: Decodable, Sendable {
+    private struct TitlesResponse: Decodable {
         let items: [Item]
         let meta: Meta
 
-        struct Item: Decodable, Sendable {
+        struct Item: Decodable {
             let hid: String
             let title: String
-            let poster: Poster?
+            let poster: Poster
         }
-        struct Meta: Decodable, Sendable {
+        struct Poster: Decodable {
+            let small: String?
+            let medium: String?
+            let large: String?
+        }
+        struct Meta: Decodable {
             let page: Int
             let hasNext: Bool
         }
     }
 
-    private struct Poster: Decodable, Sendable {
-        let small: String?
-        let medium: String?
-        let large: String?
+    private enum GenreFilter: String {
+        case included = "genres_in"
+        case excluded = "genres_ex"
     }
+
+    private func genres(from selection: FilterSelection) -> [URLQueryItem] {
+        guard case let .multiSelect(_, included, excluded) = selection else { return [] }
+        return [
+            (GenreFilter.included, included),
+            (GenreFilter.excluded, excluded)
+        ].compactMap { key, ids in
+            ids.isEmpty ? nil : URLQueryItem(name: key.rawValue, value: ids.joined(separator: ","))
+        }
+    }
+
+    private func browseURL(for query: SearchQuery) -> URL {
+        var items: [URLQueryItem] = []
+
+        // /browse consults their localStorage prefs only when the url omits
+        // content_rating, so sending it always makes the answer ours rather than
+        // a default their site picks in a store we never see. their prefs also
+        // carry blockedGenres, which browse ignores entirely - one url parameter
+        // is the whole gate here, and nothing needs writing to storage
+        if !query.filters.contains(where: { $0.id == "content_rating" }) {
+            let allowed = allowsAdult(for: query) ? Self.clean + ["pornographic"] : Self.clean
+            items.append(URLQueryItem(name: "content_rating", value: allowed.joined(separator: ",")))
+        }
+
+        if let text = query.text, !text.isEmpty {
+            items.append(URLQueryItem(name: "keyword", value: text))
+        }
+        items.append(URLQueryItem(name: "sort", value: resolvedSort(for: query).optionID))
+
+        for filter in query.filters {
+            switch filter {
+            case let .number(id, value):
+                items.append(URLQueryItem(name: id, value: String(value)))
+            case let .text(id, value):
+                items.append(URLQueryItem(name: id, value: value))
+            case let .select(id, optionID):
+                items.append(URLQueryItem(name: id, value: optionID))
+            case let .multiSelect(id, included, _):
+                if id == "genres" {
+                    items.append(contentsOf: genres(from: filter))
+                } else if !included.isEmpty {
+                    items.append(URLQueryItem(name: id, value: included.joined(separator: ",")))
+                }
+            }
+        }
+
+        if query.page > 1 {
+            items.append(URLQueryItem(name: "page", value: String(query.page)))
+        }
+
+        var components = URLComponents(url: descriptor.baseURL.appendingPathComponent("browse"), resolvingAgainstBaseURL: false)!
+        components.queryItems = items.isEmpty ? nil : items
+        return components.url!
+    }
+
 }
 
 // MARK: - Details
 
-extension MangaFireSource {
+extension MangaFireDeprecatedSource {
     func details(seriesSlug: String) async throws -> SeriesDetail {
-        let response: TitleResponse = try await fetch("/api/titles/\(seriesSlug)")
-        let data = response.data
+        let pageURL = detailsURL(for: seriesSlug)
+        let credential = try await requester.credential(for: self)
+        let json = try await renderer.sniff(pageURL, credential: credential, matching: "/api/titles/\(seriesSlug)?")
+        let data = try JSONDecoder().decode(TitleResponse.self, from: Data(json.utf8)).data
 
         let tags = (data.genres ?? []).map(\.title)
             + (data.themes ?? []).map(\.title)
             + (data.demographics ?? []).map(\.title)
         let authors = (data.authors ?? []).map(\.title) + (data.artists ?? []).map(\.title)
 
-        let cover = data.poster?.large ?? data.poster?.medium ?? data.poster?.small
+        let cover = data.poster.large ?? data.poster.medium ?? data.poster.small
         let covers = cover.flatMap { URL(string: $0) }.map { [$0] } ?? []
-
-        let url = data.url.flatMap { URL(string: $0, relativeTo: descriptor.baseURL)?.absoluteURL }
 
         return SeriesDetail(
             slug: data.hid,
             title: data.title,
             altTitles: data.altTitles ?? [],
             synopsis: HTMLMarkdown.from(data.synopsisHtml ?? ""),
-            url: url ?? descriptor.baseURL.appendingPathComponent("title").appendingPathComponent(seriesSlug),
+            url: URL(string: data.url, relativeTo: descriptor.baseURL)?.absoluteURL ?? pageURL,
             classification: Classification(rating: data.contentRating),
             publication: Publication(status: data.status),
             covers: covers,
@@ -421,16 +403,16 @@ extension MangaFireSource {
         )
     }
 
-    private struct TitleResponse: Decodable, Sendable {
+    private struct TitleResponse: Decodable {
         let data: Detail
 
-        struct Detail: Decodable, Sendable {
+        struct Detail: Decodable {
             let hid: String
             let title: String
-            let url: String?
+            let url: String
             let status: String?
             let contentRating: String?
-            let poster: Poster?
+            let poster: Poster
             let synopsisHtml: String?
             let altTitles: [String]?
             let genres: [Tag]?
@@ -439,108 +421,66 @@ extension MangaFireSource {
             let authors: [Tag]?
             let artists: [Tag]?
         }
-        struct Tag: Decodable, Sendable {
+        struct Poster: Decodable {
+            let small: String?
+            let medium: String?
+            let large: String?
+        }
+        struct Tag: Decodable {
             let title: String
         }
+    }
+
+    private func detailsURL(for seriesSlug: String) -> URL {
+        descriptor.baseURL
+            .appendingPathComponent(detailsPath)
+            .appendingPathComponent(seriesSlug)
     }
 }
 
 // MARK: - Chapters
 
-extension MangaFireSource {
-    // no language parameter: one request set returns every language and the
-    // reader's own priority ordering decides what wins. asking per language
-    // would be four times the requests for the same rows
+extension MangaFireDeprecatedSource {
+    // no cheap change check here - mangafire always returns the full list
     func chapters(seriesSlug: String) async throws -> [ChapterEntry] {
-        let first: ChaptersResponse = try await fetch("/api/titles/\(seriesSlug)/chapters", Self.chapterItems(page: 1))
-
-        var items = first.items
-        let lastPage = max(1, first.meta?.lastPage ?? 1)
-
-        if lastPage > 1 {
-            // the gate caps this at three in flight per host, so the fan-out is
-            // a queue rather than a stampede. the old lane clicked a dom pager
-            // and waited up to eight seconds per page
-            items += try await withThrowingTaskGroup(of: [ChaptersResponse.Item].self) { group in
-                for page in 2...lastPage {
-                    group.addTask {
-                        let response: ChaptersResponse = try await fetch(
-                            "/api/titles/\(seriesSlug)/chapters",
-                            Self.chapterItems(page: page)
-                        )
-                        return response.items
-                    }
-                }
-
-                var collected: [ChaptersResponse.Item] = []
-                for try await page in group { collected += page }
-                return collected
-            }
-        }
-
-        let base = descriptor.baseURL
-            .appendingPathComponent("title")
-            .appendingPathComponent(seriesSlug)
-            .appendingPathComponent("chapter")
+        let pageURL = detailsURL(for: seriesSlug)
+        let credential = try await requester.credential(for: self)
+        let pages = try await renderer.sniffPaged(
+            pageURL,
+            credential: credential,
+            matching: "/api/titles/\(seriesSlug)/chapters",
+            advancing: ".title-detail__chapters-pager button[aria-label='Next page']"
+        )
 
         var seen = Set<Int>()
         var entries: [ChapterEntry] = []
-
-        for item in items where seen.insert(item.id).inserted {
-            // mangafire serves pt-br, fr, es and es-la alongside the four we
-            // model. the old lane mapped every one of them to english, so a
-            // portuguese chapter opened as an english one - dropping is the
-            // honest answer, since nothing downstream can display them
-            guard let language = LanguageCode(rawValue: item.language) else { continue }
-
-            entries.append(ChapterEntry(
-                slug: String(item.id),
-                title: item.name?.isEmpty == false ? item.name! : "Chapter \(Self.number(item.number))",
-                number: item.number,
-                language: language,
-                scanlator: Self.scanlator(for: item.type),
-                url: base.appendingPathComponent(String(item.id)),
-                publishedDate: item.createdAt.map { Date(timeIntervalSince1970: $0) } ?? .distantPast
-            ))
+        for json in pages {
+            let items = try JSONDecoder().decode(ChaptersResponse.self, from: Data(json.utf8)).items
+            for item in items where seen.insert(item.id).inserted {
+                entries.append(ChapterEntry(
+                    slug: String(item.id),
+                    title: item.name.isEmpty ? "Chapter \(Self.number(item.number))" : item.name,
+                    number: item.number,
+                    language: LanguageCode(rawValue: item.language) ?? .english,
+                    scanlator: "MangaFire",
+                    url: pageURL.appendingPathComponent("chapter").appendingPathComponent(String(item.id)),
+                    publishedDate: Date(timeIntervalSince1970: item.createdAt)
+                ))
+            }
         }
-
         return entries
     }
 
-    private static func chapterItems(page: Int) -> [URLQueryItem] {
-        [
-            URLQueryItem(name: "sort", value: "number"),
-            URLQueryItem(name: "order", value: "desc"),
-            URLQueryItem(name: "page", value: String(page)),
-            URLQueryItem(name: "limit", value: String(chapterPageSize))
-        ]
-    }
-
-    // official and unofficial releases sit side by side at the same number, so
-    // one name for both left the reader two identical rows. the api has always
-    // carried the distinction; the old lane threw it away
-    private static func scanlator(for type: String?) -> String {
-        switch (type ?? "").lowercased() {
-        case "official": "Official"
-        case "unofficial": "Unofficial"
-        default: "MangaFire"
-        }
-    }
-
-    private struct ChaptersResponse: Decodable, Sendable {
+    private struct ChaptersResponse: Decodable {
         let items: [Item]
-        let meta: Meta?
 
-        struct Item: Decodable, Sendable {
+        struct Item: Decodable {
             let id: Int
             let number: Double
-            let name: String?
+            let name: String
             let language: String
-            let type: String?
-            let createdAt: Double?
-        }
-        struct Meta: Decodable, Sendable {
-            let lastPage: Int?
+            let type: String
+            let createdAt: Double
         }
     }
 
@@ -551,14 +491,19 @@ extension MangaFireSource {
 
 // MARK: - Content
 
-extension MangaFireSource {
+extension MangaFireDeprecatedSource {
     func content(seriesSlug: String, chapterSlug: String) async throws -> [PageURL] {
-        let response: ChapterContentResponse = try await fetch("/api/chapters/\(chapterSlug)")
+        let readerURL = detailsURL(for: seriesSlug)
+            .appendingPathComponent("chapter")
+            .appendingPathComponent(chapterSlug)
+        let credential = try await requester.credential(for: self)
+        let json = try await renderer.sniff(readerURL, credential: credential, matching: "/api/chapters/\(chapterSlug)")
+        let pages = try JSONDecoder().decode(ChapterContentResponse.self, from: Data(json.utf8)).data.pages
 
-        // dimensions arrive with the page list, so the reader can size a chapter
-        // before a single image lands - tier 0 of the page-dimensions ladder, at
-        // no extra request
-        return response.data.pages.enumerated().compactMap { index, page in
+        // the sniffed payload carries dimensions per page, so the reader can
+        // size a chapter before a single image lands. note this is richer than
+        // the vrf-signed API's page DTO - moving to that would lose them
+        return pages.enumerated().compactMap { index, page in
             URL(string: page.url).map {
                 PageURL(
                     index: index,
@@ -571,13 +516,13 @@ extension MangaFireSource {
         }
     }
 
-    private struct ChapterContentResponse: Decodable, Sendable {
+    private struct ChapterContentResponse: Decodable {
         let data: Content
 
-        struct Content: Decodable, Sendable {
+        struct Content: Decodable {
             let pages: [Page]
         }
-        struct Page: Decodable, Sendable {
+        struct Page: Decodable {
             let url: String
             let width: Int
             let height: Int

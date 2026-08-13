@@ -15,7 +15,7 @@ internal struct SeriesFTS5View: ViewRecord {
     /// every title the series is known by (delimited with ' | ')
     let titles: String
 
-    /// every origin's synopsis (delimited with ' | ')
+    /// every supplier's synopsis (delimited with ' | ')
     let synopses: String
 
     /// tags (delimited with ' | ')
@@ -26,7 +26,7 @@ internal struct SeriesFTS5View: ViewRecord {
     static let dependsOn: [any DatabaseRecord.Type] = [
         SeriesRecord.self,
         TitleRecord.self,
-        OriginRecord.self,
+        MetadataRecord.self,
         TagRecord.self,
         SeriesTagRecord.self
     ]
@@ -69,10 +69,12 @@ extension SeriesFTS5View {
         """
     }
 
+    // every supplier's synopsis, trackers included and unfiltered - a search bar
+    // wants recall, and merge narrowing always confirms
     private static func synopsesSQL(for seriesId: String) -> String {
         """
-        (SELECT COALESCE(GROUP_CONCAT(\(OriginRecord.Columns.synopsis.name), ' | '), '')
-         FROM \(OriginRecord.databaseTableName)
+        (SELECT COALESCE(GROUP_CONCAT(\(MetadataRecord.Columns.synopsis.name), ' | '), '')
+         FROM \(MetadataRecord.databaseTableName)
          WHERE seriesId = \(seriesId))
         """
     }
@@ -125,12 +127,12 @@ extension SeriesFTS5View {
 
         for (suffix, event, row) in [
             ("ai", "AFTER INSERT", "NEW"),
-            ("au", "AFTER UPDATE OF \(OriginRecord.Columns.synopsis.name)", "NEW"),
+            ("au", "AFTER UPDATE OF \(MetadataRecord.Columns.synopsis.name)", "NEW"),
             ("ad", "AFTER DELETE", "OLD")
         ] {
             try db.execute(sql: """
-                CREATE TRIGGER IF NOT EXISTS \(databaseTableName)_origin_\(suffix)
-                \(event) ON \(OriginRecord.databaseTableName)
+                CREATE TRIGGER IF NOT EXISTS \(databaseTableName)_metadata_\(suffix)
+                \(event) ON \(MetadataRecord.databaseTableName)
                 BEGIN
                     UPDATE \(databaseTableName)
                     SET synopses = \(synopsesSQL(for: "\(row).seriesId"))

@@ -76,6 +76,7 @@ extension RichfulEntryView {
         SeriesRecord.self,
         OriginRecord.self,
         SourceRecord.self,
+        MetadataRecord.self,
         CoverRecord.self,
         TitleRecord.self,
         AuthorRecord.self,
@@ -103,7 +104,7 @@ extension RichfulEntryView {
                      WHERE t.id = m.\(SeriesRecord.Columns.preferredTitleId.name)),
                     (SELECT t.\(TitleRecord.Columns.value.name)
                      FROM \(TitleRecord.databaseTableName) t
-                     WHERE t.seriesId = m.id AND t.originId = po.id
+                     WHERE t.seriesId = m.id AND t.\(TitleRecord.Columns.metadataId.name) = pm.id
                      ORDER BY t.id ASC LIMIT 1),
                     (SELECT t.\(TitleRecord.Columns.value.name)
                      FROM \(TitleRecord.databaseTableName) t
@@ -139,12 +140,12 @@ extension RichfulEntryView {
                  ORDER BY a.name
                 ) as authors,
 
-                -- synopsis: the user's pick of origin, else the primary origin's
+                -- synopsis: the user's pick of supplier, else the primary origin's
                 COALESCE(
-                    (SELECT o.\(OriginRecord.Columns.synopsis.name)
-                     FROM \(OriginRecord.databaseTableName) o
-                     WHERE o.id = m.\(SeriesRecord.Columns.preferredSynopsisOriginId.name)),
-                    po.\(OriginRecord.Columns.synopsis.name)
+                    (SELECT x.\(MetadataRecord.Columns.synopsis.name)
+                     FROM \(MetadataRecord.databaseTableName) x
+                     WHERE x.id = m.\(SeriesRecord.Columns.preferredSynopsisId.name)),
+                    pm.\(MetadataRecord.Columns.synopsis.name)
                 ) as synopsis,
 
                 -- aggregated tags (canonical only)
@@ -156,19 +157,20 @@ extension RichfulEntryView {
                  ORDER BY t.displayName
                 ) as tags,
 
-                -- classification and publication travel together from one origin
+                -- one pick each, not one pick for both: the best publication
+                -- authority is often the worst classification one
                 COALESCE(
-                    (SELECT o.\(OriginRecord.Columns.classification.name)
-                     FROM \(OriginRecord.databaseTableName) o
-                     WHERE o.id = m.\(SeriesRecord.Columns.preferredMetadataOriginId.name)),
-                    po.\(OriginRecord.Columns.classification.name)
+                    (SELECT x.\(MetadataRecord.Columns.classification.name)
+                     FROM \(MetadataRecord.databaseTableName) x
+                     WHERE x.id = m.\(SeriesRecord.Columns.preferredClassificationId.name)),
+                    pm.\(MetadataRecord.Columns.classification.name)
                 ) as classification,
 
                 COALESCE(
-                    (SELECT o.\(OriginRecord.Columns.publication.name)
-                     FROM \(OriginRecord.databaseTableName) o
-                     WHERE o.id = m.\(SeriesRecord.Columns.preferredMetadataOriginId.name)),
-                    po.\(OriginRecord.Columns.publication.name)
+                    (SELECT x.\(MetadataRecord.Columns.publication.name)
+                     FROM \(MetadataRecord.databaseTableName) x
+                     WHERE x.id = m.\(SeriesRecord.Columns.preferredPublicationId.name)),
+                    pm.\(MetadataRecord.Columns.publication.name)
                 ) as publication,
 
                 -- date fields
@@ -225,13 +227,18 @@ extension RichfulEntryView {
                     LIMIT 1
                 )
 
+            -- the primary origin's own metadata row, standing in for "what the
+            -- primary origin says" everywhere this view used po.id directly
+            LEFT JOIN \(MetadataRecord.databaseTableName) pm
+                ON pm.\(MetadataRecord.Columns.originId.name) = po.id
+
             -- the displayed cover: the user's pick, else the primary origin's
             -- first, else any
             LEFT JOIN \(CoverRecord.databaseTableName) pc
                 ON pc.id = COALESCE(
                     m.\(SeriesRecord.Columns.preferredCoverId.name),
                     (SELECT c.id FROM \(CoverRecord.databaseTableName) c
-                     WHERE c.seriesId = m.id AND c.originId = po.id
+                     WHERE c.seriesId = m.id AND c.\(CoverRecord.Columns.metadataId.name) = pm.id
                      ORDER BY c.id ASC LIMIT 1),
                     (SELECT c.id FROM \(CoverRecord.databaseTableName) c
                      WHERE c.seriesId = m.id

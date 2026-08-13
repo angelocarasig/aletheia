@@ -273,8 +273,9 @@ extension CoverDownloader {
         let sourceSlug: String?
     }
 
-    // both joins are LEFT: originId and sourceId are each ON DELETE SET NULL, so
-    // a disconnected origin yields no referer and is downloaded without one
+    // every join is LEFT: metadataId, originId and sourceId are each ON DELETE
+    // SET NULL, so a cover whose supplier is gone yields no referer and is
+    // downloaded without one
     fileprivate static func pending(for series: SeriesRecord.ID, in db: Database) throws -> [Pending] {
         let sql = """
             SELECT
@@ -284,7 +285,8 @@ extension CoverDownloader {
                 src.\(SourceRecord.Columns.slug.name) AS sourceSlug
             FROM \(CoverRecord.databaseTableName) c
             JOIN \(SeriesRecord.databaseTableName) s ON s.id = c.\(CoverRecord.Columns.seriesId.name)
-            LEFT JOIN \(OriginRecord.databaseTableName) o ON o.id = c.\(CoverRecord.Columns.originId.name)
+            LEFT JOIN \(MetadataRecord.databaseTableName) md ON md.id = c.\(CoverRecord.Columns.metadataId.name)
+            LEFT JOIN \(OriginRecord.databaseTableName) o ON o.id = md.\(MetadataRecord.Columns.originId.name)
             LEFT JOIN \(SourceRecord.databaseTableName) src ON src.id = o.\(OriginRecord.Columns.sourceId.name)
             WHERE c.\(CoverRecord.Columns.seriesId.name) = ?
               AND c.\(CoverRecord.Columns.path.name) IS NULL
@@ -305,7 +307,8 @@ extension CoverDownloader {
                 src.\(SourceRecord.Columns.slug.name) AS sourceSlug
             FROM \(CoverRecord.databaseTableName) c
             JOIN \(SeriesRecord.databaseTableName) s ON s.id = c.\(CoverRecord.Columns.seriesId.name)
-            LEFT JOIN \(OriginRecord.databaseTableName) o ON o.id = c.\(CoverRecord.Columns.originId.name)
+            LEFT JOIN \(MetadataRecord.databaseTableName) md ON md.id = c.\(CoverRecord.Columns.metadataId.name)
+            LEFT JOIN \(OriginRecord.databaseTableName) o ON o.id = md.\(MetadataRecord.Columns.originId.name)
             LEFT JOIN \(SourceRecord.databaseTableName) src ON src.id = o.\(OriginRecord.Columns.sourceId.name)
             WHERE c.\(CoverRecord.Columns.path.name) IS NULL
             ORDER BY

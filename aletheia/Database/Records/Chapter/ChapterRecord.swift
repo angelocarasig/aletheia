@@ -116,6 +116,9 @@ extension ChapterRecord {
 
         // last read chapter lookup and sorting
         try db.create(index: "idx_chapter_lastReadDate", on: databaseTableName, columns: [Columns.lastReadDate.name], ifNotExists: true)
+
+        // the updates feed orders by the day a chapter arrived here
+        try db.create(index: "idx_chapter_addedDate", on: databaseTableName, columns: [Columns.addedDate.name], ifNotExists: true)
     }
 
     mutating func didInsert(_ inserted: InsertionSuccess) {

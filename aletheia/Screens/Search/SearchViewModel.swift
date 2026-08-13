@@ -161,6 +161,7 @@ final class SearchViewModel {
             let searching = self.searchable
 
             self.submitted = trimmed
+            RecentSearches.record(trimmed)
             self.active = true
             self.sections = searching.map { Section(source: $0) }
 

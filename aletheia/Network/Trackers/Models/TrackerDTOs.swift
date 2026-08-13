@@ -7,8 +7,11 @@
 
 import Foundation
 
+// no remote user id here. one was carried for a while and read by nothing, and
+// the third service's is a string rather than a number - so the field was
+// deleted rather than widened to hold a value no screen asks for.
+// see docs/features/tracker-mangabaka.md §7.1
 struct TrackerViewer: Sendable, Equatable {
-    let id: Int64
     let name: String
     var avatar: URL?
     var scoreFormat: ScoreFormat = .point10
@@ -48,6 +51,14 @@ struct TrackerEntry: Sendable, Equatable {
     var format: String?
     var publication: Publication = .Unknown
     var adult: Bool = false
+
+    // what a linked service contributes to the series itself, as one supplier
+    // among the sources. empty when the service has nothing to say - never a
+    // guess, and never Safe by omission
+    var titles: [String] = []
+    var covers: [URL] = []
+    var tags: [String] = []
+    var classification: Classification = .Unknown
 
     // nil means the media is not on your list. every other field below is then
     // meaningless and the caller is expected to seed rather than compare

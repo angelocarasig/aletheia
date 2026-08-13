@@ -17,7 +17,8 @@ struct DetailsEdit: View {
     let isSaving: Bool
     var onSetTitle: (Int64?) -> Void
     var onSetSynopsis: (Int64?) -> Void
-    var onSetMetadata: (Int64?) -> Void
+    var onSetClassification: (Int64?) -> Void
+    var onSetPublication: (Int64?) -> Void
 
     @Environment(\.dimensions) private var dimensions
     @Environment(\.dismiss) private var dismiss
@@ -25,7 +26,8 @@ struct DetailsEdit: View {
     @State private var field: Field = .title
     @State private var stagedTitle: Int64?
     @State private var stagedSynopsis: Int64?
-    @State private var stagedMetadata: Int64?
+    @State private var stagedClassification: Int64?
+    @State private var stagedPublication: Int64?
     @State private var touched = false
 
     init(
@@ -35,7 +37,8 @@ struct DetailsEdit: View {
         isSaving: Bool,
         onSetTitle: @escaping (Int64?) -> Void,
         onSetSynopsis: @escaping (Int64?) -> Void,
-        onSetMetadata: @escaping (Int64?) -> Void
+        onSetClassification: @escaping (Int64?) -> Void,
+        onSetPublication: @escaping (Int64?) -> Void
     ) {
         self.titles = titles
         self.synopses = synopses
@@ -43,10 +46,12 @@ struct DetailsEdit: View {
         self.isSaving = isSaving
         self.onSetTitle = onSetTitle
         self.onSetSynopsis = onSetSynopsis
-        self.onSetMetadata = onSetMetadata
+        self.onSetClassification = onSetClassification
+        self.onSetPublication = onSetPublication
         _stagedTitle = State(initialValue: titles.first(where: \.isPreferred)?.id)
         _stagedSynopsis = State(initialValue: synopses.first(where: \.isPreferred)?.id)
-        _stagedMetadata = State(initialValue: metadata.first(where: \.isPreferred)?.id)
+        _stagedClassification = State(initialValue: metadata.first(where: \.isClassification)?.id)
+        _stagedPublication = State(initialValue: metadata.first(where: \.isPublication)?.id)
     }
 
     private enum Layout {
@@ -61,6 +66,7 @@ struct DetailsEdit: View {
     private enum Field: String, CaseIterable, Identifiable {
         case title = "Title"
         case synopsis = "Synopsis"
+        case rating = "Rating"
         case status = "Status"
 
         var id: Self { self }
@@ -70,7 +76,8 @@ struct DetailsEdit: View {
         switch field {
         case .title: "Shown in your library, in search results, and on this screen."
         case .synopsis: "Sources write their own descriptions. Pick the one you'd rather read."
-        case .status: "Ratings and publication status, taken from one source rather than merged."
+        case .rating: "Which source decides whether this is blurred behind the adult filter."
+        case .status: "Whether this is still running. Trackers usually know best."
         }
     }
 
@@ -80,7 +87,8 @@ struct DetailsEdit: View {
         switch field {
         case .title: stagedTitle
         case .synopsis: stagedSynopsis
-        case .status: stagedMetadata
+        case .rating: stagedClassification
+        case .status: stagedPublication
         }
     }
 
@@ -88,7 +96,8 @@ struct DetailsEdit: View {
     private var changed: Bool {
         stagedTitle != titles.first(where: \.isPreferred)?.id
             || stagedSynopsis != synopses.first(where: \.isPreferred)?.id
-            || stagedMetadata != metadata.first(where: \.isPreferred)?.id
+            || stagedClassification != metadata.first(where: \.isClassification)?.id
+            || stagedPublication != metadata.first(where: \.isPublication)?.id
     }
 
     var body: some View {
@@ -115,7 +124,8 @@ struct DetailsEdit: View {
                     Button("Done") {
                         if stagedTitle != titles.first(where: \.isPreferred)?.id { onSetTitle(stagedTitle) }
                         if stagedSynopsis != synopses.first(where: \.isPreferred)?.id { onSetSynopsis(stagedSynopsis) }
-                        if stagedMetadata != metadata.first(where: \.isPreferred)?.id { onSetMetadata(stagedMetadata) }
+                        if stagedClassification != metadata.first(where: \.isClassification)?.id { onSetClassification(stagedClassification) }
+                        if stagedPublication != metadata.first(where: \.isPublication)?.id { onSetPublication(stagedPublication) }
                         dismiss()
                     }
                     .fontWeight(.semibold)
@@ -136,7 +146,8 @@ struct DetailsEdit: View {
         }
         .onChange(of: metadata) { _, latest in
             guard !touched else { return }
-            stagedMetadata = latest.first(where: \.isPreferred)?.id
+            stagedClassification = latest.first(where: \.isClassification)?.id
+            stagedPublication = latest.first(where: \.isPublication)?.id
         }
     }
 }
@@ -162,14 +173,17 @@ extension DetailsEdit {
                     case .synopsis:
                         if !synopses.isEmpty { AutomaticRow { stagedSynopsis = nil } }
                         Synopses
+                    case .rating:
+                        if !metadata.isEmpty { AutomaticRow { stagedClassification = nil } }
+                        Suppliers(.rating, staged: stagedClassification) { stagedClassification = $0 }
                     case .status:
-                        if !metadata.isEmpty { AutomaticRow { stagedMetadata = nil } }
-                        Statuses
+                        if !metadata.isEmpty { AutomaticRow { stagedPublication = nil } }
+                        Suppliers(.status, staged: stagedPublication) { stagedPublication = $0 }
                     }
                 }
-                // synopsis and status rows are both keyed by their origin id and
-                // sit in the same position in the switch, so without this SwiftUI
-                // reuses one branch's views for the other
+                // every branch after the first is keyed by a metadata row id and
+                // they sit in the same position in the switch, so without this
+                // SwiftUI reuses one branch's views for another
                 .id(field)
             }
             .padding(.horizontal, dimensions.screenMargin)
@@ -229,33 +243,45 @@ extension DetailsEdit {
         }
     }
 
+    // rating and status pick from the same list, because both values live on one
+    // supplier row - what differs is which pin the tap writes and which value the
+    // row shows. showing both on both tabs made the two read as one screen
+    // rendered twice, with no way to tell which answer you were choosing
     @ViewBuilder
-    private var Statuses: some View {
+    private func Suppliers(
+        _ answering: Field,
+        staged current: Int64?,
+        select: @escaping (Int64) -> Void
+    ) -> some View {
         if metadata.isEmpty {
             Empty("No sources to take this from")
         } else {
             ForEach(metadata) { entry in
-                let staged = stagedMetadata == entry.id
+                let staged = current == entry.id
 
                 Row(preferred: staged, icon: entry.sourceIcon) {
                     VStack(alignment: .leading, spacing: dimensions.spacing.space8) {
-                        Source(entry.sourceName, preferred: staged)
+                        Source(entry.sourceName, preferred: staged, detached: entry.detached)
 
-                        HStack(spacing: dimensions.spacing.space8) {
+                        if answering == .rating {
                             Badge(text: entry.classification.rawValue, tone: entry.classification.tone)
+                        } else {
                             Badge(text: entry.publication.rawValue, tone: entry.publication.tone)
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                 } action: {
-                    stagedMetadata = entry.id
+                    select(entry.id)
                 }
             }
         }
     }
 
-    private func Source(_ name: String?, preferred: Bool) -> some View {
-        Text(name ?? "Unknown source")
+    // a supplier that is gone still names itself - that is what the durable
+    // supplier key on the row is for, and a blank label is what the pools do
+    // today when provenance is lost
+    private func Source(_ name: String?, preferred: Bool, detached: Bool = false) -> some View {
+        Text(detached ? "\(name ?? "Unknown source") (removed)" : (name ?? "Unknown source"))
             .font(.subheadline)
             .fontWeight(preferred ? .semibold : .medium)
     }
@@ -407,9 +433,12 @@ private enum Sample {
         )
     ]
 
+    // the case the split exists for: the rating is taken from the source and the
+    // status from the tracker, which is the only one that can say Hiatus
     static let metadata: [DetailsEdit.Metadata] = [
-        .init(id: 10, sourceName: "MangaFire", sourceIcon: .mangaFire, classification: .Safe, publication: .Ongoing, isPreferred: true),
-        .init(id: 11, sourceName: "MangaDex", sourceIcon: .mangaDex, classification: .Suggestive, publication: .Hiatus, isPreferred: false)
+        .init(id: 10, sourceName: "MangaFire", sourceIcon: .mangaFire, classification: .Safe, publication: .Ongoing, isClassification: true, isPublication: false, detached: false),
+        .init(id: 11, sourceName: "AniList", sourceIcon: .aniList, classification: .Suggestive, publication: .Hiatus, isClassification: false, isPublication: true, detached: false),
+        .init(id: 12, sourceName: "MangaDex", sourceIcon: nil, classification: .Suggestive, publication: .Ongoing, isClassification: false, isPublication: false, detached: true)
     ]
 }
 
@@ -422,7 +451,8 @@ private enum Sample {
             isSaving: false,
             onSetTitle: { _ in },
             onSetSynopsis: { _ in },
-            onSetMetadata: { _ in }
+            onSetClassification: { _ in },
+            onSetPublication: { _ in }
         )
     }
 }
@@ -438,7 +468,8 @@ private enum Sample {
             isSaving: false,
             onSetTitle: { _ in },
             onSetSynopsis: { _ in },
-            onSetMetadata: { _ in }
+            onSetClassification: { _ in },
+            onSetPublication: { _ in }
         )
     }
 }
@@ -452,7 +483,8 @@ private enum Sample {
             isSaving: false,
             onSetTitle: { _ in },
             onSetSynopsis: { _ in },
-            onSetMetadata: { _ in }
+            onSetClassification: { _ in },
+            onSetPublication: { _ in }
         )
     }
 }
@@ -466,7 +498,8 @@ private enum Sample {
             isSaving: true,
             onSetTitle: { _ in },
             onSetSynopsis: { _ in },
-            onSetMetadata: { _ in }
+            onSetClassification: { _ in },
+            onSetPublication: { _ in }
         )
     }
 }

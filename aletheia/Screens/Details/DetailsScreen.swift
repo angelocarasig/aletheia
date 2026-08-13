@@ -286,7 +286,8 @@ struct DetailsScreen: View {
                         isSaving: busy,
                         onSetTitle: { id in Task { await series.prefer(title: id) } },
                         onSetSynopsis: { id in Task { await series.prefer(synopsis: id) } },
-                        onSetMetadata: { id in Task { await series.prefer(metadata: id) } }
+                        onSetClassification: { id in Task { await series.prefer(classification: id) } },
+                        onSetPublication: { id in Task { await series.prefer(publication: id) } }
                     )
                 }
             }

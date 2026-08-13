@@ -12,6 +12,16 @@ struct ReaderConfiguration: Equatable, Sendable {
     var dim: Double = 0
     var chromeTint: Double = Defaults.chromeTint
     var horizontalPadding: CGFloat = 0
+    var grayscale: Bool = false
+    var inverted: Bool = false
+    // -maxWarmth...maxWarmth. the name stays singular because the stored key is
+    // "reader.warmth" and renaming a defaults key silently resets it for every
+    // reader who already set one
+    var warmth: Double = 0
+    // not a render property, and here anyway: every other reader preference
+    // rides this struct from ReaderSettings to the view, and a second path for
+    // one bool would be the only one of its kind. the controller ignores it
+    var keepScreenOn: Bool = false
     var autoScrollSpeed: CGFloat = Defaults.autoScrollSpeed
     var autoAdvanceInterval: TimeInterval = Defaults.autoAdvanceInterval
     var prefetchCount: Int = Defaults.prefetchCount
@@ -30,6 +40,16 @@ struct ReaderConfiguration: Equatable, Sendable {
         static let maxAutoScrollSpeed: CGFloat = 500
 
         static let maxHorizontalPadding: CGFloat = 48
+
+        // warmth is signed: positive takes the blue out, negative takes the red
+        // out, zero tints nothing. the magnitude is what the bound applies to,
+        // and full strength has to leave the art readable rather than coloured
+        static let maxWarmth: Double = 0.7
+        static let warmthStep: Double = 0.05
+        static let warmthTone = (red: 1.0, green: 0.76, blue: 0.47)
+        // the warm tone with its red and blue swapped, so the two ends pull the
+        // page by the same amount in opposite directions
+        static let coolTone = (red: 0.47, green: 0.76, blue: 1.0)
         
         // a paged mode dwells on a page and then slides, so its auto-scroll
         // setting is a duration rather than a rate. different unit, different

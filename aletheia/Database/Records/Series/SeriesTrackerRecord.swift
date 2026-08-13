@@ -26,6 +26,15 @@ struct SeriesTrackerRecord: Codable, DatabaseRecord {
 
     // the media id, which is what every read and write addresses
     private(set) var remoteId: Int64
+
+    // the one case where a link's remote id may legitimately move: the service
+    // merged this series into another and named the successor, which mangabaka
+    // states outright and asks callers to follow. nothing else may move it - a
+    // link otherwise points at exactly what the reader confirmed.
+    // see docs/features/tracker-mangabaka.md §6.1
+    mutating func adopt(remoteId: Int64) {
+        self.remoteId = remoteId
+    }
     // the list-entry id, which is a different number and is what a delete
     // targets. anilist hands it back from SaveMediaListEntry; myanimelist has no
     // such id and addresses the entry by media id alone

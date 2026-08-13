@@ -14,10 +14,14 @@ struct SeriesRecord: Codable, Hashable, DatabaseRecord {
     private(set) var id: ID?
 
     // user picks. nil falls back to the highest-priority connected origin.
+    // classification and publication get a pin each rather than sharing one:
+    // anilist is the best publication authority and the worst classification
+    // one, and a single pin would force both from the same supplier
     var preferredTitleId: TitleRecord.ID?
     var preferredCoverId: CoverRecord.ID?
-    var preferredSynopsisOriginId: OriginRecord.ID?
-    var preferredMetadataOriginId: OriginRecord.ID?
+    var preferredSynopsisId: MetadataRecord.ID?
+    var preferredClassificationId: MetadataRecord.ID?
+    var preferredPublicationId: MetadataRecord.ID?
 
     // config
     var inLibrary: Bool = false
@@ -47,8 +51,9 @@ extension SeriesRecord {
 
         static let preferredTitleId = Column(CodingKeys.preferredTitleId)
         static let preferredCoverId = Column(CodingKeys.preferredCoverId)
-        static let preferredSynopsisOriginId = Column(CodingKeys.preferredSynopsisOriginId)
-        static let preferredMetadataOriginId = Column(CodingKeys.preferredMetadataOriginId)
+        static let preferredSynopsisId = Column(CodingKeys.preferredSynopsisId)
+        static let preferredClassificationId = Column(CodingKeys.preferredClassificationId)
+        static let preferredPublicationId = Column(CodingKeys.preferredPublicationId)
 
         static let inLibrary = Column(CodingKeys.inLibrary)
         static let status = Column(CodingKeys.status)
@@ -72,10 +77,12 @@ extension SeriesRecord {
                 .references(TitleRecord.databaseTableName, column: Columns.id.name, onDelete: .setNull)
             t.column(Columns.preferredCoverId.name, .integer)
                 .references(CoverRecord.databaseTableName, column: Columns.id.name, onDelete: .setNull)
-            t.column(Columns.preferredSynopsisOriginId.name, .integer)
-                .references(OriginRecord.databaseTableName, column: Columns.id.name, onDelete: .setNull)
-            t.column(Columns.preferredMetadataOriginId.name, .integer)
-                .references(OriginRecord.databaseTableName, column: Columns.id.name, onDelete: .setNull)
+            t.column(Columns.preferredSynopsisId.name, .integer)
+                .references(MetadataRecord.databaseTableName, column: Columns.id.name, onDelete: .setNull)
+            t.column(Columns.preferredClassificationId.name, .integer)
+                .references(MetadataRecord.databaseTableName, column: Columns.id.name, onDelete: .setNull)
+            t.column(Columns.preferredPublicationId.name, .integer)
+                .references(MetadataRecord.databaseTableName, column: Columns.id.name, onDelete: .setNull)
 
             t.column(Columns.inLibrary.name, .boolean).notNull().defaults(to: false)
             t.column(Columns.status.name, .text).notNull().defaults(to: Status.planning.rawValue)
@@ -244,18 +251,6 @@ extension SeriesRecord {
     static let origins = hasMany(OriginRecord.self)
         .order(OriginRecord.Columns.priority.ascNullsLast, OriginRecord.Columns.id.ascNullsLast)
 
-    static let preferredSynopsisOrigin = belongsTo(
-        OriginRecord.self,
-        key: "preferredSynopsisOrigin",
-        using: ForeignKey([Columns.preferredSynopsisOriginId.name])
-    )
-
-    static let preferredMetadataOrigin = belongsTo(
-        OriginRecord.self,
-        key: "preferredMetadataOrigin",
-        using: ForeignKey([Columns.preferredMetadataOriginId.name])
-    )
-
     var origin: QueryInterfaceRequest<OriginRecord> {
         request(for: SeriesRecord.origins)
             .limit(1)
@@ -264,12 +259,44 @@ extension SeriesRecord {
     var origins: QueryInterfaceRequest<OriginRecord> {
         request(for: SeriesRecord.origins)
     }
+}
 
-    var preferredSynopsisOrigin: QueryInterfaceRequest<OriginRecord> {
-        request(for: SeriesRecord.preferredSynopsisOrigin)
+// MARK: - Series Metadata Association 1-M
+
+extension SeriesRecord {
+    static let metadata = hasMany(MetadataRecord.self)
+
+    static let preferredSynopsis = belongsTo(
+        MetadataRecord.self,
+        key: "preferredSynopsis",
+        using: ForeignKey([Columns.preferredSynopsisId.name])
+    )
+
+    static let preferredClassification = belongsTo(
+        MetadataRecord.self,
+        key: "preferredClassification",
+        using: ForeignKey([Columns.preferredClassificationId.name])
+    )
+
+    static let preferredPublication = belongsTo(
+        MetadataRecord.self,
+        key: "preferredPublication",
+        using: ForeignKey([Columns.preferredPublicationId.name])
+    )
+
+    var metadata: QueryInterfaceRequest<MetadataRecord> {
+        request(for: SeriesRecord.metadata)
     }
 
-    var preferredMetadataOrigin: QueryInterfaceRequest<OriginRecord> {
-        request(for: SeriesRecord.preferredMetadataOrigin)
+    var preferredSynopsis: QueryInterfaceRequest<MetadataRecord> {
+        request(for: SeriesRecord.preferredSynopsis)
+    }
+
+    var preferredClassification: QueryInterfaceRequest<MetadataRecord> {
+        request(for: SeriesRecord.preferredClassification)
+    }
+
+    var preferredPublication: QueryInterfaceRequest<MetadataRecord> {
+        request(for: SeriesRecord.preferredPublication)
     }
 }

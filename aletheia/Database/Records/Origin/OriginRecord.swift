@@ -17,15 +17,15 @@ struct OriginRecord: Codable, DatabaseRecord {
 
     private(set) var slug: String
     private(set) var url: String
-    var synopsis: String
     var priority: Int
-    var classification: Classification
-    var publication: Publication
+
+    // synopsis, classification and publication live on the origin's metadata row
+    // rather than here. origin is the chapter-provenance and fetch unit; a
+    // tracker has to be able to answer for the same three fields without
+    // becoming one. see docs/features/tracker-metadata.md §6.1
 
     // distantPast means never fetched, which is what lets an empty chapter list
-    // be told apart from one that has simply not loaded yet. metadata and
-    // chapters land seconds and minutes apart, so they are tracked separately
-    var metadataFetchedDate: Date = .distantPast
+    // be told apart from one that has simply not loaded yet
     var chaptersFetchedDate: Date = .distantPast
 
     // stamped on every attempt, succeeded or not, so a source that keeps being
@@ -58,12 +58,8 @@ extension OriginRecord {
 
         static let slug = Column(CodingKeys.slug)
         static let url = Column(CodingKeys.url)
-        static let synopsis = Column(CodingKeys.synopsis)
         static let priority = Column(CodingKeys.priority)
-        static let classification = Column(CodingKeys.classification)
-        static let publication = Column(CodingKeys.publication)
 
-        static let metadataFetchedDate = Column(CodingKeys.metadataFetchedDate)
         static let chaptersFetchedDate = Column(CodingKeys.chaptersFetchedDate)
         static let fetchAttemptedDate = Column(CodingKeys.fetchAttemptedDate)
         static let fetchError = Column(CodingKeys.fetchError)
@@ -79,12 +75,8 @@ extension OriginRecord {
 
             t.column(Columns.slug.name, .text).notNull().indexed()
             t.column(Columns.url.name, .text).notNull()
-            t.column(Columns.synopsis.name, .text).notNull()
             t.column(Columns.priority.name, .integer).notNull().defaults(to: 0)
-            t.column(Columns.classification.name, .text).notNull()
-            t.column(Columns.publication.name, .text).notNull()
 
-            t.column(Columns.metadataFetchedDate.name, .datetime).notNull()
             t.column(Columns.chaptersFetchedDate.name, .datetime).notNull()
             t.column(Columns.fetchAttemptedDate.name, .datetime).notNull()
             t.column(Columns.fetchError.name, .text)
@@ -114,16 +106,8 @@ extension OriginRecord {
             )
         }
 
-        // library filtering by publication/classification
-        try db.create(index: "idx_origin_seriesId_publication", on: databaseTableName, columns: [
-            Columns.seriesId.name,
-            Columns.publication.name
-        ], ifNotExists: true)
-
-        try db.create(index: "idx_origin_seriesId_classification", on: databaseTableName, columns: [
-            Columns.seriesId.name,
-            Columns.classification.name
-        ], ifNotExists: true)
+        // library filtering by publication/classification moved to metadata with
+        // the columns
 
         // covering index for origin lookups by series and source
         try db.create(index: "idx_origin_seriesId_sourceId", on: databaseTableName, columns: [

@@ -10,6 +10,10 @@ import Foundation
 // what one signed-in account is, stored in the keychain under the tracker's slug
 // and nowhere else. the account details ride along because the settings screen
 // has to name who is signed in without a request
+//
+// removing a field from this is the safe direction: a key left behind in an
+// already-saved item is ignored on decode, whereas adding a non-optional one
+// throws keyNotFound against every credential already on the device
 struct TrackerCredential: Sendable, Codable, Equatable {
     var accessToken: String
     // myanimelist rotates this on every refresh and the new one must be kept.
@@ -18,7 +22,6 @@ struct TrackerCredential: Sendable, Codable, Equatable {
     var refreshToken: String?
     var expiresDate: Date?
 
-    var remoteUserId: Int64
     var username: String
     var avatar: URL?
     var scoreFormat: ScoreFormat

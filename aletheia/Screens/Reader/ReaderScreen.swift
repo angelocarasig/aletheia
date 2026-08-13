@@ -20,6 +20,7 @@ struct ReaderScreen: View {
     @State private var showingChapters = false
     @State private var showingSources = false
     @State private var showingSettings = false
+    @State private var showingFilters = false
 
     // branch selector and animation key are one value - the swap previously
     // keyed isOverlayVisible, which never changes on readiness, so the
@@ -123,7 +124,25 @@ struct ReaderScreen: View {
                 )
             }
         }
+        .sheet(isPresented: $showingFilters) {
+            if let vm, let engine = vm.engine {
+                ReaderFiltersSheet(
+                    engine: engine,
+                    onDim: { vm.setDim($0) },
+                    onGrayscale: { vm.setGrayscale($0) },
+                    onInverted: { vm.setInverted($0) },
+                    onWarmth: { vm.setWarmth($0) },
+                    onKeepScreenOn: { vm.setKeepScreenOn($0) }
+                )
+            }
+        }
+        // held for the reader rather than for the app, so leaving the screen by
+        // any route hands it back below
+        .task(id: vm?.engine?.configuration.keepScreenOn) {
+            UIApplication.shared.isIdleTimerDisabled = vm?.engine?.configuration.keepScreenOn ?? false
+        }
         .onDisappear {
+            UIApplication.shared.isIdleTimerDisabled = false
             guard let vm else { return }
             Task { await vm.close() }
         }
@@ -149,8 +168,38 @@ private extension ReaderScreen {
     func Reading(_ vm: ReaderViewModel, _ engine: ReaderEngine) -> some View {
         GeometryReader { proxy in
             ZStack {
+                // opacity rather than a branch, for both of these. a
+                // UIViewControllerRepresentable inside an if/else is a different
+                // view tree per state, and switching branches would tear the
+                // collection view down and lose the reader's place
                 ReaderSurface(engine: engine)
                     .ignoresSafeArea()
+                    .grayscale(engine.configuration.grayscale ? 1 : 0)
+                    .overlay {
+                        // difference against white IS an inversion, and unlike
+                        // .colorInvert() it has a strength, so it can be off
+                        Color.white
+                            .blendMode(.difference)
+                            .opacity(engine.configuration.inverted ? 1 : 0)
+                            .ignoresSafeArea()
+                            .allowsHitTesting(false)
+                    }
+                    .overlay {
+                        // one overlay, two directions: the sign picks which
+                        // channel gets pulled down and the magnitude is the
+                        // strength, so neutral is a real zero rather than a
+                        // third tone that happens to be colourless
+                        let warmth = engine.configuration.warmth
+                        let tone = warmth < 0
+                            ? ReaderConfiguration.Defaults.coolTone
+                            : ReaderConfiguration.Defaults.warmthTone
+
+                        Color(red: tone.red, green: tone.green, blue: tone.blue)
+                            .blendMode(.multiply)
+                            .opacity(abs(warmth))
+                            .ignoresSafeArea()
+                            .allowsHitTesting(false)
+                    }
 
                 if engine.configuration.dim > 0 {
                     Color.black
@@ -190,7 +239,7 @@ private extension ReaderScreen {
                             vm.setMode(mode)
                             vm.flashTapZones()
                         },
-                        onDimChange: { vm.setDim($0) },
+                        onFilters: { showingFilters = true },
                         onSpeedChange: { vm.setAutoScrollSpeed($0) },
                         onIntervalChange: { vm.setAutoAdvanceInterval($0) },
                         // deferred screens. present as real controls so the

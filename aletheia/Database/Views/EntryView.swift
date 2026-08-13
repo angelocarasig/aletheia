@@ -62,6 +62,7 @@ extension EntryView {
         SeriesRecord.self,
         OriginRecord.self,
         SourceRecord.self,
+        MetadataRecord.self,
         CoverRecord.self,
         TitleRecord.self
     ]
@@ -85,7 +86,7 @@ extension EntryView {
                      WHERE t.id = m.\(SeriesRecord.Columns.preferredTitleId.name)),
                     (SELECT t.\(TitleRecord.Columns.value.name)
                      FROM \(TitleRecord.databaseTableName) t
-                     WHERE t.seriesId = m.id AND t.originId = po.id
+                     WHERE t.seriesId = m.id AND t.\(TitleRecord.Columns.metadataId.name) = pm.id
                      ORDER BY t.id ASC LIMIT 1),
                     (SELECT t.\(TitleRecord.Columns.value.name)
                      FROM \(TitleRecord.databaseTableName) t
@@ -103,9 +104,11 @@ extension EntryView {
                 m.inLibrary,
                 m.\(SeriesRecord.Columns.status.name) as status,
 
-                -- the user's metadata pick, else whatever the primary origin says
-                mo.\(OriginRecord.Columns.classification.name) as classification,
-                mo.\(OriginRecord.Columns.publication.name) as publication,
+                -- one pick each, else whatever the primary origin says. separate
+                -- because the best publication authority is often the worst
+                -- classification one
+                mc.\(MetadataRecord.Columns.classification.name) as classification,
+                mp.\(MetadataRecord.Columns.publication.name) as publication,
 
                 -- unread count from best chapters (rank = 1 only)
                 -- respects showHalfChapters preference
@@ -144,13 +147,24 @@ extension EntryView {
                     LIMIT 1
                 )
 
-            -- metadata origin: same resolution the details screen uses. matched
-            -- on id, so a preference pointing at a deleted origin falls back to
-            -- the primary one rather than dropping the row
-            LEFT JOIN \(OriginRecord.databaseTableName) mo
-                ON mo.id = COALESCE(
-                    m.\(SeriesRecord.Columns.preferredMetadataOriginId.name),
-                    po.id
+            -- the primary origin's own metadata row. at most one, since metadata
+            -- is unique per supplier, and it stands in for "what the primary
+            -- origin says" everywhere the old view used po.id directly
+            LEFT JOIN \(MetadataRecord.databaseTableName) pm
+                ON pm.\(MetadataRecord.Columns.originId.name) = po.id
+
+            -- matched on id, so a pin left over from a deleted metadata row falls
+            -- back to the primary origin rather than dropping the series
+            LEFT JOIN \(MetadataRecord.databaseTableName) mc
+                ON mc.id = COALESCE(
+                    m.\(SeriesRecord.Columns.preferredClassificationId.name),
+                    pm.id
+                )
+
+            LEFT JOIN \(MetadataRecord.databaseTableName) mp
+                ON mp.id = COALESCE(
+                    m.\(SeriesRecord.Columns.preferredPublicationId.name),
+                    pm.id
                 )
 
             -- the displayed cover: the user's pick, else the primary origin's
@@ -159,7 +173,7 @@ extension EntryView {
                 ON pc.id = COALESCE(
                     m.\(SeriesRecord.Columns.preferredCoverId.name),
                     (SELECT c.id FROM \(CoverRecord.databaseTableName) c
-                     WHERE c.seriesId = m.id AND c.originId = po.id
+                     WHERE c.seriesId = m.id AND c.\(CoverRecord.Columns.metadataId.name) = pm.id
                      ORDER BY c.id ASC LIMIT 1),
                     (SELECT c.id FROM \(CoverRecord.databaseTableName) c
                      WHERE c.seriesId = m.id
@@ -169,25 +183,25 @@ extension EntryView {
     }
 
     static func createIndexes(db: Database) throws {
-        // covering index for the per-origin cover lookup
+        // covering index for the per-supplier cover lookup
         try db.create(
-            index: "idx_cover_seriesId_originId_id",
+            index: "idx_cover_seriesId_metadataId_id",
             on: CoverRecord.databaseTableName,
             columns: [
                 CoverRecord.Columns.seriesId.name,
-                CoverRecord.Columns.originId.name,
+                CoverRecord.Columns.metadataId.name,
                 CoverRecord.Columns.id.name
             ],
             ifNotExists: true
         )
 
-        // covering index for the per-origin title lookup
+        // covering index for the per-supplier title lookup
         try db.create(
-            index: "idx_title_seriesId_originId_id",
+            index: "idx_title_seriesId_metadataId_id",
             on: TitleRecord.databaseTableName,
             columns: [
                 TitleRecord.Columns.seriesId.name,
-                TitleRecord.Columns.originId.name,
+                TitleRecord.Columns.metadataId.name,
                 TitleRecord.Columns.id.name
             ],
             ifNotExists: true

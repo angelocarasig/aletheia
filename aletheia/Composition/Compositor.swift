@@ -31,9 +31,8 @@ struct Compositor: Sendable {
             capturer: WebAuthCapturer(presenter: presenter, log: .shared),
             log: .shared
         )
-        let renderer = WebRenderer(log: .shared)
         let sources: [Source] = [
-            MangaFireSource(requester: requester, renderer: renderer),
+            MangaFireSource(network: network),
             MangaDexSource(network: network),
             AtsumaruSource(network: network),
             WeebCentralSource(network: network),
@@ -57,7 +56,8 @@ struct Compositor: Sendable {
 
         let trackerServices: [Tracker: any TrackerService] = [
             .anilist: AniListService(network: network),
-            .myAnimeList: MyAnimeListService(network: network)
+            .myAnimeList: MyAnimeListService(network: network),
+            .mangaBaka: MangaBakaService(network: network)
         ]
         let authority = TrackerAuthority(network: network, services: trackerServices)
         self.trackers = Trackers(database: database, authority: authority, services: trackerServices)

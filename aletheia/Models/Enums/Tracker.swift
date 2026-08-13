@@ -13,13 +13,36 @@ import Foundation
 enum Tracker: String, Codable, Sendable, CaseIterable, Identifiable {
     case anilist
     case myAnimeList = "myanimelist"
+    case mangaBaka = "mangabaka"
 
     var id: String { rawValue }
+
+    // whether a linked account's description may be kept in our own pool.
+    // myanimelist's api agreement reaches "any other data communicated from the
+    // API" and adds a 24-hour duty to propagate anything they retract, which a
+    // local database has no mechanism to hear - so their prose is shown live and
+    // never stored. facts travel either way; only the authored paragraph does
+    // not. see docs/features/tracker-metadata.md §5.4
+    //
+    // mangabaka aggregates prose from six sites, so some of it started at
+    // myanimelist - but nothing in its terms asks for retraction to propagate,
+    // and the clause that does bind us is NonCommercial. true is therefore a fact
+    // about this app rather than about the service, and is one of the things to
+    // revisit if it is ever distributed commercially.
+    // see docs/features/tracker-mangabaka.md §7.3
+    var storesProse: Bool {
+        switch self {
+        case .anilist: true
+        case .myAnimeList: false
+        case .mangaBaka: true
+        }
+    }
 
     var name: String {
         switch self {
         case .anilist: "AniList"
         case .myAnimeList: "MyAnimeList"
+        case .mangaBaka: "MangaBaka"
         }
     }
 
@@ -29,6 +52,7 @@ enum Tracker: String, Codable, Sendable, CaseIterable, Identifiable {
         switch self {
         case .anilist: "AniList"
         case .myAnimeList: "MyAnimeList"
+        case .mangaBaka: "MangaBaka"
         }
     }
 
@@ -40,11 +64,18 @@ enum Tracker: String, Codable, Sendable, CaseIterable, Identifiable {
         switch self {
         case .anilist: "anilist.co"
         case .myAnimeList: "myanimelist.net"
+        case .mangaBaka: "mangabaka.org"
         }
     }
 
+    // the other two file an entry under /manga/<id>; mangabaka puts a series at
+    // the root. remoteId(in:) needs no matching branch - it takes the first
+    // all-digit path component after the host, which is the id in both shapes
     func url(for remoteId: Int64) -> URL? {
-        URL(string: "https://\(host)/manga/\(remoteId)")
+        switch self {
+        case .anilist, .myAnimeList: URL(string: "https://\(host)/manga/\(remoteId)")
+        case .mangaBaka: URL(string: "https://\(host)/\(remoteId)")
+        }
     }
 
     // the entry id in a pasted link, or nil if the link is not this service's.
@@ -76,11 +107,24 @@ enum Tracker: String, Codable, Sendable, CaseIterable, Identifiable {
     }
 
     // anilist reads its score scale from the account and can be any of five;
-    // myanimelist is fixed at ten points for everyone
+    // myanimelist is fixed at ten points for everyone. mangabaka is per-account
+    // too, as a step size over 0...100 rather than a named format
     var fixedScoreFormat: ScoreFormat? {
         switch self {
         case .anilist: nil
         case .myAnimeList: .point10
+        case .mangaBaka: nil
+        }
+    }
+
+    // whether signing in is a browser round trip or a pasted token. mangabaka
+    // publishes no public-client oauth registration, so its reader creates a
+    // personal access token and pastes it - which needs no callback, no refresh
+    // and no client id, and lands in the same credential as the other two
+    var usesPastedToken: Bool {
+        switch self {
+        case .anilist, .myAnimeList: false
+        case .mangaBaka: true
         }
     }
 }

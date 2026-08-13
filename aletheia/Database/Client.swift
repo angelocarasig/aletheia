@@ -34,6 +34,10 @@ final class DatabaseClient: Sendable {
         TagRecord.self,
         CollectionRecord.self,
         OriginRecord.self,
+        // metadata references both origin and series_tracker, and cover/title
+        // reference metadata, so the tracker table moves ahead of the pools
+        SeriesTrackerRecord.self,
+        MetadataRecord.self,
         CoverRecord.self,
         TitleRecord.self,
         SeriesTagRecord.self,
@@ -42,7 +46,6 @@ final class DatabaseClient: Sendable {
         ChapterRecord.self,
         OriginScanlatorPriorityRecord.self,
         SeriesLanguagePriorityRecord.self,
-        SeriesTrackerRecord.self,
         ReadingEventRecord.self,
         ReadingSessionRecord.self,
     ]
@@ -87,8 +90,11 @@ final class DatabaseClient: Sendable {
 
         var migrator = DatabaseMigrator()
         #if DEBUG
-        // schema (v1.0.0) and indexes (v1.0.1) are edited in place during dev;
-        // erase-on-change so those edits take effect without a manual wipe
+        // v1 closed 2026-08-13 and migrations are append-only from here, so this
+        // should no longer fire: a new migration is a new registration rather
+        // than a changed checksum. it stays as the backstop for the one case it
+        // still catches - an accidental edit to v1.0.0 or v1.0.1, which on a
+        // device would be a corrupt migration and here is just a rebuild
         migrator.eraseDatabaseOnSchemaChange = true
         #endif
         Migrations.register(with: &migrator, records: DatabaseClient.allRecords, views: DatabaseClient.allViews)

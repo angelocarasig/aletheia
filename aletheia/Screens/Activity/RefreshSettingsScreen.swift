@@ -88,6 +88,27 @@ struct RefreshSettingsScreen: View {
             } footer: {
                 Text(footer)
             }
+
+            #if DEBUG
+            // a scheduled run cannot be triggered on demand and cannot be
+            // observed from the simulator, so this fakes the launch ios will not
+            // make. it used to fire automatically on every backgrounding, which
+            // is how it was verified once and then how it refreshed the whole
+            // library every time the screen locked - a harness that runs without
+            // being asked is indistinguishable from the bug it was built to find
+            Section {
+                Button("Rehearse a Scheduled Run") {
+                    Task { await compositor.refresh.rehearse() }
+                }
+                .disabled(interval == 0)
+            } header: {
+                Text("Debug")
+            } footer: {
+                Text(interval == 0
+                     ? "Turn automatic checks on to rehearse one."
+                     : "Arms the request, then fakes the launch after five seconds. Lock the screen now to watch it run under real conditions.")
+            }
+            #endif
         }
         .navigationTitle("Library Updates")
         .navigationBarTitleDisplayMode(.inline)

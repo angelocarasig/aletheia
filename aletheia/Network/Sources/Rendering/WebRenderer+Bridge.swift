@@ -35,18 +35,28 @@ extension WebRenderer {
         // than the one it fixes
         static let deadline: Duration = .seconds(30)
 
+        // a javascript result is `Any?` and cannot ride inside a Sendable enum -
+        // but it never needs to cross an isolation boundary either, since both
+        // tasks and the caller are all on the main actor. so the stream carries
+        // which outcome won and the value is left here
+        @MainActor
+        private final class Slot {
+            var value: Any?
+        }
+
         @discardableResult
         func call(_ script: String, _ arguments: [String: Any] = [:]) async throws -> Any? {
             enum Outcome: Sendable {
-                case answered(Any?)
+                case answered
                 case overran
             }
 
             let (stream, continuation) = AsyncStream<Outcome>.makeStream()
+            let slot = Slot()
 
             let work = Task { @MainActor in
-                let result = try? await page.callJavaScript(script, arguments: arguments, contentWorld: .page)
-                continuation.yield(.answered(result))
+                slot.value = try? await page.callJavaScript(script, arguments: arguments, contentWorld: .page)
+                continuation.yield(.answered)
             }
             let watchdog = Task { @MainActor in
                 try? await Task.sleep(for: Self.deadline)
@@ -59,8 +69,8 @@ extension WebRenderer {
 
             var outcomes = stream.makeAsyncIterator()
             switch await outcomes.next() {
-            case let .answered(result):
-                return result
+            case .answered:
+                return slot.value
 
             case .overran:
                 // best effort - the stuck call may never notice, but navigating

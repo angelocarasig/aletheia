@@ -30,6 +30,9 @@ struct SearchScreen: View {
     @State private var gvm: SearchGridViewModel?
     @State private var observing = false
     @State private var showingRefine = false
+    // read rather than observed: the store is written from the view model while
+    // a search is running, and the list is only on screen when one is not
+    @State private var recents: [String] = []
 
     private enum Layout {
         static let skeletonCount = 6
@@ -124,6 +127,10 @@ struct SearchScreen: View {
                     ContentUnavailableView.search(text: vm.submitted)
                         .padding(.top, dimensions.spacing.space48)
                         .transition(.replace(reduceMotion: reduceMotion))
+                } else if !vm.active {
+                    Recents
+                        .padding(.horizontal, dimensions.screenMargin)
+                        .transition(.replace(reduceMotion: reduceMotion))
                 } else {
                     Sections
                         .padding(.horizontal, dimensions.screenMargin)
@@ -177,6 +184,7 @@ struct SearchScreen: View {
                 }
             }
         }
+        .task(id: vm.active) { recents = RecentSearches.entries }
         // @AppStorage owns the stored value; the view model mirrors it, so which
         // sources are queried and when the search re-runs stay one decision
         .task(id: includeAdult) { vm.includeAdult = includeAdult }
@@ -386,6 +394,72 @@ struct SearchScreen: View {
             }
         }
         .padding(.bottom, Layout.heroLift)
+    }
+
+    // MARK: Recents
+
+    // stacked cards rather than a List: this sits inside the screen's own
+    // scroll view, and a List there brings its own scrolling, its own insets
+    // and a separator language nothing else on this screen speaks
+    @ViewBuilder
+    private var Recents: some View {
+        if !recents.isEmpty {
+            VStack(alignment: .leading, spacing: dimensions.spacing.space12) {
+                SectionHeader(title: "Recent") {
+                    Button("Clear") {
+                        RecentSearches.clear()
+                        recents = []
+                    }
+                    .font(.subheadline)
+                    .foregroundStyle(.muted)
+                }
+
+                VStack(spacing: dimensions.spacing.space8) {
+                    ForEach(recents, id: \.self) { entry in
+                        RecentRow(entry)
+                    }
+                }
+            }
+            .padding(.top, dimensions.spacing.space8)
+            .animation(.settle, value: recents)
+        }
+    }
+
+    private func RecentRow(_ entry: String) -> some View {
+        HStack(spacing: dimensions.spacing.space12) {
+            Image(systemName: "clock.arrow.circlepath")
+                .font(.subheadline)
+                .foregroundStyle(.muted)
+
+            Text(entry)
+                .font(.subheadline)
+                .lineLimit(1)
+
+            Spacer(minLength: 0)
+
+            // the field, not a destination: this is the glyph the system uses
+            // wherever a suggestion is loaded into the box rather than run
+            Image(systemName: "arrow.up.left")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.muted)
+        }
+        .padding(.horizontal, dimensions.spacing.space16)
+        .padding(.vertical, dimensions.spacing.space12)
+        .frame(minHeight: dimensions.touchTarget)
+        .glassEffect(
+            .regular.interactive(),
+            in: .rect(cornerRadius: dimensions.radius.radius12, style: .continuous)
+        )
+        .contentShape(.rect)
+        .tappable { vm.query = entry }
+        // a second control on the row would be a 44pt target inside a 44pt
+        // target, and removing one entry is rare next to running it again
+        .contextMenu {
+            Button("Remove", systemImage: "trash", role: .destructive) {
+                RecentSearches.remove(entry)
+                recents = RecentSearches.entries
+            }
+        }
     }
 
     // no glass of its own: as a toolbar item the navbar draws the surface, and

@@ -14,7 +14,10 @@ struct TitleRecord: Codable, DatabaseRecord, UniqueRecord {
     private(set) var id: ID?
 
     private(set) var seriesId: SeriesRecord.ID
-    private(set) var originId: OriginRecord.ID?
+    // provenance, not ownership. null means the supplier's metadata row was
+    // deleted, and the title stays in the pool unlabelled - the same thing
+    // originId meant before metadata existed
+    private(set) var metadataId: MetadataRecord.ID?
 
     var value: String
 }
@@ -29,7 +32,7 @@ extension TitleRecord {
     enum Columns {
         static let id = Column(CodingKeys.id)
         static let seriesId = Column(CodingKeys.seriesId)
-        static let originId = Column(CodingKeys.originId)
+        static let metadataId = Column(CodingKeys.metadataId)
         static let value = Column(CodingKeys.value)
     }
 
@@ -38,8 +41,8 @@ extension TitleRecord {
             t.autoIncrementedPrimaryKey(Columns.id.name)
 
             t.belongsTo(SeriesRecord.databaseTableName, onDelete: .cascade)
-            t.column(Columns.originId.name, .integer)
-                .references(OriginRecord.databaseTableName, onDelete: .setNull)
+            t.column(Columns.metadataId.name, .integer)
+                .references(MetadataRecord.databaseTableName, onDelete: .setNull)
 
             t.column(Columns.value.name, .text)
                 .notNull()
@@ -51,7 +54,7 @@ extension TitleRecord {
 
     static func createIndexes(db: Database) throws {
         try db.create(index: "idx_title_seriesId", on: databaseTableName, columns: [Columns.seriesId.name], ifNotExists: true)
-        try db.create(index: "idx_title_originId", on: databaseTableName, columns: [Columns.originId.name], ifNotExists: true)
+        try db.create(index: "idx_title_metadataId", on: databaseTableName, columns: [Columns.metadataId.name], ifNotExists: true)
 
         // stub matching resolves a title to its series
         try db.create(index: "idx_title_value_seriesId", on: databaseTableName, columns: [
@@ -76,10 +79,10 @@ extension TitleRecord {
 }
 
 extension TitleRecord {
-    static let origin = belongsTo(OriginRecord.self)
+    static let metadata = belongsTo(MetadataRecord.self)
 
-    var origin: QueryInterfaceRequest<OriginRecord> {
-        request(for: TitleRecord.origin)
+    var metadata: QueryInterfaceRequest<MetadataRecord> {
+        request(for: TitleRecord.metadata)
     }
 }
 

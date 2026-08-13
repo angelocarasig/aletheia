@@ -17,7 +17,7 @@ struct ReaderOverlay: View {
     var onNextChapter: () -> Void
     var onSeek: (Int) -> Void
     var onModeChange: (Orientation) -> Void
-    var onDimChange: (Double) -> Void
+    var onFilters: () -> Void
     var onSpeedChange: (CGFloat) -> Void
     var onIntervalChange: (TimeInterval) -> Void
     var onChapters: () -> Void
@@ -218,7 +218,7 @@ private extension ReaderOverlay {
     var LeadingActions: some View {
         HStack(spacing: dimensions.spacing.space4) {
             AutoScrollToggle
-            DimMenu
+            FiltersButton
         }
     }
 
@@ -302,23 +302,10 @@ private extension ReaderOverlay {
         .opacity(engine.error != nil ? Layout.disabledOpacity : 1)
     }
 
-    var DimMenu: some View {
-        Menu {
-            Picker("Dim", selection: dimBinding) {
-                Text("Off").tag(0.0)
-                Text("Low").tag(0.2)
-                Text("Medium").tag(0.4)
-                Text("High").tag(ReaderConfiguration.Defaults.maxDim)
-            }
-        } label: {
-            Icon(engine.configuration.dim > 0 ? "moon.fill" : "moon")
-                .frame(width: dimensions.size.icon40, height: dimensions.size.icon40)
-                .contentShape(.circle)
-        }
-        // a Menu tints its own label with the accent colour, which is why these
-        // two came out blue while every other control did not
-        .menuStyle(.button)
-        .buttonStyle(.plain)
+    // filled while anything is on, so the button reports the page's state rather
+    // than only offering to change it
+    var FiltersButton: some View {
+        Action(filtering ? "circle.lefthalf.filled.inverse" : "circle.lefthalf.filled", action: onFilters)
     }
 
     var ModeMenu: some View {
@@ -379,8 +366,12 @@ private extension ReaderOverlay {
         }
     }
 
-    var dimBinding: Binding<Double> {
-        Binding(get: { engine.configuration.dim }, set: onDimChange)
+    var filtering: Bool {
+        let configuration = engine.configuration
+        return configuration.dim > 0
+            || configuration.warmth != 0
+            || configuration.grayscale
+            || configuration.inverted
     }
 
     var modeBinding: Binding<Orientation> {

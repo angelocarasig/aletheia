@@ -40,6 +40,12 @@ extension SeriesTagRecord {
         }
     }
 
+    static func createIndexes(db: Database) throws {
+        // the unique key is (seriesId, tagId), so only the reverse direction
+        // needs one: every series carrying a tag, and the cascade when a tag goes
+        try db.create(index: "idx_series_tag_tagId", on: databaseTableName, columns: [Columns.tagId.name], ifNotExists: true)
+    }
+
     mutating func didInsert(_ inserted: InsertionSuccess) {
         id = ID(rawValue: inserted.rowID)
     }
