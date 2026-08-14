@@ -27,13 +27,18 @@ private struct Shimmer: ViewModifier {
         } else {
             content
                 .mask(
+                    // the animation belongs to the gradient, not to what is being
+                    // masked. on the outside it also owns whatever layout is still
+                    // settling when isInitial flips - lazy cards arriving, a
+                    // containerRelativeFrame resolving - and repeatForever replays
+                    // that change for as long as the skeleton is on screen
                     LinearGradient(
                         colors: [.black.opacity(0.4), .black, .black.opacity(0.4)],
                         startPoint: isInitial ? .init(x: -0.3, y: -0.3) : .init(x: 1, y: 1),
                         endPoint: isInitial ? .init(x: 0, y: 0) : .init(x: 1.3, y: 1.3)
                     )
+                    .animation(.linear(duration: 1.5).delay(0.25).repeatForever(autoreverses: false), value: isInitial)
                 )
-                .animation(.linear(duration: 1.5).delay(0.25).repeatForever(autoreverses: false), value: isInitial)
                 .onAppear { isInitial = false }
         }
     }

@@ -42,6 +42,7 @@ final class DetailsComposer {
     let tracking: Tracking
     let identity: Identity
     let refresh: Refresh
+    let recommendations: Recommendations
 
     let entry: SeriesEntry
     
@@ -93,6 +94,7 @@ final class DetailsComposer {
         assets: Compositor.Assets,
         refresher: Compositor.Refresh,
         trackers: Compositor.Trackers,
+        recommender: Recommender,
         database: DatabaseClient
     ) {
         self.entry = entry
@@ -118,6 +120,7 @@ final class DetailsComposer {
             refresher: refresher,
             registry: registry
         )
+        recommendations = Recommendations(recommender: recommender)
     }
 
     // the screen draws from the database alone, so a row is all it waits on.

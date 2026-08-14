@@ -162,6 +162,7 @@ extension DetailsComposer {
         sources.apply(stored)
         tracking.apply(stored)
         refresh.apply(stored)
+        recommendations.apply(stored)
 
         if !applied { applied = true }
 

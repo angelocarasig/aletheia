@@ -37,6 +37,9 @@ struct DetailsScreen: View {
     @State private var marking: DetailsComposer.Chapters.Request?
     @State private var markCommitted: UUID?
     @State private var showingDisambiguation = false
+    // the recommendation whose sheet is open. the subject rather than a boolean,
+    // so the sheet cannot be presented without one
+    @State private var inspecting: Recommendation?
     // written here, read only inside the backdrop - reading it in this body
     // would re-evaluate the whole chapter list on every scroll step
     @State private var scroll = DetailsScroll()
@@ -110,6 +113,12 @@ struct DetailsScreen: View {
             if let composer {
                 TrackerManage(link, composer, onFinish: { managing = nil })
             }
+        }
+        // keyed on the recommendation, so the sheet always has one. it reads
+        // nothing from the composer - a recommendation is a catalogue row and
+        // this app almost certainly has no series for it
+        .sheet(item: $inspecting) { result in
+            DetailsRecommendationSheet(result: result)
         }
         .sheet(isPresented: $showingDisambiguation) {
             if let composer {
@@ -366,6 +375,7 @@ struct DetailsScreen: View {
                 assets: compositor.assets,
                 refresher: compositor.refresh,
                 trackers: compositor.trackers,
+                recommender: compositor.recommender,
                 database: database
             )
             self.composer = composer
@@ -538,7 +548,8 @@ struct DetailsScreen: View {
             connect: { showingTracking = true },
             catchUp: { progress in Task { await composer.catchUp(to: progress) } },
             mark: { read, numbers in requestMark(composer, read: read, numbers: numbers) },
-            read: { chapter in open(chapter, in: composer) }
+            read: { chapter in open(chapter, in: composer) },
+            inspect: { inspecting = $0 }
         )
     }
 

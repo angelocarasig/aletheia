@@ -34,6 +34,7 @@ struct DetailsContent: View {
             SourcesSection(sources: composer.sources, refresh: composer.refresh, actions: actions)
             MetadataSection(series: composer.series)
             ChaptersSection(composer: composer, actions: actions)
+            RecommendationsSection(recommendations: composer.recommendations, actions: actions)
         }
         .padding(.horizontal, dimensions.spacing.space8)
         .padding(.bottom, dimensions.spacing.space48)
@@ -65,6 +66,7 @@ extension DetailsContent {
         var catchUp: (Int) -> Void
         var mark: (Bool, [Double]) -> Void
         var read: (DetailsComposer.Chapters.Row) -> Void
+        var inspect: (Recommendation) -> Void
     }
 }
 
@@ -278,5 +280,21 @@ private struct ChaptersSection: View {
             SectionFailure(failure: chapters.failure) { chapters.clear() }
         }
         .animation(.settle, value: chapters.failure)
+    }
+}
+
+// last on the screen, and the only section whose content comes from neither the
+// database nor a source. it reads one child and nothing else, so a chapter
+// progress tick cannot redraw twenty covers
+private struct RecommendationsSection: View {
+    let recommendations: DetailsComposer.Recommendations
+    let actions: DetailsContent.Actions
+
+    var body: some View {
+        DetailsRecommendations(
+            phase: recommendations.phase,
+            results: recommendations.results,
+            onOpen: actions.inspect
+        )
     }
 }

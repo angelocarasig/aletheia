@@ -19,6 +19,7 @@ final class Bootstrap {
         case opening
         case seeding
         case cleaning
+        case preparing
         case ready
         case failed(Failure)
 
@@ -28,6 +29,10 @@ final class Bootstrap {
             case .opening: "Preparing database"
             case .seeding: "Installing sources"
             case .cleaning: "Tidying up"
+            // not "building" - nothing is built or stored. the work is mapping
+            // the model and paying its paging cost once, here, rather than on
+            // whichever series the reader opens first
+            case .preparing: "Preparing recommendations"
             case .ready: "Ready"
             case .failed: "Couldn't start"
             }
@@ -39,8 +44,9 @@ final class Bootstrap {
             switch self {
             case .idle: 0
             case .opening: 0.25
-            case .seeding: 0.6
-            case .cleaning: 0.85
+            case .seeding: 0.55
+            case .cleaning: 0.75
+            case .preparing: 0.9
             case .ready, .failed: 1
             }
         }
@@ -101,6 +107,17 @@ final class Bootstrap {
             compositor.trackers.restore()
 
             await Notifier.prepare()
+
+            // last, and deliberately after everything the app cannot open
+            // without. a model that will not load costs a section rather than a
+            // launch, so warm() never throws and this phase cannot fail
+            phase = .preparing
+            await compositor.recommender.warm()
+
+            #if DEBUG
+            ModelBundle.probe()
+            await ModelBundle.probe(compositor.recommender)
+            #endif
 
             self.compositor = compositor
             phase = .ready

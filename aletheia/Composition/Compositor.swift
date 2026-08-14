@@ -15,6 +15,9 @@ struct Compositor: Sendable {
     let refresh: Refresh
     let downloads: Downloads
     let trackers: Trackers
+    // one model, loaded lazily and held. swapping it is a different case in this
+    // one line, which is the whole point of it being behind a protocol
+    let recommender: Recommender
     let requester: AuthRequester
     let presenter: AuthPresenter
     // the one funnel every request passes. exposed because a caller that builds
@@ -61,6 +64,8 @@ struct Compositor: Sendable {
         ]
         let authority = TrackerAuthority(network: network, services: trackerServices)
         self.trackers = Trackers(database: database, authority: authority, services: trackerServices)
+
+        self.recommender = V01Recommender()
 
         self.db = Persistence(database: database)
     }
