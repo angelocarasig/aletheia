@@ -19,6 +19,10 @@ struct AtsumaruSource: SourceService {
     private static let shelfWindow = 40
     private static let shelfTypes = "Manga,Manwha,Manhua,OEL"
 
+    // the one medium this source cannot render. named once because both the
+    // search index and the shelf carry it, and the two are filtered separately
+    static let novelMedium = "Novel"
+
     // the field set the site's own search sends, weights included. queried
     // fields are ordered most to least authoritative
     private static let queryFields = "title,englishTitle,otherNames,authors,acronyms"
@@ -224,10 +228,10 @@ extension AtsumaruSource {
     //
     // `types` is not optional despite looking it - omitted, the route answers
     // `{"items": []}` rather than everything. and it filters `type`, NOT
-    // `medium`, so a web novel typed OEL comes back anyway (The Mech Touch is
-    // the standing example) - the collection does not hold those and content()
-    // could not read them, so the medium filter below stays. mihon's extension
-    // sends the same whitelist and ships the same leak
+    // `medium`: the two are independent, and every novel sampled is typed Manga
+    // or Manwha, so the whitelist does nothing about them. six of the forty on
+    // page one were novels when this was last probed. mihon's extension sends
+    // the same whitelist and ships the same leak
     private func recentlyUpdated(page: Int) async throws -> SearchPage<SeriesStub> {
         let response: HomeShelf = try await fetch(Self.api("infinite/recentlyUpdated", [
             // zero-based here, unlike everything else on this host
@@ -235,7 +239,11 @@ extension AtsumaruSource {
             .init(name: "types", value: Self.shelfTypes)
         ]))
 
-        let comics = response.items.filter { $0.medium == "Comic" }
+        // excluding what cannot be read rather than including what can. the
+        // search index has 132 documents carrying no `medium` at all which are
+        // comics by every other measure, so an inclusive test drops real series
+        // on a missing field - and a third medium arriving would be dropped too
+        let comics = response.items.filter { $0.medium != Self.novelMedium }
         return SearchPage(
             items: comics.map { item in
                 SeriesStub(
@@ -378,6 +386,12 @@ extension AtsumaruSource {
             .init(name: "chapterId", value: chapterSlug)
         ]))
 
+        // a novel that slipped past the medium filter answers 200 with an empty
+        // list, so zero pages here is the site saying "not readable" rather than
+        // a chapter that happens to be short. thrown rather than returned empty,
+        // or the reader opens on nothing and blames itself
+        guard !response.readChapter.pages.isEmpty else { throw SourceError.noPages }
+
         return response.readChapter.pages.compactMap { page in
             guard let url = Self.asset(page.image) else { return nil }
             return PageURL(
@@ -452,6 +466,19 @@ private extension AtsumaruSource {
         }
 
         var clauses = filters(query.filters)
+
+        // the collection holds web novels - 62 of 20,104 when last probed, up
+        // from 8 at the first survey - and they are indistinguishable from
+        // comics until you open one: a full chapter list, every chapter at
+        // pageCount 0, and read/chapter answering `{"pages": []}` with a 200.
+        // so the reader gets an empty chapter rather than an error.
+        //
+        // not a filter option: this source does not serve novels, so it is not
+        // a choice anyone makes. exclusion rather than `medium:=Comic` because
+        // 132 documents carry no `medium` field at all while manga/info calls
+        // them Comic - Skill Master Levels Up is one, 581 chapters - and an
+        // inclusive test hides every one of them
+        clauses.append("medium:!=\(quoted(novelMedium))")
 
         // typesense filters nothing it is not asked to, so an omitted clause is
         // the whole 19,723-title catalogue - 22% of it flagged adult. the gate

@@ -82,7 +82,7 @@ struct DetailsTrackerCandidate: View {
     @State private var score = 0
     @State private var seeded = false
     @State private var unlinking = false
-    @State private var confirming: Reconcile?
+    @State private var confirming: TrackerReconcile?
     // the write landed and the screen stayed. the button becomes the state it
     // produced, and tapping it again is the way back out
     @State private var committed = false
@@ -124,21 +124,6 @@ struct DetailsTrackerCandidate: View {
         case failed(String)
     }
 
-    // which way the sync is about to write, and how far. an enum rather than two
-    // booleans: both directions ask before they act, and one value is what keeps
-    // the two alerts in the same shape
-    enum Reconcile: Equatable {
-        // the service is further along: mark chapters read in this app
-        case pull(Int)
-        // this app is further along: send the number out to every linked service
-        case push(Int)
-
-        var chapter: Int {
-            switch self {
-            case let .pull(value), let .push(value): value
-            }
-        }
-    }
 
     private enum Layout {
         // fractions of the artwork's own 700pt height. it is untouched above
@@ -261,33 +246,12 @@ struct DetailsTrackerCandidate: View {
         } message: {
             Text("Unlinking stops syncing and leaves your \(tracker.name) entry as it is. Deleting removes it from your list entirely, along with its score and dates. That can't be undone.")
         }
-        // both directions confirm, and both confirms are built from one value, so
-        // they stay in step. what differs is what each costs: one writes history
-        // that cannot be un-happened, the other writes a number that can be
-        // typed back on the service's own site
-        .alert(confirmTitle, isPresented: confirmBinding, presenting: confirming) { reconcile in
-            switch reconcile {
-            case let .pull(chapter):
-                Button("Mark as Read", role: .destructive) {
-                    onCatchUp?(chapter)
-                    confirming = nil
-                }
-            case .push:
-                Button("Update") {
-                    onPushLocal?()
-                    confirming = nil
-                }
-            }
-
-            Button("Cancel", role: .cancel) { confirming = nil }
-        } message: { reconcile in
-            switch reconcile {
-            case let .pull(chapter):
-                Text("Chapters 1 to \(chapter) are marked read across every source on this series, dated today. Unmarking them later will not remove them from your reading stats.")
-            case let .push(chapter):
-                Text("Sends chapter \(chapter) to every service this series is linked to. You can change their entries back on their own websites.")
-            }
-        }
+        .trackerReconcile(
+            $confirming,
+            subject: tracker.name,
+            onCatchUp: { onCatchUp?($0) },
+            onPushLocal: { onPushLocal?() }
+        )
         .safeAreaInset(edge: .bottom) { Commit }
         // the button reports whether there is unsent work, so touching a control
         // after a save has to take it out of Synced - otherwise the one tap that
@@ -669,19 +633,6 @@ struct DetailsTrackerCandidate: View {
 
     // MARK: Sync
 
-    private var confirmBinding: Binding<Bool> {
-        Binding(get: { confirming != nil }, set: { if !$0 { confirming = nil } })
-    }
-
-    private var confirmTitle: String {
-        switch confirming {
-        case let .pull(chapter): "Mark \(chapter) chapters read?"
-        case let .push(chapter): "Update \(tracker.name) to \(chapter)?"
-        case nil: ""
-        }
-    }
-
-
     // a banner in the section it concerns rather than a control in the chrome.
     // the disagreement is a fact about the numbers directly below it, and beside
     // the commit it read as a second thing to press before leaving
@@ -706,6 +657,10 @@ struct DetailsTrackerCandidate: View {
                         // writes read state across every source of this series
                         message: "Mark chapters up to \(entry.progress) as read here",
                         systemImage: "icloud.and.arrow.down",
+                        // brand, matching the section banner: an offer is not a
+                        // warning, and the two amber notices on this screen are
+                        // both things that went wrong
+                        tone: .brand,
                         action: { confirming = .pull(entry.progress) }
                     )
                 } else {
@@ -714,6 +669,7 @@ struct DetailsTrackerCandidate: View {
                         // and this one writes to a public list
                         message: "Update \(tracker.name) to match",
                         systemImage: "icloud.and.arrow.up",
+                        tone: .brand,
                         action: { confirming = .push(localProgress) }
                     )
                 }

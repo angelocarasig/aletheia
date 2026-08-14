@@ -81,10 +81,14 @@ enum Preferences {
         static let refreshSkipUnread = "refresh.skipUnread"
         static let refreshSkipNotStarted = "refresh.skipNotStarted"
 
-        // hours between automatic runs, 0 meaning never. the two stamps are
-        // deliberately separate: a manual refresh must not postpone the
-        // automatic one, which is how suwayomi keeps its schedule honest
-        static let refreshInterval = "refresh.interval"
+        // whether the library is checked without being asked. not an interval:
+        // ios picks the moment for a processing task whatever we submit - idle
+        // and charging, usually overnight - so a chosen cadence would be a
+        // promise made by the wrong party. the floor we submit behind is
+        // Constants.Refresh.automaticInterval. the two stamps are deliberately
+        // separate: a manual refresh must not postpone the automatic one, which
+        // is how suwayomi keeps its schedule honest
+        static let refreshAutomatic = "refresh.automatic"
         static let refreshedDate = "refresh.lastRun"
         static let refreshedAutomaticallyDate = "refresh.lastAutomaticRun"
 
@@ -131,10 +135,8 @@ enum Preferences {
         static let refreshSkipUnread = false
         static let refreshSkipNotStarted = false
 
-        // manual only until asked otherwise. the surveyed apps default to an
-        // interval, but they also ship the catch-up and the settings that make
-        // one honest - turning it on before those exist would promise a
-        // schedule the app cannot keep
-        static let refreshInterval = 0
+        // manual only until asked otherwise: turning on unattended network
+        // activity for someone who never asked for it is not a default to inherit
+        static let refreshAutomatic = false
     }
 }

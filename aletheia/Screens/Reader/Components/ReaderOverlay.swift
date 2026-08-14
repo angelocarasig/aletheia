@@ -29,9 +29,6 @@ struct ReaderOverlay: View {
     @Environment(\.dimensions) private var dimensions
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    @State private var scrubbing = false
-    @State private var scrubValue: Double = 0
-
     private enum Layout {
         static let track: CGFloat = 6
         static let disabledOpacity: Double = 0.35
@@ -239,10 +236,7 @@ private extension ReaderOverlay {
 
     var position: String {
         guard engine.pageCount > 0 else { return "-" }
-        // read unconditionally - a ternary short-circuits, so putting this on the
-        // false branch drops the dependency for as long as the reader is scrubbing
-        let current = engine.page
-        return "\((scrubbing ? Int(scrubValue) : current) + 1) / \(engine.pageCount)"
+        return "\(engine.page + 1) / \(engine.pageCount)"
     }
 }
 
@@ -255,30 +249,23 @@ private extension ReaderOverlay {
         // evaluation, so a page read that only happens in there never registers
         // as a dependency and the thumb stops following the reader
         let page = engine.page
+        let count = engine.pageCount
 
-        if engine.pageCount > 1 {
+        if count > 1 {
+            // no local copy of where the finger is: goToPage writes `page`
+            // synchronously before it scrolls, so the value read back is the one
+            // just set and the thumb tracks exactly
             Slider(
                 value: Binding(
-                    get: { scrubbing ? scrubValue : Double(page) },
-                    set: { value in
-                        scrubValue = value
-                        onSeek(Int(value))
-                    }
+                    get: { Double(page) },
+                    set: { onSeek(Int($0)) }
                 ),
-                in: 0...Double(engine.pageCount - 1),
-                step: 1,
-                onEditingChanged: { editing in
-                    scrubbing = editing
-                    if editing {
-                        scrubValue = Double(engine.page)
-                    } else {
-                        onSeek(Int(scrubValue))
-                    }
-                }
+                in: 0...Double(count - 1),
+                step: 1
             )
             .disabled(engine.isLoading)
             .opacity(engine.isLoading ? Layout.disabledOpacity : 1)
-            .sensoryFeedback(.selection, trigger: scrubbing ? Int(scrubValue) : page)
+            .sensoryFeedback(.selection, trigger: page)
         } else {
             // a one-page chapter still needs the row to hold its height, or the
             // card jumps between chapters

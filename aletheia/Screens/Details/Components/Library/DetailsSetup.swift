@@ -204,7 +204,8 @@ struct DetailsSetup<LinkSheet: View>: View {
                         onConnect: { connecting = true },
                         // nothing has been pushed yet inside this flow, so there
                         // is never a failed sync to retry from here
-                        onRetry: { _ in }
+                        onRetry: { _ in },
+                        reconciles: false
                     )
                 }
                 .padding(.horizontal, dimensions.screenMargin)
@@ -598,7 +599,8 @@ private enum Sample {
         scoreFormat: .point10,
         syncedDate: .now,
         attemptedDate: .now,
-        failureReason: nil
+        failureReason: nil,
+        queued: false
     )
 }
 

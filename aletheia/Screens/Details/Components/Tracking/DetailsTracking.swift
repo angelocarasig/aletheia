@@ -46,9 +46,20 @@ struct DetailsTracking: View {
     // both persistent conditions carry one, because both are "try that again"
     // with a different subject: the push, or the account behind it
     var onRetry: (Link) -> Void = { _ in }
+    // the two halves of the banner. both writes are already series-wide - the
+    // mark covers every source, the push enqueues every link and skips one that
+    // is already at the number - so neither takes a tracker
+    var onCatchUp: (Int) -> Void = { _ in }
+    var onPushLocal: () -> Void = {}
+    // off inside the add-to-library flow, the same way the candidate sheet turns
+    // it off there: that screen is for choosing links, and a banner offering to
+    // mark sixty chapters read mid-flow is a write nobody went there to make
+    var reconciles: Bool = true
 
     @Environment(\.dimensions) private var dimensions
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    @State private var confirming: TrackerReconcile?
 
     private enum Layout {
         static let tile: CGFloat = 44
@@ -69,6 +80,8 @@ struct DetailsTracking: View {
             if services.isEmpty {
                 Empty
             } else {
+                Disagreement
+
                 VStack(spacing: dimensions.spacing.space16) {
                     ForEach(services) { tracker in
                         Row(tracker)
@@ -91,6 +104,95 @@ struct DetailsTracking: View {
         .animation(Layout.settle, value: enabled)
         .animation(Layout.settle, value: links)
         .animation(Layout.settle, value: accounts)
+        // the banner arrives and leaves on its own terms: a mark or a push
+        // resolves it while links are otherwise unchanged
+        .animation(Layout.settle, value: reconcile)
+        .animation(Layout.settle, value: localProgress)
+        .trackerReconcile(
+            $confirming,
+            subject: pushSubject,
+            onCatchUp: onCatchUp,
+            onPushLocal: onPushLocal
+        )
+    }
+
+    // MARK: Disagreement
+
+    // one banner for the section rather than one per row, because both writes
+    // are series-wide: marking up to the furthest service satisfies the nearer
+    // one for free, and a push goes to every link at once. two banners would be
+    // two taps for one reconciliation.
+    //
+    // brand rather than the default warning: nothing here has failed, and amber
+    // is the attention colour. it is also what separates this from the
+    // SectionFailure directly below the same section, which is amber and IS a
+    // failure - one colour for both would make the two read as one kind of thing
+    @ViewBuilder
+    private var Disagreement: some View {
+        if let reconcile = reconcile {
+            Group {
+                switch reconcile {
+                case let .pull(chapter):
+                    // branched rather than ternaried so each string stays a
+                    // literal - a ternary with a String on either side erases
+                    // inflection markup
+                    if let only = links.first, links.count == 1 {
+                        Banner(
+                            "\(only.tracker.name) is at chapter \(chapter)",
+                            // what the tap does, said before it is tapped: this
+                            // one writes read state across every source
+                            message: "Mark chapters up to \(chapter) as read here",
+                            systemImage: "icloud.and.arrow.down",
+                            tone: .brand,
+                            action: { confirming = reconcile }
+                        )
+                    } else {
+                        Banner(
+                            "Your trackers are at chapter \(chapter)",
+                            message: "Mark chapters up to \(chapter) as read here",
+                            systemImage: "icloud.and.arrow.down",
+                            tone: .brand,
+                            action: { confirming = reconcile }
+                        )
+                    }
+                case let .push(chapter):
+                    // and this one writes to a public list
+                    Banner(
+                        "You're at chapter \(chapter) here",
+                        message: "Update \(pushSubject) to match",
+                        systemImage: "icloud.and.arrow.up",
+                        tone: .brand,
+                        action: { confirming = reconcile }
+                    )
+                }
+            }
+            .transition(.scale(scale: 0.94, anchor: .top).combined(with: .opacity))
+        }
+    }
+
+    // pull wins where both are true at once - one service ahead of the reader
+    // and another behind. reading up is the safer write, and the laggard is
+    // brought along by the push that the mark itself enqueues, so the second
+    // direction resolves without a second banner
+    private var reconcile: TrackerReconcile? {
+        guard reconciles, let furthest = links.map(\.progress).max() else { return nil }
+
+        if furthest > localProgress { return .pull(furthest) }
+
+        // a queued row is excluded, not just a slack of one chapter. accepting a
+        // pull enqueues every sibling that is behind, so for the seconds between
+        // that write and the drain landing, a laggard reads as a disagreement
+        // while the fix is already in the queue - and the banner would flip from
+        // pull to push in front of the reader, offering the work it just did
+        let stale = links.filter { $0.behind(localProgress) && !$0.queued && !syncing.contains($0.tracker) }
+        if !stale.isEmpty { return .push(localProgress) }
+        return nil
+    }
+
+    // named where one service is linked, collective where two are: an alert
+    // title carrying two service names and a number stops being a sentence
+    private var pushSubject: String {
+        links.count == 1 ? (links.first?.tracker.name ?? "your trackers") : "your trackers"
     }
 
     // every service with something to say here: one that is connected, and one
@@ -257,10 +359,13 @@ struct DetailsTracking: View {
         .lineLimit(1)
     }
 
-    // amber is the attention colour and both of these want attention: a service
-    // that has stopped syncing, and one that is behind what you have read
+    // amber is for a service that has stopped syncing. being behind used to take
+    // it too, which was one fact in three places once the banner arrived - badge,
+    // amber line, banner - so the line keeps the numbers and gives up the colour.
+    // the banner is the one that shouts, and it is also the only one that can be
+    // acted on
     private func subtitleTint(_ tracker: Tracker, link: Link?) -> AnyShapeStyle {
-        if (unavailable(tracker) && link == nil) || link?.behind(localProgress) == true {
+        if unavailable(tracker) && link == nil {
             AnyShapeStyle(.warningText)
         } else {
             AnyShapeStyle(.muted)
@@ -409,7 +514,8 @@ private extension DetailsTracking.Link {
             scoreFormat: format,
             syncedDate: synced,
             attemptedDate: .now.addingTimeInterval(-3600),
-            failureReason: failure
+            failureReason: failure,
+            queued: false
         )
     }
 }

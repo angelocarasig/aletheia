@@ -59,6 +59,10 @@ extension DetailsContent {
         var link: (Tracker) -> Void
         var manage: (DetailsComposer.Tracking.Link) -> Void
         var connect: () -> Void
+        // the mark a tracker's number asks for. it spans two children - read
+        // state belongs to chapters, the number came from tracking - so it is
+        // the root's, which is where it already lived for the manage sheet
+        var catchUp: (Int) -> Void
         var mark: (Bool, [Double]) -> Void
         var read: (DetailsComposer.Chapters.Row) -> Void
     }
@@ -179,7 +183,9 @@ private struct TrackingSection: View {
                 onLink: actions.link,
                 onOpen: actions.manage,
                 onConnect: actions.connect,
-                onRetry: { link in Task { await tracking.retry(link) } }
+                onRetry: { link in Task { await tracking.retry(link) } },
+                onCatchUp: actions.catchUp,
+                onPushLocal: { Task { await tracking.push() } }
             )
 
             SectionFailure(failure: tracking.failure) { tracking.clear() }

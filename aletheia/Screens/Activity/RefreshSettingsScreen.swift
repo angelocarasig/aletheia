@@ -6,13 +6,14 @@
 //
 
 import SwiftUI
+import BackgroundTasks
 
 // what a library refresh checks, and whether it ever runs on its own. both
 // default to the least surprising thing: check everything, run only when asked.
 // see docs/features/background-activity.md 4.7
 struct RefreshSettingsScreen: View {
-    @AppStorage(Preferences.Key.refreshInterval)
-    private var interval = Preferences.Default.refreshInterval
+    @AppStorage(Preferences.Key.refreshAutomatic)
+    private var automatic = Preferences.Default.refreshAutomatic
 
     @AppStorage(Preferences.Key.refreshSkipCompleted)
     private var skipCompleted = Preferences.Default.refreshSkipCompleted
@@ -24,28 +25,23 @@ struct RefreshSettingsScreen: View {
     private var skipNotStarted = Preferences.Default.refreshSkipNotStarted
 
     @Environment(\.compositor) private var compositor
+    @Environment(\.scenePhase) private var scenePhase
 
     @State private var refreshStatus: UIBackgroundRefreshStatus = .available
 
-    private enum Interval: Int, CaseIterable, Identifiable {
-        case never = 0
-        case sixHours = 6
-        case twelveHours = 12
-        case daily = 24
-        case weekly = 168
+    #if DEBUG
+    @State private var armed: Armed = .none
 
-        var id: Int { rawValue }
-
-        var label: String {
-            switch self {
-            case .never: "Never"
-            case .sixHours: "Every 6 Hours"
-            case .twelveHours: "Every 12 Hours"
-            case .daily: "Daily"
-            case .weekly: "Weekly"
-            }
-        }
+    // a request with no earliest date is a third state, not a missing one: it is
+    // armed and carries no floor, which is the whole point of the toggle. it is
+    // also self-clearing - the run that takes it re-arms with a date, so the
+    // toggle falls back to off on its own rather than claiming a spent request
+    private enum Armed: Equatable {
+        case none
+        case soon
+        case at(Date)
     }
+    #endif
 
     var body: some View {
         Form {
@@ -63,20 +59,17 @@ struct RefreshSettingsScreen: View {
             }
 
             Section {
-                Picker("Check Automatically", selection: $interval) {
-                    ForEach(Interval.allCases) { option in
-                        Text(option.label).tag(option.rawValue)
-                    }
-                }
+                Toggle("Check Automatically", isOn: $automatic)
             } header: {
                 Text("Automatic")
             } footer: {
-                // said plainly because the alternative is a user concluding the
-                // setting is broken. iOS decides when, and sometimes decides not
-                // to at all - the app checks again on opening for exactly that
-                Text(interval == 0
-                     ? "Your library is only checked when you pull to refresh."
-                     : "iOS chooses when to run this, so it may be later than the interval. If it never runs, the check happens next time you open the app.")
+                // on or off, never a cadence: ios runs a processing task when the
+                // device is idle and charging, so a chosen interval would be a
+                // promise made by the wrong party. said plainly because the
+                // alternative is a reader concluding the setting is broken
+                Text(automatic
+                     ? "iOS chooses when this runs, usually while the device is idle and charging overnight. If it never runs, the check happens next time you open the app."
+                     : "Your library is only checked when you pull to refresh.")
             }
 
             Section {
@@ -90,37 +83,49 @@ struct RefreshSettingsScreen: View {
             }
 
             #if DEBUG
-            // a scheduled run cannot be triggered on demand and cannot be
-            // observed from the simulator, so this fakes the launch ios will not
-            // make. it used to fire automatically on every backgrounding, which
-            // is how it was verified once and then how it refreshed the whole
-            // library every time the screen locked - a harness that runs without
-            // being asked is indistinguishable from the bug it was built to find
+            // nothing can make ios launch the task now, so the offer is to drop
+            // the twelve-hour floor and let the next natural opportunity take it.
+            // the pending request is what this reads - anything derived from the
+            // setting would state a run four separate conditions can prevent
             Section {
-                Button("Rehearse a Scheduled Run") {
-                    Task { await compositor.refresh.rehearse() }
-                }
-                .disabled(interval == 0)
+                Toggle("Run at the Next Opportunity", isOn: asap)
+                    .disabled(!automatic)
+                    .sensoryFeedback(.selection, trigger: armed)
             } header: {
                 Text("Debug")
             } footer: {
-                Text(interval == 0
-                     ? "Turn automatic checks on to rehearse one."
-                     : "Arms the request, then fakes the launch after five seconds. Lock the screen now to watch it run under real conditions.")
+                Text(scheduleFooter)
             }
             #endif
         }
+        #if DEBUG
+        .task { armed = await pendingRun() }
+        // a finished run re-arms behind the floor again, so the toggle is stale
+        // the moment the walk ends and stale again on every return to the screen
+        .onChange(of: compositor.refresh.isRunning) { _, running in
+            guard !running else { return }
+            Task { armed = await pendingRun() }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active else { return }
+            Task { armed = await pendingRun() }
+        }
+        #endif
         .navigationTitle("Library Updates")
         .navigationBarTitleDisplayMode(.inline)
-        // the request carries the interval, so changing it has to re-arm rather
-        // than wait for the next run to notice
-        .onChange(of: interval) { _, new in
+        // turning it off has to withdraw the pending request rather than wait for
+        // the next run to notice nobody wants one
+        .onChange(of: automatic) { _, on in
             compositor.refresh.schedule()
+
+            #if DEBUG
+            Task { armed = await pendingRun() }
+            #endif
 
             // asked here rather than at launch: the notification only exists for
             // a run nobody watched, so the request has nothing to explain itself
             // with until someone has asked for those runs
-            guard new > 0 else { return }
+            guard on else { return }
             Task { await Notifier.promote() }
         }
         .onReceive(NotificationCenter.default.publisher(
@@ -137,13 +142,58 @@ struct RefreshSettingsScreen: View {
     // anything. denied cannot say whether this app or the whole system is off,
     // which is why the copy names the path rather than the switch
     private var showsRefreshDisabled: Bool {
-        interval > 0 && refreshStatus == .denied
+        automatic && refreshStatus == .denied
     }
 
     private func openSettings() {
         guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
         UIApplication.shared.open(url)
     }
+
+    #if DEBUG
+    // the toggle writes a request and reads the answer back, so what it shows is
+    // the scheduler's state rather than the tap's. turning it off restores the
+    // ordinary floor - there is no third position for "cancel everything", since
+    // that is what the setting above is for
+    private var asap: Binding<Bool> {
+        Binding(
+            get: { armed == .soon },
+            set: { on in
+                compositor.refresh.schedule(asap: on)
+                Task { armed = await pendingRun() }
+            }
+        )
+    }
+
+    private func pendingRun() async -> Armed {
+        let request = await BGTaskScheduler.shared.pendingTaskRequests()
+            .first { $0.identifier == Constants.Tasks.scheduledRefresh }
+
+        guard let request else { return .none }
+        guard let earliest = request.earliestBeginDate else { return .soon }
+        return .at(earliest)
+    }
+
+    private var scheduleFooter: String {
+        guard automatic else { return "Turn automatic checks on to schedule one." }
+
+        #if targetEnvironment(simulator)
+        return "The simulator never accepts a scheduled request, so nothing is armed here. Run this on a device."
+        #else
+        switch armed {
+        case .none:
+            return "No run is armed."
+        case .soon:
+            // said plainly because the toggle reads like a trigger and is not.
+            // the honest expectation is apple's own: idle and charging, usually
+            // overnight, within about two days
+            return "Armed with no waiting period. iOS still picks the moment, and in practice that means while the device is idle and charging. This clears itself once a run takes it."
+        case .at(let date):
+            return "A run is armed for \(date.formatted(date: .abbreviated, time: .shortened)) at the earliest. Turn this on to drop that wait."
+        }
+        #endif
+    }
+    #endif
 
     // one sentence per switch, because "skip finished" reads obvious and is not:
     // the status comes from the source and only updates when the series is

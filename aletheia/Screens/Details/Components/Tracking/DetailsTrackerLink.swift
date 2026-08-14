@@ -561,7 +561,8 @@ private struct LinkPreview: View {
             scoreFormat: .point10,
             syncedDate: .distantPast,
             attemptedDate: .distantPast,
-            failureReason: nil
+            failureReason: nil,
+            queued: false
         )
     )
 }

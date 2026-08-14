@@ -536,6 +536,7 @@ struct DetailsScreen: View {
             link: { linking = $0 },
             manage: { managing = $0 },
             connect: { showingTracking = true },
+            catchUp: { progress in Task { await composer.catchUp(to: progress) } },
             mark: { read, numbers in requestMark(composer, read: read, numbers: numbers) },
             read: { chapter in open(chapter, in: composer) }
         )

@@ -362,20 +362,35 @@ extension Compositor {
         // re-armed at the end of every run and at launch, never only on
         // backgrounding: suwatte submits solely from its scene-phase hook and
         // its handler never re-submits, so its scheduling can stop for good
-        func schedule() {
-            let hours = UserDefaults.standard.integer(forKey: Preferences.Key.refreshInterval)
+        // asap drops the earliest date rather than starting anything: the launch
+        // stays the system's decision, this only removes the floor it was told to
+        // wait behind. the next launch re-arms at the interval, so an asap
+        // request that never ran does not persist
+        func schedule(asap: Bool = false) {
+            let automatic = UserDefaults.standard.bool(forKey: Preferences.Key.refreshAutomatic)
 
-            #if !targetEnvironment(simulator)
+            #if targetEnvironment(simulator)
+            log.log("scheduled refresh skipped - the simulator never accepts one", category: "refresh")
+            #else
             BGTaskScheduler.shared.cancel(taskRequestWithIdentifier: Constants.Tasks.scheduledRefresh)
-            guard hours > 0 else { return }
+            guard automatic else {
+                log.log("scheduled refresh cancelled - automatic checks are off", category: "refresh")
+                return
+            }
 
             let request = BGProcessingTaskRequest(identifier: Constants.Tasks.scheduledRefresh)
             request.requiresNetworkConnectivity = true
             request.requiresExternalPower = false
-            request.earliestBeginDate = anchor.addingTimeInterval(TimeInterval(hours) * 3600)
+            request.earliestBeginDate = asap ? nil : anchor.addingTimeInterval(Constants.Refresh.automaticInterval)
 
             do {
                 try BGTaskScheduler.shared.submit(request)
+                // an accepted submit says nothing on its own, and a silent
+                // success is indistinguishable from a call that never happened
+                log.log(
+                    "scheduled refresh armed - \(request.earliestBeginDate.map { "no earlier than \($0.formatted())" } ?? "at the system's next opportunity")",
+                    category: "refresh"
+                )
             } catch {
                 log.log("scheduled refresh not accepted - \(error)", category: "refresh")
             }
@@ -388,8 +403,7 @@ extension Compositor {
         // the app is opened, which is the half nobody can switch off
         func catchUp() {
             let defaults = UserDefaults.standard
-            let hours = defaults.integer(forKey: Preferences.Key.refreshInterval)
-            guard hours > 0, !isRunning else { return }
+            guard defaults.bool(forKey: Preferences.Key.refreshAutomatic), !isRunning else { return }
 
             guard let last = defaults.object(forKey: Preferences.Key.refreshedAutomaticallyDate) as? Date else {
                 // a first-ever launch stamps and waits rather than walking a
@@ -399,7 +413,7 @@ extension Compositor {
                 return
             }
 
-            let due = last.addingTimeInterval(TimeInterval(hours) * 3600)
+            let due = last.addingTimeInterval(Constants.Refresh.automaticInterval)
             guard Date.now >= due else { return }
 
             // one run, not one per interval missed. how many were skipped is not
@@ -472,7 +486,7 @@ extension Compositor {
         // never ships. release builds have no reference to any of it
         func rehearse() async {
             guard !isRunning else { return }
-            guard UserDefaults.standard.integer(forKey: Preferences.Key.refreshInterval) > 0 else {
+            guard UserDefaults.standard.bool(forKey: Preferences.Key.refreshAutomatic) else {
                 log.log("rehearsal skipped - automatic checks are off", category: "refresh")
                 return
             }

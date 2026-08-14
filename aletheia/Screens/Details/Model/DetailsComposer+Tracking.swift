@@ -58,7 +58,8 @@ extension DetailsComposer {
                     scoreFormat: format(for: row.tracker),
                     syncedDate: row.syncedDate,
                     attemptedDate: row.attemptedDate,
-                    failureReason: row.syncError
+                    failureReason: row.syncError,
+                    queued: row.pendingProgress != nil
                 )
             }
 
@@ -285,6 +286,12 @@ extension DetailsComposer.Tracking {
         // pair says both "is it broken" and "how long has it been"
         let attemptedDate: Date
         let failureReason: String?
+
+        // the row is carrying a number the drain has not delivered yet. the
+        // remote figure is therefore already stale in a known direction, which
+        // is the difference between "this service is behind" and "this service
+        // is behind and something is on its way to fix that"
+        let queued: Bool
 
         var url: URL? { tracker.url(for: remoteId) }
 
