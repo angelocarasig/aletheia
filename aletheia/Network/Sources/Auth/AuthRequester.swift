@@ -12,6 +12,11 @@ actor AuthRequester {
     private let capturer: any AuthCapturing
     private let log: AppLog
     private var refreshTasks: [String: Task<SourceCredential, Error>] = [:]
+    private var lastRefresh: [String: Date] = [:]
+
+    // long enough that a screenful of rows shares one answer, short enough that
+    // the reader retrying by hand a moment later gets a real attempt
+    private static let refreshCooldown: TimeInterval = 30
 
     init(network: NetworkConfiguration, capturer: any AuthCapturing, log: AppLog) {
         self.network = network
@@ -52,7 +57,19 @@ actor AuthRequester {
             return (data, response)
         }
 
-        log.log("[\(source.descriptor.slug)] challenge detected - refreshing then retrying once", category: "auth")
+        // a credential minted seconds ago and refused is the wall saying no to
+        // us, not an expiry - so capturing again produces the same cookies and
+        // the same 403, once per request. five preset rows meant five captures
+        // and four verification sheets in thirty seconds. inside the window the
+        // challenge is handed back as an ordinary failure, which is the honest
+        // answer: we cannot get through right now
+        let slug = source.descriptor.slug
+        if let last = lastRefresh[slug], Date().timeIntervalSince(last) < Self.refreshCooldown {
+            log.log("[\(slug)] challenge persists after a recent refresh - not capturing again", category: "auth")
+            return (data, response)
+        }
+
+        log.log("[\(slug)] challenge detected - refreshing then retrying once", category: "auth")
         let fresh = try await refresh(for: source)
         var retry = request
         fresh.apply(to: &retry)
@@ -72,7 +89,12 @@ actor AuthRequester {
             try await capturer.capture(for: specification)
         }
         refreshTasks[slug] = task
-        defer { refreshTasks[slug] = nil }
+        // stamped whatever the outcome: a capture that failed is still a capture
+        // this source just spent, and the cooldown exists to stop the spending
+        defer {
+            refreshTasks[slug] = nil
+            lastRefresh[slug] = Date()
+        }
 
         let credential = try await task.value
 

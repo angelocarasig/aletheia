@@ -7,15 +7,23 @@
 
 import Foundation
 
-// a signed json api, no renderer and no credential. mangafire rewrote itself in
+// a signed json api behind a cloudflare challenge. mangafire rewrote itself in
 // july 2026 - the /browse html this source used to scrape is now an spa shell,
 // and every capability moved to /api/ behind a vrf signature. MangaFireSigner
 // carries that signature; nothing here runs javascript.
 //
+// the credential came back on 2026-08-15: the tenant was not challenging when
+// this was ported two days earlier (docs/sources/mangafire.md §5 recorded that
+// as their configuration rather than the protocol) and now answers every path,
+// robots.txt included, with `cf-mitigated: challenge`. so the signature and the
+// clearance are two separate walls and both have to be got past - but the
+// requests are still plain json over URLSession, and a webkit-minted clearance
+// carries across to it fine on this tenant.
+//
 // series are opaque string hids, chapters are integers. see
 // docs/sources/mangafire.md
-struct MangaFireSource: SourceService {
-    let network: NetworkConfiguration
+struct MangaFireSource: SourceService, AuthenticatingSource {
+    let requester: AuthRequester
 
     private static let chapterPageSize = 200
 
@@ -253,6 +261,38 @@ struct MangaFireSource: SourceService {
     var pingURL: URL {
         Self.endpoint("/api/titles", [URLQueryItem(name: "limit", value: "1")])
     }
+
+    var specification: AuthSpecification {
+        AuthSpecification(
+            requirements: [
+                // the clearance is the whole wall, so it is the one thing worth
+                // waiting for. if the tenant drops the challenge again it stops
+                // being minted at all and every capture polls to the timeout -
+                // the cost of pinning a source to a configuration that has
+                // already changed twice
+                .cookie(name: "cf_clearance"),
+                // mangafire's own, and taken only if the landing page happens to
+                // set one. the deprecated renderer lane required it, which was
+                // safe when a browse page minted it on first paint and is not
+                // now that the site is an spa
+                .cookie(name: "session", optional: true)
+            ],
+            challengeURL: descriptor.baseURL,
+            userAgent: nil,
+            maneuver: "Complete the check if one appears. This window closes automatically.",
+            interactive: true
+        )
+    }
+
+    // the api answers a bad signature with 403 and a json body, and the
+    // cloudflare default reads any 403 behind cloudflare as a challenge - so a
+    // rotated table would spend a capture and a retry to arrive at the same 403,
+    // throwing away the one body that names the real cause
+    func isChallenge(response: HTTPURLResponse, body: Data) -> Bool {
+        let text = String(decoding: body, as: UTF8.self)
+        if text.contains("Missing token.") || text.contains("Invalid token.") { return false }
+        return isCloudflareChallenge(response: response, body: body)
+    }
 }
 
 // MARK: - Requests
@@ -274,11 +314,27 @@ extension MangaFireSource {
         return components.url!
     }
 
+    // through the requester rather than the network: it serves the cached
+    // clearance, notices a challenge that slipped past it anyway, single-flights
+    // the capture ten concurrent chapter pages would otherwise each start, and
+    // replays once. the status check is ours because requester.send hands back
+    // whatever came, and a challenge page decoded as json is a decoding error
+    // rather than a wall
     private func fetch<Model: Decodable & Sendable>(_ path: String, _ items: [URLQueryItem] = []) async throws -> Model {
-        try await network.get(
-            url: Self.endpoint(path, items),
-            headers: ["Accept": "application/json"]
-        )
+        var request = URLRequest(url: Self.endpoint(path, items))
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+
+        let (data, response) = try await requester.send(request, for: self)
+
+        guard (200...299).contains(response.statusCode) else {
+            throw NetworkError.badResponse(status: response.statusCode, response: response)
+        }
+
+        do {
+            return try JSONDecoder().decode(Model.self, from: data)
+        } catch let error as DecodingError {
+            throw NetworkError.decoding(type: String(describing: Model.self), error: error)
+        }
     }
 }
 

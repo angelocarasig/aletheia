@@ -137,6 +137,7 @@ final class WebAuthCapturer: NSObject, AuthCapturing {
 
     private func evaluate(_ cookieStore: WKHTTPCookieStore) async {
         guard continuation != nil, let specification else { return }
+        let host = specification.challengeURL.host() ?? ""
 
         var required: [String] = []
         var optional: [String] = []
@@ -151,8 +152,19 @@ final class WebAuthCapturer: NSObject, AuthCapturing {
         }
         guard !required.isEmpty || !metas.isEmpty else { return }
 
-        let cookies = await withCheckedContinuation { continuation in
+        let jar = await withCheckedContinuation { continuation in
             cookieStore.getAllCookies { continuation.resume(returning: $0) }
+        }
+
+        // every source shares one data store, and cf_clearance is the name three
+        // of them ask for - so matching on name alone hands whichever site was
+        // visited last to whichever site is asking. mangafire's capture finished
+        // in two seconds holding toonily's clearance, which is a cookie the
+        // requester then replayed, the renderer then injected, and cloudflare
+        // then refused, correctly, for a day
+        let cookies = jar.filter { cookie in
+            let domain = cookie.domain.hasPrefix(".") ? String(cookie.domain.dropFirst()) : cookie.domain
+            return host == domain || host.hasSuffix(".\(domain)")
         }
 
         var captured: [String: String] = [:]
@@ -175,7 +187,14 @@ final class WebAuthCapturer: NSObject, AuthCapturing {
             headers[meta.header] = value
         }
 
-        log.log("captured \(captured.count) cookie(s), \(headers.count) header(s)", category: "auth")
+        // names, not a count. a wall that refuses a credential we believe we
+        // captured is either a cookie we did not ask for or a cookie that was
+        // never minted, and a count cannot tell those apart - so the line says
+        // what we took and what was sitting in the jar beside it
+        log.log(
+            "captured [\(captured.keys.sorted().joined(separator: ", "))] + \(headers.count) header(s) from \(host) - jar held [\(jar.map { "\($0.name)@\($0.domain)" }.sorted().joined(separator: ", "))]",
+            category: "auth"
+        )
 
         finish(.success(SourceCredential(
             cookies: captured,

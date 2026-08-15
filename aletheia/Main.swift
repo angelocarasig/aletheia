@@ -64,6 +64,7 @@ struct AletheiaApp: App {
                         .environment(\.compositor, compositor)
                         .environment(\.database, compositor.database)
                         .environment(\.router, router)
+                        .authChallenge(from: compositor.presenter)
                 } else {
                     BootstrapScreen(phase: bootstrap.phase) {
                         Task { await bootstrap.run() }

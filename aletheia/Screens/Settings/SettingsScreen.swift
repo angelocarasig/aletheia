@@ -17,6 +17,7 @@ struct SettingsScreen: View {
     @State private var showingTracking = false
     @State private var showingRefresh = false
     @State private var showingLogs = false
+    @State private var showingImpressions = false
 
     private enum Layout {
         static let glyphWidth: CGFloat = 28
@@ -55,6 +56,12 @@ struct SettingsScreen: View {
                         systemImage: "text.alignleft",
                         detail: "What the app recorded, including last launch"
                     ) { showingLogs = true }
+
+                    Card(
+                        "Recommendations",
+                        systemImage: "sparkle.magnifyingglass",
+                        detail: "What the model showed, and what came of it"
+                    ) { showingImpressions = true }
                 }
             }
             .padding(.horizontal, dimensions.screenMargin)
@@ -66,6 +73,7 @@ struct SettingsScreen: View {
         .navigationDestination(isPresented: $showingTracking) { TrackingScreen() }
         .navigationDestination(isPresented: $showingRefresh) { RefreshSettingsScreen() }
         .navigationDestination(isPresented: $showingLogs) { LogScreen() }
+        .navigationDestination(isPresented: $showingImpressions) { ImpressionsScreen() }
         .task { compositor.trackers.hydrate() }
     }
 

@@ -38,7 +38,7 @@ struct Compositor: Sendable {
             log: .shared
         )
         let sources: [Source] = [
-            MangaFireSource(network: network),
+            MangaFireSource(requester: requester),
             MangaDexSource(network: network),
             AtsumaruSource(network: network),
             WeebCentralSource(network: network),

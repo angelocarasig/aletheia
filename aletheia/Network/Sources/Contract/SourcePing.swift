@@ -30,9 +30,21 @@ extension SourceService {
         let clock = ContinuousClock()
         let start = clock.now
 
+        // the cached credential, never a refresh - same rule as
+        // SourceService.requestHeaders. a screen of source rows pings every row
+        // it draws, and a capture from there would put a verification sheet in
+        // front of a reader who only opened a list. so a source behind a wall
+        // reads red until something they actually asked for earns the cookies,
+        // which is the honest answer anyway: until then we cannot reach it
+        var request = URLRequest(url: pingURL)
+        if let authenticating = self as? any AuthenticatingSource,
+           let credential = await authenticating.requester.peek(slug: descriptor.slug) {
+            credential.apply(to: &request)
+        }
+
         do {
             let response = try await withDeadline(Constants.Network.pingTimeout) {
-                try await network.send(URLRequest(url: pingURL)).1
+                try await network.send(request).1
             }
             let elapsed = clock.now - start
 
