@@ -18,6 +18,9 @@ struct Compositor: Sendable {
     // one model, loaded lazily and held. swapping it is a different case in this
     // one line, which is the whole point of it being behind a protocol
     let recommender: Recommender
+    // what the recommender showed, kept beside it because the two are one
+    // mechanism - a recommendation nobody can prove was on screen is not evidence
+    let impressions: Impressions
     let requester: AuthRequester
     let presenter: AuthPresenter
     // the one funnel every request passes. exposed because a caller that builds
@@ -66,6 +69,7 @@ struct Compositor: Sendable {
         self.trackers = Trackers(database: database, authority: authority, services: trackerServices)
 
         self.recommender = V01Recommender()
+        self.impressions = Impressions(database: database)
 
         self.db = Persistence(database: database)
     }

@@ -16,12 +16,18 @@ struct DetailsRecommendations: View {
     let phase: LoadPhase
     let results: [Recommendation]
     let onOpen: (Recommendation) -> Void
+    var context: DetailsComposer.Recommendations.ImpressionContext? = nil
 
     @Environment(\.dimensions) private var dimensions
+    @Environment(\.compositor) private var compositor
 
     private enum Layout {
         static let skeletonCount = 6
         static let carouselVisible = 3
+        // half the card. a sliver at the screen edge is not something a reader
+        // took in, and counting it would put "never seen" back beside "seen and
+        // passed over" - which is the one distinction this exists to make
+        static let seenFraction: Double = 0.5
     }
 
     var body: some View {
@@ -41,10 +47,28 @@ struct DetailsRecommendations: View {
                     .transition(.opacity)
                 case .content:
                     Rail {
-                        ForEach(results) { result in
+                        ForEach(Array(results.enumerated()), id: \.element.id) { rank, result in
                             Slot {
                                 Card(result: result)
-                                    .tappable { onOpen(result) }
+                                    .onScrollVisibilityChange(threshold: Layout.seenFraction) { visible in
+                                        guard visible, let context else { return }
+                                        compositor.impressions.shown(
+                                            result,
+                                            rank: rank,
+                                            batchId: context.batchId,
+                                            seed: context.series,
+                                            seedCatalogId: context.seedCatalogId,
+                                            modelVersion: context.modelVersion,
+                                            alreadyInLibrary: context.owned.contains(result.catalogId))
+                                    }
+                                    .tappable {
+                                        if let context {
+                                            compositor.impressions.tapped(
+                                                catalogId: result.catalogId,
+                                                batchId: context.batchId)
+                                        }
+                                        onOpen(result)
+                                    }
                             }
                         }
                     }

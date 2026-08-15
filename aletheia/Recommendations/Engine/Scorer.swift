@@ -186,25 +186,80 @@ struct Scorer: Sendable {
     //
     // the return value exists to stop the compiler eliminating loads it can prove
     // nothing reads
+    // returns which path it took, because the two are indistinguishable from a
+    // duration alone and MADV_WILLNEED is documented as advisory - a kernel that
+    // quietly declines it would look exactly like one that honoured it slowly
     @discardableResult
-    func touchPages() -> Int {
-        var sum = 0
-        let stride = 4096
-        embeddings.withUnsafeBufferPointer { buffer in
-            var i = 0
-            while i < buffer.count {
-                sum &+= Int(buffer[i])
-                i += stride
-            }
+    func touchPages() -> String {
+        // three arrays, not two. tagBlock reads indices and indptr in the same
+        // inner loop as values, so warming values alone left 11.5 MB of tags.bin
+        // to fault on the first query - which is most of why a warmed first query
+        // measured 77 ms rather than the ~24 ms a fully resident one does
+        var advised = true
+        advised = advise(embeddings) && advised
+        advised = advise(values) && advised
+        advised = advise(indices) && advised
+        advised = advise(indptr) && advised
+        guard !advised else { return "advised" }
+
+        // fallback: fault the pages by touching them. one byte per page is the
+        // whole benefit, but serially this is a fault chain with queue depth 1 -
+        // 121 MB at ~565 MB/s against hardware that does several GB/s - so the
+        // walk is split the same way embeddingBlock splits its dot products
+        let sum = UnsafeMutablePointer<Int>.allocate(capacity: 1)
+        sum.initialize(to: 0)
+        defer { sum.deallocate() }
+        touchInParallel(embeddings, into: sum)
+        touchInParallel(values, into: sum)
+        touchInParallel(indices, into: sum)
+        touchInParallel(indptr, into: sum)
+        // sum is read so the compiler cannot eliminate loads it can prove
+        // nothing else looks at
+        return "walked (madvise declined), checksum \(sum.pointee & 0xFF)"
+    }
+
+    // MADV_WILLNEED hands the whole region to the kernel in one syscall and
+    // returns immediately, so the read streams in behind us instead of being
+    // driven one fault at a time. returns false if the kernel declined, which is
+    // why the byte-walk above still exists
+    private func advise<T>(_ array: MappedArray<T>) -> Bool {
+        array.withUnsafeBufferPointer { buffer in
+            guard let base = buffer.baseAddress, buffer.count > 0 else { return false }
+            let bytes = buffer.count * MemoryLayout<T>.stride
+            return madvise(UnsafeMutableRawPointer(mutating: base), bytes, MADV_WILLNEED) == 0
         }
-        values.withUnsafeBufferPointer { buffer in
-            var i = 0
-            while i < buffer.count {
-                sum &+= Int(buffer[i])
-                i += stride
+    }
+
+    private func touchInParallel<T>(_ array: MappedArray<T>, into sum: UnsafeMutablePointer<Int>) {
+        array.withUnsafeBufferPointer { buffer in
+            let bytes = buffer.count * MemoryLayout<T>.stride
+            // arm64 on iOS pages at 16 KB, so a 4096 stride did four loads per
+            // page and faulted on one of them. the other three were DRAM hits -
+            // never the cost, just wrong
+            let page = Int(vm_page_size)
+            let pages = (bytes + page - 1) / page
+            guard pages > 0, let base = buffer.baseAddress else { return }
+            let raw = UnsafeRawPointer(base)
+            let cores = ProcessInfo.processInfo.activeProcessorCount
+            let chunks = max(1, min(cores * 4, (pages + 255) / 256))
+            let per = (pages + chunks - 1) / chunks
+
+            let partials = UnsafeMutablePointer<Int>.allocate(capacity: chunks)
+            partials.initialize(repeating: 0, count: chunks)
+            defer { partials.deallocate() }
+
+            DispatchQueue.concurrentPerform(iterations: chunks) { chunk in
+                var local = 0
+                var p = chunk * per
+                let end = min(p + per, pages)
+                while p < end {
+                    local &+= Int(raw.load(fromByteOffset: p * page, as: UInt8.self))
+                    p += 1
+                }
+                partials[chunk] = local
             }
+            for c in 0..<chunks { sum.pointee &+= partials[c] }
         }
-        return sum
     }
 
     // MARK: blocks
@@ -413,12 +468,32 @@ struct Scorer: Sendable {
         }
         guard !eligible.isEmpty else { return [] }
 
-        // kth largest first, so the sort only ever touches the tie group rather
-        // than the whole eligible set
+        // kth largest first, so the full sort below only ever touches the tie
+        // group rather than the whole eligible set
+        //
+        // this used to sort every eligible score to read one value out of it -
+        // 100-180k rows for a typical ceiling, to find element 19. the buffer
+        // holds the k best seen so far, and after the first few thousand rows
+        // its floor is high enough that almost every remaining row loses on the
+        // first comparison and costs nothing more
         let want = min(k, eligible.count)
-        var top = eligible.map { score[$0] }
-        top.sort(by: >)
-        let cutoff = top[want - 1]
+        var best = [Float](repeating: -.greatestFiniteMagnitude, count: want)
+        var filled = 0
+        for row in eligible {
+            let value = score[row]
+            if filled == want {
+                guard value > best[want - 1] else { continue }
+            } else {
+                filled += 1
+            }
+            var i = min(filled - 1, want - 1)
+            while i > 0, best[i - 1] < value {
+                best[i] = best[i - 1]
+                i -= 1
+            }
+            best[i] = value
+        }
+        let cutoff = best[want - 1]
 
         let group = eligible.filter { score[$0] >= cutoff }
         let ordered = group.sorted { a, b in

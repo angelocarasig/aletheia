@@ -19,7 +19,35 @@ struct TagVocabulary: Sendable {
 
     private let column: [String: Int]
     private let name: [String]
-    private let canonical: [String: String]
+    private let aliases: [String: String]
+
+    // built on first use rather than at init. it runs Normalise.key over every
+    // vocabulary name and every alias - roughly 2,500 strings, each an NFKD
+    // decompose, a combining-class filter, a case fold and a rebuild - and it is
+    // read only by encode(), i.e. only on the projected path. a seed that
+    // resolved by catalogue id or by alias never touches it, so at launch this
+    // was ~12 ms spent on a table most sessions never look at
+    //
+    // a box rather than a lazy var because TagVocabulary is a Sendable struct:
+    // lazy would make encode() mutating and take Sendable with it
+    private let canonicalBox = Once<[String: String]>()
+
+    private var canonical: [String: String] {
+        canonicalBox.value {
+            // an incoming tag arrives however its source spelled it, so the index
+            // is keyed by the normalised form. aliases resolve first and are
+            // already normalised on the export side - "sci fi" to "Sci-Fi", "bl"
+            // to "Boys Love" - so they map straight onto a canonical name
+            var lookup: [String: String] = [:]
+            for raw in column.keys where !raw.hasPrefix("^") {
+                lookup[Normalise.key(raw)] = raw
+            }
+            for (from, to) in aliases {
+                lookup[Normalise.key(from)] = to
+            }
+            return lookup
+        }
+    }
     private let ancestors: [String: [String]]
     private let idf: [Float]
     private let weights: [String: Float]
@@ -58,19 +86,7 @@ struct TagVocabulary: Sendable {
         for (raw, index) in doc.vocab where index < names.count { names[index] = raw }
         name = names
 
-        // an incoming tag arrives however its source spelled it, so the index is
-        // keyed by the normalised form. aliases resolve first and are already
-        // normalised on the export side - "sci fi" to "Sci-Fi", "bl" to "Boys
-        // Love" - so they map straight onto a canonical vocabulary name
-        var lookup: [String: String] = [:]
-        for raw in doc.vocab.keys where !raw.hasPrefix("^") {
-            lookup[Normalise.key(raw)] = raw
-        }
-        for (from, to) in doc.tagAliases {
-            lookup[Normalise.key(from)] = to
-        }
-        canonical = lookup
-
+        aliases = doc.tagAliases
         ancestors = doc.ancestors
         idf = doc.idf
         weights = doc.tagWeights
@@ -141,5 +157,21 @@ struct TagVocabulary: Sendable {
             found.insert(type)
         }
         return found
+    }
+}
+
+// a value computed once, on whichever thread asks first, and shared thereafter.
+// @unchecked because the lock is what provides the safety the compiler cannot see
+final class Once<Value>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored: Value?
+
+    func value(_ build: () -> Value) -> Value {
+        lock.lock()
+        defer { lock.unlock() }
+        if let stored { return stored }
+        let made = build()
+        stored = made
+        return made
     }
 }

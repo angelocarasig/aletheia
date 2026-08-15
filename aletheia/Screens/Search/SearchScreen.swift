@@ -14,6 +14,9 @@ struct SearchScreen: View {
     // a preset is a standing request - filters and a sort with no text - so the
     // screen opens already searching rather than waiting for input
     var preset: SourcePreset? = nil
+    // a cross-tab request. only the tab root takes one - a pushed screen cannot
+    // be the thing a tab switch lands on
+    var seed: Router.Search? = nil
     // a pushed screen sits in the presenting tab's stack; only the tab root owns
     // one. a seeded global search is always pushed, so it never owns one either
     var embedded: Bool = false
@@ -82,7 +85,14 @@ struct SearchScreen: View {
                     // bar exists only to hold the search field once it is active
                     .toolbarTitleDisplayMode(.large)
             }
-            .modifier(GlobalLifecycle(vm: vm, seed: query, compositor: compositor))
+            .modifier(GlobalLifecycle(vm: vm, seed: query, compositor: compositor,
+                                      request: seed) {
+                // the request may land on a tab that currently has a series or a
+                // grid pushed, which would seed a screen nobody can see. same pop
+                // the re-tap does, for the same reason
+                seriesRoute = nil
+                gridRoute = nil
+            })
             .onChange(of: reset) {
                 // two-stage, matching the system convention: a re-tap pops any
                 // pushed screen first; only a re-tap already at root clears the
@@ -206,6 +216,10 @@ struct SearchScreen: View {
         let vm: SearchViewModel
         let seed: String
         let compositor: Compositor
+        // a request from another tab. nil for the embedded shape, which has no
+        // tab to be switched to
+        var request: Router.Search? = nil
+        var onRequest: () -> Void = {}
 
         func body(content: Content) -> some View {
             content
@@ -215,6 +229,22 @@ struct SearchScreen: View {
                     // only ever seeds the first time - retyping is the reader's
                     guard !seed.isEmpty, vm.query.isEmpty, vm.submitted.isEmpty else { return }
                     vm.query = seed
+                }
+                // keyed on the token, so asking a second time lands a second time.
+                // the unconditional seed above cannot serve this: it declines once
+                // vm.query is non-empty, which after one search it always is
+                //
+                // .task rather than .onChange because a tab's content is built on
+                // first selection - if Search had never been opened, this view did
+                // not exist when the request was made and there was nothing here
+                // to observe the change
+                .task(id: request?.token) {
+                    guard let request else { return }
+                    vm.configure(sources: compositor.registry.sources, database: compositor.database)
+                    onRequest()
+                    vm.query = request.text
+                    AppLog.shared.log("seeded '\(request.text)' token \(request.token)",
+                                      category: "router")
                 }
                 .onAppear { vm.resume() }
                 .onDisappear { vm.stop() }

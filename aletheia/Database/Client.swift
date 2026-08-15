@@ -48,6 +48,10 @@ final class DatabaseClient: Sendable {
         SeriesLanguagePriorityRecord.self,
         ReadingEventRecord.self,
         ReadingSessionRecord.self,
+        
+        // no foreign keys, so its position is free - it sits with the other two
+        // append-only logs
+        RecommendationImpressionRecord.self,
     ]
 
     // views created after tables; view deps precede dependents
@@ -90,12 +94,18 @@ final class DatabaseClient: Sendable {
 
         var migrator = DatabaseMigrator()
         #if DEBUG
-        // v1 closed 2026-08-13 and migrations are append-only from here, so this
-        // should no longer fire: a new migration is a new registration rather
-        // than a changed checksum. it stays as the backstop for the one case it
-        // still catches - an accidental edit to v1.0.0 or v1.0.1, which on a
-        // device would be a corrupt migration and here is just a rebuild
-        migrator.eraseDatabaseOnSchemaChange = true
+        // deliberately off since 2026-08-15. v1.0.0 and v1.0.1 were reopened once
+        // to take recommendation_impression and series.catalogId, which changed
+        // their checksums - and with this on, that edit would have been absorbed
+        // silently by a wipe, which is the opposite of what a reopened migration
+        // should feel like
+        //
+        // the consequence is the point: a changed checksum now THROWS at launch,
+        // so a schema edit has to be answered by deleting the app and letting the
+        // database be rebuilt on purpose. turning this back on returns the
+        // silence along with the convenience
+        //
+        // migrator.eraseDatabaseOnSchemaChange = true
         #endif
         Migrations.register(with: &migrator, records: DatabaseClient.allRecords, views: DatabaseClient.allViews)
         try migrator.migrate(pool)

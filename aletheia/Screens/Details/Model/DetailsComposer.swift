@@ -95,6 +95,7 @@ final class DetailsComposer {
         refresher: Compositor.Refresh,
         trackers: Compositor.Trackers,
         recommender: Recommender,
+        impressions: Compositor.Impressions,
         database: DatabaseClient
     ) {
         self.entry = entry
@@ -120,7 +121,7 @@ final class DetailsComposer {
             refresher: refresher,
             registry: registry
         )
-        recommendations = Recommendations(recommender: recommender)
+        recommendations = Recommendations(recommender: recommender, impressions: impressions)
     }
 
     // the screen draws from the database alone, so a row is all it waits on.

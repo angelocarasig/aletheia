@@ -376,6 +376,7 @@ struct DetailsScreen: View {
                 refresher: compositor.refresh,
                 trackers: compositor.trackers,
                 recommender: compositor.recommender,
+                impressions: compositor.impressions,
                 database: database
             )
             self.composer = composer

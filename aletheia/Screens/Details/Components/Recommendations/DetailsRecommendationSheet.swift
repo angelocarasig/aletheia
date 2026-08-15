@@ -16,6 +16,7 @@ struct DetailsRecommendationSheet: View {
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.dimensions) private var dimensions
+    @Environment(\.router) private var router
 
     private enum Layout {
         static let coverWidth: CGFloat = 120
@@ -31,9 +32,14 @@ struct DetailsRecommendationSheet: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: dimensions.spacing.space20) {
                     header
+                    findIt
+                    // match leads: this screen exists to say why the title is
+                    // here, and the synopsis and tags are the evidence behind
+                    // that claim rather than the claim itself. it is also the
+                    // only section that cannot be read anywhere else in the app
+                    match
                     if let synopsis = result.synopsis { self.synopsis(synopsis) }
                     if !result.tags.isEmpty { tags }
-                    match
                 }
                 .padding(.horizontal, dimensions.spacing.space16)
                 .padding(.bottom, dimensions.spacing.space32)
@@ -53,6 +59,30 @@ struct DetailsRecommendationSheet: View {
         }
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
+    }
+
+    // a recommendation is a catalogue row, not something the reader has - so the
+    // only thing this screen can offer is a way to go and find it. without it the
+    // sheet states a case and gives nowhere to act on it
+    //
+    // searching rather than opening: the same title sits under different names
+    // and different quality on each source, and picking between them is the
+    // reader's call
+    private var findIt: some View {
+        Text("Search all sources")
+            .font(.headline)
+            .foregroundStyle(.brand)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, dimensions.spacing.space12)
+            .background(.brand.opacity(0.1))
+            .clipShape(.rect(cornerRadius: dimensions.radius.radius12))
+            .tappable {
+                // both are state changes in one transaction, so the sheet leaves
+                // as the tab switches rather than hanging over the new one
+                router.searchAllSources(result.title)
+                dismiss()
+            }
+            .accessibilityLabel("Search all sources for \(result.title)")
     }
 
     private var header: some View {
@@ -110,9 +140,11 @@ struct DetailsRecommendationSheet: View {
             SectionHeader("Tags")
             // the model ranks on far more tags than a reader wants to read, and
             // they arrive in column order rather than by importance
-            FlowLayout(spacing: dimensions.spacing.space4) {
+            // same pill and same gap as DetailsTags - these are the same kind of
+            // thing on two screens, and the sheet was drawing them a size larger
+            FlowLayout(spacing: dimensions.spacing.space8) {
                 ForEach(result.tags.prefix(12), id: \.self) { tag in
-                    Badge(text: tag, tone: .neutral)
+                    Badge(text: tag, tone: .neutral, size: .compact)
                 }
             }
         }

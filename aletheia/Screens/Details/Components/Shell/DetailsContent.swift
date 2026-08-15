@@ -294,7 +294,8 @@ private struct RecommendationsSection: View {
         DetailsRecommendations(
             phase: recommendations.phase,
             results: recommendations.results,
-            onOpen: actions.inspect
+            onOpen: actions.inspect,
+            context: recommendations.context
         )
     }
 }

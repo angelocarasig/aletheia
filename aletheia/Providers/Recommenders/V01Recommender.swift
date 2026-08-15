@@ -61,9 +61,9 @@ actor V01Recommender: RecommenderService {
         // that scoring answers - is what the DEBUG probe covers, and paying a
         // full throwaway query for it costs more launch time than the paging it
         // was meant to move
-        state.scorer.touchPages()
+        let how = state.scorer.touchPages()
         AppLog.shared.log(
-            String(format: "warmed in %.0fms", Date().timeIntervalSince(started) * 1000),
+            String(format: "warmed in %.0fms - %@", Date().timeIntervalSince(started) * 1000, how),
             category: "recommender")
     }
 
@@ -85,7 +85,8 @@ actor V01Recommender: RecommenderService {
             // every block declined. scoring would divide by zero and rank noise,
             // so the honest answer is nothing rather than something
             guard !vector.columns.isEmpty else {
-                return RecommendationSet(seed: seed, wTagEff: 0, used: 0, results: [])
+                return RecommendationSet(seed: seed, seedCatalogId: nil,
+                                         wTagEff: 0, used: 0, results: [])
             }
             result = state.scorer.rank(vector: vector, ceiling: ceiling.rawValue,
                                        types: types, k: limit)
@@ -93,6 +94,7 @@ actor V01Recommender: RecommenderService {
 
         return RecommendationSet(
             seed: seed,
+            seedCatalogId: seed.row.map { CatalogID(rawValue: state.scorer.catalogId(of: $0)) },
             wTagEff: result.applied.wTagEff,
             used: result.applied.used,
             results: result.ranked.map { present($0, in: state) })

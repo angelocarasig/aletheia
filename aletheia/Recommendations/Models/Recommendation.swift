@@ -82,6 +82,10 @@ enum Seed: Sendable {
 
 struct RecommendationSet: Sendable {
     let seed: Seed
+    // the catalogue id the seed resolved to, for both cases that resolve at all.
+    // Seed carries it only for .linked - .resolved holds a row, and turning a row
+    // into an id needs the bundle, which the recommender has and no caller does
+    let seedCatalogId: CatalogID?
     // how much of the model actually ran. a projected seed has used == wTagEff
     // and one block out of three
     let wTagEff: Float

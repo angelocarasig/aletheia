@@ -19,7 +19,6 @@ final class Bootstrap {
         case opening
         case seeding
         case cleaning
-        case preparing
         case ready
         case failed(Failure)
 
@@ -29,10 +28,6 @@ final class Bootstrap {
             case .opening: "Preparing database"
             case .seeding: "Installing sources"
             case .cleaning: "Tidying up"
-            // not "building" - nothing is built or stored. the work is mapping
-            // the model and paying its paging cost once, here, rather than on
-            // whichever series the reader opens first
-            case .preparing: "Preparing recommendations"
             case .ready: "Ready"
             case .failed: "Couldn't start"
             }
@@ -43,10 +38,9 @@ final class Bootstrap {
         var progress: Double {
             switch self {
             case .idle: 0
-            case .opening: 0.25
-            case .seeding: 0.55
-            case .cleaning: 0.75
-            case .preparing: 0.9
+            case .opening: 0.3
+            case .seeding: 0.65
+            case .cleaning: 0.9
             case .ready, .failed: 1
             }
         }
@@ -108,19 +102,30 @@ final class Bootstrap {
 
             await Notifier.prepare()
 
-            // last, and deliberately after everything the app cannot open
-            // without. a model that will not load costs a section rather than a
-            // launch, so warm() never throws and this phase cannot fail
-            phase = .preparing
-            await compositor.recommender.warm()
-
-            #if DEBUG
-            ModelBundle.probe()
-            await ModelBundle.probe(compositor.recommender)
-            #endif
-
             self.compositor = compositor
             phase = .ready
+
+            // warming is 236 ms of pure I/O and nothing on screen waits for it.
+            // the recommendations rail draws its own skeleton, queries off this
+            // actor, and sits below the chapter list - so a launch that blocked
+            // on this was holding back Home, Library, Search, Sources and the
+            // reader to save a wait that only ever happened behind a shimmer
+            //
+            // .utility rather than .userInitiated on purpose: 116 MB of reads now
+            // overlap the first frame's covers and the two sweeps, and this is
+            // the one of those the user is not waiting for
+            Task(priority: .utility) {
+                await compositor.recommender.warm()
+
+                // the probes re-load the whole bundle and run eleven timed
+                // queries. run before .ready they froze the launch spinner for
+                // ~400 ms in every DEBUG build - and being non-isolated work
+                // called without await, they did it on the main actor
+                #if DEBUG
+                await Task.detached { ModelBundle.probe() }.value
+                await ModelBundle.probe(compositor.recommender)
+                #endif
+            }
         } catch {
             AppLog.shared.log("bootstrap FAILED - \(error)", level: .error, category: "bootstrap")
             phase = .failed(Failure(error, fallback: "Couldn't Start"))
