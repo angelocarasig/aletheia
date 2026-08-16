@@ -25,10 +25,13 @@ import Foundation
 // directly gets no credential, no challenge detection and no retry, and it will
 // work right up until the site decides to challenge.
 //
-// the user agent is pinned, not read. the one that captured the cookies is the
-// one that must send them - cloudflare ties a clearance to the agent it was
-// issued for, so a live navigator.userAgent read invalidates the credential the
-// moment the two disagree
+// the user agent is the engine's own, read once at capture and pinned onto the
+// credential. the one that earned the cookies is the one that must send them -
+// cloudflare ties a clearance to the agent it was issued for. a hand-written
+// string used to be pinned onto the page instead, which is the same invariant
+// from the wrong end: the challenge fingerprints the real engine and compares,
+// and a claim it could not back up failed the challenge outright. a source can
+// still declare an agent if it genuinely needs a specific one
 protocol AuthenticatingSource: SourceService {
     var specification: AuthSpecification { get }
     var requester: AuthRequester { get }

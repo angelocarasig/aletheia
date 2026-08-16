@@ -45,6 +45,19 @@ final class NetworkService: NetworkConfiguration {
         configuration.timeoutIntervalForRequest = Constants.Network.timeout
         configuration.timeoutIntervalForResource = Constants.Network.resourceTimeout
         configuration.httpMaximumConnectionsPerHost = Constants.Network.connectionsPerHost
+
+        // cookies are ours to set, never the session's. with the default policy
+        // urlsession composes the Cookie header from HTTPCookieStorage.shared,
+        // which makes a header set by SourceCredential.apply advisory rather
+        // than authoritative - and worse, self-poisoning: every cloudflare
+        // challenge page carries Set-Cookie, urlsession writes those into the
+        // shared jar, and the next request then argues with the clearance the
+        // capture just earned. nothing here wants an ambient cookie jar; the
+        // credential is the whole story
+        configuration.httpShouldSetCookies = false
+        configuration.httpCookieAcceptPolicy = .never
+        configuration.httpCookieStorage = nil
+
         self.session = URLSession(configuration: configuration)
 
         self.decoder = JSONDecoder()

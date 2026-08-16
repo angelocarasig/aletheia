@@ -24,4 +24,24 @@ struct AuthSpecification: Sendable {
     let userAgent: String?
     let maneuver: String
     let interactive: Bool
+
+    // a clearance is issued against the request that was refused, so the browser
+    // has to ask for that request and not for a site root that was never the
+    // thing in question. mangafire's root is an spa shell; what cloudflare
+    // actually challenged was /api/titles, and loading the shell instead left
+    // the interstitial retrying itself every ten seconds to the timeout.
+    //
+    // the declared challengeURL stays the fallback, for a refresh with no
+    // request behind it - a proactive expiry, or the sources screen asking
+    func targeting(_ url: URL?) -> AuthSpecification {
+        guard let url, url.host() == challengeURL.host() else { return self }
+
+        return AuthSpecification(
+            requirements: requirements,
+            challengeURL: url,
+            userAgent: userAgent,
+            maneuver: maneuver,
+            interactive: interactive
+        )
+    }
 }

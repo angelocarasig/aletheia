@@ -322,7 +322,15 @@ extension MangaFireSource {
     // rather than a wall
     private func fetch<Model: Decodable & Sendable>(_ path: String, _ items: [URLQueryItem] = []) async throws -> Model {
         var request = URLRequest(url: Self.endpoint(path, items))
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        // the shape mangafire's own spa sends. a request carrying a clearance and
+        // a safari user-agent, but none of the headers safari would have put on
+        // an xhr to this endpoint, is a bot signal on its own - cloudflare does
+        // not have to fingerprint the handshake to score it
+        request.setValue("application/json, text/plain, */*", forHTTPHeaderField: "Accept")
+        request.setValue(descriptor.referer.absoluteString + "/", forHTTPHeaderField: "Referer")
+        request.setValue("empty", forHTTPHeaderField: "Sec-Fetch-Dest")
+        request.setValue("cors", forHTTPHeaderField: "Sec-Fetch-Mode")
+        request.setValue("same-origin", forHTTPHeaderField: "Sec-Fetch-Site")
 
         let (data, response) = try await requester.send(request, for: self)
 

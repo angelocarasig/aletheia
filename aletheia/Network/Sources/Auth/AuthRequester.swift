@@ -24,7 +24,7 @@ actor AuthRequester {
         self.log = log
     }
 
-    func credential(for source: any AuthenticatingSource) async throws -> SourceCredential {
+    func credential(for source: any AuthenticatingSource, targeting url: URL? = nil) async throws -> SourceCredential {
         let slug = source.descriptor.slug
 
         // deliberately silent. this is the steady state and fires once per
@@ -35,7 +35,7 @@ actor AuthRequester {
         }
 
         log.log("[\(slug)] no valid cached credential - refreshing", category: "auth")
-        return try await refresh(for: source)
+        return try await refresh(for: source, targeting: url)
     }
 
     func forceRefresh(for source: any AuthenticatingSource) async throws -> SourceCredential {
@@ -48,7 +48,7 @@ actor AuthRequester {
 
     func send(_ request: URLRequest, for source: any AuthenticatingSource) async throws -> (Data, HTTPURLResponse) {
         var authed = request
-        let credential = try await credential(for: source)
+        let credential = try await credential(for: source, targeting: request.url)
         credential.apply(to: &authed)
 
         let (data, response) = try await network.send(authed)
@@ -63,20 +63,42 @@ actor AuthRequester {
         // and four verification sheets in thirty seconds. inside the window the
         // challenge is handed back as an ordinary failure, which is the honest
         // answer: we cannot get through right now
+        // what we actually put on the wire, at the one moment it is worth
+        // knowing: a wall refusing a credential we believe we sent is either a
+        // credential that never went out or one the wall does not accept, and
+        // nothing else in this chain can tell those apart. names only - the
+        // clearance itself is a secret and the log is not
         let slug = source.descriptor.slug
+        log.log("[\(slug)] challenged \(request.url?.path() ?? "/") - sent \(describe(authed))", category: "auth")
+
         if let last = lastRefresh[slug], Date().timeIntervalSince(last) < Self.refreshCooldown {
             log.log("[\(slug)] challenge persists after a recent refresh - not capturing again", category: "auth")
             return (data, response)
         }
 
         log.log("[\(slug)] challenge detected - refreshing then retrying once", category: "auth")
-        let fresh = try await refresh(for: source)
+        let fresh = try await refresh(for: source, targeting: request.url)
         var retry = request
         fresh.apply(to: &retry)
         return try await network.send(retry)
     }
 
-    private func refresh(for source: any AuthenticatingSource) async throws -> SourceCredential {
+    private func describe(_ request: URLRequest) -> String {
+        let headers = request.allHTTPHeaderFields ?? [:]
+        let cookies = (headers["Cookie"] ?? "")
+            .split(separator: ";")
+            .compactMap { $0.split(separator: "=").first?.trimmingCharacters(in: .whitespaces) }
+            .sorted()
+        // the shared jar should be empty now that the session declines cookies.
+        // it is logged anyway because "empty" is the assertion being made
+        let ambient = request.url.flatMap { HTTPCookieStorage.shared.cookies(for: $0) } ?? []
+
+        return "headers [\(headers.keys.sorted().joined(separator: ", "))]"
+            + ", cookie [\(cookies.joined(separator: ", "))]"
+            + ", shared jar [\(ambient.map(\.name).sorted().joined(separator: ", "))]"
+    }
+
+    private func refresh(for source: any AuthenticatingSource, targeting url: URL? = nil) async throws -> SourceCredential {
         let slug = source.descriptor.slug
 
         if let existing = refreshTasks[slug] {
@@ -84,7 +106,7 @@ actor AuthRequester {
             return try await existing.value
         }
 
-        let specification = source.specification
+        let specification = source.specification.targeting(url)
         let task = Task<SourceCredential, Error> { [capturer] in
             try await capturer.capture(for: specification)
         }
