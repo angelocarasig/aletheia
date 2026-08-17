@@ -103,6 +103,7 @@ private struct ActionsSection: View {
                     isSaving: busy,
                     canToggle: library.canToggle,
                     canRefresh: composer.refresh.canStart,
+                    canRefreshMetadata: composer.refresh.canRefreshMetadata,
                     status: library.status,
                     collectionCount: library.joined.count,
                     // the add is committed first and the flow opens over it, so
@@ -119,6 +120,7 @@ private struct ActionsSection: View {
                     onSetStatus: { status in Task { await library.set(status: status) } },
                     onManageCollections: actions.openCollections,
                     onRefreshChapters: { Task { await composer.refreshChapters() } },
+                    onRefreshMetadata: { Task { await composer.refreshMetadata() } },
                     onMarkAll: { read in
                         actions.mark(read, composer.chapters.chapters.map(\.number))
                     },

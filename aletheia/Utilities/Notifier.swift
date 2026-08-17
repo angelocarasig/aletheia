@@ -77,4 +77,39 @@ enum Notifier {
 
         try? await UNUserNotificationCenter.current().add(request)
     }
+
+    // metadata's own version of refreshed(...) - same shape, same
+    // background-only gate, its own stable identifier so a run replaces the
+    // last rather than stacking. "updated" rather than "added": there is no
+    // count of new things, only of suppliers that answered with something
+    // different from what was already stored
+    static func metadataRefreshed(updated: Int, series: Int, failures: Int) async {
+        let content = UNMutableNotificationContent()
+
+        if updated > 0 {
+            content.title = "Metadata Updated"
+            content.body = series == 1
+                ? "One series' details were refreshed."
+                : "\(updated) of \(series) series had updated details."
+        } else {
+            content.title = "Metadata Checked"
+            content.body = series == 1
+                ? "One series' details are up to date."
+                : "\(series) series' details are up to date."
+        }
+
+        if failures > 0 {
+            content.body += failures == 1
+                ? " One source couldn't be reached."
+                : " \(failures) sources couldn't be reached."
+        }
+
+        let request = UNNotificationRequest(
+            identifier: "metadata.result",
+            content: content,
+            trigger: nil
+        )
+
+        try? await UNUserNotificationCenter.current().add(request)
+    }
 }

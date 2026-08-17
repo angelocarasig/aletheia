@@ -12,6 +12,7 @@ struct DetailsActions: View {
     let isSaving: Bool
     let canToggle: Bool
     let canRefresh: Bool
+    let canRefreshMetadata: Bool
     let status: Status
     // how many collections hold this series. only the zero/non-zero distinction
     // is drawn, but the count is what the menu needs to describe itself
@@ -20,6 +21,7 @@ struct DetailsActions: View {
     var onSetStatus: (Status) -> Void
     var onManageCollections: () -> Void
     var onRefreshChapters: () -> Void
+    var onRefreshMetadata: () -> Void
     var onMarkAll: (Bool) -> Void
     var onEditDetails: () -> Void
     var onMerge: () -> Void
@@ -195,6 +197,11 @@ struct DetailsActions: View {
                 Label("Edit Details", systemImage: "pencil")
             }
 
+            Button(action: onRefreshMetadata) {
+                Label("Refresh Metadata", systemImage: "arrow.triangle.2.circlepath")
+            }
+            .disabled(!canRefreshMetadata)
+
             Button(action: onRefreshChapters) {
                 Label("Refresh Chapters", systemImage: "arrow.clockwise")
             }
@@ -337,6 +344,7 @@ private struct ActionsPreview: View {
     var isSaving = false
     var canToggle = true
     var canRefresh = true
+    var canRefreshMetadata = true
     var status: Status = .reading
     var collectionCount = 2
     let caption: String
@@ -355,12 +363,14 @@ private struct ActionsPreview: View {
                 isSaving: isSaving,
                 canToggle: canToggle,
                 canRefresh: canRefresh,
+                canRefreshMetadata: canRefreshMetadata,
                 status: live ?? status,
                 collectionCount: joined ?? collectionCount,
                 onToggleLibrary: {},
                 onSetStatus: { live = $0 },
                 onManageCollections: { joined = (joined ?? collectionCount) > 0 ? 0 : 3 },
                 onRefreshChapters: {},
+                onRefreshMetadata: {},
                 onMarkAll: { _ in },
                 onEditDetails: {},
                 onMerge: {}

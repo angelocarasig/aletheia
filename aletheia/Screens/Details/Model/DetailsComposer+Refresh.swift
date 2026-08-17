@@ -26,6 +26,10 @@ extension DetailsComposer {
 
         var dismissal: Task<Void, Never>?
 
+        private(set) var metadataState: MetadataState = .idle
+        private(set) var trackerLinks: [SeriesTrackerRecord] = []
+        private var metadataDismissal: Task<Void, Never>?
+
         // a one-way latch on prime(), which fetches chapters when a series
         // opened from a source has not been checked in a while. prime() is
         // called on every database change, and the fetch it starts is itself a
@@ -48,15 +52,18 @@ extension DetailsComposer {
         private let entry: SeriesEntry
         private let refresher: Compositor.Refresh
         private let registry: Compositor.Registry
+        private let trackers: Compositor.Trackers
 
         init(
             entry: SeriesEntry,
             refresher: Compositor.Refresh,
-            registry: Compositor.Registry
+            registry: Compositor.Registry,
+            trackers: Compositor.Trackers
         ) {
             self.entry = entry
             self.refresher = refresher
             self.registry = registry
+            self.trackers = trackers
         }
 
         // from DetailsApplying
@@ -77,6 +84,7 @@ extension DetailsComposer {
             }
 
             if origins != mapped { origins = mapped }
+            trackerLinks = stored.trackers
 
             checkedDate = mapped.first
                 .flatMap { first in stored.origins.first { $0.id == first.id } }
@@ -90,6 +98,17 @@ extension DetailsComposer {
         }
 
         var canStart: Bool { !origins.isEmpty && !isRunning }
+
+        var isMetadataRunning: Bool {
+            if case .running = metadataState { true } else { false }
+        }
+
+        // eligible whenever either half has something to answer, unlike
+        // canStart which is chapters-only - a series can be metadata-refreshable
+        // through a tracker link with every source disabled
+        var canRefreshMetadata: Bool {
+            (!origins.isEmpty || !trackerLinks.isEmpty) && !isMetadataRunning
+        }
 
         // every origin answers for itself: one dead source reports as one
         // failed row and the rest still land. results arrive as each finishes
@@ -154,6 +173,62 @@ extension DetailsComposer {
             schedule()
 
             return outcomes.contains { if case .added = $0.result { true } else { false } }
+        }
+
+        // every origin and every linked tracker, each answering for itself -
+        // no chapter fetch, unlike walk(metadata: true). independent state from
+        // the chapter pill, so the two refreshes never interfere
+        func refreshMetadata() async {
+            guard canRefreshMetadata else { return }
+
+            metadataDismissal?.cancel()
+
+            var rows: [MetadataOutcomeRow] = origins.map { MetadataOutcomeRow(id: .origin($0.id), name: $0.name) }
+                + trackerLinks.map { MetadataOutcomeRow(id: .tracker($0.tracker), name: $0.tracker.name) }
+            metadataState = .running(rows)
+
+            let targets = origins
+            let links = trackerLinks
+
+            await withTaskGroup(of: (MetadataTarget, MetadataOutcome).self) { group in
+                for target in targets {
+                    guard let source = registry.source(slug: target.sourceSlug) else { continue }
+                    let originId = OriginRecord.ID(rawValue: target.id)
+
+                    group.addTask { [refresher] in
+                        (
+                            .origin(target.id),
+                            await refresher.metadata(source: source, seriesSlug: target.slug, originId: originId)
+                        )
+                    }
+                }
+
+                for link in links {
+                    group.addTask { [trackers] in
+                        (.tracker(link.tracker), await trackers.refreshMetadata(link))
+                    }
+                }
+
+                for await (target, result) in group {
+                    guard let index = rows.firstIndex(where: { $0.id == target }) else { continue }
+                    rows[index].result = result
+                    metadataState = .running(rows)
+                }
+            }
+
+            metadataState = .finished(rows)
+            scheduleMetadataDismissal()
+        }
+
+        // separate timer from the chapter pill's schedule() - the two pills
+        // dismiss independently
+        private func scheduleMetadataDismissal() {
+            metadataDismissal?.cancel()
+            metadataDismissal = Task { [weak self] in
+                try? await Task.sleep(for: Self.linger)
+                guard !Task.isCancelled else { return }
+                self?.metadataState = .idle
+            }
         }
 
         // the same unit everything else calls, so a retry while a library run
@@ -302,6 +377,14 @@ extension DetailsComposer {
         await run(metadata: false)
     }
 
+    // metadata only, no chapters - the explicit counterpart to the implicit
+    // metadata fetch pull-to-refresh already does. covers are add-only, so a
+    // metadata-only refresh can still turn up a better one worth downloading
+    func refreshMetadata() async {
+        await refresh.refreshMetadata()
+        if let seriesId { assets.enqueue(series: seriesId) }
+    }
+
     private func run(metadata: Bool) async {
         let added = await refresh.walk(metadata: metadata)
 
@@ -319,6 +402,39 @@ extension DetailsComposer {
 
 extension DetailsComposer.Refresh {
     static let linger: Duration = .seconds(3)
+
+    // one row per supplier eligible to answer for this series' metadata -
+    // every origin already tracked for chapters, plus every linked tracker.
+    // a tracker's icon is a plain asset name where a source's is an
+    // ImageResource, so the case itself carries the icon rather than forcing
+    // one type to stand in for the other
+    enum MetadataTarget: Hashable, Sendable {
+        case origin(Int64)
+        case tracker(Tracker)
+    }
+
+    struct MetadataOutcomeRow: Identifiable, Equatable {
+        let id: MetadataTarget
+        let name: String
+        var result: MetadataOutcome?
+    }
+
+    // deliberately its own enum, not a reuse of State - a metadata-only
+    // refresh and a chapter refresh must never share or clobber one pill's
+    // state, and MetadataOutcome has no count to fold into the chapter
+    // Outcome's vocabulary
+    enum MetadataState: Equatable {
+        case idle
+        case running([MetadataOutcomeRow])
+        case finished([MetadataOutcomeRow])
+
+        var outcomes: [MetadataOutcomeRow] {
+            switch self {
+            case .idle: []
+            case .running(let outcomes), .finished(let outcomes): outcomes
+            }
+        }
+    }
 
     struct Origin: Sendable, Identifiable, Hashable {
         let id: Int64

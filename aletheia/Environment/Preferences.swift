@@ -92,6 +92,19 @@ enum Preferences {
         static let refreshedDate = "refresh.lastRun"
         static let refreshedAutomaticallyDate = "refresh.lastAutomaticRun"
 
+        // whether the library's metadata is checked without being asked, and how
+        // often. unlike refreshAutomatic this IS an interval, deliberately - the
+        // reader chose weekly/monthly with no BGProcessingTask cadence promise to
+        // keep, so offering the real choice costs nothing new
+        static let metadataRefreshInterval = "metadata.refreshInterval"
+        static let metadataRefreshedDate = "metadata.lastRun"
+
+        // the same "what to check" filter refresh has, its own keys - a series
+        // skipped by one walk is not necessarily skipped by the other
+        static let metadataSkipCompleted = "metadata.skipCompleted"
+        static let metadataSkipUnread = "metadata.skipUnread"
+        static let metadataSkipNotStarted = "metadata.skipNotStarted"
+
         // the queue as an ordered array of chapter ids. what a kill destroys is
         // intent - "download these forty" - and a person cannot reconstruct that;
         // page totals and pages-already-done both rebuild for free. it is also
@@ -138,5 +151,11 @@ enum Preferences {
         // manual only until asked otherwise: turning on unattended network
         // activity for someone who never asked for it is not a default to inherit
         static let refreshAutomatic = false
+
+        static let metadataRefreshInterval = MetadataRefreshInterval.off
+
+        static let metadataSkipCompleted = false
+        static let metadataSkipUnread = false
+        static let metadataSkipNotStarted = false
     }
 }

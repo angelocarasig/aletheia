@@ -120,7 +120,8 @@ final class DetailsComposer {
         refresh = Refresh(
             entry: entry,
             refresher: refresher,
-            registry: registry
+            registry: registry,
+            trackers: trackers
         )
         recommendations = Recommendations(recommender: recommender, impressions: impressions)
         cadence = Cadence()

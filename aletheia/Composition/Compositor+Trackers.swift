@@ -309,6 +309,12 @@ extension Compositor {
             try await worker.remote(tracker, remoteId: remoteId)
         }
 
+        // the details-screen and library-wide entry point both call this - one
+        // series' worth from Details, one row at a time from the walk
+        func refreshMetadata(_ link: SeriesTrackerRecord) async -> MetadataOutcome {
+            await worker.refreshMetadata(link)
+        }
+
         func link(
             series: SeriesRecord.ID,
             tracker: Tracker,
@@ -495,14 +501,18 @@ actor TrackerSyncer {
     // everything here is only ever reachable by an explicit pin.
     //
     // tags are the exception and go straight onto the series, because a tag does
-    // not care where it came from
+    // not care where it came from.
+    //
+    // returns whether the core fields changed, so refreshMetadata can tell
+    // "updated" from "unchanged" the same way the origin side does
+    @discardableResult
     nonisolated static func absorb(
         _ entry: TrackerEntry,
         tracker: Tracker,
         series: SeriesRecord.ID,
         link: SeriesTrackerRecord.ID?,
         in db: Database
-    ) throws {
+    ) throws -> Bool {
         var metadata = try MetadataRecord.adopt(
             seriesId: series,
             supplier: MetadataRecord.supplier(tracker: tracker),
@@ -510,14 +520,14 @@ actor TrackerSyncer {
             in: db
         )
 
-        _ = try metadata.updateChanges(db) {
+        let changed = try metadata.updateChanges(db) {
             $0.synopsis = tracker.storesProse ? (entry.synopsis ?? "") : ""
             $0.classification = entry.classification
             $0.publication = entry.publication
             $0.fetchedDate = .now
         }
 
-        guard let metadataId = metadata.id else { return }
+        guard let metadataId = metadata.id else { return changed }
 
         for value in entry.titles where !value.isEmpty {
             _ = try TitleRecord.findOrCreate(
@@ -535,6 +545,34 @@ actor TrackerSyncer {
 
         for name in entry.tags {
             try TagRecord.attach(name, to: series, in: db)
+        }
+
+        return changed
+    }
+
+    // the tracker half of a metadata refresh - closes the gap tracker-metadata.md
+    // records: absorb previously ran only at link time and never again. reuses
+    // remote(_:remoteId:) rather than re-deriving the service+attempt dance
+    func refreshMetadata(_ link: SeriesTrackerRecord) async -> MetadataOutcome {
+        do {
+            let entry = try await remote(link.tracker, remoteId: link.remoteId)
+            let changed = try await database.writer.write { db in
+                try Self.absorb(entry, tracker: link.tracker, series: link.seriesId, link: link.id, in: db)
+            }
+            return changed ? .updated : .unchanged
+        } catch is CancellationError {
+            return .cancelled
+        } catch NetworkError.cancelled {
+            return .cancelled
+        } catch {
+            let failure = Failure(error, fallback: "Couldn't Refresh Metadata")
+            let reason = failure.message.isEmpty ? failure.title : failure.message
+            log.log(
+                "[\(link.tracker.rawValue)] metadata refresh failed - \(error)",
+                level: .error,
+                category: "trackers"
+            )
+            return .failed(reason)
         }
     }
 

@@ -24,6 +24,11 @@ extension Constants {
         // queue and a library walk are started independently and routinely run
         // together, so sharing an id makes them compete for the same slot
         static let downloads = "moe.aletheia.downloads"
+
+        // metadata refresh is weeks-to-months cadence, not hours - its own
+        // identifier for the same one-per-operation reason refresh and
+        // downloads each have theirs
+        static let scheduledMetadataRefresh = "moe.aletheia.metadata.scheduled"
     }
 
     enum App {

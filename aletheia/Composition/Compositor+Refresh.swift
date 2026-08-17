@@ -164,7 +164,7 @@ extension Compositor {
             fetching[origin] = count > 0 ? count : nil
         }
 
-        func metadata(source: Source, seriesSlug: String, originId: OriginRecord.ID) async {
+        func metadata(source: Source, seriesSlug: String, originId: OriginRecord.ID) async -> MetadataOutcome {
             await worker.metadata(source: source, seriesSlug: seriesSlug, originId: originId)
         }
 
@@ -920,17 +920,31 @@ actor OriginRefresher {
             .map { "origin \($0.0.rawValue) (\(Int($0.1))s)" }
     }
 
-    // metadata is a separate half so a library walk can skip it. a failure here
-    // never blocks chapters - they are what a refresh is reaching for, and the
-    // screen keeps what it has rather than nagging
-    func metadata(source: Source, seriesSlug: String, originId: OriginRecord.ID) async {
+    // metadata is a separate half so a library walk can skip it, and now
+    // separate again so a metadata-only refresh can skip chapters. the
+    // outcome mirrors chapters() - cancellation and failure are handled the
+    // same way, only the success case differs, since there is no count to
+    // report
+    func metadata(source: Source, seriesSlug: String, originId: OriginRecord.ID) async -> MetadataOutcome {
         do {
             let detail = try await source.details(seriesSlug: seriesSlug)
-            try await database.writer.write { db in
+            let changed = try await database.writer.write { db in
                 try Self.write(detail, for: originId, source: source.descriptor.slug, in: db)
             }
+            return changed ? .updated : .unchanged
+        } catch is CancellationError {
+            return .cancelled
+        } catch NetworkError.cancelled {
+            return .cancelled
         } catch {
-            log.log("origin \(originId.rawValue) metadata refresh failed - \(error)", level: .error, category: "refresh")
+            let failure = Failure(error, fallback: "Couldn't Refresh Metadata")
+            let reason = failure.message.isEmpty ? failure.title : failure.message
+            log.log(
+                "origin \(originId.rawValue) metadata refresh failed - \(error)",
+                level: .error,
+                category: "refresh"
+            )
+            return .failed(reason)
         }
     }
 
@@ -1057,14 +1071,17 @@ actor OriginRefresher {
 
 extension OriginRefresher {
     // metadata a refresh is allowed to overwrite. titles and covers are add-only,
-    // so a pick the user made can never be taken away by a later fetch
+    // so a pick the user made can never be taken away by a later fetch.
+    // returns whether the core fields actually changed, so a metadata-only
+    // refresh can tell "updated" from "unchanged" rather than reporting success
+    // for every request that merely landed
     nonisolated fileprivate static func write(
         _ detail: SeriesDetail,
         for originId: OriginRecord.ID,
         source: String,
         in db: Database
-    ) throws {
-        guard let origin = try OriginRecord.fetchOne(db, key: originId.rawValue) else { return }
+    ) throws -> Bool {
+        guard let origin = try OriginRecord.fetchOne(db, key: originId.rawValue) else { return false }
 
         var metadata = try MetadataRecord.adopt(
             seriesId: origin.seriesId,
@@ -1073,14 +1090,14 @@ extension OriginRefresher {
             in: db
         )
 
-        _ = try metadata.updateChanges(db) {
+        let changed = try metadata.updateChanges(db) {
             $0.synopsis = detail.synopsis
             $0.classification = detail.classification
             $0.publication = detail.publication
             $0.fetchedDate = .now
         }
 
-        guard let metadataId = metadata.id else { return }
+        guard let metadataId = metadata.id else { return changed }
 
         for value in [detail.title] + detail.altTitles {
             _ = try TitleRecord.findOrCreate(
@@ -1095,6 +1112,8 @@ extension OriginRefresher {
                 in: db
             )
         }
+
+        return changed
     }
 
     // chapters arrive independently of the rest of a series, so this runs on its

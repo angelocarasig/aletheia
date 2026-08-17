@@ -9,6 +9,7 @@
 		<string>moe.aletheia.refresh</string>
 		<string>moe.aletheia.refresh.scheduled</string>
 		<string>moe.aletheia.downloads</string>
+		<string>moe.aletheia.metadata.scheduled</string>
 	</array>
 	<key>UIBackgroundModes</key>
 	<array>

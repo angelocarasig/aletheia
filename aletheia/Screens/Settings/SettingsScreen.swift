@@ -16,6 +16,7 @@ struct SettingsScreen: View {
 
     @State private var showingTracking = false
     @State private var showingRefresh = false
+    @State private var showingMetadataRefresh = false
     @State private var showingLogs = false
     @State private var showingImpressions = false
 
@@ -42,6 +43,12 @@ struct SettingsScreen: View {
                         systemImage: "arrow.clockwise",
                         detail: "When new chapters are checked for"
                     ) { showingRefresh = true }
+
+                    Card(
+                        "Metadata Updates",
+                        systemImage: "text.append",
+                        detail: "How often series details are refreshed"
+                    ) { showingMetadataRefresh = true }
                 }
 
                 VStack(alignment: .leading, spacing: dimensions.spacing.space12) {
@@ -72,6 +79,7 @@ struct SettingsScreen: View {
         .navigationBarTitleDisplayMode(.inline)
         .navigationDestination(isPresented: $showingTracking) { TrackingScreen() }
         .navigationDestination(isPresented: $showingRefresh) { RefreshSettingsScreen() }
+        .navigationDestination(isPresented: $showingMetadataRefresh) { MetadataRefreshSettingsScreen() }
         .navigationDestination(isPresented: $showingLogs) { LogScreen() }
         .navigationDestination(isPresented: $showingImpressions) { ImpressionsScreen() }
         .task { compositor.trackers.hydrate() }

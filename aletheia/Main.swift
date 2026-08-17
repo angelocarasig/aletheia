@@ -20,6 +20,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
         Launch.registerScheduledRefresh()
+        Launch.registerScheduledMetadataRefresh()
         return true
     }
 }
@@ -78,6 +79,7 @@ struct AletheiaApp: App {
                 switch phase {
                 case .active:
                     bootstrap.compositor?.refresh.catchUp()
+                    bootstrap.compositor?.metadata.catchUp()
 
                 default:
                     break

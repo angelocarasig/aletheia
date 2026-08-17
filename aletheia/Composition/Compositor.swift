@@ -15,6 +15,7 @@ struct Compositor: Sendable {
     let refresh: Refresh
     let downloads: Downloads
     let trackers: Trackers
+    let metadata: Metadata
     // one model, loaded lazily and held. swapping it is a different case in this
     // one line, which is the whole point of it being behind a protocol
     let recommender: Recommender
@@ -67,6 +68,7 @@ struct Compositor: Sendable {
         ]
         let authority = TrackerAuthority(network: network, services: trackerServices)
         self.trackers = Trackers(database: database, authority: authority, services: trackerServices)
+        self.metadata = Metadata(database: database, registry: registry, refresher: self.refresh, trackers: self.trackers)
 
         self.recommender = V01Recommender()
         self.impressions = Impressions(database: database)

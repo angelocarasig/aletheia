@@ -102,4 +102,38 @@ enum Launch {
         )
         #endif
     }
+
+    private static var registeredMetadata = false
+
+    // same shape as registerScheduledRefresh, its own identifier and its own
+    // one-time guard - the api kills the app on a second registration of the
+    // same identifier, and that rule is per identifier, not per call site
+    static func registerScheduledMetadataRefresh(log: AppLog = .shared) {
+        guard !registeredMetadata else { return }
+        registeredMetadata = true
+
+        #if !targetEnvironment(simulator)
+        let installed = BGTaskScheduler.shared.register(
+            forTaskWithIdentifier: Constants.Tasks.scheduledMetadataRefresh,
+            using: nil
+        ) { task in
+            Task { @MainActor in
+                guard let compositor = try? await Compositor.shared() else {
+                    log.log("scheduled metadata refresh could not build the graph", level: .error, category: "metadata")
+                    return task.setTaskCompleted(success: false)
+                }
+
+                compositor.metadata.adopt(task)
+            }
+        }
+
+        log.log(
+            installed
+                ? "registered \(Constants.Tasks.scheduledMetadataRefresh)"
+                : "\(Constants.Tasks.scheduledMetadataRefresh) refused - identifier not permitted",
+            level: installed ? .info : .error,
+            category: "tasks"
+        )
+        #endif
+    }
 }

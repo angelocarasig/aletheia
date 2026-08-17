@@ -514,6 +514,9 @@ struct DetailsScreen: View {
                     refresher: compositor.refresh
                 )
                 .transition(.move(edge: .trailing).combined(with: .opacity))
+            } else if composer.refresh.metadataState != .idle {
+                DetailsMetadataRefreshPill(outcomes: composer.refresh.metadataState.outcomes)
+                    .transition(.move(edge: .trailing).combined(with: .opacity))
             } else if case let rebuilt = live(composer), !rebuilt.isEmpty {
                 // a fetch this screen no longer remembers starting, or a library
                 // run holding this series. pulling to refresh here would join

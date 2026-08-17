@@ -82,6 +82,7 @@ final class Bootstrap {
             compositor.refresh.register()
             compositor.downloads.register()
             compositor.refresh.catchUp()
+            compositor.metadata.catchUp()
 
             // re-armed at launch as well as at the end of every run. a run that
             // never reaches its own completion - killed, crashed, jetsammed -
@@ -90,6 +91,7 @@ final class Bootstrap {
             // not on every foreground: the anchor does not move, so resubmitting
             // per activation is churn for an identical request
             compositor.refresh.schedule()
+            compositor.metadata.schedule()
 
             // the queue is intent, and intent is what a kill destroys - the bytes
             // already on disk are picked up again for free
