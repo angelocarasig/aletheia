@@ -16,7 +16,7 @@ import Foundation
 // nothing here sends a status and a progress in the same mutation expecting both
 // to stick, and every write reads its own answer back.
 // see docs/features/trackers.md §5.1
-struct AniListService: TrackerService {
+struct AniListService: TrackerService, BulkListingTracker {
     let tracker: Tracker = .anilist
 
     private let network: NetworkConfiguration
@@ -128,6 +128,66 @@ struct AniListService: TrackerService {
             token: token
         )
         return response.Media.entry
+    }
+
+    // MARK: List
+
+    func list(token: String) async throws -> [TrackerListEntry] {
+        // MediaListCollection takes a userId or a userName, never a bearer
+        // token alone - viewer(token:) is the one call that already resolves
+        // one from the other
+        let account = try await viewer(token: token)
+
+        let document = """
+        query ($userName: String) {
+          MediaListCollection(userName: $userName, type: MANGA) {
+            lists {
+              entries {
+                id
+                status
+                progress
+                media {
+                  id
+                  title { romaji english native }
+                  coverImage { extraLarge }
+                  chapters
+                  isAdult
+                }
+              }
+            }
+          }
+        }
+        """
+
+        let response: ListCollectionResponse = try await send(
+            query: document,
+            variables: ["userName": account.name],
+            token: token
+        )
+
+        // a custom list re-lists the same entry under every list it belongs
+        // to, so the entry id (not the media id) is what dedupes a fanned-out
+        // reading list without also merging two genuinely different entries
+        // that happen to share a media. see docs/features/trackers.md §5.1
+        var seen = Set<Int64>()
+        var entries: [TrackerListEntry] = []
+
+        for group in response.MediaListCollection.lists ?? [] {
+            for entry in group.entries ?? [] {
+                guard seen.insert(entry.id).inserted, let media = entry.media else { continue }
+                entries.append(TrackerListEntry(
+                    remoteId: media.id,
+                    title: media.title.preferred,
+                    cover: media.coverImage?.extraLarge.flatMap(URL.init(string:)),
+                    totalChapters: media.chapters,
+                    progress: entry.progress ?? 0,
+                    status: entry.status,
+                    adult: media.isAdult ?? false
+                ))
+            }
+        }
+
+        return entries
     }
 
     // MARK: Write
@@ -348,6 +408,20 @@ private struct MediaResponse: Decodable {
     let Media: Media
 }
 
+private struct ListCollectionResponse: Decodable {
+    let MediaListCollection: Collection
+
+    struct Collection: Decodable { let lists: [ListGroup]? }
+    struct ListGroup: Decodable { let entries: [Entry]? }
+
+    struct Entry: Decodable {
+        let id: Int64
+        let status: String?
+        let progress: Int?
+        let media: Media?
+    }
+}
+
 private struct SaveResponse: Decodable {
     let SaveMediaListEntry: ListEntry
 }
@@ -547,7 +621,9 @@ private extension Optional where Wrapped == String {
     }
 }
 
-private extension Status {
+// internal rather than private: Tracker Restore is a second caller mapping a
+// freshly-pulled remote status onto a brand new series' initial Status
+extension Status {
     // REPEATING has no local equivalent and is deliberately not completed: an
     // entry the reader set to rereading on the website should keep syncing
     init?(anilist raw: String) {

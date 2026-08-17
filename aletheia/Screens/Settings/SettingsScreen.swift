@@ -17,6 +17,7 @@ struct SettingsScreen: View {
     @State private var showingTracking = false
     @State private var showingRefresh = false
     @State private var showingMetadataRefresh = false
+    @State private var showingBackupRestore = false
     @State private var showingLogs = false
     @State private var showingImpressions = false
 
@@ -52,6 +53,22 @@ struct SettingsScreen: View {
                 }
 
                 VStack(alignment: .leading, spacing: dimensions.spacing.space12) {
+                    SectionHeader("Data & Storage")
+
+                    Card(
+                        "Recommendations",
+                        systemImage: "sparkle.magnifyingglass",
+                        detail: "What the model showed, and what came of it"
+                    ) { showingImpressions = true }
+
+                    Card(
+                        "Backup & Restore",
+                        systemImage: "externaldrive.badge.timemachine",
+                        detail: "Move your library in or out"
+                    ) { showingBackupRestore = true }
+                }
+
+                VStack(alignment: .leading, spacing: dimensions.spacing.space12) {
                     SectionHeader("Diagnostics")
 
                     // shipped rather than DEBUG-gated: the run worth reading is
@@ -63,12 +80,6 @@ struct SettingsScreen: View {
                         systemImage: "text.alignleft",
                         detail: "What the app recorded, including last launch"
                     ) { showingLogs = true }
-
-                    Card(
-                        "Recommendations",
-                        systemImage: "sparkle.magnifyingglass",
-                        detail: "What the model showed, and what came of it"
-                    ) { showingImpressions = true }
                 }
             }
             .padding(.horizontal, dimensions.screenMargin)
@@ -80,6 +91,7 @@ struct SettingsScreen: View {
         .navigationDestination(isPresented: $showingTracking) { TrackingScreen() }
         .navigationDestination(isPresented: $showingRefresh) { RefreshSettingsScreen() }
         .navigationDestination(isPresented: $showingMetadataRefresh) { MetadataRefreshSettingsScreen() }
+        .navigationDestination(isPresented: $showingBackupRestore) { BackupRestoreScreen() }
         .navigationDestination(isPresented: $showingLogs) { LogScreen() }
         .navigationDestination(isPresented: $showingImpressions) { ImpressionsScreen() }
         .task { compositor.trackers.hydrate() }

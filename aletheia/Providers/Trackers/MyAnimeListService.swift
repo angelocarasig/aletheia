@@ -15,7 +15,7 @@ import Foundation
 // everything else - so bodies are hand-encoded here, never JSONEncoder, and the
 // returned status is the only proof of what actually landed.
 // see docs/features/trackers.md §5.2
-struct MyAnimeListService: TrackerService {
+struct MyAnimeListService: TrackerService, BulkListingTracker {
     let tracker: Tracker = .myAnimeList
 
     private let network: NetworkConfiguration
@@ -94,6 +94,52 @@ struct MyAnimeListService: TrackerService {
             query: ["fields": Self.fields]
         )
         return manga.entry
+    }
+
+    // MARK: List
+
+    func list(token: String) async throws -> [TrackerListEntry] {
+        var request = try make(
+            "/users/@me/mangalist",
+            token: token,
+            query: [
+                "fields": "id,title,main_picture,num_chapters",
+                // defaults to false and silently drops entries from the
+                // reader's own list - not a content decision here, unlike on
+                // search. see docs/features/trackers.md §5.2
+                "nsfw": "true",
+                "limit": "1000"
+            ]
+        )
+        request.httpMethod = "GET"
+
+        var entries: [TrackerListEntry] = []
+
+        // offsets are documented unstable on search, but this is the one MAL
+        // call meant to be walked - paging.next is an absolute, ready-to-send
+        // url, so each hop is just a fresh request rather than a rebuilt one
+        while true {
+            let page: ListPage = try await decode(request)
+            entries.append(contentsOf: page.data.map { item in
+                TrackerListEntry(
+                    remoteId: item.node.id,
+                    title: item.node.title,
+                    cover: item.node.main_picture?.large.flatMap(URL.init(string:)),
+                    totalChapters: item.node.chapters,
+                    progress: item.list_status?.num_chapters_read ?? 0,
+                    status: item.list_status?.status,
+                    adult: item.node.nsfw == "black"
+                )
+            })
+
+            guard let next = page.paging?.next, let url = URL(string: next) else { break }
+            request = URLRequest(url: url)
+            request.httpMethod = "GET"
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            request.setValue(Constants.Trackers.userAgent, forHTTPHeaderField: "User-Agent")
+        }
+
+        return entries
     }
 
     // MARK: Write
@@ -280,6 +326,18 @@ private struct Node: Decodable {
     let node: Manga
 }
 
+private struct ListPage: Decodable {
+    let data: [ListNode]
+    let paging: Paging?
+
+    struct Paging: Decodable { let next: String? }
+}
+
+private struct ListNode: Decodable {
+    let node: Manga
+    let list_status: ListStatus?
+}
+
 private struct Manga: Decodable {
     let id: Int64
     let title: String
@@ -420,7 +478,9 @@ private struct ListStatus: Decodable {
 
 // MARK: - Mapping
 
-private extension Status {
+// internal rather than private: Tracker Restore is a second caller mapping a
+// freshly-pulled remote status onto a brand new series' initial Status
+extension Status {
     // rereading is a boolean here rather than a status, and we have no local
     // state for it, so it is neither read nor written
     init?(mal raw: String) {
@@ -433,7 +493,9 @@ private extension Status {
         default: return nil
         }
     }
+}
 
+private extension Status {
     var mal: String {
         switch self {
         case .reading: "reading"

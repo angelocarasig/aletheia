@@ -95,6 +95,22 @@ struct TrackerEntry: Sendable, Equatable {
     }
 }
 
+// one row of a bulk list pull - BulkListingTracker's own shape, distinct from
+// TrackerEntry because it never carries the extra lookup (synopsis, tags,
+// covers) a single-media fetch does. a caller maps this to whatever it needs
+struct TrackerListEntry: Sendable, Equatable {
+    let remoteId: Int64
+    let title: String
+    var cover: URL?
+    var totalChapters: Int?
+    var progress: Int = 0
+    // the service's own raw status string ("CURRENT", "PLANNING", ...), not
+    // pre-mapped - Tracker Restore's commit step is where a fresh series'
+    // initial Status gets decided, and that decision belongs at commit time
+    var status: String?
+    var adult: Bool = false
+}
+
 // a sparse patch. nil means leave it alone - both services preserve an omitted
 // field, and a blind full-object write is what moves list positions and resets
 // statuses on services that have no idea you did not mean to

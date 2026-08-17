@@ -15,6 +15,9 @@ struct SourceCard: View {
     // resolved by the caller from the preference and the reveal switch together,
     // so the card never reads either and a grid cannot disagree with itself
     var obscured: Bool = false
+    // a picker's own choice, not a match against the library - a different
+    // question from `match`, so it gets its own flag rather than overloading it
+    var selected: Bool = false
 
     @Environment(\.dimensions) private var dimensions
     // the downsampler's scale factor defaults to 1, so without this a retina
@@ -74,6 +77,7 @@ struct SourceCard: View {
             // covered card - it is our own annotation, not the artwork
             .obscured(obscured)
             .overlay { Badge }
+            .overlay { Selected }
             .clipShape(.rect(cornerRadius: dimensions.radius.radius12))
     }
 
@@ -108,6 +112,23 @@ struct SourceCard: View {
             .fill(.primary.opacity(0.1))
             .frame(height: height)
             .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    // the same scrim-plus-centred-glyph recipe LibraryCard's Checking uses for
+    // "this card is the one something is happening to" - here the something is
+    // a picker's choice rather than a running check, so the glyph is a tick
+    // and the tint is success rather than brand
+    @ViewBuilder
+    private var Selected: some View {
+        if selected {
+            Color.black.opacity(Layout.scrimOpacity)
+                .overlay {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.title)
+                        .foregroundStyle(.success)
+                }
+                .transition(.opacity)
+        }
     }
 
     // only states worth acting on are marked - an unmatched result stays silent.

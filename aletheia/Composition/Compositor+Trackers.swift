@@ -309,6 +309,12 @@ extension Compositor {
             try await worker.remote(tracker, remoteId: remoteId)
         }
 
+        // Tracker Restore's own pull - the one caller that needs a reader's
+        // whole list rather than one media at a time
+        func list(_ tracker: Tracker) async throws -> [TrackerListEntry] {
+            try await worker.list(tracker)
+        }
+
         // the details-screen and library-wide entry point both call this - one
         // series' worth from Details, one row at a time from the walk
         func refreshMetadata(_ link: SeriesTrackerRecord) async -> MetadataOutcome {
@@ -427,6 +433,16 @@ actor TrackerSyncer {
         return try await attempt(tracker) {
             try await service.entry(remoteId: remoteId, token: $0)
         }
+    }
+
+    // only a service that opts into BulkListingTracker can answer this - the
+    // caller (Tracker Restore) is expected to have checked before offering
+    // the tracker as a source at all
+    func list(_ tracker: Tracker) async throws -> [TrackerListEntry] {
+        guard let service = try service(for: tracker) as? BulkListingTracker else {
+            throw TrackerError.unavailable
+        }
+        return try await attempt(tracker) { try await service.list(token: $0) }
     }
 
     // MARK: Link

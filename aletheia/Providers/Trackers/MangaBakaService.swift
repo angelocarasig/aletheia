@@ -18,7 +18,7 @@ import Foundation
 // uncached requests count against the rate limit. and a series can answer that it
 // was merged into another, which is a repair rather than an error.
 // see docs/features/tracker-mangabaka.md
-struct MangaBakaService: TrackerService {
+struct MangaBakaService: TrackerService, BulkListingTracker {
     let tracker: Tracker = .mangaBaka
 
     private let network: NetworkConfiguration
@@ -111,6 +111,45 @@ struct MangaBakaService: TrackerService {
         }
 
         return series.entry(listed: try await pendingListing)
+    }
+
+    // MARK: List
+
+    // v1's own `GET /v1/my/library` cannot back this: its item schema carries
+    // no series_id and no series data at all - probed against the live
+    // OpenAPI spec 2026-08-17, confirming the imprecision this file used to
+    // flag as unverified. `/v2/my/library` is what the spec calls a
+    // "discovery-ish v2 mirror" (beta, not one of the stable-marked routes
+    // this integration otherwise sticks to), but it is the only endpoint
+    // that actually returns `{entry, series}` together, and only that mirror
+    // was ever going to answer this
+    func list(token: String) async throws -> [TrackerListEntry] {
+        var entries: [TrackerListEntry] = []
+        var page = 1
+
+        // pagination.next is not followed here - probed live 2026-08-17 and
+        // it silently drops the caller's own limit and reverts to this api's
+        // default of 12, which desyncs page boundaries against a limit=100
+        // walk and hands back rows already seen. that duplication is exactly
+        // what a real restore hit: the same series twice, the second commit
+        // failing origin's (sourceId, slug) unique constraint. limit is
+        // therefore resent explicitly on every page instead
+        while true {
+            let response: ListPage = try await decode(make(
+                "/v2/my/library",
+                token: token,
+                query: [
+                    URLQueryItem(name: "page", value: String(page)),
+                    URLQueryItem(name: "limit", value: "100")
+                ]
+            ))
+            entries.append(contentsOf: response.data.compactMap(\.listEntry))
+
+            guard !response.data.isEmpty, entries.count < response.pagination.count else { break }
+            page += 1
+        }
+
+        return entries
     }
 
     // MARK: Write
@@ -338,6 +377,75 @@ struct MangaBakaService: TrackerService {
 // named Data - that would shadow Foundation's inside every member here
 private struct Envelope<Payload: Decodable>: Decodable {
     let data: Payload
+}
+
+// v2/my/library's own envelope - a page of {entry, series} pairs plus the
+// same next-url pagination v1 uses elsewhere in this file
+private struct ListPage: Decodable {
+    let data: [ListItem]
+    let pagination: Pagination
+
+    struct Pagination: Decodable { let count: Int }
+}
+
+private struct ListItem: Decodable {
+    let entry: Entry?
+    let series: SeriesLite?
+
+    struct Entry: Decodable {
+        let state: String?
+        let progress_chapter: Double?
+    }
+
+    // the lean v2 series shape (schema param omitted) - a subset of v1's own
+    // Series, and independently optional throughout for the same reason: an
+    // additive api change should not fail a decode of someone's whole library
+    struct SeriesLite: Decodable {
+        let id: Int64
+        let total_chapters: Double?
+        let content_rating: String?
+        let titles: [Title]?
+        let cover: Cover?
+
+        struct Title: Decodable {
+            let language: String?
+            let title: String
+            let is_primary: Bool?
+        }
+
+        struct Cover: Decodable {
+            let raw: String?
+            let x250: String?
+        }
+
+        var display: URL? { (cover?.x250 ?? cover?.raw).flatMap(URL.init(string:)) }
+
+        // english over whatever v2 itself calls primary, the same preference
+        // the other two services apply to their own title pools
+        var preferredTitle: String {
+            let titles = titles ?? []
+            return titles.first { $0.language == "en" }?.title
+                ?? titles.first { $0.is_primary == true }?.title
+                ?? titles.first?.title
+                ?? "Untitled"
+        }
+    }
+
+    // nil series means malformed entry rather than "on the list, but blank" -
+    // a real row always carries one, so this drops it rather than fabricate
+    // a title-less import row nobody could act on
+    var listEntry: TrackerListEntry? {
+        guard let series else { return nil }
+        return TrackerListEntry(
+            remoteId: series.id,
+            title: series.preferredTitle,
+            cover: series.display,
+            totalChapters: series.total_chapters.map { Int($0) },
+            progress: entry?.progress_chapter.map { Int($0) } ?? 0,
+            status: entry?.state,
+            adult: series.content_rating == "erotica" || series.content_rating == "pornographic"
+        )
+    }
 }
 
 // the error half of the same envelope. named for the body rather than for the
@@ -576,7 +684,9 @@ private struct Series: Decodable {
 
 // MARK: - Mapping
 
-private extension Status {
+// internal rather than private: Tracker Restore is a second caller mapping a
+// freshly-pulled remote status onto a brand new series' initial Status
+extension Status {
     // seven states in, five out. rereading reads as reading rather than completed
     // for the same reason anilist's REPEATING does - demoting a finished entry is
     // the failure that rule exists to prevent - and considering is their "maybe"
@@ -593,7 +703,9 @@ private extension Status {
         default: return nil
         }
     }
+}
 
+private extension Status {
     var mangaBaka: String {
         switch self {
         case .reading: "reading"
