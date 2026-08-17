@@ -75,6 +75,12 @@ struct DetailsSetup<LinkSheet: View>: View {
     let localProgress: Int
     let needingSignIn: Set<Tracker>
     let syncing: Set<Tracker>
+    // searched when this flow opened, so a service that knows this series has
+    // already said so by the time the reader reads the page
+    var matches: [Tracker: DetailsComposer.Tracking.Match] = [:]
+    var writing: Set<Tracker> = []
+    var onPrefetch: () -> Void = {}
+    var onAutoLink: (Tracker, TrackerCandidate) -> Void = { _, _ in }
     var onSetStatus: (Status) -> Void
     var onToggleCollection: (Int64) -> Void
     var onCreateCollection: (String, String?) -> Void
@@ -136,6 +142,10 @@ struct DetailsSetup<LinkSheet: View>: View {
         .sheet(item: $linking) { tracker in
             linkSheet(tracker, opening) { linking = nil }
         }
+        // the flow opens on this page, so the request and the reader reading it
+        // overlap. once only - the composer holds the answer, so stepping back
+        // to this page finds it rather than asking again
+        .task { onPrefetch() }
         // declared on the page rather than as a NavigationLink inside the empty
         // state, because connecting is what makes that empty state stop existing:
         // a link whose own source view is removed mid-push can pop itself, and
@@ -205,7 +215,10 @@ struct DetailsSetup<LinkSheet: View>: View {
                         // nothing has been pushed yet inside this flow, so there
                         // is never a failed sync to retry from here
                         onRetry: { _ in },
-                        reconciles: false
+                        reconciles: false,
+                        matches: matches,
+                        linking: writing,
+                        onAutoLink: onAutoLink
                     )
                 }
                 .padding(.horizontal, dimensions.screenMargin)

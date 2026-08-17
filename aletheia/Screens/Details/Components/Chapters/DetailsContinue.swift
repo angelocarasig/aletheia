@@ -124,7 +124,7 @@ private extension DetailsContinue {
 
                 Text("^[\(chapters.count) chapter](inflect: true) read")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.muted)
             }
 
             Spacer(minLength: 0)

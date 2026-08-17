@@ -163,6 +163,7 @@ extension DetailsComposer {
         tracking.apply(stored)
         refresh.apply(stored)
         recommendations.apply(stored)
+        cadence.apply(stored)
 
         if !applied { applied = true }
 

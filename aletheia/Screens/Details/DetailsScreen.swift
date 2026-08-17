@@ -224,6 +224,14 @@ struct DetailsScreen: View {
                     localProgress: tracking.furthest,
                     needingSignIn: tracking.needingSignIn,
                     syncing: tracking.syncing,
+                    matches: tracking.matches,
+                    writing: tracking.writing,
+                    onPrefetch: {
+                        tracking.prefetch(adult: composer.series.classification == .Explicit)
+                    },
+                    onAutoLink: { tracker, candidate in
+                        Task { await tracking.autoLink(tracker, candidate: candidate) }
+                    },
                     onSetStatus: { status in Task { await library.set(status: status) } },
                     onToggleCollection: { id in Task { await library.toggle(collection: id) } },
                     onCreateCollection: { name, description in
@@ -409,6 +417,7 @@ struct DetailsScreen: View {
             onSearch: { query in
                 try await tracking.search(tracker, query: query, adult: adult)
             },
+            onPrefetched: { await tracking.prefetched(tracker) },
             onLoadEntry: { id in try await tracking.entry(tracker, remoteId: id) },
             onCatchUp: { progress in Task { await composer.catchUp(to: progress) } },
             onPushLocal: { Task { await tracking.push() } },

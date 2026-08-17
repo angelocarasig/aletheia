@@ -254,6 +254,7 @@ private struct ChaptersSection: View {
             DetailsChapters(
                 chapters: chapters.chapters,
                 isFetching: composer.refresh.fetching,
+                cadence: composer.cadence,
                 hasFetched: composer.series.chaptersFetchedDate != nil,
                 sourceCount: composer.sources.origins.count,
                 showAllChapters: chapters.showAll,

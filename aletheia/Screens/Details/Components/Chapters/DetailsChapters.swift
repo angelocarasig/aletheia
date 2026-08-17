@@ -12,6 +12,11 @@ import Tagged
 struct DetailsChapters: View {
     let chapters: [Chapter]
     var isFetching: Bool = false
+    // shown here only while there is still something to read. once the reader is
+    // caught up the same line moves into the Continue capsule, which costs no
+    // height and sits where the question is actually asked - so the two
+    // placements are complementary and never both on screen
+    var cadence: DetailsComposer.Cadence?
     var hasFetched: Bool = true
     // counts every origin, disabled ones included: two sources is exactly when
     // reordering starts to matter, and the common reason to reorder is to put a
@@ -169,6 +174,21 @@ extension DetailsChapters {
     private var Header: some View {
         VStack(alignment: .leading, spacing: dimensions.spacing.space8) {
             SectionHeader(title: "Chapters") { Visibility }
+
+            // always drawn. the state carries its own reason when a date cannot
+            // be named, so there is no case where the slot is empty - a line
+            // present on some series and absent on others reads as broken
+            if let cadence {
+                DetailsCadence(
+                    display: cadence.current.display,
+                    force: cadence.canForce
+                        ? (glyph: cadence.forceGlyph, action: { cadence.force() })
+                        : nil
+                )
+                // its own air. hard against the controls row it grouped with
+                // them and read as a fourth label rather than a statement
+                .padding(.bottom, dimensions.spacing.space4)
+            }
 
             HStack(spacing: dimensions.spacing.space8) {
                 Count

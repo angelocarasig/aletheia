@@ -49,10 +49,20 @@ final class WebAuthCapturer: NSObject, AuthCapturing {
     private var holding = false
     private var startedAt: ContinuousClock.Instant?
 
-    // longer than a managed challenge takes when the page is genuinely visible -
-    // mangafire's slowest measured capture was 8.8s - and far short of the 60s
-    // timeout, so a stalled capture still has room to finish once the sheet is up
-    private static let stallSeconds = 15
+    // the mounted overlay is not enough for every wall. measured on device: a
+    // mangafire capture stalls, this fires, the sheet goes up and the challenge
+    // completes about six seconds later - 21s in total, of which this was the
+    // dead part. shortened from 15s once the logs showed it firing every time
+    // rather than never
+    private static let stallSeconds = 4
+
+    // which hosts have proved they need a visible page. the overlay satisfies
+    // toonily and mangaball, which log "challenge never seen" and capture in a
+    // few seconds; mangafire it does not satisfy, and waiting the stall out
+    // again on every capture is a pause we already know the answer to. learned
+    // rather than declared, because it is a fact about a tenant's current
+    // configuration and those change under us
+    private static var demanding: Set<String> = []
 
     nonisolated init(presenter: AuthPresenter, log: AppLog) {
         self.presenter = presenter
@@ -267,7 +277,8 @@ final class WebAuthCapturer: NSObject, AuthCapturing {
             cookies: captured,
             headers: headers.isEmpty ? nil : headers,
             userAgent: await liveUserAgent(),
-            expiresAt: expiries.min()
+            expiresAt: expiries.min(),
+            capturedDate: Date()
         )))
     }
 
@@ -358,10 +369,19 @@ final class WebAuthCapturer: NSObject, AuthCapturing {
             return "widget on screen"
         }
 
+        // a host that stalled before is presented the moment its challenge shows
+        // rather than after the same wait a second time
+        if holding, let host = specification?.challengeURL.host(), Self.demanding.contains(host) {
+            return "this wall has needed a visible page before"
+        }
+
         guard holding, let startedAt,
               ContinuousClock.now - startedAt > .seconds(Self.stallSeconds)
         else { return nil }
 
+        if let host = specification?.challengeURL.host() {
+            Self.demanding.insert(host)
+        }
         return "challenge has not settled in \(Self.stallSeconds)s"
     }
 

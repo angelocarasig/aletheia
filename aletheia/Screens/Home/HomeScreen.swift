@@ -357,16 +357,22 @@ private extension HomeScreen {
                             obscured: obscured && entry.adult
                         )
                         .contentShape(.rect)
-                        // opens the chapter, not a screen about the chapter -
-                        // the same resolver Continue Reading taps through
+                        // the series, not the chapter. Continue Reading is the
+                        // one shelf that resumes something already in progress,
+                        // and a tap there is a request to carry on reading. news
+                        // that a chapter exists is not that request - "three new
+                        // chapters" is most often read as a prompt to go and look
+                        // at the series, and dropping straight into the reader
+                        // takes the decision away
                         .tappable {
-                            reading = ReadingTarget(seriesId: entry.id, chapterId: entry.target.chapterId)
+                            path.append(SeriesEntry.library(entry.id))
                         }
                         .contextMenu {
+                            // the fast path survives as the deliberate one
                             Button {
-                                path.append(SeriesEntry.library(entry.id))
+                                reading = ReadingTarget(seriesId: entry.id, chapterId: entry.target.chapterId)
                             } label: {
-                                Label("View Series", systemImage: "book")
+                                Label("Read \(ReadingFormat.chapter(entry.target.number))", systemImage: "book.pages")
                             }
                         }
                     }
@@ -432,12 +438,18 @@ private extension HomeScreen {
                         accessory: accessory(entry),
                         obscured: obscured && entry.adult
                     )
+                    // both shelves land on the series, same rule as New Chapters.
+                    // Pick Back Up is the closest of them to a resume, and it is
+                    // still a shelf about series rather than the one place a tap
+                    // means "carry on from where I was"
                     .tappable {
-                        reading = ReadingTarget(seriesId: entry.id, chapterId: entry.target.chapterId)
+                        path.append(SeriesEntry.library(entry.id))
                     }
                     .contextMenu {
-                        NavigationLink(value: SeriesEntry.library(entry.id)) {
-                            Label("View Series", systemImage: "book")
+                        Button {
+                            reading = ReadingTarget(seriesId: entry.id, chapterId: entry.target.chapterId)
+                        } label: {
+                            Label("Read \(ReadingFormat.chapter(entry.target.number))", systemImage: "book.pages")
                         }
                     }
                 }

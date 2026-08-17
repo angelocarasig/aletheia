@@ -15,15 +15,42 @@ struct SourceCredential: Sendable, Codable {
     let headers: [String: String]?
     let userAgent: String
     let expiresAt: Date?
+    // when we earned it, which is the only date here we can vouch for. optional
+    // so credentials saved before this field decode unchanged
+    let capturedDate: Date?
 
-    init(cookies: [String: String], headers: [String: String]? = nil, userAgent: String, expiresAt: Date?) {
+    init(
+        cookies: [String: String],
+        headers: [String: String]? = nil,
+        userAgent: String,
+        expiresAt: Date?,
+        capturedDate: Date? = Date()
+    ) {
         self.cookies = cookies
         self.headers = headers
         self.userAgent = userAgent
         self.expiresAt = expiresAt
+        self.capturedDate = capturedDate
     }
 
+    // the stated expiry is a hint, not a contract - `docs/features/source-auth.md`
+    // said so before there was evidence, and there is evidence now. every
+    // cf_clearance this app has ever captured declares 365 days; measured across
+    // 56 credentials on a device, the median time before the wall refused one was
+    // 11 minutes for toonily, 14 for mangafire, 87 for mangaball. trusting the
+    // stated date meant the proactive half of this design never once fired: of
+    // 236 refreshes in that log, 226 were a request failing and 10 were an expiry.
+    //
+    // so a credential is also stale once it is older than we are willing to
+    // vouch for, whatever the cookie claims. this does not add refreshes - the
+    // wall was forcing them at this rate anyway - it moves them off the path of a
+    // request the reader is waiting on
     func isValid(skew: TimeInterval = 60) -> Bool {
+        if let capturedDate,
+           Date().timeIntervalSince(capturedDate) > Constants.Network.credentialLifetime {
+            return false
+        }
+
         guard let expiresAt else { return true }
         return Date() < expiresAt.addingTimeInterval(-skew)
     }

@@ -23,12 +23,6 @@ struct ActivityScreen: View {
     @State private var showingUpdates = false
     @State private var showingTracking = false
 
-    private struct ReadingTarget: Identifiable, Hashable {
-        let seriesId: SeriesRecord.ID
-        let chapterId: ChapterRecord.ID
-        var id: ChapterRecord.ID { chapterId }
-    }
-
     private enum Layout {
         static let fillOpacity = 0.05
         static let skeletonRows = 6

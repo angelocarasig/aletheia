@@ -32,7 +32,12 @@ struct ReaderScreen: View {
     }
 
     var body: some View {
-        ZStack {
+        // read here rather than inside the alert's binding: a read in a getter
+        // runs when SwiftUI asks for the value rather than while the body is
+        // evaluating, so it is not a dependency and the alert would never open
+        let save = vm?.pageSave
+
+        return ZStack {
             Color.black
                 .ignoresSafeArea()
 
@@ -114,6 +119,19 @@ struct ReaderScreen: View {
         }
         .sheet(item: Binding(get: { vm?.explainingGap }, set: { vm?.explainingGap = $0 })) { gap in
             ReaderGapSheet(gap: gap)
+        }
+        // a page saved leaves no trace on this screen - the page is still there
+        // and still looks the same - so the alert is the whole of the answer
+        .alert(
+            save?.title ?? "",
+            isPresented: Binding(get: { save != nil }, set: { if !$0 { vm?.pageSave = nil } }),
+            presenting: save
+        ) { _ in
+            Button("OK", role: .cancel) {}
+        } message: { save in
+            // empty on success, and an alert draws no gap for an empty message,
+            // so this needs no branch
+            Text(save.message)
         }
         .sheet(isPresented: $showingSettings) {
             if let vm, let engine = vm.engine {

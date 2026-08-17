@@ -31,9 +31,17 @@ struct ReaderSeparatorModel: Equatable, Sendable {
     var destination: Destination
 
     // the reading-event write for the finished chapter, rendered beside the
-    // terminal number going forward. content only, never height - nil renders
-    // nothing, which is every separator until the reader wires the insert
+    // terminal number. content only, never height - nil renders nothing, which
+    // is every separator until the reader wires the insert
     var event: EventStatus?
+
+    // whether this boundary was crossed forward at some point in this sitting,
+    // which is what decides whether the indicators have anything to say. NOT the
+    // travel direction: what was recorded stays recorded, so turning round and
+    // coming back finds the same tick and the same tracker rows, still settling
+    // if they had not finished. content only, never height - the rows are
+    // counted whatever this says, so the band cannot move when it flips
+    var crossed: Bool = false
 
     // whether to offer marking the series completed. two conditions, both host
     // facts: you have not already said completed, and an origin says the work
@@ -222,10 +230,10 @@ extension ReaderSeparatorModel {
     }
 
     // internal, because the view frames the group to it: the space is reserved
-    // whatever is drawn inside, so backward travel - which has no push to report
-    // and hides the rows - centres what it does have rather than leaving a hole
-    // under it. the cell is sized from the forward model before direction is
-    // even known, so shrinking here would only move the hole, not close it
+    // whatever is drawn inside, so a boundary nobody has crossed - which has no
+    // push to report and hides the rows - centres what it does have rather than
+    // leaving a hole under it. the cell is sized once, before any of that is
+    // known, so shrinking here would only move the hole rather than close it
     func behind(for category: UIContentSizeCategory) -> CGFloat {
         let terminalHeight = Metrics.scaled(Metrics.terminal, category)
         guard !trackers.isEmpty else { return terminalHeight }

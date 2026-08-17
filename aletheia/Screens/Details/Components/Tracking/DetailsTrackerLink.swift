@@ -24,6 +24,12 @@ struct DetailsTrackerLink: View {
     let localProgress: Int
     let scoreFormat: ScoreFormat
     var onSearch: (String) async throws -> [TrackerCandidate]
+    // the setup flow searches this service before the reader opens the sheet.
+    // awaiting it rather than re-running is what makes opening mid-flight wait
+    // on the request already in the air instead of spending a second one - the
+    // sheet sits in the pending state it would have been in anyway. nil means
+    // nothing was prefetched, or the prefetch failed, and this searches as usual
+    var onPrefetched: () async -> DetailsComposer.Tracking.Search? = { nil }
     // the reader's entry for one media, fetched only when they open it
     var onLoadEntry: (Int64) async throws -> TrackerEntry
     var onCatchUp: (Int) -> Void
@@ -50,6 +56,7 @@ struct DetailsTrackerLink: View {
     @State private var failure: Failure?
     @State private var search: Task<Void, Never>?
     @State private var conflicts: [Int64: String] = [:]
+    @State private var seeded = false
 
     private enum Layout {
         // wider than a thumbnail now that the row carries three text blocks -
@@ -66,9 +73,12 @@ struct DetailsTrackerLink: View {
         // context, not a deciding fact, so it sits under everything else
         static let synopsisOpacity: Double = 0.7
         static let placeholderOpacity: Double = 0.1
-        // enough to drop the row out of the scan without hiding it: it is still a
-        // legitimate pick when the reader is correcting the OTHER series' link
-        static let claimedOpacity: Double = 0.55
+        // enough to drop a row out of the scan without hiding it. two rows earn
+        // it: one already claimed by another series in the library, and a novel
+        // in a comic reader. both stay pickable - the first when the reader is
+        // correcting the OTHER series' link, the second because a service that
+        // files a work as a novel is sometimes the one that is wrong
+        static let sidelinedOpacity: Double = 0.55
         static let settle: Animation = .smooth(duration: 0.2)
         // long enough that typing a title does not fire a request per keystroke,
         // short enough that stopping feels like it answered immediately. also
@@ -117,10 +127,23 @@ struct DetailsTrackerLink: View {
             // seeded from the title the reader sees, which is the one they would
             // have typed. the first search runs without them asking
             query = seriesTitle
-            conflicts = await onConflicts()
-            await run(seriesTitle)
+
+            if let prefetched = await onPrefetched() {
+                conflicts = prefetched.conflicts
+                results = prefetched.results
+                phase = prefetched.results.isEmpty ? .empty : .content
+            } else {
+                conflicts = await onConflicts()
+                await run(seriesTitle)
+            }
+
+            seeded = true
         }
         .onChange(of: query) { _, text in
+            // the seed is not a keystroke. assigning the series title above fires
+            // this, and letting it schedule meant every open ran the same search
+            // twice - once directly and once again 400ms later
+            guard seeded else { return }
             schedule(text)
         }
     }
@@ -197,6 +220,7 @@ struct DetailsTrackerLink: View {
     // missing element
     private func Row(_ candidate: TrackerCandidate) -> some View {
         let clash = conflicts[candidate.id]
+        let sidelined = clash != nil || candidate.isNovel
 
         return HStack(alignment: .top, spacing: dimensions.spacing.space12) {
             Cover(candidate)
@@ -272,12 +296,20 @@ struct DetailsTrackerLink: View {
             in: .rect(cornerRadius: dimensions.radius.radius16, style: .continuous)
         )
         .contentShape(.rect)
-        // faded as a set rather than per element: everything on a claimed row is
+        // faded as a set rather than per element: everything on a sidelined row is
         // equally less relevant, and dimming only the text would leave the cover
         // at full strength pulling the eye to the row the reader is least likely
-        // to want. still selectable - they may be fixing the other link
-        .opacity(clash == nil ? 1 : Layout.claimedOpacity)
-        .accessibilityHint(clash == nil ? "Opens this entry" : "Already linked to \(clash ?? ""). Opens this entry")
+        // to want. still selectable
+        .opacity(sidelined ? Layout.sidelinedOpacity : 1)
+        .accessibilityHint(hint(clash: clash, novel: candidate.isNovel))
+    }
+
+    private func hint(clash: String?, novel: Bool) -> String {
+        var parts: [String] = []
+        if let clash { parts.append("Already linked to \(clash).") }
+        if novel { parts.append("Not a comic.") }
+        parts.append("Opens this entry")
+        return parts.joined(separator: " ")
     }
 
     // year is text rather than a pill: a date is not a state, and giving it pill

@@ -118,15 +118,13 @@ struct LibraryFilter: Equatable, Codable {
 // the column-backed groups. untracked is a real answer rather than the absence
 // of one - "which of these have I never linked" is the question the group is
 // most often opened for
-enum TrackerFilter: String, CaseIterable, Codable, Hashable {
-    case anilist
-    case myAnimeList
+enum TrackerFilter: Codable, Hashable {
+    case linked(Tracker)
     case untracked
 
     var tracker: Tracker? {
         switch self {
-        case .anilist: .anilist
-        case .myAnimeList: .myAnimeList
+        case let .linked(tracker): tracker
         case .untracked: nil
         }
     }
@@ -146,10 +144,40 @@ enum TrackerFilter: String, CaseIterable, Codable, Hashable {
         return linked.contains(tracker)
     }
 
-    // services first in the order they were added, then the negative case - it
-    // is the odd one out and reads as a footnote to the list rather than a peer
+    // every service, in the order Tracker declares them, then the negative case -
+    // it is the odd one out and reads as a footnote to the list rather than a
+    // peer. read off Tracker.allCases rather than written out: this was a
+    // hand-kept copy of that enum, and mangabaka shipped 10/8 without ever
+    // reaching the library filters because nobody remembered a third list existed
     static var ordered: [TrackerFilter] {
-        [.anilist, .myAnimeList, .untracked]
+        Tracker.allCases.map(TrackerFilter.linked) + [.untracked]
+    }
+}
+
+// stored as one string, so a filter saved before this was an enum with a payload
+// still decodes. lowercased on the way in for the same reason - the two enums
+// spelled myanimelist differently, and a reader's saved filters should not be
+// dropped over a capital letter
+extension TrackerFilter {
+    private static let untrackedKey = "untracked"
+
+    init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        if raw == Self.untrackedKey {
+            self = .untracked
+        } else if let tracker = Tracker(rawValue: raw.lowercased()) {
+            self = .linked(tracker)
+        } else {
+            throw DecodingError.dataCorruptedError(
+                in: try decoder.singleValueContainer(),
+                debugDescription: "unknown tracker filter '\(raw)'"
+            )
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(tracker?.rawValue ?? Self.untrackedKey)
     }
 }
 

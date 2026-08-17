@@ -6,6 +6,7 @@
 //
 
 import UIKit
+import Photos
 
 // one section per chapter, one item per page. sections are what make chapter
 // insertion and eviction expressible without any index arithmetic
@@ -86,6 +87,10 @@ final class ReaderController: UIViewController {
     // the controller holds chapter ids and never their numbers, and has never
     // heard of the series at all
     var shareCaption: ((ReaderChapter.ID) -> (title: String, subtitle: String)?)?
+    // sharing presents its own sheet from here, and saving writes from here for
+    // the same reason: the decoded image is a UIKit object the layers above
+    // deliberately never see. only the answer travels
+    var onSaved: ((Result<Void, Error>) -> Void)?
 
     init(configuration: ReaderConfiguration) {
         self.configuration = configuration
@@ -532,6 +537,9 @@ final class ReaderController: UIViewController {
                 cell.onShare = { [weak self] image, page in
                     self?.share(image, page: page)
                 }
+                cell.onSave = { [weak self] image in
+                    self?.save(image)
+                }
                 cell.configure(with: page, width: self.pageWidth)
                 return cell
 
@@ -910,6 +918,27 @@ final class ReaderController: UIViewController {
         present(activity, animated: true)
     }
 
+    // add-only authorization, which is the least the write needs and the prompt
+    // the reader expects. requested rather than assumed: performChanges against
+    // a denied library fails with a message about the change request rather than
+    // about permission, which is the wrong sentence to put in front of someone
+    private func save(_ image: UIImage) {
+        Task { @MainActor in
+            do {
+                let status = await PHPhotoLibrary.requestAuthorization(for: .addOnly)
+                guard status == .authorized || status == .limited else { throw SaveError.denied }
+
+                try await PHPhotoLibrary.shared().performChanges {
+                    PHAssetChangeRequest.creationRequestForAsset(from: image)
+                }
+                onSaved?(.success(()))
+            } catch {
+                AppLog.shared.log("saving a page failed - \(error)", level: .error, category: "reader")
+                onSaved?(.failure(error))
+            }
+        }
+    }
+
     @objc private func handleTap(_ gesture: UITapGestureRecognizer) {
         guard !isZoomed else { return }
         // window space, so a zone stays where the user sees it rather than
@@ -1181,3 +1210,20 @@ extension ReaderController: UICollectionViewDelegate {
 private final class FullInvalidationContext: UICollectionViewLayoutInvalidationContext {
     override var invalidateEverything: Bool { true }
 }
+
+// one case, because everything else the photo library refuses states its own
+// reason. a denial does not - it arrives as a change-request error naming a
+// mechanism rather than the permission behind it
+private enum SaveError: DescribableError {
+    case denied
+
+    var errorDescription: String? { "Couldn't Save Page" }
+
+    var failureReason: String? {
+        "aletheia has no permission to add to your photo library. You can allow it in Settings."
+    }
+
+    // asking again gets the same refusal until something changes outside the app
+    var isRetryable: Bool { false }
+}
+

@@ -117,14 +117,17 @@ private extension UpdatesScreen {
                             obscured: obscured && entry.adult
                         )
                         .contentShape(.rect)
+                        // the series, matching the shelf on Home this screen is
+                        // the full list of. reading the chapter is the deliberate
+                        // action rather than the accidental one
                         .tappable {
-                            reading = ReadingTarget(seriesId: entry.id, chapterId: entry.target.chapterId)
+                            route = .library(entry.id)
                         }
                         .contextMenu {
                             Button {
-                                route = .library(entry.id)
+                                reading = ReadingTarget(seriesId: entry.id, chapterId: entry.target.chapterId)
                             } label: {
-                                Label("View Series", systemImage: "book")
+                                Label("Read \(ReadingFormat.chapter(entry.target.number))", systemImage: "book.pages")
                             }
                         }
                     }

@@ -116,10 +116,17 @@ struct SourceHomeScreen: View {
             }
 
             PillValue(color: .danger) {
-                if let expiry = vm?.credentialExpiry {
-                    Text(timerInterval: Date.now...max(expiry, .now), countsDown: true)
-                        .monospacedDigit()
-                        .multilineTextAlignment(.center)
+                // how old the credential is, not how long its cookie says it has
+                // left. the two are unrelated: the cookie always claims a year
+                // and the wall refuses it within minutes, so the countdown was
+                // reporting health it had no way to know about
+                if let captured = vm?.credentialCaptured {
+                    LiveRelative(date: captured) { relative in
+                        Text(relative)
+                            .multilineTextAlignment(.center)
+                            .contentTransition(.numericText())
+                            .animation(.default, value: relative)
+                    }
                 } else {
                     Text("Active")
                 }

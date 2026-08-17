@@ -27,9 +27,11 @@ final class PageCell: UICollectionViewCell {
     var onZoomChanged: ((Bool) -> Void)?
     var onSized: ((ReaderPage, CGSize) -> Void)?
     var onRetry: ((ReaderPage) -> Void)?
-    // copy and save need nothing but the image, so they stay here. sharing
-    // needs a presenter and the chapter's name, neither of which a cell has
+    // copy needs nothing but the image, so it stays here. sharing needs a
+    // presenter and the chapter's name and saving needs somewhere to say whether
+    // it worked, none of which a cell has
     var onShare: ((UIImage, ReaderPage) -> Void)?
+    var onSave: ((UIImage) -> Void)?
 
     private enum Layout {
         static let minimumZoom: CGFloat = 1
@@ -259,7 +261,7 @@ extension PageCell: UIContextMenuInteractionDelegate {
                     UIPasteboard.general.image = image
                 },
                 UIAction(title: "Save to Photos", image: UIImage(systemName: "square.and.arrow.down")) { _ in
-                    UIImageWriteToSavedPhotosAlbum(image, nil, nil, nil)
+                    self?.onSave?(image)
                 },
                 UIAction(title: "Share", image: UIImage(systemName: "square.and.arrow.up")) { _ in
                     self?.onShare?(image, page)

@@ -90,6 +90,10 @@ final class ReaderEngine {
     var onMarkCompleted: (() -> Void)?
     // the reader asked what happened to the chapters that are not there
     var onExplainGap: ((ReaderSeparatorModel.Gap) -> Void)?
+    // a page was written to the photo library, or was not. the image never comes
+    // through here - the controller owns UIKit, so it does the write and this
+    // carries only the answer
+    var onPageSaved: ((Result<Void, Error>) -> Void)?
     var onRetryTracker: ((ReaderChapter.ID, String) -> Void)?
 
     var chapterList: [ReaderChapter] { chapters }
@@ -157,6 +161,9 @@ final class ReaderEngine {
             guard let self else { return nil }
             let number = chapters.first { $0.id == id }?.number
             return (series, number.map { "Chapter \($0.formatted())" } ?? "")
+        }
+        controller.onSaved = { [weak self] result in
+            self?.onPageSaved?(result)
         }
         controller.separatorModel = { [weak self] boundary, direction in
             self?.separator(for: boundary, direction: direction)
@@ -425,6 +432,7 @@ final class ReaderEngine {
                 gap: info.gap,
                 destination: destination(after: id),
                 event: events[id],
+                crossed: completed.contains(id),
                 completable: completable,
                 trackers: trackerRows(for: id)
             )
@@ -501,6 +509,9 @@ final class ReaderEngine {
            direction == .forward,
            completed.insert(id).inserted,
            let chapter = chapters.first(where: { $0.id == id }) {
+            // the crossing is itself content: it is what turns the indicators on,
+            // and the writes that follow may take a moment to report
+            controller?.reloadSeparators()
             onChapterFinished?(chapter, controller?.pageCount(for: id) ?? 0)
         }
 

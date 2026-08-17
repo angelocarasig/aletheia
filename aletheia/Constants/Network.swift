@@ -15,6 +15,13 @@ extension Constants {
         // chosen against BGContinuedProcessingTask, which expires a run whose
         // progress has not moved for about that long - a request outliving the
         // system's patience takes the whole run down with it
+        // how long a captured credential is trusted regardless of what its
+        // cookie claims. measured, not guessed: see SourceCredential.isValid.
+        // under the shortest observed median (11 minutes) so a refresh lands
+        // before the wall does, and far enough over zero that a burst of
+        // requests shares one capture
+        static let credentialLifetime: TimeInterval = 10 * 60
+
         static let timeout: TimeInterval = 30
         // a health check that takes as long as a real request tells you nothing
         // you could not have guessed. imposed by the caller racing it, since the

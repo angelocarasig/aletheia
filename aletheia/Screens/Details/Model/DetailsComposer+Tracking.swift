@@ -31,6 +31,12 @@ extension DetailsComposer {
 
         @ObservationIgnored private var seriesId: SeriesRecord.ID?
 
+        // what a definite match is measured against: the display title first,
+        // then every pooled one. a service files a work under whichever name it
+        // knows, and the romaji copy of a title we display in english is the
+        // most common near-miss there is
+        @ObservationIgnored private var seriesTitles: [String] = []
+
         private let host: Compositor.Trackers
         private let database: DatabaseClient
 
@@ -65,6 +71,8 @@ extension DetailsComposer {
 
             if links != mapped { links = mapped }
             if furthest != stored.furthest { furthest = stored.furthest }
+
+            seriesTitles = [stored.entry.title] + stored.titles.map(\.value)
         }
 
         // from DetailsWriting
@@ -110,9 +118,18 @@ extension DetailsComposer {
         // nothing on the entry says which is winning - so the warning has to
         // name the other series rather than just flagging a clash
         func conflicts(_ tracker: Tracker) async -> [Int64: String] {
-            let current = seriesId
+            await Self.conflicts(tracker, excluding: seriesId, in: database)
+        }
 
-            return (try? await database.reader.read { db -> [Int64: String] in
+        // static so the prefetch can call it without capturing the composer -
+        // a stored Task that holds self is a cycle, and this is the only thing
+        // in that task that wanted an instance
+        private static func conflicts(
+            _ tracker: Tracker,
+            excluding current: SeriesRecord.ID?,
+            in database: DatabaseClient
+        ) async -> [Int64: String] {
+            (try? await database.reader.read { db -> [Int64: String] in
                 let rows = try SeriesTrackerRecord
                     .filter(SeriesTrackerRecord.Columns.tracker == tracker.rawValue)
                     .fetchAll(db)
@@ -131,6 +148,126 @@ extension DetailsComposer {
                     out[row.remoteId] = titles[row.seriesId.rawValue] ?? "another series"
                 }
             }) ?? [:]
+        }
+
+        // MARK: Prefetched matches
+
+        // what the setup flow found before the reader asked. a service with no
+        // entry here is one that either was not searched or whose search failed,
+        // and both render as the ordinary link row - a failed search is not
+        // something the reader requested, so it is not something they are told
+        enum Match: Equatable {
+            case searching
+            case found(TrackerCandidate)
+            case unmatched
+        }
+
+        private(set) var matches: [Tracker: Match] = [:]
+
+        // the search behind each match, kept whole so opening the link sheet
+        // costs nothing a second time. the sheet awaits this same task, which
+        // is what makes tapping Search mid-flight wait rather than start again
+        @ObservationIgnored private var searches: [Tracker: Task<Search, Never>] = [:]
+
+        struct Search: Sendable {
+            var results: [TrackerCandidate] = []
+            var conflicts: [Int64: String] = [:]
+            var failed = false
+        }
+
+        // fired once, when the flow opens. only services that could still be
+        // linked: an account already pointing at this series has nothing to
+        // search for, and searching it would spend a request against anilist's
+        // budget to learn something already on screen
+        func prefetch(adult: Bool) {
+            for tracker in accounts where searches[tracker] == nil {
+                guard !links.contains(where: { $0.tracker == tracker }) else { continue }
+                guard let query = seriesTitles.first, !query.isEmpty else { continue }
+
+                matches[tracker] = .searching
+
+                let search = Task { [host, database, current = seriesId] in
+                    async let claimed = Self.conflicts(tracker, excluding: current, in: database)
+                    guard let found = try? await host.search(tracker, query: query, adult: adult) else {
+                        return Search(failed: true)
+                    }
+                    return Search(results: found, conflicts: await claimed)
+                }
+                searches[tracker] = search
+
+                let titles = seriesTitles
+                Task { [weak self] in
+                    let outcome = await search.value
+                    guard let self else { return }
+                    self.matches[tracker] = Self.match(outcome, against: titles)
+                }
+            }
+        }
+
+        // nil for a search that failed, so the row falls back rather than
+        // reporting a miss it never actually established
+        private static func match(_ outcome: Search, against titles: [String]) -> Match? {
+            guard !outcome.failed else { return nil }
+
+            // an entry another series already claims is not a candidate here.
+            // two rows pointing at one entry undo each other's progress, and
+            // the reader picking it deliberately is a different question - the
+            // link sheet still offers it, dimmed, for exactly that case
+            var exact = outcome.results.filter { candidate in
+                outcome.conflicts[candidate.id] == nil
+                    && titles.contains { Similarity.score($0, candidate.title) == 1 }
+            }
+
+            // a manga and its light novel share a title far more often than two
+            // manga do, and linking the novel is the misfire TrackerCandidate
+            // already names. anything still tied after that is a real ambiguity
+            // and the reader decides it
+            if exact.count > 1 { exact.removeAll(where: \.isNovel) }
+
+            guard exact.count == 1, let only = exact.first else { return .unmatched }
+            return .found(only)
+        }
+
+        // awaited by the link sheet. a search still running is awaited rather
+        // than restarted, which is the whole point - the sheet sits in the same
+        // pending state it already has and no second request is spent
+        func prefetched(_ tracker: Tracker) async -> Search? {
+            guard let task = searches[tracker] else { return nil }
+            let outcome = await task.value
+            return outcome.failed ? nil : outcome
+        }
+
+        // links what the prefetch found, reading the reader's own entry first so
+        // the service keeps whatever status is already on it. progress is never
+        // sent: this runs before the flow has asked a single question, and the
+        // one thing it must not do is answer one on the reader's behalf
+        func autoLink(_ tracker: Tracker, candidate: TrackerCandidate) async {
+            // marked before the entry read, not after. link() raises this flag
+            // itself, but only once it is reached - and the read in front of it
+            // is a whole network round trip, so the button sat inert for the
+            // part of the work the reader was most likely to tap twice through.
+            // insert is idempotent and link()'s own defer clears it either way
+            writing.insert(tracker)
+            defer { writing.remove(tracker) }
+
+            do {
+                let existing = try await entry(tracker, remoteId: candidate.id)
+                let status = existing.status ?? .planning
+
+                try await link(
+                    candidate,
+                    on: tracker,
+                    update: TrackerUpdate(
+                        remoteId: candidate.id,
+                        entryId: existing.entryId,
+                        status: status
+                    ),
+                    status: status
+                )
+                matches[tracker] = nil
+            } catch {
+                failure = Failure(error, fallback: "Couldn't Link")
+            }
         }
 
         // pasting a link is the escape hatch for what search cannot reach: a

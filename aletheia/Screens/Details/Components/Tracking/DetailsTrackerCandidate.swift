@@ -501,12 +501,8 @@ struct DetailsTrackerCandidate: View {
                 )
 
                 Side(
-                    "This app",
-                    // TODO: swap for the app icon once one exists. a shimmering
-                    // circle is the honest placeholder - it says a mark belongs
-                    // here without inventing one, and it matches the other side's
-                    // footprint so the two rows do not shift when it lands
-                    icon: { Circle().fill(.primary.opacity(Layout.fillOpacity)).shimmer() },
+                    Constants.App.name,
+                    icon: { Image(.aletheia).resizable().scaledToFit() },
                     value: localProgress,
                     of: entry.totalChapters,
                     leading: localProgress >= entry.progress

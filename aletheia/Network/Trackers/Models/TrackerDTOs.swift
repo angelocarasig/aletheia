@@ -35,6 +35,14 @@ struct TrackerCandidate: Sendable, Hashable, Identifiable {
     // classic misfire, and it is the one mistake nothing else on a row catches -
     // same title, same author, same year, same cover art
     var format: String?
+
+    // this is a comic reader, so a novel entry is a legitimate pick and almost
+    // never the right one. the string is the service's own word - anilist filters
+    // NOVEL out of its query entirely, mal says "Novel"/"Light novel" and
+    // mangabaka "Novel"/"Light_novel" - so a contains match covers all of them
+    var isNovel: Bool {
+        format?.localizedCaseInsensitiveContains("novel") ?? false
+    }
 }
 
 // what the service says about one media, plus your entry on it if you have one

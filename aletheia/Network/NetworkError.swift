@@ -53,9 +53,9 @@ enum NetworkError: DescribableError {
         case .badResponse:
             return "The server responded unexpectedly."
         case .encoding:
-            return "This app couldn't build the request."
+            return "\(Constants.App.name) couldn't build the request."
         case .decoding:
-            return "This app couldn't read the server's response."
+            return "\(Constants.App.name) couldn't read the server's response."
         case .failed(let urlError):
             return urlError.localizedDescription
         }

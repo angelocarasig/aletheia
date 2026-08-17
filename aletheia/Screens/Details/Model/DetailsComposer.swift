@@ -43,6 +43,7 @@ final class DetailsComposer {
     let identity: Identity
     let refresh: Refresh
     let recommendations: Recommendations
+    let cadence: Cadence
 
     let entry: SeriesEntry
     
@@ -122,6 +123,7 @@ final class DetailsComposer {
             registry: registry
         )
         recommendations = Recommendations(recommender: recommender, impressions: impressions)
+        cadence = Cadence()
     }
 
     // the screen draws from the database alone, so a row is all it waits on.

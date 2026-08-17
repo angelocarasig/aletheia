@@ -33,7 +33,7 @@ final class HomeViewModel {
         static let addedLimit = 12
         // a tease that admits it is one. twelve rows was a slice pretending to
         // be the whole list, and it buried every section under it
-        static let updateLimit = 3
+        static let updateLimit = 5
         // short on purpose. a resume surface stops being glanceable somewhere
         // around six rows, and these two sit under a rail that has already
         // answered the question for most visits

@@ -61,6 +61,10 @@ final class ReaderViewModel {
     // presented by the screen, so this is the whole of the view model's part
     var explainingGap: ReaderSeparatorModel.Gap?
 
+    // saving a page changes nothing on screen - the page is still there and
+    // still looks the same - so the alert is the only evidence either way
+    var pageSave: PageSave?
+
     // every installed source with chapters for this series, in the order the
     // ranking already put them. derived at load from the chapter rows, so it
     // costs no query of its own
@@ -570,6 +574,16 @@ final class ReaderViewModel {
         engine.onRetryTracker = { [weak self] chapter, service in
             self?.retryTracker(service, on: chapter)
         }
+        engine.onPageSaved = { [weak self] result in
+            guard let self else { return }
+            switch result {
+            case .success:
+                pageSave = .saved
+
+            case .failure(let error):
+                pageSave = .failed(Failure(error, fallback: "Couldn't Save Page"))
+            }
+        }
         engine.onExplainGap = { [weak self] gap in
             guard let self else { return }
             // the sources the reader actually has for this series, named at the
@@ -1017,5 +1031,33 @@ final class ReaderViewModel {
             """
 
         return try ChapterSlot.Row.fetchAll(db, sql: sql, arguments: [seriesId.rawValue])
+    }
+}
+
+// MARK: - Page save
+
+extension ReaderViewModel {
+    // the two answers a save has, in the shape the alert draws. the failure keeps
+    // a Failure rather than the error, so the screen still never sees one
+    enum PageSave: Equatable {
+        case saved
+        case failed(Failure)
+
+        var title: String {
+            switch self {
+            case .saved: "Saved to Photos"
+            case .failed(let failure): failure.title
+            }
+        }
+
+        // the sentence a failure states about itself. success has none - the
+        // title says the whole thing, and an alert padded with a second line
+        // saying it again is how a confirmation becomes noise
+        var message: String {
+            switch self {
+            case .saved: ""
+            case .failed(let failure): failure.sentence
+            }
+        }
     }
 }

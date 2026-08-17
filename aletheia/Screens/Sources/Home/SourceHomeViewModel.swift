@@ -17,7 +17,11 @@ final class SourceHomeViewModel {
     private(set) var heroEntries: [SeriesStub] = []
     private(set) var isLoadingHero = true
 
-    private(set) var credentialExpiry: Date?
+    // when the credential was last earned, not when its cookie claims to expire.
+    // every cf_clearance declares 365 days and none of them lasts an hour, so a
+    // countdown off that date told the reader a year of health about something
+    // that had already stopped working. "captured 3m ago" is a fact we own
+    private(set) var credentialCaptured: Date?
     private(set) var isRefreshingCredential = false
 
     var isAuthenticating: Bool { source is AuthenticatingSource }
@@ -34,7 +38,7 @@ final class SourceHomeViewModel {
 
     func loadCredential() async {
         guard isAuthenticating else { return }
-        credentialExpiry = await requester.peek(slug: source.descriptor.slug)?.expiresAt
+        credentialCaptured = await requester.peek(slug: source.descriptor.slug)?.capturedDate
     }
 
     func refreshCredential() async {
@@ -43,7 +47,7 @@ final class SourceHomeViewModel {
         defer { isRefreshingCredential = false }
         do {
             let credential = try await requester.forceRefresh(for: auth)
-            credentialExpiry = credential.expiresAt
+            credentialCaptured = credential.capturedDate
         } catch {
             AppLog.shared.log("credential refresh failed for '\(source.descriptor.slug)' - \(error)", level: .error, category: "auth")
         }

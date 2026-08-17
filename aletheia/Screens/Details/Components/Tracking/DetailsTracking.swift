@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import Kingfisher
 
 // what each connected service says about this series. one row per account, never
 // more than two, and the two never consult each other - a failure on one is not a
@@ -55,6 +56,14 @@ struct DetailsTracking: View {
     // it off there: that screen is for choosing links, and a banner offering to
     // mark sixty chapters read mid-flow is a write nobody went there to make
     var reconciles: Bool = true
+    // what the setup flow searched for before the reader looked. empty
+    // everywhere else, which is what leaves the Details section untouched -
+    // a row with no match here is the row that has always been here
+    var matches: [Tracker: DetailsComposer.Tracking.Match] = [:]
+    // which services are mid-link, so the button that started it spins and the
+    // other rows stay live
+    var linking: Set<Tracker> = []
+    var onAutoLink: (Tracker, TrackerCandidate) -> Void = { _, _ in }
 
     @Environment(\.dimensions) private var dimensions
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -69,6 +78,18 @@ struct DetailsTracking: View {
         // the service names stop being legible - the section still has to say
         // WHAT is waiting for you
         static let disabledOpacity: Double = 0.4
+        // sized to the subtitle it stands in for, so the row does not resize when
+        // the search lands
+        static let skeletonWidth: CGFloat = 140
+        static let skeletonHeight: CGFloat = 10
+        // fillOpacity above is for surfaces behind text and is far too faint to
+        // BE the content - at 0.05 the skeleton rendered and simply could not be
+        // seen. this is what the reader's own skeletons use
+        static let skeletonOpacity: Double = 0.1
+        // small deliberately: the cover is here to confirm the match is the
+        // series already on screen, not to be looked at
+        static let coverWidth: CGFloat = 30
+        static let coverHeight: CGFloat = 44
     }
 
     var body: some View {
@@ -261,18 +282,65 @@ struct DetailsTracking: View {
                 .accessibilityHint("Opens tracking options")
         } else {
             Content(tracker, link: nil)
+                .animation(Layout.settle, value: matches[tracker])
         }
+    }
+
+    // what the setup flow found for this service, or nil for every row that is
+    // linked, unreachable, or simply outside that flow. one guard here rather
+    // than the same three conditions in the title, the subtitle and the trailing
+    private func match(_ tracker: Tracker, link: Link?) -> DetailsComposer.Tracking.Match? {
+        guard link == nil, !unavailable(tracker) else { return nil }
+        return matches[tracker]
     }
 
     private func Content(_ tracker: Tracker, link: Link?) -> some View {
         HStack(spacing: dimensions.spacing.space12) {
             Tile(tracker)
+
+            if let match = match(tracker, link: link) {
+                Cover(match)
+            }
+
             Details(tracker, link: link)
 
             Spacer(minLength: 0)
 
             Trailing(tracker, link: link)
         }
+    }
+
+    // beside the service tile rather than instead of it: the tile says who is
+    // proposing this and the cover says what, and the reader needs both to judge
+    // it. the placeholder holds the same footprint while the search runs, so the
+    // row does not jump sideways when the artwork lands
+    @ViewBuilder
+    private func Cover(_ match: DetailsComposer.Tracking.Match) -> some View {
+        switch match {
+        case .searching:
+            CoverFrame { EmptyView() }
+                .shimmer()
+
+        case let .found(candidate):
+            CoverFrame {
+                if let cover = candidate.cover {
+                    KFImage(cover)
+                        .resizable()
+                        .scaledToFill()
+                }
+            }
+
+        case .unmatched:
+            EmptyView()
+        }
+    }
+
+    private func CoverFrame<Artwork: View>(@ViewBuilder _ artwork: () -> Artwork) -> some View {
+        RoundedRectangle(cornerRadius: dimensions.radius.radius8)
+            .fill(.primary.opacity(Layout.skeletonOpacity))
+            .frame(width: Layout.coverWidth, height: Layout.coverHeight)
+            .overlay { artwork() }
+            .clipShape(.rect(cornerRadius: dimensions.radius.radius8))
     }
 
     // the brand tile, drawn untinted - a logo recoloured to match its
@@ -289,7 +357,11 @@ struct DetailsTracking: View {
     private func Details(_ tracker: Tracker, link: Link?) -> some View {
         VStack(alignment: .leading, spacing: dimensions.spacing.space2) {
             HStack(alignment: .firstTextBaseline, spacing: dimensions.spacing.space8) {
-                Text(link?.remoteTitle ?? tracker.name)
+                // a linked row already replaces the service name with the entry
+                // it points at. a match is the same statement one step earlier -
+                // this is what the row would become - so it reads the same way,
+                // and the tile is what says which service is proposing it
+                Text(name(tracker, link: link))
                     .font(.subheadline)
                     .fontWeight(.semibold)
                     .lineLimit(1)
@@ -350,6 +422,26 @@ struct DetailsTracking: View {
                 // nothing linked and nothing to sync, so the condition has this
                 // line to itself rather than a reason line under a summary
                 Text("Sign in again to keep tracking")
+            } else if let match = match(tracker, link: link) {
+                switch match {
+                case .searching:
+                    // a bar where the answer will be, rather than the word
+                    // "searching" - the row is about to say something and this
+                    // is the shape of the thing it will say
+                    Capsule()
+                        .fill(.primary.opacity(Layout.skeletonOpacity))
+                        .frame(width: Layout.skeletonWidth, height: Layout.skeletonHeight)
+                        .shimmer()
+                        .accessibilityLabel("Searching \(tracker.name)")
+
+                case let .found(candidate):
+                    Text(facts(for: candidate))
+
+                case .unmatched:
+                    // a fact about a search that ran, not an apology. the reader
+                    // never asked for it, so it states the outcome and stops
+                    Text("No exact match")
+                }
             } else {
                 Text("Not linked")
             }
@@ -432,6 +524,21 @@ struct DetailsTracking: View {
                 .contentShape(.circle)
                 .tappable { onRetry(link) }
                 .accessibilityLabel("Retry syncing to \(tracker.name)")
+        } else if case let .found(candidate)? = match(tracker, link: link), !syncing.contains(tracker) {
+            // two circles where the row normally has one, in the same shape the
+            // rest of the app uses for a lone control against the canvas. Link
+            // commits what was found; the magnifying glass says it is not the
+            // one and opens the search that would have opened anyway
+            HStack(spacing: dimensions.spacing.space8) {
+                Circular("link", busy: linking.contains(tracker)) {
+                    onAutoLink(tracker, candidate)
+                }
+                .accessibilityLabel("Link \(candidate.title) on \(tracker.name)")
+
+                Circular("magnifyingglass") { onLink(tracker) }
+                    .accessibilityLabel("Search \(tracker.name) for another entry")
+            }
+            .disabled(linking.contains(tracker))
         } else if link == nil, !syncing.contains(tracker) {
             // the app's one shape for a lone circular control against the canvas,
             // same recipe as HomeScreen.Action and the chart's stepper. the glass
@@ -468,6 +575,41 @@ struct DetailsTracking: View {
             // the state arrives from an observation with no animation of its
             // own, so contentTransition has nothing to run inside without this
             .animation(.settle, value: syncing)
+    }
+
+    // the same recipe the single trailing control uses, factored out because a
+    // matched row needs two of them. glass IS the affordance here, so the busy
+    // state swaps the glyph rather than the surface - a control that loses its
+    // background mid-tap reads as having been dismissed
+    private func Circular(
+        _ symbol: String,
+        busy: Bool = false,
+        action: @escaping () -> Void
+    ) -> some View {
+        Image(systemName: busy ? "progress.indicator" : symbol)
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+            .symbolEffect(.rotate, isActive: busy)
+            .frame(width: Layout.tile, height: Layout.tile)
+            .glassEffect(.regular.interactive(), in: .circle)
+            .contentShape(.circle)
+            .tappable(action: action)
+    }
+
+    private func name(_ tracker: Tracker, link: Link?) -> String {
+        if let link { return link.remoteTitle }
+        if case let .found(candidate)? = match(tracker, link: link) { return candidate.title }
+        return tracker.name
+    }
+
+    // year and length, the two facts that separate a series from its own sequel
+    // once the title has already matched. either may be missing, and with both
+    // gone the service name is all there is left to say
+    private func facts(for candidate: TrackerCandidate) -> String {
+        var parts: [String] = []
+        if let year = candidate.year { parts.append(String(year)) }
+        if let total = candidate.totalChapters { parts.append("\(total) chapters") }
+        return parts.isEmpty ? "Match found" : parts.joined(separator: " · ")
     }
 
     private func glyph(for tracker: Tracker, link: Link?) -> String {

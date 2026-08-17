@@ -59,12 +59,15 @@ struct ReaderSeparatorView: View {
                 VStack(spacing: ReaderSeparatorModel.Metrics.group) {
                     Terminal(terminal)
 
-                    // absent going backward rather than hidden: nothing was
-                    // pushed, so there is no state to report. the group keeps
-                    // its declared height either way and centres what remains,
-                    // so the rows leaving does not open a hole beneath the
-                    // chapter - which is what the space is reserved for
-                    if !model.trackers.isEmpty, model.direction == .forward {
+                    // absent until the boundary has been crossed rather than
+                    // hidden: a chapter nobody finished pushed nothing, so there
+                    // is no state to report. it is the crossing that decides,
+                    // not the direction of travel - coming back to a boundary
+                    // you finished earlier finds its rows where you left them.
+                    // the group keeps its declared height either way and centres
+                    // what remains, so the rows leaving does not open a hole
+                    // beneath the chapter - which is what the space is reserved for
+                    if !model.trackers.isEmpty, model.crossed {
                         Trackers
                     }
                 }
@@ -101,7 +104,11 @@ struct ReaderSeparatorView: View {
 private extension ReaderSeparatorView {
     func Terminal(_ terminal: ReaderSeparatorModel.Terminal) -> some View {
         VStack(spacing: dimensions.spacing.space2) {
-            Text(model.direction == .forward ? "Finished" : "Returning from")
+            // the slot holds the boundary's own chapter in both directions - the
+            // one below the band - so going back up you are entering it, not
+            // leaving it. the words used to say the opposite of the numbers they
+            // sat beside
+            Text(model.direction == .forward ? "Finished" : "Back to")
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
@@ -119,10 +126,11 @@ private extension ReaderSeparatorView {
     // badge is .secondary, so colour-based effects read as nothing here. the
     // ring spins while the event row is in flight; the check enters by drawing
     // itself along its stroke path (draw-on), the outgoing side draws off.
-    // forward only: backward travel records nothing
+    // survives turning round: the write belongs to the chapter rather than to
+    // the trip, so coming back to a boundary finds the tick it earned
     @ViewBuilder
     var EventBadge: some View {
-        if model.direction == .forward, let event = model.event {
+        if model.crossed, let event = model.event {
             Group {
                 switch event {
                 case .recording:
@@ -340,7 +348,7 @@ private extension ReaderSeparatorView {
         switch model.destination {
         case let .chapter(number, title):
             VStack(spacing: dimensions.spacing.space2) {
-                Text(model.direction == .forward ? "Up next" : "Back to")
+                Text(model.direction == .forward ? "Up next" : "Coming from")
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
@@ -521,6 +529,10 @@ private extension ReaderSeparatorModel {
         continuity: Continuity? = nil,
         gap: Gap? = nil,
         event: EventStatus? = nil,
+        // a specimen showing indicators is showing a boundary that was crossed,
+        // so this defaults to what every such canvas needs rather than being
+        // restated on each one
+        crossed: Bool = true,
         completable: Bool = false,
         trackers: [Tracker] = []
     ) -> Self {
@@ -532,6 +544,7 @@ private extension ReaderSeparatorModel {
             gap: gap,
             destination: destination,
             event: event,
+            crossed: crossed,
             completable: completable,
             trackers: trackers
         )
@@ -662,8 +675,9 @@ private struct Sheet<Content: View>: View {
             Button("Next phase") { withAnimation(.settle) { step += 1 } }
                 .buttonStyle(.glassProminent)
 
-            // presence is linkage, not travel: turning this on must drop the
-            // rows and leave the declared height exactly where it was
+            // presence is the crossing, not travel: turning this on must change
+            // nothing at all about the indicators - what was recorded is still
+            // recorded when you come back to it
             Toggle("Reading backward", isOn: $backward)
                 .font(.caption)
         }
@@ -671,15 +685,19 @@ private struct Sheet<Content: View>: View {
 
         Specimen(
             title: "Step \(step % phases.count + 1) of \(phases.count)",
+            // the numbers do NOT swap with direction: 44's pages are above the
+            // band and 45's are below it whichever way the reader is travelling,
+            // so only the words change. the previous version swapped them and
+            // drew a band the engine cannot produce, which is how the inverted
+            // copy passed review
             model: .sample(
-                backward
-                    ? .chapter(number: 44, title: "The Gathering Storm")
-                    : .chapter(number: 45, title: "Aftermath"),
+                .chapter(number: 45, title: "Aftermath"),
                 direction: backward ? .backward : .forward,
-                terminal: backward
-                    ? .init(number: 45, title: "Aftermath")
-                    : .init(number: 44, title: "The Gathering Storm"),
+                terminal: .init(number: 44, title: "The Gathering Storm"),
                 event: phase.1,
+                // the first phase is a boundary nobody has finished, which is
+                // the one state that draws no indicators at all
+                crossed: step % phases.count != 0,
                 trackers: [
                     .init(id: "anilist", name: "AniList", icon: "AniList", state: phase.2[0]),
                     .init(id: "myanimelist", name: "MyAnimeList", icon: "MyAnimeList", state: phase.2[1])

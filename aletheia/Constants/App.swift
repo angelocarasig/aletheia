@@ -29,6 +29,11 @@ extension Constants {
     enum App {
         static let identifier = "group.moe.aletheia"
 
+        // what we call ourselves anywhere the reader is being told which side of
+        // a comparison is ours, or which side of a failure. it was "This app" in
+        // four places, which reads like a placeholder because it was one
+        static let name = "Aletheia"
+
         // xcode runs the whole app to render a canvas. XCODE_RUNNING_FOR_PREVIEWS
         // is the documented signal but is not set under xcode 26's XOJIT
         // previews - the bundle path is, because it runs from Xcode's own
