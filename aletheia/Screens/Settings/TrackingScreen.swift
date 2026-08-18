@@ -5,8 +5,8 @@
 //  Created by Angelo Carasig on 10/8/2026.
 //
 
-import SwiftUI
 import AuthenticationServices
+import SwiftUI
 
 // one card per service, and never more than two. signing in is a once-ever act,
 // which is why it lives behind settings rather than in a tab
@@ -59,7 +59,8 @@ struct TrackingScreen: View {
         }
         .confirmationDialog(
             "Disconnect \(disconnecting?.name ?? "")?",
-            isPresented: Binding(get: { disconnecting != nil }, set: { if !$0 { disconnecting = nil } }),
+            isPresented: Binding(
+                get: { disconnecting != nil }, set: { if !$0 { disconnecting = nil } }),
             titleVisibility: .visible
         ) {
             Button("Disconnect", role: .destructive) {
@@ -71,7 +72,9 @@ struct TrackingScreen: View {
             // nothing local is destroyed and the links survive a reconnect, so
             // the only cost is that pushes stop. said plainly, because the word
             // disconnect invites the reader to assume worse
-            Text("Your links stay, and nothing is removed from your list. Progress just stops syncing until you sign in again.")
+            Text(
+                "Your links stay, and nothing is removed from your list. Progress just stops syncing until you sign in again."
+            )
         }
         .sheet(item: $pasting) { tracker in
             TrackerTokenSheet(tracker: tracker) { token in
@@ -107,9 +110,13 @@ struct TrackingScreen: View {
     // reader could not guess
     private var Explainer: some View {
         VStack(alignment: .leading, spacing: dimensions.spacing.space8) {
-            Text("Chapters you finish are sent to your lists. Nothing is ever read back into your library without you asking.")
+            Text(
+                "Chapters you finish are sent to your lists. Nothing is ever read back into your library without you asking."
+            )
 
-            Text("AniList connections run out after a year. Signing in again is normal, not a fault.")
+            Text(
+                "AniList connections run out after a year. Signing in again is normal, not a fault."
+            )
         }
         .font(.caption)
         .foregroundStyle(.secondary)
@@ -152,7 +159,8 @@ struct TrackingScreen: View {
                     additionalHeaderFields: [:]
                 )
                 try await compositor.trackers.complete(callback, with: authorization)
-            } catch let error as ASWebAuthenticationSessionError where error.code == .canceledLogin {
+            } catch let error as ASWebAuthenticationSessionError where error.code == .canceledLogin
+            {
                 return
             } catch {
                 failure = Failure(error, fallback: "Couldn't Connect")
@@ -191,10 +199,15 @@ private struct TrackingCard: View {
     }
 
     private var phase: Phase {
-        if isConnecting { .connecting }
-        else if account == nil { .disconnected }
-        else if needsSignIn { .needsSignIn }
-        else { .connected }
+        if isConnecting {
+            .connecting
+        } else if account == nil {
+            .disconnected
+        } else if needsSignIn {
+            .needsSignIn
+        } else {
+            .connected
+        }
     }
 
     var body: some View {
@@ -215,7 +228,8 @@ private struct TrackingCard: View {
                 Text(tracker.name)
                     .font(.subheadline)
                     .fontWeight(.semibold)
-                    .foregroundStyle(needsSignIn ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
+                    .foregroundStyle(
+                        needsSignIn ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
 
                 State
             }
@@ -308,8 +322,9 @@ private struct TrackingCard: View {
 
 // MARK: - Previews
 
-private extension TrackerCredential {
-    static func sample(_ username: String = "angelo", refreshable: Bool = true) -> Self {
+extension TrackerCredential {
+    fileprivate static func sample(_ username: String = "angelo", refreshable: Bool = true) -> Self
+    {
         .init(
             accessToken: "token",
             refreshToken: refreshable ? "refresh" : nil,

@@ -123,8 +123,9 @@ extension DetailsComposer {
                     // no retry because none of these clear by trying again
                     results = []
                     phase = .empty
-                    AppLog.shared.log("recommendations unavailable - \(error)",
-                                      category: "recommender")
+                    AppLog.shared.log(
+                        "recommendations unavailable - \(error)",
+                        category: "recommender")
                 }
             }
         }

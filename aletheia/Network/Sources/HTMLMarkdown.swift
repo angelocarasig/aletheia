@@ -27,16 +27,20 @@ enum HTMLMarkdown {
                 case "a":
                     out += "[\(try element.text())](\(try element.attr("href")))"
                 case "strong", "b":
-                    var inner = ""; try append(element, into: &inner)
+                    var inner = ""
+                    try append(element, into: &inner)
                     out += "**\(inner)**"
                 case "em", "i":
-                    var inner = ""; try append(element, into: &inner)
+                    var inner = ""
+                    try append(element, into: &inner)
                     out += "*\(inner)*"
                 case "s", "del", "strike":
-                    var inner = ""; try append(element, into: &inner)
+                    var inner = ""
+                    try append(element, into: &inner)
                     out += "~~\(inner)~~"
                 case "u":
-                    var inner = ""; try append(element, into: &inner)
+                    var inner = ""
+                    try append(element, into: &inner)
                     out += "<u>\(inner)</u>"
                 default:
                     try append(element, into: &out)

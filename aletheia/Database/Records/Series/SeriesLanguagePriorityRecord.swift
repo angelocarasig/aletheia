@@ -78,7 +78,7 @@ extension SeriesLanguagePriorityRecord {
             columns: [
                 Columns.seriesId.name,
                 Columns.language.name,
-                Columns.priority.name
+                Columns.priority.name,
             ],
             ifNotExists: true
         )

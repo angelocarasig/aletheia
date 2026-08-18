@@ -6,8 +6,9 @@
 //
 
 import Foundation
-import Tagged
 import Observation
+import Tagged
+
 import struct SwiftUI.ImageResource
 
 extension DetailsComposer {
@@ -72,7 +73,9 @@ extension DetailsComposer {
 
             let mapped = stored.origins.compactMap { row -> Origin? in
                 guard row.installed, !row.disconnected, !row.disabled else { return nil }
-                guard let slug = row.sourceSlug, let source = registry.source(slug: slug) else { return nil }
+                guard let slug = row.sourceSlug, let source = registry.source(slug: slug) else {
+                    return nil
+                }
 
                 return Origin(
                     id: row.id,
@@ -86,7 +89,8 @@ extension DetailsComposer {
             if origins != mapped { origins = mapped }
             trackerLinks = stored.trackers
 
-            checkedDate = mapped.first
+            checkedDate =
+                mapped.first
                 .flatMap { first in stored.origins.first { $0.id == first.id } }
                 .map(\.chaptersFetchedDate)
                 ?? stored.origins.first?.chaptersFetchedDate
@@ -163,7 +167,9 @@ extension DetailsComposer {
                 }
 
                 for await (originId, result) in group {
-                    guard let index = outcomes.firstIndex(where: { $0.id == originId }) else { continue }
+                    guard let index = outcomes.firstIndex(where: { $0.id == originId }) else {
+                        continue
+                    }
                     outcomes[index].result = result
                     state = .running(outcomes)
                 }
@@ -183,8 +189,11 @@ extension DetailsComposer {
 
             metadataDismissal?.cancel()
 
-            var rows: [MetadataOutcomeRow] = origins.map { MetadataOutcomeRow(id: .origin($0.id), name: $0.name) }
-                + trackerLinks.map { MetadataOutcomeRow(id: .tracker($0.tracker), name: $0.tracker.name) }
+            var rows: [MetadataOutcomeRow] =
+                origins.map { MetadataOutcomeRow(id: .origin($0.id), name: $0.name) }
+                + trackerLinks.map {
+                    MetadataOutcomeRow(id: .tracker($0.tracker), name: $0.tracker.name)
+                }
             metadataState = .running(rows)
 
             let targets = origins
@@ -198,7 +207,8 @@ extension DetailsComposer {
                     group.addTask { [refresher] in
                         (
                             .origin(target.id),
-                            await refresher.metadata(source: source, seriesSlug: target.slug, originId: originId)
+                            await refresher.metadata(
+                                source: source, seriesSlug: target.slug, originId: originId)
                         )
                     }
                 }
@@ -264,7 +274,9 @@ extension DetailsComposer {
         func prime() {
             guard !primed, !fetching else { return }
             guard case .source = entry else { return }
-            guard checkedDate < Date.now.addingTimeInterval(-Constants.Refresh.staleAfter) else { return }
+            guard checkedDate < Date.now.addingTimeInterval(-Constants.Refresh.staleAfter) else {
+                return
+            }
             guard !origins.isEmpty else { return }
 
             let targets = origins
@@ -277,7 +289,9 @@ extension DetailsComposer {
                 // permanently behind with nothing on screen able to say so
                 await withTaskGroup(of: Void.self) { group in
                     for target in targets {
-                        guard let source = registry.source(slug: target.sourceSlug) else { continue }
+                        guard let source = registry.source(slug: target.sourceSlug) else {
+                            continue
+                        }
 
                         group.addTask {
                             _ = await refresher.chapters(

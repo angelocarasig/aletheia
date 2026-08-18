@@ -7,8 +7,8 @@
 
 import Foundation
 import GRDB
-import Tagged
 import Observation
+import Tagged
 
 @MainActor
 @Observable
@@ -27,7 +27,8 @@ final class ActivityViewModel {
     func observe() {
         guard stream == nil else { return }
         stream = Task { [weak self, database] in
-            let observation = ValueObservation
+            let observation =
+                ValueObservation
                 .tracking { db in
                     try Self.stored(in: db)
                 }
@@ -42,7 +43,8 @@ final class ActivityViewModel {
             } catch {
                 guard let self else { return }
                 self.failure = Failure(error, fallback: "Couldn't Load Activity")
-                AppLog.shared.log("activity observation failed - \(error)", level: .error, category: "activity")
+                AppLog.shared.log(
+                    "activity observation failed - \(error)", level: .error, category: "activity")
             }
         }
     }
@@ -72,27 +74,29 @@ final class ActivityViewModel {
                 """
         ).flatMap { $0 > Date(timeIntervalSince1970: 0) ? $0 : nil }
 
-        let downloadedChapters = try Int.fetchOne(
-            db,
-            sql: """
-                SELECT COUNT(*)
-                FROM \(ChapterRecord.databaseTableName)
-                WHERE \(ChapterRecord.Columns.path.name) IS NOT NULL
-                """
-        ) ?? 0
+        let downloadedChapters =
+            try Int.fetchOne(
+                db,
+                sql: """
+                    SELECT COUNT(*)
+                    FROM \(ChapterRecord.databaseTableName)
+                    WHERE \(ChapterRecord.Columns.path.name) IS NOT NULL
+                    """
+            ) ?? 0
 
         // currently failing, not ever failed: the column is cleared the moment a
         // source answers again, so this needs no acknowledgement state of its own
-        let failingSources = try Int.fetchOne(
-            db,
-            sql: """
-                SELECT COUNT(*)
-                FROM \(OriginRecord.databaseTableName) o
-                JOIN \(SeriesRecord.databaseTableName) s ON s.id = o.\(OriginRecord.Columns.seriesId.name)
-                WHERE o.\(OriginRecord.Columns.fetchError.name) IS NOT NULL
-                  AND s.\(SeriesRecord.Columns.inLibrary.name) = 1
-                """
-        ) ?? 0
+        let failingSources =
+            try Int.fetchOne(
+                db,
+                sql: """
+                    SELECT COUNT(*)
+                    FROM \(OriginRecord.databaseTableName) o
+                    JOIN \(SeriesRecord.databaseTableName) s ON s.id = o.\(OriginRecord.Columns.seriesId.name)
+                    WHERE o.\(OriginRecord.Columns.fetchError.name) IS NOT NULL
+                      AND s.\(SeriesRecord.Columns.inLibrary.name) = 1
+                    """
+            ) ?? 0
 
         return Snapshot(
             lastChecked: lastChecked,

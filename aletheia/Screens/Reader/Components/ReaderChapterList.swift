@@ -83,10 +83,10 @@ struct ReaderChapterList: View {
 
 // MARK: - Chrome
 
-private extension ReaderChapterList {
+extension ReaderChapterList {
     // Text, not String. navigationSubtitle takes either, and the String overload
     // renders inflection markup verbatim - the literal has to reach a Text
-    var subtitle: Text {
+    fileprivate var subtitle: Text {
         guard !slots.isEmpty else { return Text("") }
         guard let current else { return Text("^[\(slots.count) chapter](inflect: true)") }
 
@@ -108,7 +108,7 @@ private extension ReaderChapterList {
     // place, and something you go looking for has to be findable over a page of
     // artwork. glassProminent takes the tint rather than painting a flat capsule
     @ViewBuilder
-    func JumpToCurrent(_ proxy: ScrollViewProxy) -> some View {
+    fileprivate func JumpToCurrent(_ proxy: ScrollViewProxy) -> some View {
         if let current, !currentIsVisible, !slots.isEmpty {
             Button {
                 withAnimation(Layout.jump) {
@@ -136,15 +136,13 @@ private extension ReaderChapterList {
 
 // MARK: - Content
 
-private extension ReaderChapterList {
-    var phase: LoadPhase {
-        if !slots.isEmpty { .content }
-        else if isLoading { .pending }
-        else { .empty }
+extension ReaderChapterList {
+    fileprivate var phase: LoadPhase {
+        if !slots.isEmpty { .content } else if isLoading { .pending } else { .empty }
     }
 
     @ViewBuilder
-    func Content(_ proxy: ScrollViewProxy) -> some View {
+    fileprivate func Content(_ proxy: ScrollViewProxy) -> some View {
         switch phase {
         case .pending:
             Skeleton
@@ -162,7 +160,7 @@ private extension ReaderChapterList {
         }
     }
 
-    func Rows(_ proxy: ScrollViewProxy) -> some View {
+    fileprivate func Rows(_ proxy: ScrollViewProxy) -> some View {
         ScrollView {
             LazyVStack(spacing: Layout.rowSpacing) {
                 ForEach(ordered) { slot in
@@ -196,7 +194,7 @@ private extension ReaderChapterList {
         }
     }
 
-    func Row(_ slot: ChapterSlot) -> some View {
+    fileprivate func Row(_ slot: ChapterSlot) -> some View {
         HStack(spacing: dimensions.spacing.space12) {
             SourceIcon(slot)
 
@@ -247,7 +245,7 @@ private extension ReaderChapterList {
     }
 
     @ViewBuilder
-    func SourceIcon(_ slot: ChapterSlot) -> some View {
+    fileprivate func SourceIcon(_ slot: ChapterSlot) -> some View {
         if let icon = slot.best.sourceIcon {
             Image(icon)
                 .resizable()
@@ -264,40 +262,40 @@ private extension ReaderChapterList {
 
 // MARK: - Copy
 
-private extension ReaderChapterList {
-    func isCurrent(_ slot: ChapterSlot) -> Bool {
+extension ReaderChapterList {
+    fileprivate func isCurrent(_ slot: ChapterSlot) -> Bool {
         slot.number == current
     }
 
     // most sources title a chapter with its own number, which then reads as the
     // same thing twice on one line
-    func title(_ slot: ChapterSlot) -> String {
+    fileprivate func title(_ slot: ChapterSlot) -> String {
         let label = "Chapter \(number(slot.number))"
         let title = slot.best.title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !title.isEmpty, title.lowercased() != label.lowercased() else { return label }
         return "\(label) · \(title)"
     }
 
-    func meta(_ slot: ChapterSlot) -> String {
+    fileprivate func meta(_ slot: ChapterSlot) -> String {
         [
             slot.best.scanlator,
             slot.best.language.flag,
-            slot.best.publishedDate.formatted(.relative(presentation: .numeric))
+            slot.best.publishedDate.formatted(.relative(presentation: .numeric)),
         ]
         .filter { !$0.isEmpty }
         .joined(separator: " • ")
     }
 
     // chapter numbers are stored as doubles - render 12.0 as "12", keep 12.5
-    func number(_ value: Double) -> String {
+    fileprivate func number(_ value: Double) -> String {
         value.formatted(.number.precision(.fractionLength(0...2)))
     }
 }
 
 // MARK: - Loading
 
-private extension ReaderChapterList {
-    var Skeleton: some View {
+extension ReaderChapterList {
+    fileprivate var Skeleton: some View {
         ScrollView {
             LazyVStack(spacing: Layout.rowSpacing) {
                 ForEach(0..<Layout.skeletonRows, id: \.self) { _ in
@@ -312,7 +310,7 @@ private extension ReaderChapterList {
         .accessibilityHidden(true)
     }
 
-    var SkeletonRow: some View {
+    fileprivate var SkeletonRow: some View {
         HStack(spacing: dimensions.spacing.space12) {
             RoundedRectangle(cornerRadius: dimensions.radius.radius8)
                 .fill(.primary.opacity(Layout.fillOpacity))
@@ -327,7 +325,7 @@ private extension ReaderChapterList {
         .padding(dimensions.spacing.space12)
     }
 
-    func Bar(_ width: CGFloat) -> some View {
+    fileprivate func Bar(_ width: CGFloat) -> some View {
         Capsule()
             .fill(.primary.opacity(Layout.fillOpacity))
             .frame(maxWidth: width, alignment: .leading)

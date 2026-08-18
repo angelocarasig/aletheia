@@ -31,7 +31,8 @@ struct AtsumaruSource: SourceService {
     let descriptor = SourceDescriptor(
         slug: "atsumaru",
         name: "Atsumaru",
-        description: "Read, track and download thousands of Manga, Manhwa and Manhua series all Ad-Free on Atsumaru.",
+        description:
+            "Read, track and download thousands of Manga, Manhwa and Manhua series all Ad-Free on Atsumaru.",
         icon: .atsumaru,
         // nothing in the api carries a language: not the manga document, not the
         // chapter list, not the page payload. the catalogue is an english
@@ -64,7 +65,7 @@ struct AtsumaruSource: SourceService {
                     .init(id: "41", name: "Smut", sensitivity: .suggestive),
                     .init(id: "22", name: "Supernatural"),
                     .init(id: "19", name: "Thriller"),
-                    .init(id: "5", name: "Tragedy")
+                    .init(id: "5", name: "Tragedy"),
                 ],
                 canExclude: true
             ),
@@ -77,7 +78,7 @@ struct AtsumaruSource: SourceService {
                     .init(id: "Manga", name: "Manga"),
                     .init(id: "Manwha", name: "Manhwa"),
                     .init(id: "Manhua", name: "Manhua"),
-                    .init(id: "OEL", name: "OEL")
+                    .init(id: "OEL", name: "OEL"),
                 ],
                 canExclude: false
             ),
@@ -88,7 +89,7 @@ struct AtsumaruSource: SourceService {
                     .init(id: "Ongoing", name: "Ongoing"),
                     .init(id: "Completed", name: "Completed"),
                     .init(id: "Hiatus", name: "Hiatus"),
-                    .init(id: "Canceled", name: "Cancelled")
+                    .init(id: "Canceled", name: "Cancelled"),
                 ],
                 canExclude: false
             ),
@@ -107,11 +108,11 @@ struct AtsumaruSource: SourceService {
                     .init(id: "Safe", name: "Safe"),
                     .init(id: "Suggestive", name: "Suggestive"),
                     .init(id: "Erotica", name: "Erotica", sensitivity: .suggestive),
-                    .init(id: "Pornographic", name: "Pornographic", sensitivity: .adult)
+                    .init(id: "Pornographic", name: "Pornographic", sensitivity: .adult),
                 ],
                 canExclude: false
             ),
-            .number(id: "year", name: "Year")
+            .number(id: "year", name: "Year"),
         ],
         // typesense takes direction in the sort expression itself, so each option
         // id is the whole `field:direction` and ascending goes unused
@@ -123,7 +124,7 @@ struct AtsumaruSource: SourceService {
                 .init(id: "dateAdded:desc", name: "Recently added"),
                 .init(id: "releaseDate:desc", name: "Release date"),
                 .init(id: "mbRating:desc", name: "Top rated"),
-                .init(id: "title:asc", name: "Title (A-Z)")
+                .init(id: "title:asc", name: "Title (A-Z)"),
             ],
             defaultSort: ""
         )
@@ -131,18 +132,24 @@ struct AtsumaruSource: SourceService {
 
     var presets: [SourcePreset] {
         [
-            .init(id: "new", name: "Recently Added", subtitle: "Newest to the catalogue", order: 0,
-                  sort: .init(optionID: "dateAdded:desc")),
+            .init(
+                id: "new", name: "Recently Added", subtitle: "Newest to the catalogue", order: 0,
+                sort: .init(optionID: "dateAdded:desc")),
             // ranked by newest chapter, which no typesense field carries - served
             // by a home shelf endpoint instead, hence the route
-            .init(id: "updated", name: "Recently Updated", subtitle: "Freshly released chapters", order: 1,
-                  route: "recentlyUpdated"),
-            .init(id: "trending", name: "Trending", subtitle: "Climbing right now", order: 2,
-                  sort: .init(optionID: "trending:desc")),
-            .init(id: "popular", name: "Popular", subtitle: "Most read on Atsumaru", order: 3,
-                  sort: .init(optionID: "views:desc")),
-            .init(id: "top", name: "Top Rated", subtitle: "Highest rated series", order: 4,
-                  sort: .init(optionID: "mbRating:desc"))
+            .init(
+                id: "updated", name: "Recently Updated", subtitle: "Freshly released chapters",
+                order: 1,
+                route: "recentlyUpdated"),
+            .init(
+                id: "trending", name: "Trending", subtitle: "Climbing right now", order: 2,
+                sort: .init(optionID: "trending:desc")),
+            .init(
+                id: "popular", name: "Popular", subtitle: "Most read on Atsumaru", order: 3,
+                sort: .init(optionID: "views:desc")),
+            .init(
+                id: "top", name: "Top Rated", subtitle: "Highest rated series", order: 4,
+                sort: .init(optionID: "mbRating:desc")),
         ]
     }
 }
@@ -164,17 +171,21 @@ extension AtsumaruSource {
     // the source is unaffected and search still works without it
     private static func load(_ resource: String) -> [SourceFilter.Option] {
         guard let url = Bundle.main.url(forResource: resource, withExtension: "json"),
-              let data = try? Data(contentsOf: url),
-              let entries = try? JSONDecoder().decode([Entry].self, from: data)
+            let data = try? Data(contentsOf: url),
+            let entries = try? JSONDecoder().decode([Entry].self, from: data)
         else {
-            AppLog.shared.log("vocabulary \(resource).json missing or unreadable", level: .warning, category: "source")
+            AppLog.shared.log(
+                "vocabulary \(resource).json missing or unreadable", level: .warning,
+                category: "source")
             return []
         }
 
         // their flag is one bit and drawn wide - gore and partial nudity carry it -
         // so it maps to the middle level, never the gate. this is the boundary:
         // their vocabulary stops here and ours starts
-        return entries.map { .init(id: $0.id, name: $0.name, sensitivity: $0.sensitive ? .suggestive : .none) }
+        return entries.map {
+            .init(id: $0.id, name: $0.name, sensitivity: $0.sensitive ? .suggestive : .none)
+        }
     }
 
     // group and count are carried in the file but dropped here - Option has
@@ -204,7 +215,9 @@ extension AtsumaruSource {
         }
 
         let response: Documents<Stub> = try await fetch(
-            Self.searchURL(query, sort: resolvedSort(for: query), fields: Self.stubFields, gateOpen: allowsAdult(for: query))
+            Self.searchURL(
+                query, sort: resolvedSort(for: query), fields: Self.stubFields,
+                gateOpen: allowsAdult(for: query))
         )
 
         // typesense states the true total, so the last page is arithmetic rather
@@ -233,11 +246,14 @@ extension AtsumaruSource {
     // page one were novels when this was last probed. mihon's extension sends
     // the same whitelist and ships the same leak
     private func recentlyUpdated(page: Int) async throws -> SearchPage<SeriesStub> {
-        let response: HomeShelf = try await fetch(Self.api("infinite/recentlyUpdated", [
-            // zero-based here, unlike everything else on this host
-            .init(name: "page", value: String(max(0, page - 1))),
-            .init(name: "types", value: Self.shelfTypes)
-        ]))
+        let response: HomeShelf = try await fetch(
+            Self.api(
+                "infinite/recentlyUpdated",
+                [
+                    // zero-based here, unlike everything else on this host
+                    .init(name: "page", value: String(max(0, page - 1))),
+                    .init(name: "types", value: Self.shelfTypes),
+                ]))
 
         // excluding what cannot be read rather than including what can. the
         // search index has 132 documents carrying no `medium` at all which are
@@ -344,12 +360,18 @@ extension AtsumaruSource {
     func chapters(seriesSlug: String) async throws -> [ChapterEntry] {
         // the chapter list names its scanlation group by id alone, and the names
         // live on a different endpoint. both are needed for one entry
-        async let listing: ChapterList = fetch(Self.api("manga/allChapters", [
-            .init(name: "mangaId", value: seriesSlug)
-        ]))
-        async let page: MangaPage = fetch(Self.api("manga/page", [
-            .init(name: "id", value: seriesSlug)
-        ]))
+        async let listing: ChapterList = fetch(
+            Self.api(
+                "manga/allChapters",
+                [
+                    .init(name: "mangaId", value: seriesSlug)
+                ]))
+        async let page: MangaPage = fetch(
+            Self.api(
+                "manga/page",
+                [
+                    .init(name: "id", value: seriesSlug)
+                ]))
 
         let (chapters, scanlators) = try await (listing.chapters, page.mangaPage.scanlators)
         let names = Dictionary(
@@ -381,10 +403,13 @@ extension AtsumaruSource {
 
 extension AtsumaruSource {
     func content(seriesSlug: String, chapterSlug: String) async throws -> [PageURL] {
-        let response: ReadChapter = try await fetch(Self.api("read/chapter", [
-            .init(name: "mangaId", value: seriesSlug),
-            .init(name: "chapterId", value: chapterSlug)
-        ]))
+        let response: ReadChapter = try await fetch(
+            Self.api(
+                "read/chapter",
+                [
+                    .init(name: "mangaId", value: seriesSlug),
+                    .init(name: "chapterId", value: chapterSlug),
+                ]))
 
         // a novel that slipped past the medium filter answers 200 with an empty
         // list, so zero pages here is the site saying "not readable" rather than
@@ -409,12 +434,12 @@ extension AtsumaruSource {
 
 // MARK: - Requests
 
-private extension AtsumaruSource {
-    func fetch<Model: Decodable>(_ url: URL) async throws -> Model {
+extension AtsumaruSource {
+    fileprivate func fetch<Model: Decodable>(_ url: URL) async throws -> Model {
         try await network.get(url: url, headers: ["Referer": descriptor.referer.absoluteString])
     }
 
-    static func api(_ path: String, _ items: [URLQueryItem]) -> URL {
+    fileprivate static func api(_ path: String, _ items: [URLQueryItem]) -> URL {
         var components = URLComponents(
             url: URL(string: "https://atsu.moe/api")!.appendingPathComponent(path),
             resolvingAgainstBaseURL: false
@@ -423,7 +448,7 @@ private extension AtsumaruSource {
         return components.url!
     }
 
-    static func collection(_ items: [URLQueryItem]) -> URL {
+    fileprivate static func collection(_ items: [URLQueryItem]) -> URL {
         var components = URLComponents(
             url: URL(string: "https://atsu.moe/collections/manga/documents/search")!,
             resolvingAgainstBaseURL: false
@@ -432,25 +457,29 @@ private extension AtsumaruSource {
         return components.url!
     }
 
-    static let stubFields = "id,title,poster,posterSmall,posterMedium,mbContentRating,isAdult"
-    static let pornographic = "Pornographic"
+    fileprivate static let stubFields =
+        "id,title,poster,posterSmall,posterMedium,mbContentRating,isAdult"
+    fileprivate static let pornographic = "Pornographic"
     // posterMedium is requested here for the same reason search asks for it: the
     // full-size poster is the variant that goes missing from their CDN, and it
     // was the only one details returned - so a series browsed with a working
     // cover was added to the library with a dead one
-    static let detailFields = "id,title,otherNames,synopsis,poster,posterMedium,status,isAdult,mbContentRating,tags,authors"
+    fileprivate static let detailFields =
+        "id,title,otherNames,synopsis,poster,posterMedium,status,isAdult,mbContentRating,tags,authors"
 
-    static func documentURL(id: String) -> URL {
+    fileprivate static func documentURL(id: String) -> URL {
         collection([
             .init(name: "q", value: "*"),
             .init(name: "query_by", value: "title"),
             .init(name: "filter_by", value: "id:=\(quoted(id))"),
             .init(name: "include_fields", value: detailFields),
-            .init(name: "per_page", value: "1")
+            .init(name: "per_page", value: "1"),
         ])
     }
 
-    static func searchURL(_ query: SearchQuery, sort: SortSelection?, fields: String, gateOpen: Bool) -> URL {
+    fileprivate static func searchURL(
+        _ query: SearchQuery, sort: SortSelection?, fields: String, gateOpen: Bool
+    ) -> URL {
         var items: [URLQueryItem] = [
             // a blank search is a match-all rather than an error
             .init(name: "q", value: query.text?.isEmpty == false ? query.text! : "*"),
@@ -458,7 +487,7 @@ private extension AtsumaruSource {
             .init(name: "query_by_weights", value: queryWeights),
             .init(name: "include_fields", value: fields),
             .init(name: "per_page", value: String(window)),
-            .init(name: "page", value: String(max(1, query.page)))
+            .init(name: "page", value: String(max(1, query.page))),
         ]
 
         if let sort = sort?.optionID, !sort.isEmpty {
@@ -501,23 +530,23 @@ private extension AtsumaruSource {
     // typesense filter syntax: `field:=value` includes, `field:!=[a,b]` excludes.
     // each included id is its own clause so they AND - one `:=[a,b]` would OR
     // them, which is not what picking two genres means
-    static func filters(_ selections: [FilterSelection]) -> [String] {
+    fileprivate static func filters(_ selections: [FilterSelection]) -> [String] {
         selections.flatMap { selection -> [String] in
             switch selection {
-            case let .multiSelect(id, included, excluded):
+            case .multiSelect(let id, let included, let excluded):
                 var clauses = included.map { "\(id):=\(quoted($0))" }
                 if !excluded.isEmpty {
                     clauses.append("\(id):!=[\(excluded.map(quoted).joined(separator: ","))]")
                 }
                 return clauses
 
-            case let .select(id, optionID):
+            case .select(let id, let optionID):
                 return ["\(id):=\(quoted(optionID))"]
 
-            case let .number(id, value):
+            case .number(let id, let value):
                 return ["\(id):=\(value)"]
 
-            case let .text(id, value):
+            case .text(let id, let value):
                 return value.isEmpty ? [] : ["\(id):=\(quoted(value))"]
             }
         }
@@ -525,7 +554,7 @@ private extension AtsumaruSource {
 
     // backticks are typesense's own literal quoting, so an id containing a comma
     // or a space cannot split the clause it sits in
-    static func quoted(_ value: String) -> String {
+    fileprivate static func quoted(_ value: String) -> String {
         "`\(value.replacingOccurrences(of: "`", with: ""))`"
     }
 
@@ -542,7 +571,7 @@ private extension AtsumaruSource {
     // extension carries the identical normalisation (removePrefix("/") then
     // removePrefix("static/"), then baseUrl + "/static/"), which is how a second
     // implementation confirms it is the site and not us
-    static func asset(_ path: String?) -> URL? {
+    fileprivate static func asset(_ path: String?) -> URL? {
         guard let path, !path.isEmpty else { return nil }
         if path.hasPrefix("http") { return URL(string: path) }
 
@@ -553,15 +582,15 @@ private extension AtsumaruSource {
         return cdn.appending(path: "static").appending(path: String(bare))
     }
 
-    static func poster(_ path: String?) -> URL? {
+    fileprivate static func poster(_ path: String?) -> URL? {
         asset(path)
     }
 }
 
 // MARK: - Responses
 
-private extension AtsumaruSource {
-    struct Documents<Document: Decodable & Sendable>: Decodable, Sendable {
+extension AtsumaruSource {
+    fileprivate struct Documents<Document: Decodable & Sendable>: Decodable, Sendable {
         let found: Int
         let hits: [Hit]
 
@@ -570,7 +599,7 @@ private extension AtsumaruSource {
         }
     }
 
-    struct Stub: Decodable, Sendable {
+    fileprivate struct Stub: Decodable, Sendable {
         let id: String
         let title: String
         let poster: String?
@@ -580,7 +609,7 @@ private extension AtsumaruSource {
         let isAdult: Bool?
     }
 
-    struct HomeShelf: Decodable, Sendable {
+    fileprivate struct HomeShelf: Decodable, Sendable {
         let items: [Item]
 
         struct Item: Decodable, Sendable {
@@ -593,7 +622,7 @@ private extension AtsumaruSource {
         }
     }
 
-    struct Detail: Decodable, Sendable {
+    fileprivate struct Detail: Decodable, Sendable {
         let id: String
         let title: String
         let otherNames: [String]?
@@ -607,7 +636,7 @@ private extension AtsumaruSource {
         let authors: [String]?
     }
 
-    struct ChapterList: Decodable, Sendable {
+    fileprivate struct ChapterList: Decodable, Sendable {
         let chapters: [Chapter]
 
         struct Chapter: Decodable, Sendable {
@@ -619,7 +648,7 @@ private extension AtsumaruSource {
         }
     }
 
-    struct MangaPage: Decodable, Sendable {
+    fileprivate struct MangaPage: Decodable, Sendable {
         let mangaPage: Page
 
         struct Page: Decodable, Sendable {
@@ -632,7 +661,7 @@ private extension AtsumaruSource {
         }
     }
 
-    struct ReadChapter: Decodable, Sendable {
+    fileprivate struct ReadChapter: Decodable, Sendable {
         let readChapter: Chapter
 
         struct Chapter: Decodable, Sendable {

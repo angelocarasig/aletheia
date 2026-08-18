@@ -1,4 +1,4 @@
-    //
+//
 //  ReaderSeparatorView.swift
 //  aletheia
 //
@@ -101,8 +101,8 @@ struct ReaderSeparatorView: View {
 
 // MARK: - Slots
 
-private extension ReaderSeparatorView {
-    func Terminal(_ terminal: ReaderSeparatorModel.Terminal) -> some View {
+extension ReaderSeparatorView {
+    fileprivate func Terminal(_ terminal: ReaderSeparatorModel.Terminal) -> some View {
         VStack(spacing: dimensions.spacing.space2) {
             // the slot holds the boundary's own chapter in both directions - the
             // one below the band - so going back up you are entering it, not
@@ -129,13 +129,15 @@ private extension ReaderSeparatorView {
     // survives turning round: the write belongs to the chapter rather than to
     // the trip, so coming back to a boundary finds the tick it earned
     @ViewBuilder
-    var EventBadge: some View {
+    fileprivate var EventBadge: some View {
         if model.crossed, let event = model.event {
             Group {
                 switch event {
                 case .recording:
                     Image(systemName: "progress.indicator")
-                        .symbolEffect(.rotate, options: .repeat(.continuous), isActive: !reduceMotion)
+                        .symbolEffect(
+                            .rotate, options: .repeat(.continuous), isActive: !reduceMotion
+                        )
                         .transition(reduceMotion ? .opacity : AnyTransition(.symbolEffect(.drawOn)))
 
                 case .recorded:
@@ -160,7 +162,7 @@ private extension ReaderSeparatorView {
     //
     // the island is width-limited and centred rather than spanning the band, so
     // a left-aligned block can live inside a centred one without fighting it
-    var Trackers: some View {
+    fileprivate var Trackers: some View {
         VStack(spacing: ReaderSeparatorModel.Metrics.trackerGap) {
             ForEach(model.trackers) { tracker in
                 TrackerRow(tracker)
@@ -174,7 +176,7 @@ private extension ReaderSeparatorView {
     // every row in a Button would give four of five states a press response that
     // does nothing, which is the affordance lie in its purest form
     @ViewBuilder
-    func TrackerRow(_ tracker: ReaderSeparatorModel.Tracker) -> some View {
+    fileprivate func TrackerRow(_ tracker: ReaderSeparatorModel.Tracker) -> some View {
         if tracker.state.isRetryable {
             TrackerContent(tracker)
                 .tappable { onRetryTracker(tracker.id) }
@@ -183,7 +185,7 @@ private extension ReaderSeparatorView {
         }
     }
 
-    func TrackerContent(_ tracker: ReaderSeparatorModel.Tracker) -> some View {
+    fileprivate func TrackerContent(_ tracker: ReaderSeparatorModel.Tracker) -> some View {
         HStack(spacing: dimensions.spacing.space8) {
             // the service's own tile, colour intact. this is the one place brand
             // palette is allowed into the band: a logo recoloured to .secondary
@@ -223,7 +225,7 @@ private extension ReaderSeparatorView {
     }
 
     @ViewBuilder
-    func TrackerState(_ state: ReaderSeparatorModel.Tracker.State) -> some View {
+    fileprivate func TrackerState(_ state: ReaderSeparatorModel.Tracker.State) -> some View {
         Group {
             switch state {
             case .loading:
@@ -270,7 +272,7 @@ private extension ReaderSeparatorView {
     // a footnote on the chapter above it now, so it drops a step in weight -
     // which source is serving the next chapter matters only if you notice the
     // art change, and never more than the chapter number it belongs to
-    func Continuity(_ continuity: ReaderSeparatorModel.Continuity) -> some View {
+    fileprivate func Continuity(_ continuity: ReaderSeparatorModel.Continuity) -> some View {
         HStack(spacing: dimensions.spacing.space4) {
             Image(systemName: "arrow.triangle.swap")
                 .font(.caption2)
@@ -283,7 +285,6 @@ private extension ReaderSeparatorView {
         .frame(height: slot(ReaderSeparatorModel.Metrics.continuity))
     }
 
-
     // the rule is the crossing, and a gap is what makes that crossing
     // non-contiguous - so the range goes in the break rather than becoming a row
     // underneath the chapter it does not describe. nothing failed here: 45-49
@@ -293,15 +294,15 @@ private extension ReaderSeparatorView {
     // non-text, and a 1pt hairline with a 5pt dot is below the threshold of a
     // dimmed OLED besides. decorative, so it is a should-fix at default
     // settings and a must once the reader has asked for more contrast
-    var ruleStyle: HierarchicalShapeStyle {
+    fileprivate var ruleStyle: HierarchicalShapeStyle {
         contrast == .increased ? .secondary : .tertiary
     }
 
-    var ruleHeight: CGFloat {
+    fileprivate var ruleHeight: CGFloat {
         contrast == .increased ? Layout.ruleHeightContrast : Layout.ruleHeight
     }
 
-    var Rule: some View {
+    fileprivate var Rule: some View {
         HStack(spacing: dimensions.spacing.space8) {
             Capsule()
                 .fill(ruleStyle)
@@ -344,9 +345,9 @@ private extension ReaderSeparatorView {
     }
 
     @ViewBuilder
-    var Destination: some View {
+    fileprivate var Destination: some View {
         switch model.destination {
-        case let .chapter(number, title):
+        case .chapter(let number, let title):
             VStack(spacing: dimensions.spacing.space2) {
                 Text(model.direction == .forward ? "Up next" : "Coming from")
                     .font(.caption)
@@ -365,7 +366,7 @@ private extension ReaderSeparatorView {
             }
             .frame(height: slot(ReaderSeparatorModel.Metrics.destination))
 
-        case let .loading(number):
+        case .loading(let number):
             VStack(spacing: dimensions.spacing.space8) {
                 ProgressView()
 
@@ -375,7 +376,7 @@ private extension ReaderSeparatorView {
             }
             .frame(height: slot(ReaderSeparatorModel.Metrics.destination))
 
-        case let .failed(error):
+        case .failed(let error):
             VStack(spacing: dimensions.spacing.space2) {
                 Text(error.errorDescription ?? "Couldn't Load")
                     .font(.headline)
@@ -414,7 +415,7 @@ private extension ReaderSeparatorView {
     }
 
     @ViewBuilder
-    var Action: some View {
+    fileprivate var Action: some View {
         Group {
             switch model.action {
             case .retry:
@@ -450,23 +451,23 @@ private extension ReaderSeparatorView {
 
 // MARK: - Copy
 
-private extension ReaderSeparatorModel.Continuity {
-    var summary: String {
+extension ReaderSeparatorModel.Continuity {
+    fileprivate var summary: String {
         [source, scanlator, language]
             .compactMap { $0 }
             .joined(separator: " · ")
     }
 }
 
-private extension ReaderSeparatorModel.Tracker.State {
-    var label: String {
+extension ReaderSeparatorModel.Tracker.State {
+    fileprivate var label: String {
         switch self {
         case .loading: "Syncing"
         case .tracked: "Synced"
         case .skipped: "Skipped"
         // the reason IS the word. "Failed" told the reader the one thing they
         // could already see from the glyph
-        case let .errored(reason): reason
+        case .errored(let reason): reason
         // a statement, not an instruction: this row cannot be tapped and the
         // screen it would send you to is not reachable from inside the reader.
         // "Sign in" was a button's word on something that is not a button
@@ -476,7 +477,7 @@ private extension ReaderSeparatorModel.Tracker.State {
 
     // the glyph and the word carry one colour between them, so a state is never
     // told twice in two different weights
-    var tint: Color {
+    fileprivate var tint: Color {
         switch self {
         case .loading, .tracked: Palette.muted
         case .skipped: Palette.muted
@@ -486,26 +487,26 @@ private extension ReaderSeparatorModel.Tracker.State {
 
     // only one of the two amber states can be acted on from here. signing in
     // needs a screen this one cannot reach, so it states itself and stops
-    var isRetryable: Bool {
+    fileprivate var isRetryable: Bool {
         if case .errored = self { true } else { false }
     }
 }
 
-private extension ReaderSeparatorModel.Gap {
+extension ReaderSeparatorModel.Gap {
     // "skipping" put the app in charge of a decision it never made - readers
     // consistently heard it as "the app chose to skip these" or "did I skip
     // these", and one assumed the chapters had been taken from her. it is
     // absence, not a decision, so the state word carries it and no verb does.
     // numbers first, because a long range already crowds the rule and the digits
     // are what the eye is looking for
-    var summary: String {
+    fileprivate var summary: String {
         count == 1
             ? "\(from.formatted()) unavailable"
             : "\(from.formatted())-\(to.formatted()) unavailable"
     }
 
     // VoiceOver has none of that flanking context, so it gets the sentence
-    var spoken: String {
+    fileprivate var spoken: String {
         count == 1
             ? "Chapter \(from.formatted()) unavailable"
             : "Chapters \(from.formatted()) to \(to.formatted()) unavailable"
@@ -520,8 +521,8 @@ private extension ReaderSeparatorModel.Gap {
 // every state a canvas of its own. Specimen labels and rules the specimens,
 // because two separators in a column are otherwise indistinguishable
 
-private extension ReaderSeparatorModel {
-    static func sample(
+extension ReaderSeparatorModel {
+    fileprivate static func sample(
         _ destination: Destination = .chapter(number: 45, title: "Aftermath"),
         direction: ReadingDirection = .forward,
         boundary: ReaderBoundary = .after(1),
@@ -550,9 +551,9 @@ private extension ReaderSeparatorModel {
         )
     }
 
-    static let linked: [Tracker] = [
+    fileprivate static let linked: [Tracker] = [
         .init(id: "anilist", name: "AniList", icon: "AniList", state: .tracked),
-        .init(id: "mal", name: "MyAnimeList", icon: "MyAnimeList", state: .tracked)
+        .init(id: "mal", name: "MyAnimeList", icon: "MyAnimeList", state: .tracked),
     ]
 }
 
@@ -652,16 +653,17 @@ private struct Sheet<Content: View>: View {
     @Previewable @State var step = 0
     @Previewable @State var backward = false
 
-    let phases: [(String, ReaderSeparatorModel.EventStatus?, [ReaderSeparatorModel.Tracker.State])] = [
-        ("Not crossed yet", nil, [.skipped, .skipped]),
-        ("Just crossed - event recording, both owed", .recording, [.loading, .loading]),
-        ("Event written, pushes still owed", .recorded, [.loading, .loading]),
-        ("AniList landed", .recorded, [.tracked, .loading]),
-        ("Both landed", .recorded, [.tracked, .tracked]),
-        ("MyAnimeList came back failing", .recorded, [.tracked, .errored("You're offline")]),
-        ("Signed out - needs the reader", .recorded, [.tracked, .signedOut]),
-        ("Entry already finished - nothing to push", .recorded, [.tracked, .skipped])
-    ]
+    let phases:
+        [(String, ReaderSeparatorModel.EventStatus?, [ReaderSeparatorModel.Tracker.State])] = [
+            ("Not crossed yet", nil, [.skipped, .skipped]),
+            ("Just crossed - event recording, both owed", .recording, [.loading, .loading]),
+            ("Event written, pushes still owed", .recorded, [.loading, .loading]),
+            ("AniList landed", .recorded, [.tracked, .loading]),
+            ("Both landed", .recorded, [.tracked, .tracked]),
+            ("MyAnimeList came back failing", .recorded, [.tracked, .errored("You're offline")]),
+            ("Signed out - needs the reader", .recorded, [.tracked, .signedOut]),
+            ("Entry already finished - nothing to push", .recorded, [.tracked, .skipped]),
+        ]
 
     let phase = phases[step % phases.count]
 
@@ -700,7 +702,9 @@ private struct Sheet<Content: View>: View {
                 crossed: step % phases.count != 0,
                 trackers: [
                     .init(id: "anilist", name: "AniList", icon: "AniList", state: phase.2[0]),
-                    .init(id: "myanimelist", name: "MyAnimeList", icon: "MyAnimeList", state: phase.2[1])
+                    .init(
+                        id: "myanimelist", name: "MyAnimeList", icon: "MyAnimeList",
+                        state: phase.2[1]),
                 ]
             )
         )
@@ -714,7 +718,8 @@ private struct Sheet<Content: View>: View {
     Sheet {
         Specimen(
             title: "Tap to mark",
-            model: .sample(.caughtUp, completable: completable, trackers: ReaderSeparatorModel.linked),
+            model: .sample(
+                .caughtUp, completable: completable, trackers: ReaderSeparatorModel.linked),
             onComplete: { withAnimation(.settle) { completable = false } }
         )
     }
@@ -757,7 +762,9 @@ private struct Sheet<Content: View>: View {
 
 #Preview("Dark") {
     Sheet {
-        Specimen(title: "Up next", model: .sample(event: .recorded, trackers: ReaderSeparatorModel.linked))
+        Specimen(
+            title: "Up next",
+            model: .sample(event: .recorded, trackers: ReaderSeparatorModel.linked))
         Specimen(
             title: "Ending, offered",
             model: .sample(.caughtUp, completable: true, trackers: ReaderSeparatorModel.linked)

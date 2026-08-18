@@ -36,7 +36,9 @@ struct OriginMigrationCommitter: MigrationCommitting {
         self.log = log
     }
 
-    func commit(_ entry: SourceMigrationEntry, candidate: MigrationCandidate) async -> MigrationOutcome {
+    func commit(_ entry: SourceMigrationEntry, candidate: MigrationCandidate) async
+        -> MigrationOutcome
+    {
         guard let source = registry.source(slug: candidate.sourceSlug) else {
             return .failed("That source is no longer installed.")
         }
@@ -47,17 +49,20 @@ struct OriginMigrationCommitter: MigrationCommitting {
             let detail = try await source.details(seriesSlug: candidate.stub.slug)
 
             newOriginId = try await database.writer.write { db in
-                guard let sourceId = try SourceRecord
-                    .select(SourceRecord.Columns.id, as: SourceRecord.ID.self)
-                    .filter(SourceRecord.Columns.slug == candidate.sourceSlug)
-                    .fetchOne(db)
+                guard
+                    let sourceId =
+                        try SourceRecord
+                        .select(SourceRecord.Columns.id, as: SourceRecord.ID.self)
+                        .filter(SourceRecord.Columns.slug == candidate.sourceSlug)
+                        .fetchOne(db)
                 else { throw RecordError.missingIdentifier }
 
                 // the same existence guard every commit chain in this
                 // feature family uses - this exact source may already be
                 // attached to the series (a prior migration run, or added
                 // by hand from Details)
-                let known = try OriginRecord
+                let known =
+                    try OriginRecord
                     .filter(OriginRecord.Columns.sourceId == sourceId)
                     .filter([detail.slug, candidate.stub.slug].contains(OriginRecord.Columns.slug))
                     .fetchOne(db)
@@ -78,14 +83,17 @@ struct OriginMigrationCommitter: MigrationCommitting {
         } catch is CancellationError {
             return .cancelled
         } catch {
-            log.log("migration commit could not attach '\(candidate.title)' - \(error)", level: .error, category: "migration")
+            log.log(
+                "migration commit could not attach '\(candidate.title)' - \(error)", level: .error,
+                category: "migration")
             return .failed(Failure(error, fallback: "Couldn't attach the new source").sentence)
         }
 
         // the new origin is real and attached from here on - a failure past
         // this point is reported, not rolled back
         do {
-            let outcome = await refresher.chapters(source: source, seriesSlug: candidate.stub.slug, originId: newOriginId)
+            let outcome = await refresher.chapters(
+                source: source, seriesSlug: candidate.stub.slug, originId: newOriginId)
 
             switch outcome {
             case .failed(let reason): return .failed(reason)
@@ -95,15 +103,20 @@ struct OriginMigrationCommitter: MigrationCommitting {
 
             try await database.writer.write { db in
                 try Self.copyProgress(from: entry.id, to: newOriginId, in: db)
-                try Self.reorder(newOriginId, oldOriginId: entry.id, for: entry.seriesId, mode: mode, in: db)
+                try Self.reorder(
+                    newOriginId, oldOriginId: entry.id, for: entry.seriesId, mode: mode, in: db)
             }
 
             return .saved
         } catch is CancellationError {
             return .cancelled
         } catch {
-            log.log("migration commit could not finish '\(candidate.title)' - \(error)", level: .error, category: "migration")
-            return .failed(Failure(error, fallback: "Source attached, but chapters or progress failed").sentence)
+            log.log(
+                "migration commit could not finish '\(candidate.title)' - \(error)", level: .error,
+                category: "migration")
+            return .failed(
+                Failure(error, fallback: "Source attached, but chapters or progress failed")
+                    .sentence)
         }
     }
 
@@ -116,15 +129,18 @@ struct OriginMigrationCommitter: MigrationCommitting {
         to newOriginId: OriginRecord.ID,
         in db: Database
     ) throws {
-        let old = try ChapterRecord
+        let old =
+            try ChapterRecord
             .filter(ChapterRecord.Columns.originId == oldOriginId.rawValue)
             .fetchAll(db)
         guard !old.isEmpty else { return }
 
-        let new = try ChapterRecord
+        let new =
+            try ChapterRecord
             .filter(ChapterRecord.Columns.originId == newOriginId.rawValue)
             .fetchAll(db)
-        let newByNumber = Dictionary(new.map { ($0.number, $0) }, uniquingKeysWith: { first, _ in first })
+        let newByNumber = Dictionary(
+            new.map { ($0.number, $0) }, uniquingKeysWith: { first, _ in first })
 
         for chapter in old where chapter.progress > 0 {
             guard var target = newByNumber[chapter.number] else { continue }

@@ -29,14 +29,16 @@ extension WebRenderer {
         }
 
         static func storage(_ values: [String: String]) -> String {
-            let sets = values
+            let sets =
+                values
                 .map { "localStorage.setItem(\(literal($0.key)), \(literal($0.value)));" }
                 .joined(separator: " ")
             return "(function(){ try { \(sets) } catch(e){} })();"
         }
 
         static func literal(_ value: String) -> String {
-            let escaped = value
+            let escaped =
+                value
                 .replacingOccurrences(of: "\\", with: "\\\\")
                 .replacingOccurrences(of: "\"", with: "\\\"")
                 .replacingOccurrences(of: "\n", with: "\\n")

@@ -5,8 +5,8 @@
 //  Created by Angelo Carasig on 4/8/2026.
 //
 
-import Foundation
 import CoreGraphics
+import Foundation
 
 /// lightweight search result.
 struct SeriesStub: Sendable, Hashable {

@@ -53,14 +53,20 @@ extension TitleRecord {
     }
 
     static func createIndexes(db: Database) throws {
-        try db.create(index: "idx_title_seriesId", on: databaseTableName, columns: [Columns.seriesId.name], ifNotExists: true)
-        try db.create(index: "idx_title_metadataId", on: databaseTableName, columns: [Columns.metadataId.name], ifNotExists: true)
+        try db.create(
+            index: "idx_title_seriesId", on: databaseTableName, columns: [Columns.seriesId.name],
+            ifNotExists: true)
+        try db.create(
+            index: "idx_title_metadataId", on: databaseTableName,
+            columns: [Columns.metadataId.name], ifNotExists: true)
 
         // stub matching resolves a title to its series
-        try db.create(index: "idx_title_value_seriesId", on: databaseTableName, columns: [
-            Columns.value.name,
-            Columns.seriesId.name
-        ], ifNotExists: true)
+        try db.create(
+            index: "idx_title_value_seriesId", on: databaseTableName,
+            columns: [
+                Columns.value.name,
+                Columns.seriesId.name,
+            ], ifNotExists: true)
     }
 
     mutating func didInsert(_ inserted: InsertionSuccess) {

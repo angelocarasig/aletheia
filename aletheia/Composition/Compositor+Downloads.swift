@@ -7,8 +7,8 @@
 
 import Foundation
 import GRDB
-import Tagged
 import Observation
+import Tagged
 
 // one chapter's live state, and a class rather than a struct in a dictionary on
 // purpose. observation records which property of which INSTANCE a body read, so
@@ -285,7 +285,8 @@ extension Compositor {
         // forty" is not something a person can reconstruct
         func restore() {
             guard !Constants.App.isPreview else { return }
-            let ids = (UserDefaults.standard.array(forKey: Preferences.Key.downloadQueue) as? [Int])?
+            let ids =
+                (UserDefaults.standard.array(forKey: Preferences.Key.downloadQueue) as? [Int])?
                 .map { ChapterRecord.ID(rawValue: Int64($0)) } ?? []
 
             guard !ids.isEmpty else { return }
@@ -348,9 +349,11 @@ extension Compositor {
 
         private func take() -> Work? {
             guard !halted else { return nil }
-            guard let next = pending.firstIndex(where: {
-                (inFlight[$0.sourceSlug] ?? 0) < Limits.width
-            }) else { return nil }
+            guard
+                let next = pending.firstIndex(where: {
+                    (inFlight[$0.sourceSlug] ?? 0) < Limits.width
+                })
+            else { return nil }
 
             return pending.remove(at: next)
         }
@@ -365,21 +368,23 @@ extension Compositor {
 
         private func settle(_ outcome: ChapterDownloader.Outcome) {
             switch outcome {
-            case let .stored(id, pages):
+            case .stored(let id, let pages):
                 completed += 1
                 discard(id)
                 log.log("chapter \(id.rawValue) stored, \(pages) page(s)", category: "downloads")
 
-            case let .cancelled(id):
+            case .cancelled(let id):
                 discard(id)
 
-            case let .failed(id, reason):
+            case .failed(let id, let reason):
                 failures += 1
                 release(id)
                 index[id]?.fail(reason)
-                log.log("chapter \(id.rawValue) FAILED - \(reason)", level: .error, category: "downloads")
+                log.log(
+                    "chapter \(id.rawValue) FAILED - \(reason)", level: .error,
+                    category: "downloads")
 
-            case let .noSpace(id):
+            case .noSpace(let id):
                 // one clear stop rather than the whole queue failing the same way
                 // forty times over. what remains stays queued and durable, so
                 // freeing space and starting again resumes all of it
@@ -477,16 +482,17 @@ extension Compositor.Downloads {
     }
 
     private func resolve(_ ids: [ChapterRecord.ID]) async -> [Work] {
-        let rows = (try? await database.reader.read { db in
-            try Self.rows(for: ids, in: db)
-        }) ?? []
+        let rows =
+            (try? await database.reader.read { db in
+                try Self.rows(for: ids, in: db)
+            }) ?? []
 
         // order follows what was asked for, not what the query returned
         let byId = Dictionary(uniqueKeysWithValues: rows.map { ($0.id, $0) })
 
         return ids.compactMap { id -> Work? in
             guard let row = byId[id.rawValue],
-                  let source = registry.source(slug: row.sourceSlug)
+                let source = registry.source(slug: row.sourceSlug)
             else { return nil }
 
             return Work(
@@ -516,7 +522,9 @@ extension Compositor.Downloads {
 
     // already-downloaded chapters are filtered here rather than skipped later, so
     // a queue never shows work it has nothing to do
-    nonisolated private static func rows(for ids: [ChapterRecord.ID], in db: Database) throws -> [Row] {
+    nonisolated private static func rows(for ids: [ChapterRecord.ID], in db: Database) throws
+        -> [Row]
+    {
         let list = ids.map { String($0.rawValue) }.joined(separator: ",")
         guard !list.isEmpty else { return [] }
 
@@ -545,7 +553,9 @@ extension Compositor.Downloads {
     }
 
     // rank 1 only: the copy the chapter list would show is the copy worth storing
-    nonisolated private static func unread(for series: SeriesRecord.ID, in db: Database) throws -> [ChapterRecord.ID] {
+    nonisolated private static func unread(for series: SeriesRecord.ID, in db: Database) throws
+        -> [ChapterRecord.ID]
+    {
         let sql = """
             SELECT b.chapterId AS id
             FROM \(BestChapterView.databaseTableName) b
@@ -562,7 +572,9 @@ extension Compositor.Downloads {
             .map { ChapterRecord.ID(rawValue: $0) }
     }
 
-    nonisolated private static func downloaded(for series: SeriesRecord.ID, in db: Database) throws -> [ChapterRecord.ID] {
+    nonisolated private static func downloaded(for series: SeriesRecord.ID, in db: Database) throws
+        -> [ChapterRecord.ID]
+    {
         let sql = """
             SELECT c.id AS id
             FROM \(ChapterRecord.databaseTableName) c
@@ -639,13 +651,16 @@ actor ChapterDownloader {
     func forget(_ ids: [ChapterRecord.ID]) async {
         do {
             try await database.writer.write { db in
-                _ = try ChapterRecord
+                _ =
+                    try ChapterRecord
                     .filter(ids.map(\.rawValue).contains(ChapterRecord.Columns.id))
                     .updateAll(db, ChapterRecord.Columns.path.set(to: nil as String?))
             }
             log.log("cleared \(ids.count) download path(s)", category: "downloads")
         } catch {
-            log.log("could not clear \(ids.count) download path(s) - \(error)", level: .error, category: "downloads")
+            log.log(
+                "could not clear \(ids.count) download path(s) - \(error)", level: .error,
+                category: "downloads")
         }
     }
 
@@ -670,7 +685,9 @@ actor ChapterDownloader {
                 try await database.writer.write { db in
                     try ChapterRecord.forget(Array(missing), in: db)
                 }
-                log.log("cleared \(missing.count) chapter path(s) with no files", level: .warning, category: "downloads")
+                log.log(
+                    "cleared \(missing.count) chapter path(s) with no files", level: .warning,
+                    category: "downloads")
             }
         } catch {
             // a failed read must never be mistaken for an empty keep set - that
@@ -720,7 +737,8 @@ extension ChapterDownloader {
             // marker, which is why pages can be written straight to their final
             // home rather than staged and moved
             try await database.writer.write { db in
-                _ = try ChapterRecord
+                _ =
+                    try ChapterRecord
                     .filter(key: work.id.rawValue)
                     .updateAll(db, ChapterRecord.Columns.path.set(to: path))
             }
@@ -766,15 +784,16 @@ extension ChapterDownloader {
 
         let rows = try Row.fetchAll(db, sql: sql)
 
-        return Set(rows.map { row in
-            let asset = Asset(
-                key: "\(row.originId)/\(row.slug)",
-                parts: [URL(filePath: "/"), URL(filePath: "/")],
-                folder: ChapterRecord.storage,
-                headers: [:]
-            )
-            return Constants.Paths.relative(asset.location)
-        })
+        return Set(
+            rows.map { row in
+                let asset = Asset(
+                    key: "\(row.originId)/\(row.slug)",
+                    parts: [URL(filePath: "/"), URL(filePath: "/")],
+                    folder: ChapterRecord.storage,
+                    headers: [:]
+                )
+                return Constants.Paths.relative(asset.location)
+            })
     }
 
     private struct Row: Decodable, FetchableRecord {

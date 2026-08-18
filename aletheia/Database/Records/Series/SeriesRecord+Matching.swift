@@ -27,27 +27,31 @@ extension SeriesRecord {
     ) throws -> [SeriesMatch] {
         guard !stubs.isEmpty else { return [] }
 
-        let sourceId = try SourceRecord
+        let sourceId =
+            try SourceRecord
             .select(SourceRecord.Columns.id, as: SourceRecord.ID.self)
             .filter(SourceRecord.Columns.slug == sourceSlug)
             .fetchOne(db)
 
         // an unseeded source has no origins to hit, but the title tier is
         // independent of source and still runs
-        let origins = try sourceId.map { id in
-            try OriginRecord
-                .filter(OriginRecord.Columns.sourceId == id)
-                .filter(stubs.map(\.slug).contains(OriginRecord.Columns.slug))
-                .fetchAll(db)
-        } ?? []
+        let origins =
+            try sourceId.map { id in
+                try OriginRecord
+                    .filter(OriginRecord.Columns.sourceId == id)
+                    .filter(stubs.map(\.slug).contains(OriginRecord.Columns.slug))
+                    .fetchAll(db)
+            } ?? []
 
         // the column collates case-insensitively, so IN already matches on case
-        let titles = try TitleRecord
+        let titles =
+            try TitleRecord
             .filter(stubs.map(\.title).contains(TitleRecord.Columns.value))
             .fetchAll(db)
 
         let touched = Set(origins.map(\.seriesId)).union(titles.map(\.seriesId))
-        let library = try SeriesRecord
+        let library =
+            try SeriesRecord
             .select(Columns.id, as: SeriesRecord.ID.self)
             .filter(touched.contains(Columns.id))
             .filter(Columns.inLibrary == true)

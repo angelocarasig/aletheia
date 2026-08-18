@@ -5,8 +5,8 @@
 //  Created by Angelo Carasig on 13/8/2026.
 //
 
-import Foundation
 import BackgroundTasks
+import Foundation
 
 // the graph, and the one registration that cannot wait for a screen.
 //
@@ -74,32 +74,34 @@ enum Launch {
         registered = true
 
         #if !targetEnvironment(simulator)
-        // a different api from the continued-processing tasks, and a different
-        // rule: those are exempt from having to register before launch ends, so
-        // they stay with the owner that submits them. this one is not
-        let installed = BGTaskScheduler.shared.register(
-            forTaskWithIdentifier: Constants.Tasks.scheduledRefresh,
-            using: nil
-        ) { task in
-            Task { @MainActor in
-                guard let compositor = try? await Compositor.shared() else {
-                    log.log("scheduled refresh could not build the graph", level: .error, category: "refresh")
-                    return task.setTaskCompleted(success: false)
+            // a different api from the continued-processing tasks, and a different
+            // rule: those are exempt from having to register before launch ends, so
+            // they stay with the owner that submits them. this one is not
+            let installed = BGTaskScheduler.shared.register(
+                forTaskWithIdentifier: Constants.Tasks.scheduledRefresh,
+                using: nil
+            ) { task in
+                Task { @MainActor in
+                    guard let compositor = try? await Compositor.shared() else {
+                        log.log(
+                            "scheduled refresh could not build the graph", level: .error,
+                            category: "refresh")
+                        return task.setTaskCompleted(success: false)
+                    }
+
+                    compositor.refresh.adopt(task)
                 }
-
-                compositor.refresh.adopt(task)
             }
-        }
 
-        // false means the identifier is missing from BGTaskSchedulerPermittedIdentifiers,
-        // which is the one failure this call reports rather than asserting on
-        log.log(
-            installed
-                ? "registered \(Constants.Tasks.scheduledRefresh)"
-                : "\(Constants.Tasks.scheduledRefresh) refused - identifier not permitted",
-            level: installed ? .info : .error,
-            category: "tasks"
-        )
+            // false means the identifier is missing from BGTaskSchedulerPermittedIdentifiers,
+            // which is the one failure this call reports rather than asserting on
+            log.log(
+                installed
+                    ? "registered \(Constants.Tasks.scheduledRefresh)"
+                    : "\(Constants.Tasks.scheduledRefresh) refused - identifier not permitted",
+                level: installed ? .info : .error,
+                category: "tasks"
+            )
         #endif
     }
 
@@ -113,27 +115,29 @@ enum Launch {
         registeredMetadata = true
 
         #if !targetEnvironment(simulator)
-        let installed = BGTaskScheduler.shared.register(
-            forTaskWithIdentifier: Constants.Tasks.scheduledMetadataRefresh,
-            using: nil
-        ) { task in
-            Task { @MainActor in
-                guard let compositor = try? await Compositor.shared() else {
-                    log.log("scheduled metadata refresh could not build the graph", level: .error, category: "metadata")
-                    return task.setTaskCompleted(success: false)
+            let installed = BGTaskScheduler.shared.register(
+                forTaskWithIdentifier: Constants.Tasks.scheduledMetadataRefresh,
+                using: nil
+            ) { task in
+                Task { @MainActor in
+                    guard let compositor = try? await Compositor.shared() else {
+                        log.log(
+                            "scheduled metadata refresh could not build the graph", level: .error,
+                            category: "metadata")
+                        return task.setTaskCompleted(success: false)
+                    }
+
+                    compositor.metadata.adopt(task)
                 }
-
-                compositor.metadata.adopt(task)
             }
-        }
 
-        log.log(
-            installed
-                ? "registered \(Constants.Tasks.scheduledMetadataRefresh)"
-                : "\(Constants.Tasks.scheduledMetadataRefresh) refused - identifier not permitted",
-            level: installed ? .info : .error,
-            category: "tasks"
-        )
+            log.log(
+                installed
+                    ? "registered \(Constants.Tasks.scheduledMetadataRefresh)"
+                    : "\(Constants.Tasks.scheduledMetadataRefresh) refused - identifier not permitted",
+                level: installed ? .info : .error,
+                category: "tasks"
+            )
         #endif
     }
 }

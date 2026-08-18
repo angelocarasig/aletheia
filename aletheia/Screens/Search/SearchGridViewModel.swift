@@ -5,8 +5,9 @@
 //  Created by Angelo Carasig on 5/8/2026.
 //
 
-import Observation
 import Foundation
+import Observation
+
 import struct SwiftUI.ImageResource
 
 struct GridEntry: Identifiable, Equatable, Sendable {
@@ -99,13 +100,14 @@ final class SearchGridViewModel {
     var activeFilterCount: Int {
         filters.reduce(0) { total, selection in
             switch selection {
-            case let .text(_, value): return total + (value.isEmpty ? 0 : 1)
+            case .text(_, let value): return total + (value.isEmpty ? 0 : 1)
             case .number: return total + 1
             // counts, same as every other kind. it was excluded here while the
             // inline panel counted it, so on a source with select filters the
             // pill read "Refine" with no count and the sheet hid its Clear All
             case .select: return total + 1
-            case let .multiSelect(_, included, excluded): return total + included.count + excluded.count
+            case .multiSelect(_, let included, let excluded):
+                return total + included.count + excluded.count
             }
         }
     }
@@ -139,20 +141,29 @@ final class SearchGridViewModel {
     var applied: [Applied] {
         filters.flatMap { selection -> [Applied] in
             switch selection {
-            case let .multiSelect(id, included, excluded):
+            case .multiSelect(let id, let included, let excluded):
                 return included.map {
                     Applied(filterID: id, optionID: $0, name: label(id, $0), excluded: false)
-                } + excluded.map {
-                    Applied(filterID: id, optionID: $0, name: label(id, $0), excluded: true)
                 }
+                    + excluded.map {
+                        Applied(filterID: id, optionID: $0, name: label(id, $0), excluded: true)
+                    }
 
-            case let .select(id, optionID):
-                return [Applied(filterID: id, optionID: optionID, name: label(id, optionID), excluded: false)]
+            case .select(let id, let optionID):
+                return [
+                    Applied(
+                        filterID: id, optionID: optionID, name: label(id, optionID), excluded: false
+                    )
+                ]
 
-            case let .number(id, value):
-                return [Applied(filterID: id, optionID: String(value), name: "\(name(of: id)) \(value)", excluded: false)]
+            case .number(let id, let value):
+                return [
+                    Applied(
+                        filterID: id, optionID: String(value), name: "\(name(of: id)) \(value)",
+                        excluded: false)
+                ]
 
-            case let .text(id, value):
+            case .text(let id, let value):
                 guard !value.isEmpty else { return [] }
                 return [Applied(filterID: id, optionID: value, name: value, excluded: false)]
             }
@@ -164,13 +175,14 @@ final class SearchGridViewModel {
         defer { refreshGate() }
 
         switch filters[index] {
-        case let .multiSelect(id, included, excluded):
+        case .multiSelect(let id, let included, let excluded):
             let remainingIncluded = included.filter { $0 != chip.optionID }
             let remainingExcluded = excluded.filter { $0 != chip.optionID }
             if remainingIncluded.isEmpty, remainingExcluded.isEmpty {
                 filters.remove(at: index)
             } else {
-                filters[index] = .multiSelect(id: id, included: remainingIncluded, excluded: remainingExcluded)
+                filters[index] = .multiSelect(
+                    id: id, included: remainingIncluded, excluded: remainingExcluded)
             }
 
         case .select, .number, .text:
@@ -183,9 +195,9 @@ final class SearchGridViewModel {
     private func label(_ filterID: String, _ optionID: String) -> String {
         for filter in supportedFilters {
             switch filter {
-            case let .select(id, _, options) where id == filterID:
+            case .select(let id, _, let options) where id == filterID:
                 return options.first { $0.id == optionID }?.name ?? optionID
-            case let .multiSelect(id, _, options, _) where id == filterID:
+            case .multiSelect(let id, _, let options, _) where id == filterID:
                 return options.first { $0.id == optionID }?.name ?? optionID
             default:
                 continue
@@ -197,8 +209,8 @@ final class SearchGridViewModel {
     private func name(of filterID: String) -> String {
         for filter in supportedFilters {
             switch filter {
-            case let .text(id, name), let .number(id, name),
-                 let .select(id, name, _), let .multiSelect(id, name, _, _):
+            case .text(let id, let name), .number(let id, let name),
+                .select(let id, let name, _), .multiSelect(let id, let name, _, _):
                 if id == filterID { return name }
             }
         }
@@ -272,7 +284,8 @@ final class SearchGridViewModel {
     }
 
     private func refreshGate() {
-        gateOpen = source.allowsAdult(for: SearchQuery(text: nil, filters: filters, sort: nil, page: 1))
+        gateOpen = source.allowsAdult(
+            for: SearchQuery(text: nil, filters: filters, sort: nil, page: 1))
     }
 
     func match(for stub: SeriesStub) -> SeriesMatch? {
@@ -372,7 +385,9 @@ final class SearchGridViewModel {
         } catch {
             if loadingMore, page > 1 { page -= 1 }
             failure = Failure(error, fallback: "Couldn't Load")
-            AppLog.shared.log("search failed for '\(source.descriptor.slug)' - \(error)", level: .error, category: "search")
+            AppLog.shared.log(
+                "search failed for '\(source.descriptor.slug)' - \(error)", level: .error,
+                category: "search")
         }
 
         if loadingMore { isLoadingMore = false } else { isLoading = false }

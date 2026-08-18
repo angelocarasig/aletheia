@@ -49,14 +49,16 @@ final class SourceHomeViewModel {
             let credential = try await requester.forceRefresh(for: auth)
             credentialCaptured = credential.capturedDate
         } catch {
-            AppLog.shared.log("credential refresh failed for '\(source.descriptor.slug)' - \(error)", level: .error, category: "auth")
+            AppLog.shared.log(
+                "credential refresh failed for '\(source.descriptor.slug)' - \(error)",
+                level: .error, category: "auth")
         }
     }
 
     func loadHero() async {
         guard heroEntries.isEmpty else { return }
 
-            let presets = source.presets
+        let presets = source.presets
             .filter { !$0.hidden }
             .sorted { $0.order < $1.order }
             .prefix(Limit.presetSpread)
@@ -110,25 +112,25 @@ private struct SeededGenerator: RandomNumberGenerator {
     }
 
     mutating func next() -> UInt64 {
-        state &+= 0x9E3779B97F4A7C15
+        state &+= 0x9E37_79B9_7F4A_7C15
         var z = state
-        z = (z ^ (z >> 30)) &* 0xBF58476D1CE4E5B9
-        z = (z ^ (z >> 27)) &* 0x94D049BB133111EB
+        z = (z ^ (z >> 30)) &* 0xBF58_476D_1CE4_E5B9
+        z = (z ^ (z >> 27)) &* 0x94D0_49BB_1331_11EB
         return z ^ (z >> 31)
     }
 }
 
 // MARK: - Stable Hashing
 
-private extension String {
+extension String {
     // FNV-1a (64-bit). deterministic across launches, unlike String.hashValue
     // which Swift randomizes per process - the day-seeded hero selection needs a
     // launch-stable seed so it stays fixed for the whole day.
-    var stableHash: UInt64 {
-        var hash: UInt64 = 0xCBF29CE484222325
+    fileprivate var stableHash: UInt64 {
+        var hash: UInt64 = 0xCBF2_9CE4_8422_2325
         for byte in utf8 {
             hash ^= UInt64(byte)
-            hash = hash &* 0x100000001B3
+            hash = hash &* 0x100_0000_01B3
         }
         return hash
     }

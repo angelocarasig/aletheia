@@ -5,8 +5,8 @@
 //  Created by Angelo Carasig on 15/8/26
 //
 
-import SwiftUI
 import GRDB
+import SwiftUI
 
 // what the recommender has actually shown, and what came of it. a read-only
 // window onto recommendation_impression, which is otherwise only legible by
@@ -72,7 +72,8 @@ struct ImpressionsScreen: View {
 
             VStack(alignment: .leading, spacing: dimensions.spacing.space8) {
                 Line("Shown", "\(model.total)")
-                Line("Tapped", "\(model.tapped) of \(model.total)\(rate(model.tapped, model.total))")
+                Line(
+                    "Tapped", "\(model.tapped) of \(model.total)\(rate(model.tapped, model.total))")
                 // the payoff of series.catalogId: a tapped recommendation whose
                 // catalogue row later appears in the library is a conversion that
                 // nothing could express before the column existed
@@ -98,7 +99,8 @@ struct ImpressionsScreen: View {
                             .frame(width: 24, alignment: .trailing)
 
                         GeometryReader { proxy in
-                            let fraction = model.widest > 0
+                            let fraction =
+                                model.widest > 0
                                 ? Double(row.shown) / Double(model.widest) : 0
                             ZStack(alignment: .leading) {
                                 Capsule().fill(.primary.opacity(0.08))
@@ -108,10 +110,12 @@ struct ImpressionsScreen: View {
                         }
                         .frame(height: 6)
 
-                        Text(row.tapped > 0 ? "\(row.shown) - \(row.tapped) tapped" : "\(row.shown)")
-                            .font(.caption.monospacedDigit())
-                            .foregroundStyle(row.tapped > 0 ? .primary : .secondary)
-                            .frame(width: 110, alignment: .leading)
+                        Text(
+                            row.tapped > 0 ? "\(row.shown) - \(row.tapped) tapped" : "\(row.shown)"
+                        )
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(row.tapped > 0 ? .primary : .secondary)
+                        .frame(width: 110, alignment: .leading)
                     }
                 }
             }
@@ -130,9 +134,11 @@ struct ImpressionsScreen: View {
                             .fontWeight(.medium)
                             .lineLimit(1)
 
-                        Text("\(row.shown) shown\(row.tapped > 0 ? ", \(row.tapped) tapped" : "") · \(row.modelVersion)")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                        Text(
+                            "\(row.shown) shown\(row.tapped > 0 ? ", \(row.tapped) tapped" : "") · \(row.modelVersion)"
+                        )
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
 
                         LiveRelativeText(date: row.at)
                             .font(.caption2)
@@ -172,7 +178,8 @@ struct ImpressionsScreen: View {
 
     private func rate(_ part: Int, _ whole: Int) -> String {
         guard whole > 0, part > 0 else { return "" }
-        return "  (\((Double(part) / Double(whole)).formatted(.percent.precision(.fractionLength(0)))))"
+        return
+            "  (\((Double(part) / Double(whole)).formatted(.percent.precision(.fractionLength(0)))))"
     }
 }
 
@@ -194,7 +201,11 @@ extension ImpressionsScreen {
 
         var widest: Int { positions.map(\.shown).max() ?? 0 }
 
-        struct Position { let rank: Int; let shown: Int; let tapped: Int }
+        struct Position {
+            let rank: Int
+            let shown: Int
+            let tapped: Int
+        }
         struct Batch {
             let batchId: String
             let seedTitle: String
@@ -213,55 +224,66 @@ extension ImpressionsScreen {
             let table = RecommendationImpressionRecord.databaseTableName
             do {
                 let loaded = try await database.reader.read { db -> (Model.Snapshot) in
-                    let summary = try Row.fetchOne(db, sql: """
-                        SELECT count(*) AS total,
-                               count(DISTINCT catalogId) AS distinct_titles,
-                               count(DISTINCT batchId) AS batches,
-                               count(DISTINCT seedSeriesId) AS seeds,
-                               sum(tappedDate IS NOT NULL) AS tapped,
-                               sum(alreadyInLibrary) AS owned
-                        FROM \(table)
-                        """)
+                    let summary = try Row.fetchOne(
+                        db,
+                        sql: """
+                            SELECT count(*) AS total,
+                                   count(DISTINCT catalogId) AS distinct_titles,
+                                   count(DISTINCT batchId) AS batches,
+                                   count(DISTINCT seedSeriesId) AS seeds,
+                                   sum(tappedDate IS NOT NULL) AS tapped,
+                                   sum(alreadyInLibrary) AS owned
+                            FROM \(table)
+                            """)
 
                     // a tap that later appears in the library. the join is on
                     // series.catalogId, which is the whole reason that column
                     // exists - without it this row could not be written
-                    let converted = try Int.fetchOne(db, sql: """
-                        SELECT count(DISTINCT i.catalogId)
-                        FROM \(table) i
-                        JOIN \(SeriesRecord.databaseTableName) s
-                          ON s.\(SeriesRecord.Columns.catalogId.name) = i.catalogId
-                         AND s.\(SeriesRecord.Columns.inLibrary.name) = 1
-                        WHERE i.tappedDate IS NOT NULL
-                        """) ?? 0
+                    let converted =
+                        try Int.fetchOne(
+                            db,
+                            sql: """
+                                SELECT count(DISTINCT i.catalogId)
+                                FROM \(table) i
+                                JOIN \(SeriesRecord.databaseTableName) s
+                                  ON s.\(SeriesRecord.Columns.catalogId.name) = i.catalogId
+                                 AND s.\(SeriesRecord.Columns.inLibrary.name) = 1
+                                WHERE i.tappedDate IS NOT NULL
+                                """) ?? 0
 
-                    let ranks = try Row.fetchAll(db, sql: """
-                        SELECT rank, count(*) AS shown, sum(tappedDate IS NOT NULL) AS tapped
-                        FROM \(table) WHERE rank < ?
-                        GROUP BY rank ORDER BY rank
-                        """, arguments: [Limits.ranks])
+                    let ranks = try Row.fetchAll(
+                        db,
+                        sql: """
+                            SELECT rank, count(*) AS shown, sum(tappedDate IS NOT NULL) AS tapped
+                            FROM \(table) WHERE rank < ?
+                            GROUP BY rank ORDER BY rank
+                            """, arguments: [Limits.ranks])
 
-                    let rails = try Row.fetchAll(db, sql: """
-                        SELECT i.batchId,
-                               i.modelVersion,
-                               count(*) AS shown,
-                               sum(i.tappedDate IS NOT NULL) AS tapped,
-                               min(i.occurredDate) AS at,
-                               COALESCE(t.value, 'Series ' || i.seedSeriesId) AS seedTitle
-                        FROM \(table) i
-                        LEFT JOIN \(SeriesRecord.databaseTableName) s ON s.id = i.seedSeriesId
-                        LEFT JOIN \(TitleRecord.databaseTableName) t ON t.id = s.preferredTitleId
-                        GROUP BY i.batchId
-                        ORDER BY at DESC LIMIT ?
-                        """, arguments: [Limits.rails])
+                    let rails = try Row.fetchAll(
+                        db,
+                        sql: """
+                            SELECT i.batchId,
+                                   i.modelVersion,
+                                   count(*) AS shown,
+                                   sum(i.tappedDate IS NOT NULL) AS tapped,
+                                   min(i.occurredDate) AS at,
+                                   COALESCE(t.value, 'Series ' || i.seedSeriesId) AS seedTitle
+                            FROM \(table) i
+                            LEFT JOIN \(SeriesRecord.databaseTableName) s ON s.id = i.seedSeriesId
+                            LEFT JOIN \(TitleRecord.databaseTableName) t ON t.id = s.preferredTitleId
+                            GROUP BY i.batchId
+                            ORDER BY at DESC LIMIT ?
+                            """, arguments: [Limits.rails])
 
-                    return Snapshot(summary: summary, converted: converted,
-                                    ranks: ranks, rails: rails)
+                    return Snapshot(
+                        summary: summary, converted: converted,
+                        ranks: ranks, rails: rails)
                 }
                 apply(loaded)
             } catch {
-                AppLog.shared.log("impression insights unavailable - \(error)",
-                                  level: .error, category: "impressions")
+                AppLog.shared.log(
+                    "impression insights unavailable - \(error)",
+                    level: .error, category: "impressions")
             }
         }
 
@@ -284,9 +306,10 @@ extension ImpressionsScreen {
                 Position(rank: $0["rank"], shown: $0["shown"], tapped: $0["tapped"] ?? 0)
             }
             recent = s.rails.map {
-                Batch(batchId: $0["batchId"], seedTitle: $0["seedTitle"],
-                      shown: $0["shown"], tapped: $0["tapped"] ?? 0,
-                      modelVersion: $0["modelVersion"], at: $0["at"])
+                Batch(
+                    batchId: $0["batchId"], seedTitle: $0["seedTitle"],
+                    shown: $0["shown"], tapped: $0["tapped"] ?? 0,
+                    modelVersion: $0["modelVersion"], at: $0["at"])
             }
         }
     }

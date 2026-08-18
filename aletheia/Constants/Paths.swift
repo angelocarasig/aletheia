@@ -12,7 +12,7 @@ extension Constants {
         static var database: URL {
             directory("Database").appendingPathComponent("aletheia.db")
         }
-        
+
         // let rather than var: excluding a directory from backup is a write, and
         // these are read often enough that repeating it on every access is waste
         static let downloads: URL = directory("Downloads", backedUp: false)
@@ -47,10 +47,11 @@ extension Constants {
         static func resolve(_ relative: String?) -> URL? {
             guard let relative, !relative.isEmpty else { return nil }
             let url = containerURL.appending(path: relative)
-            return FileManager.default.fileExists(atPath: url.path(percentEncoded: false)) ? url : nil
+            return FileManager.default.fileExists(atPath: url.path(percentEncoded: false))
+                ? url : nil
         }
     }
-    
+
     // MARK: Private
 
     private static func trimmed(_ path: String) -> String {
@@ -60,15 +61,17 @@ extension Constants {
     }
 
     private static let containerURL: URL = {
-        guard let url = FileManager.default.containerURL(
-            forSecurityApplicationGroupIdentifier: Constants.App.identifier
-        ) else {
+        guard
+            let url = FileManager.default.containerURL(
+                forSecurityApplicationGroupIdentifier: Constants.App.identifier
+            )
+        else {
             fatalError("App Group '\(Constants.App.identifier)' not configured.")
         }
 
         return url
     }()
-    
+
     // backedUp: false for anything a source can serve again. a library of page
     // images is gigabytes, and icloud quota spent on bytes the app can re-fetch
     // buys the user nothing - the database, which holds what cannot be re-fetched,
@@ -88,5 +91,5 @@ extension Constants {
 
         return url
     }
-    
+
 }

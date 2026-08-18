@@ -36,9 +36,10 @@ actor V01Recommender: RecommenderService {
     var descriptor: RecommenderDescriptor {
         get async {
             guard let state = try? state() else {
-                return RecommenderDescriptor(slug: "v01", name: "Content v01",
-                                             formatVersion: 0, titleCount: 0,
-                                             encodesText: false, hasMetadata: false)
+                return RecommenderDescriptor(
+                    slug: "v01", name: "Content v01",
+                    formatVersion: 0, titleCount: 0,
+                    encodesText: false, hasMetadata: false)
             }
             return RecommenderDescriptor(
                 slug: "v01",
@@ -67,10 +68,12 @@ actor V01Recommender: RecommenderService {
             category: "recommender")
     }
 
-    func recommend(_ payload: Payload,
-                   ceiling: ContentCeiling,
-                   formats: Set<CatalogFormat>,
-                   limit: Int) async throws -> RecommendationSet {
+    func recommend(
+        _ payload: Payload,
+        ceiling: ContentCeiling,
+        formats: Set<CatalogFormat>,
+        limit: Int
+    ) async throws -> RecommendationSet {
         let state = try state()
         let types = Set(formats.map(\.rawValue))
 
@@ -78,18 +81,21 @@ actor V01Recommender: RecommenderService {
         let result: Scorer.Result
         switch seed {
         case .linked(_, let row), .resolved(let row, _, _):
-            result = state.scorer.rank(row: row, ceiling: ceiling.rawValue,
-                                       types: types, k: limit)
+            result = state.scorer.rank(
+                row: row, ceiling: ceiling.rawValue,
+                types: types, k: limit)
         case .projected:
             let vector = state.vocabulary.encode(payload.tags)
             // every block declined. scoring would divide by zero and rank noise,
             // so the honest answer is nothing rather than something
             guard !vector.columns.isEmpty else {
-                return RecommendationSet(seed: seed, seedCatalogId: nil,
-                                         wTagEff: 0, used: 0, results: [])
+                return RecommendationSet(
+                    seed: seed, seedCatalogId: nil,
+                    wTagEff: 0, used: 0, results: [])
             }
-            result = state.scorer.rank(vector: vector, ceiling: ceiling.rawValue,
-                                       types: types, k: limit)
+            result = state.scorer.rank(
+                vector: vector, ceiling: ceiling.rawValue,
+                types: types, k: limit)
         }
 
         return RecommendationSet(
@@ -117,8 +123,9 @@ actor V01Recommender: RecommenderService {
             return .resolved(row: best.key, matched: matched ?? "", votes: best.value)
         }
         let encoded = state.vocabulary.encode(payload.tags)
-        return .projected(encoded: encoded.columns.count,
-                          dropped: max(0, payload.tags.count - encoded.columns.count))
+        return .projected(
+            encoded: encoded.columns.count,
+            dropped: max(0, payload.tags.count - encoded.columns.count))
     }
 
     private func row(for id: CatalogID, in state: Loaded) -> Int? {
@@ -127,7 +134,8 @@ actor V01Recommender: RecommenderService {
         guard state.idsAscending else {
             return (0..<n).first { state.scorer.catalogId(of: $0) == target }
         }
-        var low = 0, high = n - 1
+        var low = 0
+        var high = n - 1
         while low <= high {
             let mid = (low + high) / 2
             let value = state.scorer.catalogId(of: mid)
@@ -142,12 +150,14 @@ actor V01Recommender: RecommenderService {
     private func present(_ ranked: Scorer.Ranked, in state: Loaded) -> Recommendation {
         let row = ranked.row
         let titles = (try? state.bundle.array("titles.bin", "offsets", of: UInt32.self))
-        let title = titles.flatMap { offsets -> String? in
-            guard let blob = try? state.bundle.blob("titles.blob") else { return nil }
-            let lo = Int(offsets[row]), hi = Int(offsets[row + 1])
-            guard hi <= blob.count, hi >= lo else { return nil }
-            return String(data: blob[lo..<hi], encoding: .utf8)
-        } ?? ""
+        let title =
+            titles.flatMap { offsets -> String? in
+                guard let blob = try? state.bundle.blob("titles.blob") else { return nil }
+                let lo = Int(offsets[row])
+                let hi = Int(offsets[row + 1])
+                guard hi <= blob.count, hi >= lo else { return nil }
+                return String(data: blob[lo..<hi], encoding: .utf8)
+            } ?? ""
 
         return Recommendation(
             catalogId: CatalogID(rawValue: ranked.catalogId),
@@ -158,7 +168,8 @@ actor V01Recommender: RecommenderService {
             cover: state.metadata?.cover(row),
             synopsis: state.metadata?.synopsis(row),
             tags: state.vocabulary.names(for: state.scorer.columns(of: row)),
-            classification: ContentCeiling(rawValue: state.scorer.rating(of: row))?.classification ?? .Unknown,
+            classification: ContentCeiling(rawValue: state.scorer.rating(of: row))?.classification
+                ?? .Unknown,
             publication: state.metadata?.status(row).publication ?? .Unknown,
             year: state.scorer.publicationYear(of: row),
             format: CatalogFormat(rawValue: state.scorer.format(of: row)) ?? .other,
@@ -183,20 +194,22 @@ actor V01Recommender: RecommenderService {
                 for i in 1..<values.count where values[i] < values[i - 1] { return false }
                 return true
             }
-            let state = Loaded(bundle: bundle,
-                               scorer: scorer,
-                               aliases: try AliasIndex(bundle: bundle),
-                               vocabulary: try TagVocabulary(bundle: bundle),
-                               metadata: CatalogMetadata(bundle: bundle),
-                               idsAscending: ascending)
+            let state = Loaded(
+                bundle: bundle,
+                scorer: scorer,
+                aliases: try AliasIndex(bundle: bundle),
+                vocabulary: try TagVocabulary(bundle: bundle),
+                metadata: CatalogMetadata(bundle: bundle),
+                idsAscending: ascending)
             loaded = state
             return state
         } catch let error as RecommenderError {
             failure = error
             throw error
         } catch {
-            let wrapped = RecommenderError.malformed(file: "bundle",
-                                                     reason: String(describing: error))
+            let wrapped = RecommenderError.malformed(
+                file: "bundle",
+                reason: String(describing: error))
             failure = wrapped
             throw wrapped
         }

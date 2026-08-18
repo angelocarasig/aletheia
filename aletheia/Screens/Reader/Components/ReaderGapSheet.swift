@@ -24,7 +24,9 @@ struct ReaderGapSheet: View {
                 VStack(spacing: dimensions.spacing.space12) {
                     // the first line answers the reader who thinks something was
                     // taken from her, and it is the more important of the two
-                    Text("No source you have installed has these chapters. Nothing has been removed from your library.")
+                    Text(
+                        "No source you have installed has these chapters. Nothing has been removed from your library."
+                    )
 
                     if !gap.sources.isEmpty {
                         Text("Checked \(gap.sources.formatted(.list(type: .and)))")

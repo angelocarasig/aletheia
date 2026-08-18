@@ -7,8 +7,8 @@
 
 import SwiftUI
 
-private extension EnvironmentValues {
-    @Entry var disconnectedMigrationStepPressed = false
+extension EnvironmentValues {
+    @Entry fileprivate var disconnectedMigrationStepPressed = false
 }
 
 private struct DisconnectedMigrationStepButtonStyle: ButtonStyle {
@@ -117,7 +117,8 @@ struct DisconnectedSourceMigrationScreen: View {
         .modifier(
             Chrome(
                 title: "Disconnected Sources",
-                subtitle: Text("^[\(composer.selectedSourceSlugs.count) source](inflect: true) selected"),
+                subtitle: Text(
+                    "^[\(composer.selectedSourceSlugs.count) source](inflect: true) selected"),
                 onClose: onFinish
             ) {
                 StartButton(composer)
@@ -170,7 +171,9 @@ struct DisconnectedSourceMigrationScreen: View {
         .accessibilityAddTraits(chosen ? .isSelected : [])
     }
 
-    private func ToRow(_ composer: MigrationComposer<SourceMigrationEntry>, _ source: Source) -> some View {
+    private func ToRow(_ composer: MigrationComposer<SourceMigrationEntry>, _ source: Source)
+        -> some View
+    {
         let selected = composer.selectedSourceSlugs.contains(source.descriptor.slug)
 
         return HStack(spacing: dimensions.spacing.space12) {

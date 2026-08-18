@@ -162,7 +162,8 @@ struct DetailsSources: View {
     private func State(_ origin: Origin) -> some View {
         switch origin.availability {
         case .available where origin.failing: Badge(text: "FAILING", tone: .warning, size: .compact)
-        case .available where origin.priority == 0: Badge(text: "PRIMARY", tone: .brand, size: .compact)
+        case .available where origin.priority == 0:
+            Badge(text: "PRIMARY", tone: .brand, size: .compact)
         case .available: EmptyView()
         case .disabled: Badge(text: "DISABLED", tone: .warning, size: .compact)
         case .disconnected: Badge(text: "DISCONNECTED", tone: .danger, size: .compact)
@@ -180,7 +181,9 @@ struct DetailsSources: View {
     private func Subtitle(_ origin: Origin) -> some View {
         Group {
             if duplicatedNames.contains(origin.name) {
-                Text("\(marker(for: origin.slug)) · ^[\(origin.chapterCount) chapter](inflect: true)")
+                Text(
+                    "\(marker(for: origin.slug)) · ^[\(origin.chapterCount) chapter](inflect: true)"
+                )
             } else {
                 Text("^[\(origin.chapterCount) chapter](inflect: true)")
             }
@@ -271,12 +274,18 @@ private struct SourcesPreview: View {
         ("Decoding", "\(Constants.App.name) couldn't read the server's response."),
         ("Transport", "A server with the specified hostname could not be found."),
         ("Nothing came back", "The server responded but returned nothing to read."),
-        ("Verification timed out", "The source's checks didn't finish in time. Try again in a moment."),
+        (
+            "Verification timed out",
+            "The source's checks didn't finish in time. Try again in a moment."
+        ),
         ("Verification needed", "This source needs to verify your browser before it can be read."),
         ("Unknown", "Something unexpected went wrong. Please try again."),
         // the longest sentence any of these can be, which is where the two-line
         // clamp and the button below it have to still look deliberate
-        ("Two lines", "The server responded but returned nothing to read. This usually means the listing moved.")
+        (
+            "Two lines",
+            "The server responded but returned nothing to read. This usually means the listing moved."
+        ),
     ]
 
     private var state: (name: String, reason: String?) { Self.states[index] }
@@ -375,12 +384,25 @@ private struct SourcesPreview: View {
     ScrollView {
         DetailsSources(
             origins: [
-                .init(id: 1, name: "MangaFire", slug: "one-piece", host: "mangafire.to", url: nil, icon: nil, priority: 0, chapterCount: 1102, fetchedDate: .now, availability: .disabled, failureReason: nil, failedDate: nil),
-                .init(id: 2, name: "WeebCentral", slug: "01J76XY", host: "weebcentral.com", url: nil, icon: nil, priority: 1, chapterCount: 1098, fetchedDate: nil, availability: .disconnected, failureReason: nil, failedDate: nil),
-                .init(id: 3, name: "Atsumaru", slug: "op", host: "atsu.moe", url: nil, icon: nil, priority: 2, chapterCount: 0, fetchedDate: nil, availability: .missing, failureReason: nil, failedDate: nil),
+                .init(
+                    id: 1, name: "MangaFire", slug: "one-piece", host: "mangafire.to", url: nil,
+                    icon: nil, priority: 0, chapterCount: 1102, fetchedDate: .now,
+                    availability: .disabled, failureReason: nil, failedDate: nil),
+                .init(
+                    id: 2, name: "WeebCentral", slug: "01J76XY", host: "weebcentral.com", url: nil,
+                    icon: nil, priority: 1, chapterCount: 1098, fetchedDate: nil,
+                    availability: .disconnected, failureReason: nil, failedDate: nil),
+                .init(
+                    id: 3, name: "Atsumaru", slug: "op", host: "atsu.moe", url: nil, icon: nil,
+                    priority: 2, chapterCount: 0, fetchedDate: nil, availability: .missing,
+                    failureReason: nil, failedDate: nil),
                 // a disabled source that was also failing shows no trouble line:
                 // it is not failing, it is switched off
-                .init(id: 4, name: "MangaDex", slug: "uuid", host: "mangadex.org", url: nil, icon: nil, priority: 3, chapterCount: 900, fetchedDate: nil, availability: .disabled, failureReason: "Check your connection and try again.", failedDate: .now)
+                .init(
+                    id: 4, name: "MangaDex", slug: "uuid", host: "mangadex.org", url: nil,
+                    icon: nil, priority: 3, chapterCount: 900, fetchedDate: nil,
+                    availability: .disabled, failureReason: "Check your connection and try again.",
+                    failedDate: .now),
             ],
             onSetPrimary: { _ in },
             onReorder: { _ in },

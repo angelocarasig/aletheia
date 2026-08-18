@@ -56,7 +56,10 @@ final class MigrationComposer<Entry: MigrationEntry> {
 
     var page = 0
     var filter = RowFilter.remaining {
-        didSet { guard filter != oldValue else { return }; page = 0 }
+        didSet {
+            guard filter != oldValue else { return }
+            page = 0
+        }
     }
 
     // the pill label for a precheck-matched row - "Already Linked" reads
@@ -97,9 +100,11 @@ final class MigrationComposer<Entry: MigrationEntry> {
         // while bypassAdultSources is off, an adultOnly source does not
         // exist here at all, not merely hidden
         let defaults = UserDefaults.standard
-        let unlocked = defaults.bool(forKey: Preferences.Key.bypassAdultSources)
+        let unlocked =
+            defaults.bool(forKey: Preferences.Key.bypassAdultSources)
             && defaults.bool(forKey: Preferences.Key.includeAdultSources)
-        self.availableSources = unlocked ? registry.sources : registry.sources.filter { !$0.descriptor.adultOnly }
+        self.availableSources =
+            unlocked ? registry.sources : registry.sources.filter { !$0.descriptor.adultOnly }
 
         // nothing pre-checked - migrating a whole library is a real decision
         // about where its chapters come from, not a default to accept
@@ -140,13 +145,17 @@ final class MigrationComposer<Entry: MigrationEntry> {
     }
 
     var pageCount: Int {
-        filteredRows.isEmpty ? 0 : (filteredRows.count + MigrationComposerLayout.pageSize - 1) / MigrationComposerLayout.pageSize
+        filteredRows.isEmpty
+            ? 0
+            : (filteredRows.count + MigrationComposerLayout.pageSize - 1)
+                / MigrationComposerLayout.pageSize
     }
 
     var currentPageRows: [MigrationRow<Entry>] {
         let start = page * MigrationComposerLayout.pageSize
         guard start < filteredRows.count else { return [] }
-        return Array(filteredRows[start..<min(start + MigrationComposerLayout.pageSize, filteredRows.count)])
+        return Array(
+            filteredRows[start..<min(start + MigrationComposerLayout.pageSize, filteredRows.count)])
     }
 
     func count(for filter: RowFilter) -> Int {
@@ -180,7 +189,8 @@ final class MigrationComposer<Entry: MigrationEntry> {
             let entries = try await source.fetch()
             let matched = await precheck(entries)
             rows = entries.map {
-                MigrationRow(entry: $0, precheckMatched: matched.contains($0.id), match: initialMatch($0))
+                MigrationRow(
+                    entry: $0, precheckMatched: matched.contains($0.id), match: initialMatch($0))
             }
             loadFailure = nil
         } catch {
@@ -227,7 +237,7 @@ final class MigrationComposer<Entry: MigrationEntry> {
 
     func save(_ id: Entry.ID) async {
         guard let index = rows.firstIndex(where: { $0.id == id }),
-              let candidate = rows[index].match.selected
+            let candidate = rows[index].match.selected
         else { return }
 
         withAnimation(.settle) { rows[index].saving = true }

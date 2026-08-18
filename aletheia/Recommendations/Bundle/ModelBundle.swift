@@ -36,8 +36,9 @@ struct ModelBundle: Sendable {
 
         let manifest: ModelManifest = try decode(manifestURL, as: ModelManifest.self)
         guard manifest.formatVersion == supportedFormatVersion else {
-            throw RecommenderError.unsupportedFormat(found: manifest.formatVersion,
-                                                     supported: supportedFormatVersion)
+            throw RecommenderError.unsupportedFormat(
+                found: manifest.formatVersion,
+                supported: supportedFormatVersion)
         }
 
         // the display pack is optional by construction - it feeds no arithmetic,
@@ -48,8 +49,9 @@ struct ModelBundle: Sendable {
         if let metadataURL = url(for: "metadata.json", in: bundle) {
             let pack: MetadataManifest = try decode(metadataURL, as: MetadataManifest.self)
             guard pack.metadataVersion == supportedMetadataVersion else {
-                throw RecommenderError.unsupportedFormat(found: pack.metadataVersion,
-                                                         supported: supportedMetadataVersion)
+                throw RecommenderError.unsupportedFormat(
+                    found: pack.metadataVersion,
+                    supported: supportedMetadataVersion)
             }
             guard pack.titleCount == manifest.titleCount else {
                 throw RecommenderError.malformed(
@@ -76,9 +78,10 @@ struct ModelBundle: Sendable {
             let data = try Data(contentsOf: fileURL, options: .mappedIfSafe)
             // size rather than sha256, and only where a size was stated
             if let expected = specs[name]?.fileBytes, data.count != expected {
-                throw RecommenderError.truncated(file: name,
-                                                 expected: expected,
-                                                 found: data.count)
+                throw RecommenderError.truncated(
+                    file: name,
+                    expected: expected,
+                    found: data.count)
             }
             mapped[name] = data
         }
@@ -89,9 +92,11 @@ struct ModelBundle: Sendable {
     // a typed view of one named array. the dtype in the manifest has to agree
     // with the Swift type asked for, which is what stops a uint16 column index
     // being read as uint32 - the same bytes, half the elements, no error
-    func array<Element: ModelScalar>(_ file: String,
-                                     _ name: String,
-                                     of type: Element.Type = Element.self) throws -> MappedArray<Element> {
+    func array<Element: ModelScalar>(
+        _ file: String,
+        _ name: String,
+        of type: Element.Type = Element.self
+    ) throws -> MappedArray<Element> {
         guard let spec = self.spec(for: file) else {
             throw RecommenderError.malformed(file: file, reason: "not in either manifest")
         }
@@ -139,8 +144,9 @@ struct ModelBundle: Sendable {
         do {
             return try JSONDecoder().decode(T.self, from: try Data(contentsOf: url))
         } catch {
-            throw RecommenderError.malformed(file: url.lastPathComponent,
-                                             reason: String(describing: error))
+            throw RecommenderError.malformed(
+                file: url.lastPathComponent,
+                reason: String(describing: error))
         }
     }
 }
@@ -160,11 +166,15 @@ struct MappedArray<Element>: Sendable {
         self.count = count
     }
 
-    func withUnsafeBufferPointer<R>(_ body: (UnsafeBufferPointer<Element>) throws -> R) rethrows -> R {
+    func withUnsafeBufferPointer<R>(_ body: (UnsafeBufferPointer<Element>) throws -> R) rethrows
+        -> R
+    {
         try data.withUnsafeBytes { raw in
             let base = raw.baseAddress!.advanced(by: offset)
-            return try body(UnsafeBufferPointer(start: base.assumingMemoryBound(to: Element.self),
-                                                count: count))
+            return try body(
+                UnsafeBufferPointer(
+                    start: base.assumingMemoryBound(to: Element.self),
+                    count: count))
         }
     }
 

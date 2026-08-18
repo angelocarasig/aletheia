@@ -59,7 +59,8 @@ final class ReaderEngine {
     // then by service. per chapter rather than per series, because the queue
     // clears for the series: without this, finishing chapter 45 would send
     // chapter 44's row back to spinning
-    private var trackerStates: [ReaderChapter.ID: [String: ReaderSeparatorModel.Tracker.State]] = [:]
+    private var trackerStates: [ReaderChapter.ID: [String: ReaderSeparatorModel.Tracker.State]] =
+        [:]
 
     @ObservationIgnored private weak var controller: ReaderController?
 
@@ -99,12 +100,16 @@ final class ReaderEngine {
     var chapterList: [ReaderChapter] { chapters }
 
     var canGoPrevious: Bool {
-        guard let current, let index = chapters.firstIndex(where: { $0.id == current.id }) else { return false }
+        guard let current, let index = chapters.firstIndex(where: { $0.id == current.id }) else {
+            return false
+        }
         return index > 0
     }
 
     var canGoNext: Bool {
-        guard let current, let index = chapters.firstIndex(where: { $0.id == current.id }) else { return false }
+        guard let current, let index = chapters.firstIndex(where: { $0.id == current.id }) else {
+            return false
+        }
         return index < chapters.count - 1
     }
 
@@ -167,7 +172,8 @@ final class ReaderEngine {
         }
         controller.separatorModel = { [weak self] boundary, direction in
             self?.separator(for: boundary, direction: direction)
-                ?? ReaderSeparatorModel(boundary: boundary, direction: direction, destination: .caughtUp)
+                ?? ReaderSeparatorModel(
+                    boundary: boundary, direction: direction, destination: .caughtUp)
         }
         controller.onSeparatorReached = { [weak self] boundary, direction in
             self?.reachedBoundary(boundary, direction: direction)
@@ -179,13 +185,13 @@ final class ReaderEngine {
             self?.onExplainGap?(gap)
         }
         controller.onSeparatorRetry = { [weak self] boundary in
-            guard case let .after(chapter) = boundary else { return }
+            guard case .after(let chapter) = boundary else { return }
             Task { await self?.retryNext(after: chapter) }
         }
         // the engine knows which chapter the boundary belongs to; the host knows
         // what a service is. so this only resolves the first and hands over
         controller.onSeparatorRetryTracker = { [weak self] boundary, service in
-            guard case let .after(chapter) = boundary else { return }
+            guard case .after(let chapter) = boundary else { return }
             self?.onRetryTracker?(chapter, service)
         }
     }
@@ -323,13 +329,16 @@ final class ReaderEngine {
     }
 
     func previousChapter() async {
-        guard let current, let index = chapters.firstIndex(where: { $0.id == current.id }), index > 0 else { return }
+        guard let current, let index = chapters.firstIndex(where: { $0.id == current.id }),
+            index > 0
+        else { return }
         await jump(to: chapters[index - 1].id)
     }
 
     func nextChapter() async {
         guard let current, let index = chapters.firstIndex(where: { $0.id == current.id }),
-              index < chapters.count - 1 else { return }
+            index < chapters.count - 1
+        else { return }
         await jump(to: chapters[index + 1].id)
     }
 
@@ -417,7 +426,7 @@ final class ReaderEngine {
                 destination: .startOfSeries
             )
 
-        case let .after(id):
+        case .after(let id):
             let info = boundaries[id] ?? .none
             let chapter = chapters.first { $0.id == id }
             let terminal = chapter.map {
@@ -490,7 +499,7 @@ final class ReaderEngine {
 
     private func destination(after id: ReaderChapter.ID) -> ReaderSeparatorModel.Destination {
         guard let slot = chapters.firstIndex(where: { $0.id == id }),
-              slot < chapters.count - 1
+            slot < chapters.count - 1
         else { return .caughtUp }
 
         let next = chapters[slot + 1]
@@ -505,10 +514,11 @@ final class ReaderEngine {
     private func reachedBoundary(_ boundary: ReaderBoundary, direction: ReadingDirection) {
         // reaching the boundary is what finishes a chapter - a last page can be
         // on screen without ever being read past
-        if case let .after(id) = boundary,
-           direction == .forward,
-           completed.insert(id).inserted,
-           let chapter = chapters.first(where: { $0.id == id }) {
+        if case .after(let id) = boundary,
+            direction == .forward,
+            completed.insert(id).inserted,
+            let chapter = chapters.first(where: { $0.id == id })
+        {
             // the crossing is itself content: it is what turns the indicators on,
             // and the writes that follow may take a moment to report
             controller?.reloadSeparators()
@@ -522,7 +532,7 @@ final class ReaderEngine {
 
     private func retryNext(after id: ReaderChapter.ID) async {
         guard let slot = chapters.firstIndex(where: { $0.id == id }),
-              slot < chapters.count - 1
+            slot < chapters.count - 1
         else { return }
 
         failures[chapters[slot + 1].id] = nil
@@ -534,7 +544,9 @@ final class ReaderEngine {
         // dropped rather than deferred: the navigator re-arms both directions on
         // its way out, once `current` is the chapter actually being read
         guard navigating == 0 else { return }
-        guard let current, let index = chapters.firstIndex(where: { $0.id == current.id }) else { return }
+        guard let current, let index = chapters.firstIndex(where: { $0.id == current.id }) else {
+            return
+        }
 
         let target: ReaderChapter?
         switch position {
@@ -546,7 +558,9 @@ final class ReaderEngine {
         // holds sections, and the two drift apart on every evict and reload.
         // asking only the cache is what re-applied a chapter the collection view
         // still had, which is a duplicate section identifier and a hard crash
-        guard let target, !loading.contains(target.id), !resident.contains(target.id) else { return }
+        guard let target, !loading.contains(target.id), !resident.contains(target.id) else {
+            return
+        }
 
         Task { [weak self] in
             guard let self else { return }

@@ -55,7 +55,8 @@ extension WebRenderer {
             let slot = Slot()
 
             let work = Task { @MainActor in
-                slot.value = try? await page.callJavaScript(script, arguments: arguments, contentWorld: .page)
+                slot.value = try? await page.callJavaScript(
+                    script, arguments: arguments, contentWorld: .page)
                 continuation.yield(.answered)
             }
             let watchdog = Task { @MainActor in

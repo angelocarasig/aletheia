@@ -5,8 +5,8 @@
 //  Created by Angelo Carasig on 13/8/2026.
 //
 
-import UIKit
 import LinkPresentation
+import UIKit
 
 // the share sheet's header is built from LPLinkMetadata and nothing else. hand
 // it a bare UIImage and it falls back to the app icon and the app's name. the
@@ -42,7 +42,9 @@ final class PageActivityItem: NSObject, UIActivityItemSource {
         "\(title) - \(subtitle)"
     }
 
-    func activityViewControllerLinkMetadata(_ controller: UIActivityViewController) -> LPLinkMetadata? {
+    func activityViewControllerLinkMetadata(_ controller: UIActivityViewController)
+        -> LPLinkMetadata?
+    {
         let metadata = LPLinkMetadata()
         metadata.title = title
 
@@ -50,7 +52,8 @@ final class PageActivityItem: NSObject, UIActivityItemSource {
         // component of its url, which for a real page url reads "001.jpg". a
         // file url carrying only the text puts that line under our control, and
         // nothing ever resolves it - the shared item is the image above
-        metadata.originalURL = URL(fileURLWithPath: subtitle.replacingOccurrences(of: "/", with: " "))
+        metadata.originalURL = URL(
+            fileURLWithPath: subtitle.replacingOccurrences(of: "/", with: " "))
         metadata.imageProvider = NSItemProvider(object: image)
 
         return metadata

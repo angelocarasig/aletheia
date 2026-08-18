@@ -5,8 +5,8 @@
 //  Created by Angelo Carasig on 10/8/2026.
 //
 
-import SwiftUI
 import Kingfisher
+import SwiftUI
 
 // what arrived since the series became yours. one card per series rather than
 // per chapter - "3 new chapters" is the fact a reader acts on, and a chapter log
@@ -98,7 +98,9 @@ struct UpdateCard: View {
             count: 1,
             latest: .now.addingTimeInterval(-7_200)
         )
-        UpdateCard(title: "Café at the End of the Line", cover: nil, count: 12, latest: .now.addingTimeInterval(-86_400))
+        UpdateCard(
+            title: "Café at the End of the Line", cover: nil, count: 12,
+            latest: .now.addingTimeInterval(-86_400))
     }
     .padding(16)
     .background(.canvas)

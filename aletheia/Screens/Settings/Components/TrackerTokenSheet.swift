@@ -82,9 +82,11 @@ struct TrackerTokenSheet: View {
 
             // the asymmetry with the other two is the only thing here a reader
             // could not guess, so it is said once and plainly
-            Text("\(tracker.name) doesn't offer a sign-in button. You create a token on their site and paste it here.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+            Text(
+                "\(tracker.name) doesn't offer a sign-in button. You create a token on their site and paste it here."
+            )
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
         }
     }
 
@@ -131,9 +133,11 @@ struct TrackerTokenSheet: View {
             // address, so the link points at the page and the sentence names the
             // rest. a link that lands somewhere that does not exist is worse than
             // one step of reading
-            Text("Open your MangaBaka account settings, create a token, and make sure it can write to your library. A read-only token can't record what you finish.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            Text(
+                "Open your MangaBaka account settings, create a token, and make sure it can write to your library. A read-only token can't record what you finish."
+            )
+            .font(.caption)
+            .foregroundStyle(.secondary)
 
             Link(destination: Constants.Trackers.mangaBakaSettings) {
                 HStack(spacing: dimensions.spacing.space4) {

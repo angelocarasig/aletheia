@@ -25,9 +25,12 @@ struct SearchScreen: View {
     @Environment(\.dimensions) private var dimensions
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var vm = SearchViewModel()
-    @AppStorage(Preferences.Key.includeAdultSources) private var includeAdult = Preferences.Default.includeAdultSources
-    @AppStorage(Preferences.Key.bypassAdultSources) private var bypassAdult = Preferences.Default.bypassAdultSources
-    @AppStorage(Preferences.Key.blurAdultSearch) private var blurAdult = Preferences.Default.blurAdultSearch
+    @AppStorage(Preferences.Key.includeAdultSources) private var includeAdult = Preferences.Default
+        .includeAdultSources
+    @AppStorage(Preferences.Key.bypassAdultSources) private var bypassAdult = Preferences.Default
+        .bypassAdultSources
+    @AppStorage(Preferences.Key.blurAdultSearch) private var blurAdult = Preferences.Default
+        .blurAdultSearch
     @State private var seriesRoute: SeriesRoute?
     @State private var gridRoute: GridRoute?
     @State private var gvm: SearchGridViewModel?
@@ -85,14 +88,18 @@ struct SearchScreen: View {
                     // bar exists only to hold the search field once it is active
                     .toolbarTitleDisplayMode(.large)
             }
-            .modifier(GlobalLifecycle(vm: vm, seed: query, compositor: compositor,
-                                      request: seed) {
-                // the request may land on a tab that currently has a series or a
-                // grid pushed, which would seed a screen nobody can see. same pop
-                // the re-tap does, for the same reason
-                seriesRoute = nil
-                gridRoute = nil
-            })
+            .modifier(
+                GlobalLifecycle(
+                    vm: vm, seed: query, compositor: compositor,
+                    request: seed
+                ) {
+                    // the request may land on a tab that currently has a series or a
+                    // grid pushed, which would seed a screen nobody can see. same pop
+                    // the re-tap does, for the same reason
+                    seriesRoute = nil
+                    gridRoute = nil
+                }
+            )
             .onChange(of: reset) {
                 // two-stage, matching the system convention: a re-tap pops any
                 // pushed screen first; only a re-tap already at root clears the
@@ -224,7 +231,8 @@ struct SearchScreen: View {
         func body(content: Content) -> some View {
             content
                 .task {
-                    vm.configure(sources: compositor.registry.sources, database: compositor.database)
+                    vm.configure(
+                        sources: compositor.registry.sources, database: compositor.database)
                     // after configure, or the search runs against no sources.
                     // only ever seeds the first time - retyping is the reader's
                     guard !seed.isEmpty, vm.query.isEmpty, vm.submitted.isEmpty else { return }
@@ -240,11 +248,13 @@ struct SearchScreen: View {
                 // to observe the change
                 .task(id: request?.token) {
                     guard let request else { return }
-                    vm.configure(sources: compositor.registry.sources, database: compositor.database)
+                    vm.configure(
+                        sources: compositor.registry.sources, database: compositor.database)
                     onRequest()
                     vm.query = request.text
-                    AppLog.shared.log("seeded '\(request.text)' token \(request.token)",
-                                      category: "router")
+                    AppLog.shared.log(
+                        "seeded '\(request.text)' token \(request.token)",
+                        category: "router")
                 }
                 .onAppear { vm.resume() }
                 .onDisappear { vm.stop() }
@@ -321,9 +331,11 @@ struct SearchScreen: View {
         .task {
             guard gvm == nil else { return }
             if let preset {
-                gvm = SearchGridViewModel(source: source, preset: preset, database: compositor.database)
+                gvm = SearchGridViewModel(
+                    source: source, preset: preset, database: compositor.database)
             } else {
-                gvm = SearchGridViewModel(source: source, query: query, database: compositor.database)
+                gvm = SearchGridViewModel(
+                    source: source, query: query, database: compositor.database)
             }
         }
     }

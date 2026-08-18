@@ -18,53 +18,58 @@ enum LibraryBackupBuilder {
     // a fast preview of what build() would write, without building it
     static func summary(database: DatabaseClient) async throws -> LibraryBackupSummary {
         try await database.reader.read { db in
-            let seriesCount = try SeriesRecord
+            let seriesCount =
+                try SeriesRecord
                 .filter(SeriesRecord.Columns.inLibrary == true)
                 .fetchCount(db)
-            
-            let chapterCount = try Int.fetchOne(
-                db,
-                sql: """
-                    SELECT COUNT(*)
-                    FROM \(ChapterRecord.databaseTableName) c
-                    JOIN \(OriginRecord.databaseTableName) o ON o.id = c.\(ChapterRecord.Columns.originId.name)
-                    JOIN \(SeriesRecord.databaseTableName) s ON s.id = o.\(OriginRecord.Columns.seriesId.name)
-                    WHERE s.\(SeriesRecord.Columns.inLibrary.name) = 1
-                    """
-            ) ?? 0
-            
-            let tagCount = try Int.fetchOne(
-                db,
-                sql: """
-                    SELECT COUNT(DISTINCT st.\(SeriesTagRecord.Columns.tagId.name))
-                    FROM \(SeriesTagRecord.databaseTableName) st
-                    JOIN \(SeriesRecord.databaseTableName) s ON s.id = st.\(SeriesTagRecord.Columns.seriesId.name)
-                    WHERE s.\(SeriesRecord.Columns.inLibrary.name) = 1
-                    """
-            ) ?? 0
-            
-            let authorCount = try Int.fetchOne(
-                db,
-                sql: """
-                    SELECT COUNT(DISTINCT sa.\(SeriesAuthorRecord.Columns.authorId.name))
-                    FROM \(SeriesAuthorRecord.databaseTableName) sa
-                    JOIN \(SeriesRecord.databaseTableName) s ON s.id = sa.\(SeriesAuthorRecord.Columns.seriesId.name)
-                    WHERE s.\(SeriesRecord.Columns.inLibrary.name) = 1
-                    """
-            ) ?? 0
-            
+
+            let chapterCount =
+                try Int.fetchOne(
+                    db,
+                    sql: """
+                        SELECT COUNT(*)
+                        FROM \(ChapterRecord.databaseTableName) c
+                        JOIN \(OriginRecord.databaseTableName) o ON o.id = c.\(ChapterRecord.Columns.originId.name)
+                        JOIN \(SeriesRecord.databaseTableName) s ON s.id = o.\(OriginRecord.Columns.seriesId.name)
+                        WHERE s.\(SeriesRecord.Columns.inLibrary.name) = 1
+                        """
+                ) ?? 0
+
+            let tagCount =
+                try Int.fetchOne(
+                    db,
+                    sql: """
+                        SELECT COUNT(DISTINCT st.\(SeriesTagRecord.Columns.tagId.name))
+                        FROM \(SeriesTagRecord.databaseTableName) st
+                        JOIN \(SeriesRecord.databaseTableName) s ON s.id = st.\(SeriesTagRecord.Columns.seriesId.name)
+                        WHERE s.\(SeriesRecord.Columns.inLibrary.name) = 1
+                        """
+                ) ?? 0
+
+            let authorCount =
+                try Int.fetchOne(
+                    db,
+                    sql: """
+                        SELECT COUNT(DISTINCT sa.\(SeriesAuthorRecord.Columns.authorId.name))
+                        FROM \(SeriesAuthorRecord.databaseTableName) sa
+                        JOIN \(SeriesRecord.databaseTableName) s ON s.id = sa.\(SeriesAuthorRecord.Columns.seriesId.name)
+                        WHERE s.\(SeriesRecord.Columns.inLibrary.name) = 1
+                        """
+                ) ?? 0
+
             let collectionCount = try CollectionRecord.fetchCount(db)
-            
-            let trackerLinkCount = try Int.fetchOne(
-                db,
-                sql: """
-                    SELECT COUNT(*)
-                    FROM \(SeriesTrackerRecord.databaseTableName) t
-                    JOIN \(SeriesRecord.databaseTableName) s ON s.id = t.\(SeriesTrackerRecord.Columns.seriesId.name)
-                    WHERE s.\(SeriesRecord.Columns.inLibrary.name) = 1
-                    """
-            ) ?? 0
-            
+
+            let trackerLinkCount =
+                try Int.fetchOne(
+                    db,
+                    sql: """
+                        SELECT COUNT(*)
+                        FROM \(SeriesTrackerRecord.databaseTableName) t
+                        JOIN \(SeriesRecord.databaseTableName) s ON s.id = t.\(SeriesTrackerRecord.Columns.seriesId.name)
+                        WHERE s.\(SeriesRecord.Columns.inLibrary.name) = 1
+                        """
+                ) ?? 0
+
             return LibraryBackupSummary(
                 seriesCount: seriesCount,
                 chapterCount: chapterCount,
@@ -75,45 +80,50 @@ enum LibraryBackupBuilder {
             )
         }
     }
-    
+
     private static func build(in db: Database) throws -> LibraryBackup {
-        let series = try SeriesRecord
+        let series =
+            try SeriesRecord
             .filter(SeriesRecord.Columns.inLibrary == true)
             .fetchAll(db)
         let seriesIds = series.compactMap(\.id)
-        
+
         // resolved titles, reusing EntryView's own preference->primary
         // origin->any COALESCE rather than re-deriving it here
         let titlesBySeriesId = Dictionary(
-            uniqueKeysWithValues: try EntryView
+            uniqueKeysWithValues:
+                try EntryView
                 .filter(seriesIds.map(\.rawValue).contains(EntryView.Columns.seriesId))
                 .fetchAll(db)
                 .map { ($0.seriesId, $0.title) }
         )
-        
-        let origins = try OriginRecord
+
+        let origins =
+            try OriginRecord
             .filter(seriesIds.contains(OriginRecord.Columns.seriesId))
             .fetchAll(db)
         let originIds = origins.compactMap(\.id)
-        
+
         let sourceSlugsById = Dictionary(
             uniqueKeysWithValues: try SourceRecord.fetchAll(db).compactMap { source in
                 source.id.map { ($0, source.slug) }
             }
         )
-        
-        let chapters = try ChapterRecord
+
+        let chapters =
+            try ChapterRecord
             .filter(originIds.contains(ChapterRecord.Columns.originId))
             .fetchAll(db)
         let chaptersByOriginId = Dictionary(grouping: chapters, by: \.originId)
-        
+
         let scanlatorNamesById = Dictionary(
             uniqueKeysWithValues: try ScanlatorRecord.fetchAll(db).compactMap { scanlator in
                 scanlator.id.map { ($0, scanlator.name) }
             }
         )
-        
-        let seriesTags = try SeriesTagRecord
+
+        let seriesTags =
+            try SeriesTagRecord
             .filter(seriesIds.contains(SeriesTagRecord.Columns.seriesId))
             .fetchAll(db)
         let tagNamesById = Dictionary(
@@ -125,8 +135,9 @@ enum LibraryBackupBuilder {
             grouping: seriesTags,
             by: \.seriesId
         ).mapValues { rows in rows.compactMap { tagNamesById[$0.tagId] } }
-        
-        let seriesAuthors = try SeriesAuthorRecord
+
+        let seriesAuthors =
+            try SeriesAuthorRecord
             .filter(seriesIds.contains(SeriesAuthorRecord.Columns.seriesId))
             .fetchAll(db)
         let authorNamesById = Dictionary(
@@ -138,8 +149,9 @@ enum LibraryBackupBuilder {
             grouping: seriesAuthors,
             by: \.seriesId
         ).mapValues { rows in rows.compactMap { authorNamesById[$0.authorId] } }
-        
-        let seriesCollections = try SeriesCollectionRecord
+
+        let seriesCollections =
+            try SeriesCollectionRecord
             .filter(seriesIds.contains(SeriesCollectionRecord.Columns.seriesId))
             .fetchAll(db)
         let collectionNamesById = Dictionary(
@@ -151,20 +163,21 @@ enum LibraryBackupBuilder {
             grouping: seriesCollections,
             by: \.seriesId
         ).mapValues { rows in rows.compactMap { collectionNamesById[$0.collectionId] } }
-        
-        let trackerLinks = try SeriesTrackerRecord
+
+        let trackerLinks =
+            try SeriesTrackerRecord
             .filter(seriesIds.contains(SeriesTrackerRecord.Columns.seriesId))
             .fetchAll(db)
         let trackerLinksBySeriesId = Dictionary(grouping: trackerLinks, by: \.seriesId)
-        
+
         let originsBySeriesId = Dictionary(grouping: origins, by: \.seriesId)
-        
+
         var backup = LibraryBackup()
         backup.exportedByAppVersion = Bundle.main.appVersion
         backup.exportedDate = Int64(Date.now.timeIntervalSince1970)
         backup.series = series.compactMap { row in
             guard let seriesId = row.id else { return nil }
-            
+
             var entry = LibraryBackup.SeriesEntry()
             entry.preferredTitle = titlesBySeriesId[seriesId.rawValue] ?? ""
             entry.status = row.status.rawValue
@@ -176,13 +189,13 @@ enum LibraryBackupBuilder {
             if let catalogId = row.catalogId {
                 entry.catalogID = catalogId
             }
-            
+
             entry.origins = (originsBySeriesId[seriesId] ?? []).compactMap { origin in
                 guard let originId = origin.id,
-                      let sourceId = origin.sourceId,
-                      let sourceSlug = sourceSlugsById[sourceId]
+                    let sourceId = origin.sourceId,
+                    let sourceSlug = sourceSlugsById[sourceId]
                 else { return nil }
-                
+
                 var originEntry = LibraryBackup.SeriesEntry.OriginEntry()
                 originEntry.sourceSlug = sourceSlug
                 originEntry.seriesSlug = origin.slug
@@ -205,11 +218,11 @@ enum LibraryBackupBuilder {
                 }
                 return originEntry
             }
-            
+
             entry.tags = tagNamesBySeriesId[seriesId] ?? []
             entry.authors = authorNamesBySeriesId[seriesId] ?? []
             entry.collections = collectionNamesBySeriesId[seriesId] ?? []
-            
+
             entry.trackerLinks = (trackerLinksBySeriesId[seriesId] ?? []).map { link in
                 var trackerLink = LibraryBackup.SeriesEntry.TrackerLink()
                 trackerLink.tracker = link.tracker.rawValue
@@ -230,16 +243,16 @@ enum LibraryBackupBuilder {
                 }
                 return trackerLink
             }
-            
+
             return entry
         }
-        
+
         return backup
     }
 }
 
-private extension Bundle {
-    var appVersion: String {
+extension Bundle {
+    fileprivate var appVersion: String {
         infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown"
     }
 }

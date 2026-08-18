@@ -147,7 +147,7 @@ struct ReaderSeparatorModel: Equatable, Sendable {
 
     var action: Action? {
         switch destination {
-        case let .failed(error): error.isRetryable ? .retry : nil
+        case .failed(let error): error.isRetryable ? .retry : nil
         case .caughtUp: completable ? .complete : nil
         default: nil
         }
@@ -262,21 +262,22 @@ extension ReaderSeparatorModel {
 // from its own trait collection. one mapping so both halves ask the same question
 extension UIContentSizeCategory {
     init(_ size: DynamicTypeSize) {
-        self = switch size {
-        case .xSmall: .extraSmall
-        case .small: .small
-        case .medium: .medium
-        case .large: .large
-        case .xLarge: .extraLarge
-        case .xxLarge: .extraExtraLarge
-        case .xxxLarge: .extraExtraExtraLarge
-        case .accessibility1: .accessibilityMedium
-        case .accessibility2: .accessibilityLarge
-        case .accessibility3: .accessibilityExtraLarge
-        case .accessibility4: .accessibilityExtraExtraLarge
-        case .accessibility5: .accessibilityExtraExtraExtraLarge
-        @unknown default: .large
-        }
+        self =
+            switch size {
+            case .xSmall: .extraSmall
+            case .small: .small
+            case .medium: .medium
+            case .large: .large
+            case .xLarge: .extraLarge
+            case .xxLarge: .extraExtraLarge
+            case .xxxLarge: .extraExtraExtraLarge
+            case .accessibility1: .accessibilityMedium
+            case .accessibility2: .accessibilityLarge
+            case .accessibility3: .accessibilityExtraLarge
+            case .accessibility4: .accessibilityExtraExtraLarge
+            case .accessibility5: .accessibilityExtraExtraExtraLarge
+            @unknown default: .large
+            }
     }
 }
 

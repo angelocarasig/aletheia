@@ -48,9 +48,13 @@ struct DetailsScreen: View {
     // keying a correlated boolean is how swaps go dead or partial.
     // see docs/features/loading-transitions.md
     private var phase: LoadPhase {
-        if composer?.ready == true { .content }
-        else if composer?.failure != nil { .failed }
-        else { .pending }
+        if composer?.ready == true {
+            .content
+        } else if composer?.failure != nil {
+            .failed
+        } else {
+            .pending
+        }
     }
 
     var body: some View {
@@ -158,7 +162,9 @@ struct DetailsScreen: View {
             }
             Button("Cancel", role: .cancel) { removing = nil }
         } message: {
-            Text("Its chapters are removed with it. Your reading progress on chapters from other sources is kept.")
+            Text(
+                "Its chapters are removed with it. Your reading progress on chapters from other sources is kept."
+            )
         }
         .alert(
             markTitle,
@@ -178,9 +184,13 @@ struct DetailsScreen: View {
             // asked to confirm
             if let request = marking, request.affected > 0 {
                 if request.read {
-                    Text("\(request.affected) \(request.affected == 1 ? "chapter" : "chapters") you're partway through will be marked finished, losing your page position.")
+                    Text(
+                        "\(request.affected) \(request.affected == 1 ? "chapter" : "chapters") you're partway through will be marked finished, losing your page position."
+                    )
                 } else {
-                    Text("This clears your reading progress on \(request.affected) of them. This can't be undone.")
+                    Text(
+                        "This clears your reading progress on \(request.affected) of them. This can't be undone."
+                    )
                 }
             }
         }
@@ -250,7 +260,9 @@ struct DetailsScreen: View {
                     // the first one
                     // reconciliation is off in here: see DetailsTrackerCandidate
                     linkSheet: { tracker, opening, close in
-                        if opening, let link = tracking.links.first(where: { $0.tracker == tracker }) {
+                        if opening,
+                            let link = tracking.links.first(where: { $0.tracker == tracker })
+                        {
                             TrackerManage(link, composer, reconciles: false, onFinish: close)
                         } else {
                             TrackerLink(tracker, composer, reconciles: false, onFinish: close)
@@ -303,7 +315,9 @@ struct DetailsScreen: View {
                         isSaving: busy,
                         onSetTitle: { id in Task { await series.prefer(title: id) } },
                         onSetSynopsis: { id in Task { await series.prefer(synopsis: id) } },
-                        onSetClassification: { id in Task { await series.prefer(classification: id) } },
+                        onSetClassification: { id in
+                            Task { await series.prefer(classification: id) }
+                        },
                         onSetPublication: { id in Task { await series.prefer(publication: id) } }
                     )
                 }
@@ -435,7 +449,9 @@ struct DetailsScreen: View {
                 onFinish()
                 // resolved at tap time rather than captured: the link did not
                 // exist when this sheet was built
-                guard let link = tracking.links.first(where: { $0.tracker == tracker }) else { return }
+                guard let link = tracking.links.first(where: { $0.tracker == tracker }) else {
+                    return
+                }
                 Task { await tracking.unlink(link, removeRemote: removeRemote) }
             },
             onCancel: onFinish,
@@ -485,8 +501,10 @@ struct DetailsScreen: View {
 
     @ViewBuilder
     private func Loaded(_ composer: DetailsComposer) -> some View {
-        DetailsBackdrop(cover: composer.series.cover, referer: composer.series.referer, scroll: scroll)
-            .transition(.opacity)
+        DetailsBackdrop(
+            cover: composer.series.cover, referer: composer.series.referer, scroll: scroll
+        )
+        .transition(.opacity)
 
         ScrollView(.vertical, showsIndicators: false) {
             DetailsContent(composer: composer, actions: actions(composer))
@@ -579,9 +597,10 @@ struct DetailsScreen: View {
     // row for it would be inventing the answer too
     private func live(_ composer: DetailsComposer) -> [DetailsComposer.Refresh.Outcome] {
         let refresh = compositor.refresh
-        let waiting = composer.seriesId.map {
-            refresh.isQueued(series: $0.rawValue) || refresh.isChecking(series: $0.rawValue)
-        } ?? false
+        let waiting =
+            composer.seriesId.map {
+                refresh.isQueued(series: $0.rawValue) || refresh.isChecking(series: $0.rawValue)
+            } ?? false
 
         return composer.refresh.origins.compactMap { target in
             guard refresh.isChecking(origin: target.id) || waiting else { return nil }
@@ -596,7 +615,8 @@ struct DetailsScreen: View {
         ContentUnavailableView {
             Label(
                 failure.title,
-                systemImage: failure.isRetryable ? "exclamationmark.triangle" : "questionmark.circle"
+                systemImage: failure.isRetryable
+                    ? "exclamationmark.triangle" : "questionmark.circle"
             )
         } description: {
             Text(failure.message)

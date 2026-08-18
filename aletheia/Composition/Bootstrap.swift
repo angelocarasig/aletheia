@@ -5,8 +5,8 @@
 //  Created by Angelo Carasig on 6/8/2026.
 //
 
-import SwiftUI
 import Observation
+import SwiftUI
 
 // everything the app needs standing up before its first frame, run off the main
 // actor and reported phase by phase. migrations live in the opening phase, so the
@@ -124,8 +124,8 @@ final class Bootstrap {
                 // ~400 ms in every DEBUG build - and being non-isolated work
                 // called without await, they did it on the main actor
                 #if DEBUG
-                await Task.detached { ModelBundle.probe() }.value
-                await ModelBundle.probe(compositor.recommender)
+                    await Task.detached { ModelBundle.probe() }.value
+                    await ModelBundle.probe(compositor.recommender)
                 #endif
             }
         } catch {

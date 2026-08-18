@@ -54,15 +54,21 @@ extension OriginScanlatorPriorityRecord {
 
     static func createIndexes(db: Database) throws {
         // foreign key indexes
-        try db.create(index: "idx_origin_scanlator_priority_originId", on: databaseTableName, columns: [Columns.originId.name], ifNotExists: true)
-        try db.create(index: "idx_origin_scanlator_priority_scanlatorId", on: databaseTableName, columns: [Columns.scanlatorId.name], ifNotExists: true)
+        try db.create(
+            index: "idx_origin_scanlator_priority_originId", on: databaseTableName,
+            columns: [Columns.originId.name], ifNotExists: true)
+        try db.create(
+            index: "idx_origin_scanlator_priority_scanlatorId", on: databaseTableName,
+            columns: [Columns.scanlatorId.name], ifNotExists: true)
 
         // composite index for scanlator priority within origin
-        try db.create(index: "idx_osp_priority", on: databaseTableName, columns: [
-            Columns.originId.name,
-            Columns.scanlatorId.name,
-            Columns.priority.name
-        ], ifNotExists: true)
+        try db.create(
+            index: "idx_osp_priority", on: databaseTableName,
+            columns: [
+                Columns.originId.name,
+                Columns.scanlatorId.name,
+                Columns.priority.name,
+            ], ifNotExists: true)
     }
 
     mutating func didInsert(_ inserted: InsertionSuccess) {

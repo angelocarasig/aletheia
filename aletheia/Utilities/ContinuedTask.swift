@@ -5,8 +5,8 @@
 //  Created by Angelo Carasig on 10/8/2026.
 //
 
-import Foundation
 import BackgroundTasks
+import Foundation
 
 // the half of a BGContinuedProcessingTask that is the same for every operation:
 // registering an identifier, asking for the task, attaching one the system grants
@@ -58,18 +58,18 @@ final class ContinuedTask {
     // started for the task itself has no screens to do it from
     nonisolated func register(onExpire: @escaping @MainActor () -> Void) {
         #if !targetEnvironment(simulator)
-        BGTaskScheduler.shared.register(
-            forTaskWithIdentifier: identifier,
-            using: nil
-        ) { task in
-            guard let task = task as? BGContinuedProcessingTask else {
-                task.setTaskCompleted(success: false)
-                return
+            BGTaskScheduler.shared.register(
+                forTaskWithIdentifier: identifier,
+                using: nil
+            ) { task in
+                guard let task = task as? BGContinuedProcessingTask else {
+                    task.setTaskCompleted(success: false)
+                    return
+                }
+                Task { @MainActor [weak self] in self?.adopt(task, onExpire: onExpire) }
             }
-            Task { @MainActor [weak self] in self?.adopt(task, onExpire: onExpire) }
-        }
 
-        log.log("registered \(identifier)", category: "tasks")
+            log.log("registered \(identifier)", category: "tasks")
         #endif
     }
 
@@ -77,27 +77,32 @@ final class ContinuedTask {
         // one live task per identifier: a run that picks up more work mid-flight
         // extends the task it already holds rather than asking for a second
         guard task == nil else {
-            log.log("\(identifier) already live, not submitting again", level: .warning, category: "tasks")
+            log.log(
+                "\(identifier) already live, not submitting again", level: .warning,
+                category: "tasks")
             return
         }
 
         #if targetEnvironment(simulator)
-        log.log("\(identifier) not submitted - simulator has no continued-processing tasks", category: "tasks")
+            log.log(
+                "\(identifier) not submitted - simulator has no continued-processing tasks",
+                category: "tasks")
         #else
-        let request = BGContinuedProcessingTaskRequest(
-            identifier: identifier,
-            title: title,
-            subtitle: subtitle
-        )
+            let request = BGContinuedProcessingTaskRequest(
+                identifier: identifier,
+                title: title,
+                subtitle: subtitle
+            )
 
-        do {
-            try BGTaskScheduler.shared.submit(request)
-            log.log("submitted \(identifier) - \"\(title)\" / \"\(subtitle)\"", category: "tasks")
-        } catch {
-            // a failed submission is not a failed run: the work is already going
-            // in the foreground, it simply will not survive being backgrounded
-            log.log("continued-processing task not granted - \(error)", category: "tasks")
-        }
+            do {
+                try BGTaskScheduler.shared.submit(request)
+                log.log(
+                    "submitted \(identifier) - \"\(title)\" / \"\(subtitle)\"", category: "tasks")
+            } catch {
+                // a failed submission is not a failed run: the work is already going
+                // in the foreground, it simply will not survive being backgrounded
+                log.log("continued-processing task not granted - \(error)", category: "tasks")
+            }
         #endif
     }
 
@@ -122,7 +127,8 @@ final class ContinuedTask {
     // the system granted the task after the work was already going, so this
     // attaches rather than starts. a run that finished in the meantime completes
     // it immediately - there is nothing left to extend
-    private func adopt(_ task: BGContinuedProcessingTask, onExpire: @escaping @MainActor () -> Void) {
+    private func adopt(_ task: BGContinuedProcessingTask, onExpire: @escaping @MainActor () -> Void)
+    {
         guard tick() != nil else {
             log.log("granted \(identifier) after the run ended - completing it", category: "tasks")
             task.setTaskCompleted(success: true)

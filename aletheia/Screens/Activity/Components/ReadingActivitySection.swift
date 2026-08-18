@@ -5,9 +5,9 @@
 //  Created by Angelo Carasig on 9/8/2026.
 //
 
+import Kingfisher
 import SwiftUI
 import Tagged
-import Kingfisher
 
 // an aggregate with no drill-down turns every accuracy doubt into a dispute
 // nothing can settle, so the numbers and the sessions that produced them ship as
@@ -89,10 +89,15 @@ struct ReadingActivitySection: View {
 
     private var phase: LoadPhase {
         if let vm {
-            if vm.failure != nil { .failed }
-            else if vm.snapshot == nil { .pending }
-            else if vm.snapshot?.isEmpty == true { .empty }
-            else { .content }
+            if vm.failure != nil {
+                .failed
+            } else if vm.snapshot == nil {
+                .pending
+            } else if vm.snapshot?.isEmpty == true {
+                .empty
+            } else {
+                .content
+            }
         } else {
             .pending
         }
@@ -149,83 +154,83 @@ struct ReadingActivitySection: View {
 
 // MARK: - Content
 
-private extension ReadingActivitySection {
-    func Content(_ snapshot: StatsViewModel.Snapshot) -> some View {
+extension ReadingActivitySection {
+    fileprivate func Content(_ snapshot: StatsViewModel.Snapshot) -> some View {
         VStack(alignment: .leading, spacing: dimensions.spacing.space24) {
-                // first now, not last. it was a footer because a fresh install
-                // showed the same number under "All Time" and "This Week" and
-                // everyone read that as a bug - but under the operational rows
-                // the collision is gone, and these are the one part of this
-                // section that does not grade you: the reader coming back after
-                // a gap named them the only thing they were glad to see
-                VStack(alignment: .leading, spacing: dimensions.spacing.space12) {
-                    SectionHeader("All Time")
-                    Totals(snapshot)
+            // first now, not last. it was a footer because a fresh install
+            // showed the same number under "All Time" and "This Week" and
+            // everyone read that as a bug - but under the operational rows
+            // the collision is gone, and these are the one part of this
+            // section that does not grade you: the reader coming back after
+            // a gap named them the only thing they were glad to see
+            VStack(alignment: .leading, spacing: dimensions.spacing.space12) {
+                SectionHeader("All Time")
+                Totals(snapshot)
+            }
+
+            // ONE block, not two charts. the grid and the bars were the
+            // same data at two spans, a screen apart, in the same blue -
+            // which read as two libraries rather than one system. now the
+            // picker drives both: the bars show the span, and the grid
+            // outlines the days those bars are made of, so a reader can see
+            // where this week sits inside four months without being told.
+            //
+            // no section header either: the readout inside the chart is the
+            // title, and a header above it was the second one for one thing
+            VStack(alignment: .leading, spacing: dimensions.spacing.space16) {
+                // the block opens on a caption and a grid, so the readout
+                // inside the chart arrives too late to title anything. a
+                // header rather than moving the number above the map
+                SectionHeader("Last 16 Weeks")
+
+                // grid first: it is the map, and the bars below are the
+                // detail of whichever part of it the stepper has picked out
+                ReadingHeatmap(
+                    heat: snapshot.heat(for: metric),
+                    weeks: Layout.heatWeeks,
+                    asOf: .now,
+                    highlight: highlight,
+                    metric: metric,
+                    // tapping a day moves the chart to the period that day
+                    // falls in, at whatever granularity is currently
+                    // selected - the picker says what a tap means, so a tap
+                    // must not silently change the picker
+                    onSelect: { anchor = $0 }
+                )
+
+                Runs(snapshot)
+
+                ReadingChart(
+                    sessions: snapshot.recent,
+                    scope: $scope,
+                    metric: $metric,
+                    anchor: $anchor,
+                    asOf: .now,
+                    // the same span the grid draws, so the stepper can reach
+                    // every cell above it and nothing beyond
+                    earliest: Layout.heatStart,
+                    selected: $selected
+                )
+            }
+
+            // a grid tap moves the period, which makes any bar selection
+            // stale - and it writes anchor directly rather than through the
+            // chart's stepper, so the chart never sees it
+            .onChange(of: anchor) { selected = nil }
+
+            // the two lists occupy one slot and swap through each other, so
+            // picking a bar reads as the list changing what it is about
+            // rather than as the screen reflowing under the finger
+            Group {
+                if let bucket = selectedBucket(snapshot) {
+                    BucketSessions(bucket, sessions: snapshot.recent)
+                        .transition(.replace(reduceMotion: reduceMotion))
+                } else if !snapshot.sessions.isEmpty {
+                    Sessions(snapshot.sessions)
+                        .transition(.replace(reduceMotion: reduceMotion))
                 }
-
-                // ONE block, not two charts. the grid and the bars were the
-                // same data at two spans, a screen apart, in the same blue -
-                // which read as two libraries rather than one system. now the
-                // picker drives both: the bars show the span, and the grid
-                // outlines the days those bars are made of, so a reader can see
-                // where this week sits inside four months without being told.
-                //
-                // no section header either: the readout inside the chart is the
-                // title, and a header above it was the second one for one thing
-                VStack(alignment: .leading, spacing: dimensions.spacing.space16) {
-                    // the block opens on a caption and a grid, so the readout
-                    // inside the chart arrives too late to title anything. a
-                    // header rather than moving the number above the map
-                    SectionHeader("Last 16 Weeks")
-
-                    // grid first: it is the map, and the bars below are the
-                    // detail of whichever part of it the stepper has picked out
-                    ReadingHeatmap(
-                        heat: snapshot.heat(for: metric),
-                        weeks: Layout.heatWeeks,
-                        asOf: .now,
-                        highlight: highlight,
-                        metric: metric,
-                        // tapping a day moves the chart to the period that day
-                        // falls in, at whatever granularity is currently
-                        // selected - the picker says what a tap means, so a tap
-                        // must not silently change the picker
-                        onSelect: { anchor = $0 }
-                    )
-
-                    Runs(snapshot)
-
-                    ReadingChart(
-                        sessions: snapshot.recent,
-                        scope: $scope,
-                        metric: $metric,
-                        anchor: $anchor,
-                        asOf: .now,
-                        // the same span the grid draws, so the stepper can reach
-                        // every cell above it and nothing beyond
-                        earliest: Layout.heatStart,
-                        selected: $selected
-                    )
-                }
-
-                // a grid tap moves the period, which makes any bar selection
-                // stale - and it writes anchor directly rather than through the
-                // chart's stepper, so the chart never sees it
-                .onChange(of: anchor) { selected = nil }
-
-                // the two lists occupy one slot and swap through each other, so
-                // picking a bar reads as the list changing what it is about
-                // rather than as the screen reflowing under the finger
-                Group {
-                    if let bucket = selectedBucket(snapshot) {
-                        BucketSessions(bucket, sessions: snapshot.recent)
-                            .transition(.replace(reduceMotion: reduceMotion))
-                    } else if !snapshot.sessions.isEmpty {
-                        Sessions(snapshot.sessions)
-                            .transition(.replace(reduceMotion: reduceMotion))
-                    }
-                }
-                .animation(.settle, value: selected)
+            }
+            .animation(.settle, value: selected)
 
         }
     }
@@ -235,11 +240,11 @@ private extension ReadingActivitySection {
     // settings - so past the accessibility sizes the row becomes a column and
     // each tile takes the full width
     @ViewBuilder
-    func Totals(_ snapshot: StatsViewModel.Snapshot) -> some View {
+    fileprivate func Totals(_ snapshot: StatsViewModel.Snapshot) -> some View {
         let tiles: [(target: Double, format: (Double) -> String, label: String)] = [
             (Double(snapshot.chaptersAllTime), { "\(Int($0))" }, "Chapters"),
             (Double(snapshot.secondsAllTime), { ReadingFormat.duration(Int($0)) }, "Time Read"),
-            (Double(snapshot.pagesAllTime), { "\(Int($0))" }, "Pages")
+            (Double(snapshot.pagesAllTime), { "\(Int($0))" }, "Pages"),
         ]
 
         Group {
@@ -291,7 +296,9 @@ private extension ReadingActivitySection {
     // the digits and the ramp read the same fraction, so they decelerate
     // together - one number animated once, rather than three counters and a
     // schedule that could drift apart
-    func Rolling(_ tile: (target: Double, format: (Double) -> String, label: String)) -> some View {
+    fileprivate func Rolling(_ tile: (target: Double, format: (Double) -> String, label: String))
+        -> some View
+    {
         CountingText(value: counted * tile.target, format: tile.format)
     }
 
@@ -310,7 +317,7 @@ private extension ReadingActivitySection {
     // the run joins it only once the two can differ. scoped to the grid above
     // rather than to all time, so it states what the reader can actually count
     @ViewBuilder
-    func Runs(_ snapshot: StatsViewModel.Snapshot) -> some View {
+    fileprivate func Runs(_ snapshot: StatsViewModel.Snapshot) -> some View {
         if snapshot.currentRun > 1, snapshot.currentRun < snapshot.heat.count {
             HStack(spacing: dimensions.spacing.space4) {
                 Text("^[\(snapshot.currentRun) day](inflect: true) running")
@@ -335,7 +342,7 @@ private extension ReadingActivitySection {
     // itself. it took Text because a String parameter is one of the four silent
     // inflection killers - a builder keeps that safe, since a Text passed in is
     // still a literal at its own call site
-    func Tile(label: String, @ViewBuilder value: () -> some View) -> some View {
+    fileprivate func Tile(label: String, @ViewBuilder value: () -> some View) -> some View {
         VStack(spacing: dimensions.spacing.space4) {
             value()
                 .font(.title3)
@@ -347,22 +354,26 @@ private extension ReadingActivitySection {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, dimensions.spacing.space12)
-        .background(.primary.opacity(Layout.fillOpacity), in: .rect(cornerRadius: dimensions.radius.radius12))
+        .background(
+            .primary.opacity(Layout.fillOpacity),
+            in: .rect(cornerRadius: dimensions.radius.radius12)
+        )
         // each card about its own centre rather than the row about the row's:
         // scaling the group would slide the outer two sideways, which reads as
         // the layout shifting instead of the cards swelling
         .scaleEffect(lifted ? Layout.rollLift : 1)
     }
 
-    var granularity: Calendar.Component { scope == .day ? .hour : .day }
+    fileprivate var granularity: Calendar.Component { scope == .day ? .hour : .day }
 
     // the bar the chart has picked, resolved against the same sittings the bars
     // were built from. recomputing the spine here rather than passing the bucket
     // up keeps the chart's selection a plain date
-    func selectedBucket(_ snapshot: StatsViewModel.Snapshot) -> ReadingBuckets.Bucket? {
+    fileprivate func selectedBucket(_ snapshot: StatsViewModel.Snapshot) -> ReadingBuckets.Bucket? {
         guard let selected else { return nil }
 
-        let buckets = scope == .day
+        let buckets =
+            scope == .day
             ? ReadingBuckets.hourly(snapshot.recent, on: anchor)
             : ReadingBuckets.daily(snapshot.recent, weekOf: anchor)
 
@@ -373,7 +384,9 @@ private extension ReadingActivitySection {
     // their own values, so a sitting that straddled the bucket reads larger than
     // the caption above it - the caption answers what the bar said, the rows
     // answer what happened, and the clock time on the row is the difference
-    func BucketSessions(_ bucket: ReadingBuckets.Bucket, sessions: [ReadingSessionEntry]) -> some View {
+    fileprivate func BucketSessions(
+        _ bucket: ReadingBuckets.Bucket, sessions: [ReadingSessionEntry]
+    ) -> some View {
         let rows = ReadingBuckets.sittings(sessions, in: bucket, of: granularity)
 
         return VStack(alignment: .leading, spacing: dimensions.spacing.space12) {
@@ -407,9 +420,10 @@ private extension ReadingActivitySection {
     // the date is carried, not just the hour: the bar's own annotation says only
     // "13:00" and the stepper naming the day has scrolled off by the time this
     // list is being read
-    func bucketTitle(_ bucket: ReadingBuckets.Bucket) -> String {
+    fileprivate func bucketTitle(_ bucket: ReadingBuckets.Bucket) -> String {
         switch scope {
-        case .day: bucket.start.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated).hour())
+        case .day:
+            bucket.start.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated).hour())
         case .week: bucket.start.formatted(.dateTime.weekday(.wide).day().month(.abbreviated))
         }
     }
@@ -417,7 +431,7 @@ private extension ReadingActivitySection {
     // branches, each owning its literal - a String here renders the inflection
     // markup verbatim with no warning
     @ViewBuilder
-    func Amount(_ count: Int) -> some View {
+    fileprivate func Amount(_ count: Int) -> some View {
         switch metric {
         case .pages: Text("^[\(count) page](inflect: true)")
         case .chapters: Text("^[\(count) chapter](inflect: true)")
@@ -426,7 +440,7 @@ private extension ReadingActivitySection {
 
     // the cap counts rows, not days: five sittings deep is the same amount of
     // screen whether they happened across one evening or five
-    func Sessions(_ sessions: [ReadingSessionEntry]) -> some View {
+    fileprivate func Sessions(_ sessions: [ReadingSessionEntry]) -> some View {
         VStack(alignment: .leading, spacing: dimensions.spacing.space12) {
             SectionHeader(title: "Recent Reading") {
                 Grouping
@@ -444,7 +458,7 @@ private extension ReadingActivitySection {
     // in the header rather than the toolbar: it scopes this section and nothing
     // else on the screen, and the toolbar is two scroll-lengths away from what
     // it would be changing
-    var Grouping: some View {
+    fileprivate var Grouping: some View {
         Picker("Grouping", selection: $bySeries) {
             Text("Days").tag(false)
             Text("Series").tag(true)
@@ -453,7 +467,7 @@ private extension ReadingActivitySection {
         .frame(width: Layout.groupingWidth)
     }
 
-    func DayList(_ sessions: [ReadingSessionEntry]) -> some View {
+    fileprivate func DayList(_ sessions: [ReadingSessionEntry]) -> some View {
         let visible = expanded ? sessions : Array(sessions.prefix(Layout.collapsedSessions))
         let byDay = Dictionary(grouping: visible, by: \.localDayKey)
 
@@ -481,7 +495,7 @@ private extension ReadingActivitySection {
     // carries its series, so the grouping is a view of what is loaded and not a
     // second trip. ordered by how recently each series was read, which is what
     // makes the top of the list the thing you are actually in the middle of
-    func SeriesList(_ sessions: [ReadingSessionEntry]) -> some View {
+    fileprivate func SeriesList(_ sessions: [ReadingSessionEntry]) -> some View {
         let groups = Self.series(from: sessions)
         let visible = expanded ? groups : Array(groups.prefix(Layout.collapsedSessions))
 
@@ -499,7 +513,7 @@ private extension ReadingActivitySection {
     // the same anatomy as SessionRow, because it is the same row folded: artwork,
     // then what and when, then how much. a grouping toggle that also changed the
     // shape of every row would read as two screens rather than two views
-    func SeriesRow(_ group: SeriesTotal) -> some View {
+    fileprivate func SeriesRow(_ group: SeriesTotal) -> some View {
         let row = HStack(spacing: dimensions.spacing.space12) {
             Cover(group)
 
@@ -530,7 +544,9 @@ private extension ReadingActivitySection {
             }
         }
         .padding(dimensions.spacing.space12)
-        .background(.primary.opacity(Layout.fillOpacity), in: .rect(cornerRadius: dimensions.radius.radius12))
+        .background(
+            .primary.opacity(Layout.fillOpacity),
+            in: .rect(cornerRadius: dimensions.radius.radius12))
 
         return Group {
             if group.alive {
@@ -543,7 +559,7 @@ private extension ReadingActivitySection {
         }
     }
 
-    func Cover(_ group: SeriesTotal) -> some View {
+    fileprivate func Cover(_ group: SeriesTotal) -> some View {
         let local = compositor.assets.local(for: group.path)
 
         return Color.clear
@@ -552,7 +568,9 @@ private extension ReadingActivitySection {
                 if let cover = local ?? group.cover {
                     KFImage(cover)
                         .resizable()
-                        .placeholder { Rectangle().fill(.primary.opacity(Layout.placeholderOpacity)).shimmer() }
+                        .placeholder {
+                            Rectangle().fill(.primary.opacity(Layout.placeholderOpacity)).shimmer()
+                        }
                         .fade(duration: 0.25)
                         .scaledToFill()
                 } else {
@@ -569,7 +587,7 @@ private extension ReadingActivitySection {
             .clipShape(.rect(cornerRadius: dimensions.radius.radius8))
     }
 
-    func summary(_ group: SeriesTotal) -> String {
+    fileprivate func summary(_ group: SeriesTotal) -> String {
         var parts: [String] = []
         if group.chapters > 0 { parts.append("\(group.chapters) finished") }
         if group.pages > 0 { parts.append("\(group.pages) pages") }
@@ -577,7 +595,7 @@ private extension ReadingActivitySection {
         return parts.isEmpty ? "Read" : parts.joined(separator: " · ")
     }
 
-    static func series(from sessions: [ReadingSessionEntry]) -> [SeriesTotal] {
+    fileprivate static func series(from sessions: [ReadingSessionEntry]) -> [SeriesTotal] {
         Dictionary(grouping: sessions, by: \.seriesId)
             .compactMap { id, rows -> SeriesTotal? in
                 guard let newest = rows.max(by: { $0.endedDate < $1.endedDate }) else { return nil }
@@ -599,7 +617,7 @@ private extension ReadingActivitySection {
 
     // the chapter list's control, same shape and same words - two lists on two
     // screens that both open short should not expand differently
-    func ExpandToggle(_ count: Int, noun: String = "Sessions") -> some View {
+    fileprivate func ExpandToggle(_ count: Int, noun: String = "Sessions") -> some View {
         HStack(spacing: dimensions.spacing.space8) {
             Image(systemName: expanded ? "chevron.up" : "chevron.down")
                 .contentTransition(.symbolEffect(.replace))
@@ -610,7 +628,10 @@ private extension ReadingActivitySection {
         .foregroundStyle(.brand)
         .frame(maxWidth: .infinity)
         .padding(dimensions.spacing.space16)
-        .background(Palette.brand.opacity(Layout.fillOpacity), in: .rect(cornerRadius: dimensions.radius.radius8))
+        .background(
+            Palette.brand.opacity(Layout.fillOpacity),
+            in: .rect(cornerRadius: dimensions.radius.radius8)
+        )
         .tappable {
             withAnimation { expanded.toggle() }
         }
@@ -621,138 +642,146 @@ private extension ReadingActivitySection {
 // MARK: - Previews
 
 #if DEBUG
-private enum Mock {
-    static func heat(days: Int, over span: Int = 100) -> [Int: Int] {
-        var heat: [Int: Int] = [:]
-        let calendar = Calendar.current
-        var placed = 0
-        var offset = 0
-        while placed < days, offset < span {
-            if let date = calendar.date(byAdding: .day, value: -offset, to: .now) {
-                heat[date.localDayKey] = [1, 2, 3, 5, 9][placed % 5]
-                placed += 1
+    private enum Mock {
+        static func heat(days: Int, over span: Int = 100) -> [Int: Int] {
+            var heat: [Int: Int] = [:]
+            let calendar = Calendar.current
+            var placed = 0
+            var offset = 0
+            while placed < days, offset < span {
+                if let date = calendar.date(byAdding: .day, value: -offset, to: .now) {
+                    heat[date.localDayKey] = [1, 2, 3, 5, 9][placed % 5]
+                    placed += 1
+                }
+                offset += offset.isMultiple(of: 3) ? 1 : 2
             }
-            offset += offset.isMultiple(of: 3) ? 1 : 2
+            return heat
         }
-        return heat
-    }
 
-    static func sessions(_ count: Int) -> [ReadingSessionEntry] {
-        (0..<count).map { index in
-            let started: Date = .now.addingTimeInterval(TimeInterval(-index * 7_200))
-            // the first one is deliberately seconds long - the case that used
-            // to render "0m" beside a full page count
-            let length = index == 0 ? 40 : 900 + index * 300
-            return ReadingSessionEntry(
-                id: Int64(index + 1),
-                seriesId: Int64(index + 1),
-                seriesTitle: ["Berserk", "Vagabond", "Blade of the Waning Moon"][index % 3],
-                pagesRead: 49 - index * 6,
-                chaptersRead: index.isMultiple(of: 2) ? 1 : 0,
-                startedDate: started,
-                endedDate: started.addingTimeInterval(TimeInterval(length)),
-                localDayKey: started.localDayKey,
-                alive: true,
+        static func sessions(_ count: Int) -> [ReadingSessionEntry] {
+            (0..<count).map { index in
+                let started: Date = .now.addingTimeInterval(TimeInterval(-index * 7_200))
+                // the first one is deliberately seconds long - the case that used
+                // to render "0m" beside a full page count
+                let length = index == 0 ? 40 : 900 + index * 300
+                return ReadingSessionEntry(
+                    id: Int64(index + 1),
+                    seriesId: Int64(index + 1),
+                    seriesTitle: ["Berserk", "Vagabond", "Blade of the Waning Moon"][index % 3],
+                    pagesRead: 49 - index * 6,
+                    chaptersRead: index.isMultiple(of: 2) ? 1 : 0,
+                    startedDate: started,
+                    endedDate: started.addingTimeInterval(TimeInterval(length)),
+                    localDayKey: started.localDayKey,
+                    alive: true,
                     cover: nil,
                     path: nil
+                )
+            }
+        }
+
+        // the fortnight the chart buckets - separate from the Sessions fixture,
+        // which is a shorter list meant to be read rather than aggregated
+        static func recent(days: Int) -> [ReadingSessionEntry] {
+            var rows: [ReadingSessionEntry] = []
+            let calendar = Calendar.current
+
+            for day in 0..<max(days, 0) {
+                for slot in 0..<3 {
+                    let hour = [8, 13, 20][slot]
+                    guard let base = calendar.date(byAdding: .day, value: -day, to: .now),
+                        let start = calendar.date(
+                            bySettingHour: hour, minute: 5, second: 0, of: base)
+                    else { continue }
+
+                    rows.append(
+                        ReadingSessionEntry(
+                            id: Int64(1_000 + day * 10 + slot),
+                            seriesId: 1,
+                            seriesTitle: "Berserk",
+                            pagesRead: 22 + slot * 11 - day,
+                            chaptersRead: 1 + slot % 2,
+                            startedDate: start,
+                            endedDate: start.addingTimeInterval(TimeInterval(700 + slot * 800)),
+                            localDayKey: start.localDayKey,
+                            alive: true,
+                            cover: nil,
+                            path: nil
+                        )
+                    )
+                }
+            }
+            return rows
+        }
+
+        static func snapshot(
+            heatDays: Int = 34,
+            chapters: Int = 412,
+            seconds: Int = 187_000,
+            pages: Int = 9_640,
+            currentRun: Int = 6,
+            longestRun: Int = 18,
+            sessions sessionCount: Int = 4
+        ) -> StatsViewModel.Snapshot {
+            .init(
+                chaptersAllTime: chapters,
+                secondsAllTime: seconds,
+                pagesAllTime: pages,
+                currentRun: currentRun,
+                longestRun: longestRun,
+                heat: heat(days: heatDays),
+                heatChapters: heat(days: heatDays).mapValues { max(1, $0 / 18) },
+                heatStartKey: 0,
+                sessions: sessions(sessionCount),
+                recent: recent(days: min(heatDays, 13))
             )
         }
     }
 
-    // the fortnight the chart buckets - separate from the Sessions fixture,
-    // which is a shorter list meant to be read rather than aggregated
-    static func recent(days: Int) -> [ReadingSessionEntry] {
-        var rows: [ReadingSessionEntry] = []
-        let calendar = Calendar.current
-
-        for day in 0..<max(days, 0) {
-            for slot in 0..<3 {
-                let hour = [8, 13, 20][slot]
-                guard let base = calendar.date(byAdding: .day, value: -day, to: .now),
-                      let start = calendar.date(bySettingHour: hour, minute: 5, second: 0, of: base)
-                else { continue }
-
-                rows.append(
-                    ReadingSessionEntry(
-                        id: Int64(1_000 + day * 10 + slot),
-                        seriesId: 1,
-                        seriesTitle: "Berserk",
-                        pagesRead: 22 + slot * 11 - day,
-                        chaptersRead: 1 + slot % 2,
-                        startedDate: start,
-                        endedDate: start.addingTimeInterval(TimeInterval(700 + slot * 800)),
-                        localDayKey: start.localDayKey,
-                        alive: true,
-                    cover: nil,
-                    path: nil
-                    )
-                )
+    #Preview("Populated") {
+        NavigationStack {
+            ScrollView {
+                ReadingActivitySection(vm: .preview(snapshot: Mock.snapshot())).padding(16)
             }
         }
-        return rows
     }
 
-    static func snapshot(
-        heatDays: Int = 34,
-        chapters: Int = 412,
-        seconds: Int = 187_000,
-        pages: Int = 9_640,
-        currentRun: Int = 6,
-        longestRun: Int = 18,
-        sessions sessionCount: Int = 4
-    ) -> StatsViewModel.Snapshot {
-        .init(
-            chaptersAllTime: chapters,
-            secondsAllTime: seconds,
-            pagesAllTime: pages,
-            currentRun: currentRun,
-            longestRun: longestRun,
-            heat: heat(days: heatDays),
-            heatChapters: heat(days: heatDays).mapValues { max(1, $0 / 18) },
-            heatStartKey: 0,
-            sessions: sessions(sessionCount),
-            recent: recent(days: min(heatDays, 13))
-        )
-    }
-}
-
-#Preview("Populated") {
-    NavigationStack {
-        ScrollView { ReadingActivitySection(vm: .preview(snapshot: Mock.snapshot())).padding(16) }
-    }
-}
-
-// the sparse end: one reading day against a full grid of empties, which is what
-// a first-day install actually looks like
-#Preview("Sparse") {
-    NavigationStack {
-        ScrollView {
-            ReadingActivitySection(
-                vm: .preview(
-                    snapshot: Mock.snapshot(
-                        heatDays: 1,
-                        chapters: 1,
-                        seconds: 40,
-                        pages: 49,
-                        currentRun: 1,
-                        longestRun: 1,
-                        sessions: 1
+    // the sparse end: one reading day against a full grid of empties, which is what
+    // a first-day install actually looks like
+    #Preview("Sparse") {
+        NavigationStack {
+            ScrollView {
+                ReadingActivitySection(
+                    vm: .preview(
+                        snapshot: Mock.snapshot(
+                            heatDays: 1,
+                            chapters: 1,
+                            seconds: 40,
+                            pages: 49,
+                            currentRun: 1,
+                            longestRun: 1,
+                            sessions: 1
+                        )
                     )
                 )
-            )
-            .padding(16)
-        }
-    }
-}
-
-#Preview("Empty") {
-    NavigationStack {
-        ScrollView {
-            ReadingActivitySection(vm: .preview(snapshot: Mock.snapshot(heatDays: 0, chapters: 0, seconds: 0, pages: 0, currentRun: 0, longestRun: 0, sessions: 0)))
                 .padding(16)
+            }
         }
     }
-}
+
+    #Preview("Empty") {
+        NavigationStack {
+            ScrollView {
+                ReadingActivitySection(
+                    vm: .preview(
+                        snapshot: Mock.snapshot(
+                            heatDays: 0, chapters: 0, seconds: 0, pages: 0, currentRun: 0,
+                            longestRun: 0, sessions: 0))
+                )
+                .padding(16)
+            }
+        }
+    }
 #endif
 
 // one series' share of a window, folded from its sittings. not a database shape:

@@ -92,15 +92,19 @@ struct ReaderSourceSwitcher: View {
 
 // MARK: - Content
 
-private extension ReaderSourceSwitcher {
-    var phase: LoadPhase {
-        if let slot, slot.options.count > 1 { .content }
-        else if isLoading { .pending }
-        else { .empty }
+extension ReaderSourceSwitcher {
+    fileprivate var phase: LoadPhase {
+        if let slot, slot.options.count > 1 {
+            .content
+        } else if isLoading {
+            .pending
+        } else {
+            .empty
+        }
     }
 
     @ViewBuilder
-    var Content: some View {
+    fileprivate var Content: some View {
         switch phase {
         case .content:
             if let slot {
@@ -116,14 +120,15 @@ private extension ReaderSourceSwitcher {
             ContentUnavailableView(
                 "Only One Source",
                 systemImage: "square.stack.3d.up.slash",
-                description: Text("No other source has this chapter. Add another source to the series to read it from elsewhere.")
+                description: Text(
+                    "No other source has this chapter. Add another source to the series to read it from elsewhere."
+                )
             )
             .transition(.opacity)
         }
     }
 
-
-    func Options(_ slot: ChapterSlot) -> some View {
+    fileprivate func Options(_ slot: ChapterSlot) -> some View {
         ScrollView {
             LazyVStack(spacing: Layout.rowSpacing) {
                 ForEach(sources(of: slot)) { source in
@@ -205,7 +210,7 @@ private extension ReaderSourceSwitcher {
         }
     }
 
-    func ScanlatorRow(_ option: ChapterSlot.Option) -> some View {
+    fileprivate func ScanlatorRow(_ option: ChapterSlot.Option) -> some View {
         HStack(spacing: dimensions.spacing.space12) {
             Text(meta(option))
                 .font(.subheadline)
@@ -232,7 +237,7 @@ private extension ReaderSourceSwitcher {
     // a download belongs to one row, not to a chapter number - so when ranking
     // moves, this is the screen that shows which row still holds the bytes
     @ViewBuilder
-    func Stored(_ shown: Bool) -> some View {
+    fileprivate func Stored(_ shown: Bool) -> some View {
         if shown {
             Image(systemName: "arrow.down.circle.fill")
                 .font(.footnote)
@@ -242,7 +247,7 @@ private extension ReaderSourceSwitcher {
     }
 
     @ViewBuilder
-    func Highlight(_ shown: Bool) -> some View {
+    fileprivate func Highlight(_ shown: Bool) -> some View {
         if shown {
             RoundedRectangle(cornerRadius: dimensions.radius.radius16)
                 .fill(Palette.brand.opacity(Layout.currentOpacity))
@@ -250,7 +255,7 @@ private extension ReaderSourceSwitcher {
     }
 
     @ViewBuilder
-    func SourceIcon(_ icon: ImageResource?) -> some View {
+    fileprivate func SourceIcon(_ icon: ImageResource?) -> some View {
         if let icon {
             Image(icon)
                 .resizable()
@@ -273,11 +278,11 @@ private extension ReaderSourceSwitcher {
 
 // MARK: - Copy
 
-private extension ReaderSourceSwitcher {
+extension ReaderSourceSwitcher {
     // Text, not String: navigationSubtitle takes either and the String overload
     // renders inflection markup verbatim. counts SOURCES, not options - four
     // scanlators on one site is one place to read from, not four
-    var subtitle: Text {
+    fileprivate var subtitle: Text {
         guard let slot else { return Text("") }
 
         let count = Set(slot.options.map(\.originId)).count
@@ -289,12 +294,12 @@ private extension ReaderSourceSwitcher {
         return Text("Chapter \(number(slot.number)) · ^[\(count) source](inflect: true)")
     }
 
-    func number(_ value: Double) -> String {
+    fileprivate func number(_ value: Double) -> String {
         value.formatted(.number.precision(.fractionLength(0...2)))
     }
 
     // the scanlator is the reason to pick one of these over another, so it leads
-    func meta(_ option: ChapterSlot.Option) -> String {
+    fileprivate func meta(_ option: ChapterSlot.Option) -> String {
         [option.scanlator, option.language.flag]
             .filter { !$0.isEmpty }
             .joined(separator: " • ")

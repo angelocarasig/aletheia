@@ -5,8 +5,8 @@
 //  Created by Angelo Carasig on 9/8/2026.
 //
 
-import SwiftUI
 import Kingfisher
+import SwiftUI
 import Tagged
 
 // which series could not be checked, on which source, and why. reached from the
@@ -40,10 +40,15 @@ struct FailuresScreen: View {
 
     private var phase: LoadPhase {
         if let vm {
-            if vm.failure != nil { .failed }
-            else if vm.entries == nil { .pending }
-            else if vm.isEmpty { .empty }
-            else { .content }
+            if vm.failure != nil {
+                .failed
+            } else if vm.entries == nil {
+                .pending
+            } else if vm.isEmpty {
+                .empty
+            } else {
+                .content
+            }
         } else {
             .pending
         }
@@ -53,7 +58,7 @@ struct FailuresScreen: View {
         ZStack {
             switch phase {
             case .content:
-                if let vm { List(vm) .transition(.opacity) }
+                if let vm { List(vm).transition(.opacity) }
             case .empty:
                 Recovered.transition(.opacity)
             case .failed:
@@ -86,8 +91,8 @@ struct FailuresScreen: View {
 
 // MARK: - Content
 
-private extension FailuresScreen {
-    func List(_ vm: FailuresViewModel) -> some View {
+extension FailuresScreen {
+    fileprivate func List(_ vm: FailuresViewModel) -> some View {
         // the control sits outside the scroll: it scopes everything below it,
         // so scrolling it away would leave the list in a state with nothing on
         // screen saying which
@@ -131,7 +136,7 @@ private extension FailuresScreen {
         .animation(.settle, value: grouping)
     }
 
-    var GroupingControl: some View {
+    fileprivate var GroupingControl: some View {
         Picker("Group by", selection: $grouping) {
             ForEach(FailuresViewModel.Grouping.allCases) { option in
                 Text(option.label).tag(option)
@@ -150,7 +155,9 @@ private extension FailuresScreen {
     // three chevrons pointing at one destination is three promises of somewhere
     // different to go
     @ViewBuilder
-    func Header(_ section: FailuresViewModel.Section, vm: FailuresViewModel) -> some View {
+    fileprivate func Header(_ section: FailuresViewModel.Section, vm: FailuresViewModel)
+        -> some View
+    {
         if grouping == .series, let entry = section.entries.first {
             HeaderContent(section, vm: vm)
                 .contentShape(.rect)
@@ -161,7 +168,9 @@ private extension FailuresScreen {
         }
     }
 
-    func HeaderContent(_ section: FailuresViewModel.Section, vm: FailuresViewModel) -> some View {
+    fileprivate func HeaderContent(_ section: FailuresViewModel.Section, vm: FailuresViewModel)
+        -> some View
+    {
         HStack(spacing: dimensions.spacing.space8) {
             // combined into one VoiceOver label - but scoped to only this
             // decorative half, not the whole header, because RetryAllButton
@@ -216,7 +225,9 @@ private extension FailuresScreen {
     // whole header already navigates, and this must win against that rather
     // than trigger it
     @ViewBuilder
-    func RetryAllButton(_ section: FailuresViewModel.Section, vm: FailuresViewModel) -> some View {
+    fileprivate func RetryAllButton(_ section: FailuresViewModel.Section, vm: FailuresViewModel)
+        -> some View
+    {
         let retrying = section.entries.contains { vm.retrying.contains($0.id) }
 
         if retrying {
@@ -236,7 +247,7 @@ private extension FailuresScreen {
     }
 
     @ViewBuilder
-    func Count(_ section: FailuresViewModel.Section) -> some View {
+    fileprivate func Count(_ section: FailuresViewModel.Section) -> some View {
         // each branch keeps its own literal, or the inflection markup is erased
         if grouping == .source {
             Text("^[\(section.count) series](inflect: true)")
@@ -254,7 +265,7 @@ private extension FailuresScreen {
     // half in every row underneath it is the noise that made the flat list hard
     // to read once more than one thing was broken
     @ViewBuilder
-    func Row(_ entry: FailuresViewModel.Entry, vm: FailuresViewModel) -> some View {
+    fileprivate func Row(_ entry: FailuresViewModel.Entry, vm: FailuresViewModel) -> some View {
         if grouping == .source {
             RowCard(entry, vm: vm)
                 .contentShape(.rect)
@@ -269,7 +280,7 @@ private extension FailuresScreen {
         }
     }
 
-    func RowCard(_ entry: FailuresViewModel.Entry, vm: FailuresViewModel) -> some View {
+    fileprivate func RowCard(_ entry: FailuresViewModel.Entry, vm: FailuresViewModel) -> some View {
         HStack(spacing: 0) {
             // the artwork is the card's leading edge rather than an inset
             // thumbnail: it sets the card's height and gives the failure
@@ -345,7 +356,7 @@ private extension FailuresScreen {
     // the same resolution every other rail in the app uses. fixed width and an
     // unbounded height so the text column decides how tall the card is and the
     // artwork fills whatever that turns out to be
-    func Cover(_ entry: FailuresViewModel.Entry) -> some View {
+    fileprivate func Cover(_ entry: FailuresViewModel.Entry) -> some View {
         let local = compositor.assets.local(for: entry.path)
 
         return Color.clear
@@ -355,7 +366,9 @@ private extension FailuresScreen {
                 if let cover = local ?? entry.cover {
                     KFImage(cover)
                         .resizable()
-                        .placeholder { Rectangle().fill(.primary.opacity(Layout.placeholderOpacity)).shimmer() }
+                        .placeholder {
+                            Rectangle().fill(.primary.opacity(Layout.placeholderOpacity)).shimmer()
+                        }
                         .fade(duration: 0.25)
                         .scaledToFill()
                 } else {
@@ -367,7 +380,7 @@ private extension FailuresScreen {
 
     // the header's cover keeps a shape of its own: it sits inline beside a
     // title rather than against the card's edge
-    func HeaderCover(_ entry: FailuresViewModel.Entry) -> some View {
+    fileprivate func HeaderCover(_ entry: FailuresViewModel.Entry) -> some View {
         let local = compositor.assets.local(for: entry.path)
 
         return Color.clear
@@ -377,7 +390,9 @@ private extension FailuresScreen {
                 if let cover = local ?? entry.cover {
                     KFImage(cover)
                         .resizable()
-                        .placeholder { Rectangle().fill(.primary.opacity(Layout.placeholderOpacity)).shimmer() }
+                        .placeholder {
+                            Rectangle().fill(.primary.opacity(Layout.placeholderOpacity)).shimmer()
+                        }
                         .fade(duration: 0.25)
                         .scaledToFill()
                 } else {
@@ -388,7 +403,7 @@ private extension FailuresScreen {
     }
 
     @ViewBuilder
-    func Icon(_ entry: FailuresViewModel.Entry) -> some View {
+    fileprivate func Icon(_ entry: FailuresViewModel.Entry) -> some View {
         if let icon = compositor.registry.source(slug: entry.sourceSlug)?.descriptor.icon {
             Image(icon)
                 .resizable()
@@ -400,14 +415,16 @@ private extension FailuresScreen {
                 .font(.footnote)
                 .foregroundStyle(.muted)
                 .frame(width: Layout.iconSize, height: Layout.iconSize)
-                .background(.primary.opacity(Layout.fillOpacity), in: .rect(cornerRadius: dimensions.radius.radius8))
+                .background(
+                    .primary.opacity(Layout.fillOpacity),
+                    in: .rect(cornerRadius: dimensions.radius.radius8))
         }
     }
 
     // the same unit everything else calls, so a retry while a library run is
     // already checking this origin joins that fetch instead of racing it
     @ViewBuilder
-    func Retry(_ entry: FailuresViewModel.Entry, vm: FailuresViewModel) -> some View {
+    fileprivate func Retry(_ entry: FailuresViewModel.Entry, vm: FailuresViewModel) -> some View {
         if vm.retrying.contains(entry.id) {
             ProgressView()
                 .controlSize(.small)
@@ -423,7 +440,7 @@ private extension FailuresScreen {
         }
     }
 
-    var Recovered: some View {
+    fileprivate var Recovered: some View {
         ContentUnavailableView {
             Label("Everything's Working", systemImage: "checkmark.circle")
         } description: {
@@ -435,7 +452,7 @@ private extension FailuresScreen {
 
     // no grouping control and no icon column: there are two services at most, and
     // the mark on each row already says which. what varies here is the series
-    func TrackingHeader(_ count: Int) -> some View {
+    fileprivate func TrackingHeader(_ count: Int) -> some View {
         HStack(spacing: dimensions.spacing.space8) {
             Image(systemName: "app.connected.to.app.below.fill")
                 .font(.subheadline)
@@ -456,7 +473,9 @@ private extension FailuresScreen {
         .accessibilityElement(children: .combine)
     }
 
-    func TrackingRow(_ entry: FailuresViewModel.TrackerEntry, vm: FailuresViewModel) -> some View {
+    fileprivate func TrackingRow(_ entry: FailuresViewModel.TrackerEntry, vm: FailuresViewModel)
+        -> some View
+    {
         HStack(spacing: 0) {
             TrackingCover(entry)
 
@@ -521,7 +540,7 @@ private extension FailuresScreen {
         .tappable { route = SeriesEntry.library(SeriesRecord.ID(rawValue: entry.seriesId)) }
     }
 
-    func TrackingCover(_ entry: FailuresViewModel.TrackerEntry) -> some View {
+    fileprivate func TrackingCover(_ entry: FailuresViewModel.TrackerEntry) -> some View {
         let local = compositor.assets.local(for: entry.path)
 
         return Color.clear
@@ -531,7 +550,9 @@ private extension FailuresScreen {
                 if let cover = local ?? entry.cover {
                     KFImage(cover)
                         .resizable()
-                        .placeholder { Rectangle().fill(.primary.opacity(Layout.placeholderOpacity)).shimmer() }
+                        .placeholder {
+                            Rectangle().fill(.primary.opacity(Layout.placeholderOpacity)).shimmer()
+                        }
                         .fade(duration: 0.25)
                         .scaledToFill()
                 } else {
@@ -544,7 +565,9 @@ private extension FailuresScreen {
     // no spinner: a retry wakes the whole lane rather than resending this row, so
     // there is no per-row work to report. the row leaves on its own the moment the
     // push lands, which is the same signal every other row on this screen uses
-    func TrackingRetry(_ entry: FailuresViewModel.TrackerEntry, vm: FailuresViewModel) -> some View {
+    fileprivate func TrackingRetry(_ entry: FailuresViewModel.TrackerEntry, vm: FailuresViewModel)
+        -> some View
+    {
         Text("Try Again")
             .font(.caption)
             .fontWeight(.medium)
@@ -555,7 +578,7 @@ private extension FailuresScreen {
             .tappable { vm.retry(entry) }
     }
 
-    func Unavailable(_ failure: Failure) -> some View {
+    fileprivate func Unavailable(_ failure: Failure) -> some View {
         ContentUnavailableView {
             Label(failure.title, systemImage: "exclamationmark.triangle")
         } description: {

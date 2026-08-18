@@ -24,13 +24,17 @@ actor AuthRequester {
         self.log = log
     }
 
-    func credential(for source: any AuthenticatingSource, targeting url: URL? = nil) async throws -> SourceCredential {
+    func credential(for source: any AuthenticatingSource, targeting url: URL? = nil) async throws
+        -> SourceCredential
+    {
         let slug = source.descriptor.slug
 
         // deliberately silent. this is the steady state and fires once per
         // request, which buried everything worth reading under five identical
         // lines at a time. the refresh below is the state change worth logging
-        if let cached = try? Keychain.sources.load(SourceCredential.self, account: slug), cached.isValid() {
+        if let cached = try? Keychain.sources.load(SourceCredential.self, account: slug),
+            cached.isValid()
+        {
             return cached
         }
 
@@ -46,7 +50,9 @@ actor AuthRequester {
         try? Keychain.sources.load(SourceCredential.self, account: slug)
     }
 
-    func send(_ request: URLRequest, for source: any AuthenticatingSource) async throws -> (Data, HTTPURLResponse) {
+    func send(_ request: URLRequest, for source: any AuthenticatingSource) async throws -> (
+        Data, HTTPURLResponse
+    ) {
         var authed = request
         let credential = try await credential(for: source, targeting: request.url)
         credential.apply(to: &authed)
@@ -69,10 +75,14 @@ actor AuthRequester {
         // nothing else in this chain can tell those apart. names only - the
         // clearance itself is a secret and the log is not
         let slug = source.descriptor.slug
-        log.log("[\(slug)] challenged \(request.url?.path() ?? "/") - sent \(describe(authed))", category: "auth")
+        log.log(
+            "[\(slug)] challenged \(request.url?.path() ?? "/") - sent \(describe(authed))",
+            category: "auth")
 
         if let last = lastRefresh[slug], Date().timeIntervalSince(last) < Self.refreshCooldown {
-            log.log("[\(slug)] challenge persists after a recent refresh - not capturing again", category: "auth")
+            log.log(
+                "[\(slug)] challenge persists after a recent refresh - not capturing again",
+                category: "auth")
             return (data, response)
         }
 
@@ -98,7 +108,9 @@ actor AuthRequester {
             + ", shared jar [\(ambient.map(\.name).sorted().joined(separator: ", "))]"
     }
 
-    private func refresh(for source: any AuthenticatingSource, targeting url: URL? = nil) async throws -> SourceCredential {
+    private func refresh(for source: any AuthenticatingSource, targeting url: URL? = nil)
+        async throws -> SourceCredential
+    {
         let slug = source.descriptor.slug
 
         if let existing = refreshTasks[slug] {

@@ -5,9 +5,9 @@
 //  Created by Angelo Carasig on 8/8/2026.
 //
 
-import UIKit
 import ImageIO
 import Kingfisher
+import UIKit
 
 // downsamples a page to the width it will be drawn at, rather than to its
 // longest side.
@@ -43,13 +43,15 @@ struct PageDownsampler: ImageProcessor {
         self.identifier = "moe.aletheia.page-downsample(\(Int(self.width)),\(Int(cap)))"
     }
 
-    func process(item: ImageProcessItem, options: KingfisherParsedOptionsInfo) -> KFCrossPlatformImage? {
+    func process(item: ImageProcessItem, options: KingfisherParsedOptionsInfo)
+        -> KFCrossPlatformImage?
+    {
         switch item {
-        case let .image(image):
+        case .image(let image):
             // already decoded by someone else, and there is nothing to gain by
             // rasterising it a second time
             return image
-        case let .data(data):
+        case .data(let data):
             return downsample(data, scale: options.scaleFactor)
         }
     }
@@ -66,10 +68,11 @@ struct PageDownsampler: ImageProcessor {
             // honours EXIF orientation, so the dimensions read below and the
             // pixels produced describe the same picture
             kCGImageSourceCreateThumbnailWithTransform: true,
-            kCGImageSourceThumbnailMaxPixelSize: maxPixelSize(of: source)
+            kCGImageSourceThumbnailMaxPixelSize: maxPixelSize(of: source),
         ]
 
-        guard let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else {
+        guard let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
+        else {
             return nil
         }
         return UIImage(cgImage: image, scale: scale, orientation: .up)

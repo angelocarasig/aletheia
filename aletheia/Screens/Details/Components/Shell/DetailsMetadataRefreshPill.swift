@@ -107,7 +107,9 @@ struct DetailsMetadataRefreshPill: View {
         .init(id: .origin(1), name: "MangaDex", result: .updated),
         .init(id: .origin(2), name: "MangaFire", result: .unchanged),
         .init(id: .tracker(.anilist), name: "AniList", result: nil),
-        .init(id: .tracker(.myAnimeList), name: "MyAnimeList", result: .failed("Couldn't reach the service.")),
+        .init(
+            id: .tracker(.myAnimeList), name: "MyAnimeList",
+            result: .failed("Couldn't reach the service.")),
     ])
     .padding()
     .background(.canvas)

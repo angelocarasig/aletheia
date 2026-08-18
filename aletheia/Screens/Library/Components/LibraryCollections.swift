@@ -51,10 +51,10 @@ struct LibraryCollections: View {
 
 // MARK: - Root
 
-private extension LibraryCollections {
+extension LibraryCollections {
     // tinted whenever a collection is active, so the control itself answers "am I
     // still filtered" without opening
-    var Root: some View {
+    fileprivate var Root: some View {
         Image(systemName: expanded ? "xmark" : "square.stack")
             .contentTransition(.symbolEffect(.replace))
             .font(.system(size: dimensions.size.icon20, weight: .medium))
@@ -68,7 +68,7 @@ private extension LibraryCollections {
             .accessibilityLabel(expanded ? "Close collections" : "Collections")
     }
 
-    var tinted: Glass {
+    fileprivate var tinted: Glass {
         selected == nil
             ? .regular.interactive()
             : .regular.tint(Palette.brand).interactive()
@@ -77,11 +77,11 @@ private extension LibraryCollections {
 
 // MARK: - Panel
 
-private extension LibraryCollections {
+extension LibraryCollections {
     // wrapping rather than scrolling: a horizontal row inside a vertical scroll
     // view is a real assistive-tech trap, and every collection visible at once is
     // the whole reason this opens instead of being a menu
-    var Panel: some View {
+    fileprivate var Panel: some View {
         VStack(alignment: .leading, spacing: dimensions.spacing.space12) {
             Text("Collections")
                 .font(.subheadline.weight(.semibold))
@@ -111,7 +111,7 @@ private extension LibraryCollections {
 
     // plain fills, never nested glass - the panel is already a glass surface and
     // a second one on top of it flattens
-    func Chip(_ title: String, count: Int, id: CollectionRecord.ID?) -> some View {
+    fileprivate func Chip(_ title: String, count: Int, id: CollectionRecord.ID?) -> some View {
         let isSelected = selected == id
 
         return HStack(spacing: dimensions.spacing.space4) {
@@ -152,7 +152,7 @@ private extension LibraryCollections {
     }
 
     // dashed, so it reads as an action rather than another collection to pick
-    var New: some View {
+    fileprivate var New: some View {
         Label("New", systemImage: "plus")
             .font(.subheadline)
             .fontWeight(.medium)

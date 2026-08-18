@@ -43,8 +43,14 @@ struct CollapsingHeader<Header: View, Content: View>: View {
                 .frame(maxWidth: .infinity)
         }
         .overlay(alignment: .top) { HeaderOverlay }
-        .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.top } action: { safeTop = $0 }
-        .onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.y } action: { old, new in
+        .onGeometryChange(for: CGFloat.self) {
+            $0.safeAreaInsets.top
+        } action: {
+            safeTop = $0
+        }
+        .onScrollGeometryChange(for: CGFloat.self) {
+            $0.contentOffset.y
+        } action: { old, new in
             // anywhere near the top the header is always shown, so it can never
             // be stranded off screen with nothing left to scroll back through
             if new <= height {
@@ -63,7 +69,11 @@ struct CollapsingHeader<Header: View, Content: View>: View {
             .padding(.bottom, dimensions.spacing.space12)
             .frame(maxWidth: .infinity)
             .background(Color(.systemBackground))
-            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height = $0 }
+            .onGeometryChange(for: CGFloat.self) {
+                $0.size.height
+            } action: {
+                height = $0
+            }
             .offset(y: hidden ? -(height + safeTop) : 0)
             .opacity(hidden ? 0 : 1)
             // a header that is off screen must not keep catching taps

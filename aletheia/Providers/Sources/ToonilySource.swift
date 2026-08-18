@@ -31,14 +31,16 @@ struct ToonilySource: SourceService, AuthenticatingSource {
         static let cover = "div.summary_image img"
         static let chapterRow = "li.wp-manga-chapter"
         static let chapterDate = "span.chapter-release-date"
-        static let pageImage = "div.page-break img, li.blocks-gallery-item img, .reading-content .text-left:not(:has(.blocks-gallery-item)) img"
+        static let pageImage =
+            "div.page-break img, li.blocks-gallery-item img, .reading-content .text-left:not(:has(.blocks-gallery-item)) img"
         static let protector = "#chapter-protector-data"
     }
 
     let descriptor = SourceDescriptor(
         slug: "toonily",
         name: "Toonily",
-        description: "Read Korean webtoons and manhwa online in English. Romance, drama and action titles updated daily.",
+        description:
+            "Read Korean webtoons and manhwa online in English. Romance, drama and action titles updated daily.",
         icon: .toonily,
         languages: [.english],
         baseURL: URL(string: "https://toonily.com")!,
@@ -83,7 +85,7 @@ struct ToonilySource: SourceService, AuthenticatingSource {
                     .init(id: "villainess", name: "Villainess"),
                     .init(id: "wuxia", name: "Wuxia"),
                     .init(id: "yaoi", name: "Yaoi", sensitivity: .suggestive),
-                    .init(id: "yuri", name: "Yuri")
+                    .init(id: "yuri", name: "Yuri"),
                 ],
                 canExclude: false
             ),
@@ -92,7 +94,7 @@ struct ToonilySource: SourceService, AuthenticatingSource {
                 name: "Genre Inclusion",
                 options: [
                     .init(id: "any", name: "Any"),
-                    .init(id: "all", name: "All")
+                    .init(id: "all", name: "All"),
                 ]
             ),
             .multiSelect(
@@ -102,7 +104,7 @@ struct ToonilySource: SourceService, AuthenticatingSource {
                     .init(id: "on-going", name: "Ongoing"),
                     .init(id: "end", name: "Completed"),
                     .init(id: "on-hold", name: "Hiatus"),
-                    .init(id: "canceled", name: "Cancelled")
+                    .init(id: "canceled", name: "Cancelled"),
                 ],
                 canExclude: false
             ),
@@ -114,9 +116,9 @@ struct ToonilySource: SourceService, AuthenticatingSource {
                 name: "Mature Content",
                 options: [
                     .init(id: "included", name: "Included", sensitivity: .adult),
-                    .init(id: "only", name: "Only", sensitivity: .adult)
+                    .init(id: "only", name: "Only", sensitivity: .adult),
                 ]
-            )
+            ),
         ],
         // option ids are the site's own m_orderby values, which its order-by tab
         // bar composes with s and every filter - verified from the live markup
@@ -128,7 +130,7 @@ struct ToonilySource: SourceService, AuthenticatingSource {
                 .init(id: "alphabet", name: "Title (A-Z)"),
                 .init(id: "rating", name: "Top rated"),
                 .init(id: "trending", name: "Trending"),
-                .init(id: "views", name: "Most viewed")
+                .init(id: "views", name: "Most viewed"),
             ],
             defaultSort: "relevance"
         )
@@ -136,16 +138,23 @@ struct ToonilySource: SourceService, AuthenticatingSource {
 
     var presets: [SourcePreset] {
         [
-            .init(id: "latest", name: "Latest Updates", subtitle: "Freshly released chapters", order: 0,
-                  sort: .init(optionID: "latest")),
-            .init(id: "new", name: "Recently Added", subtitle: "New series on Toonily", order: 1,
-                  sort: .init(optionID: "new-manga")),
-            .init(id: "rating", name: "Top Rated", subtitle: "Highest rated by readers", order: 2,
-                  sort: .init(optionID: "rating")),
-            .init(id: "popular", name: "Most Viewed", subtitle: "Most read of all time", order: 3,
-                  sort: .init(optionID: "views")),
-            .init(id: "trending", name: "Trending This Week", subtitle: "Hot in the last seven days", order: 4,
-                  sort: .init(optionID: "trending"))
+            .init(
+                id: "latest", name: "Latest Updates", subtitle: "Freshly released chapters",
+                order: 0,
+                sort: .init(optionID: "latest")),
+            .init(
+                id: "new", name: "Recently Added", subtitle: "New series on Toonily", order: 1,
+                sort: .init(optionID: "new-manga")),
+            .init(
+                id: "rating", name: "Top Rated", subtitle: "Highest rated by readers", order: 2,
+                sort: .init(optionID: "rating")),
+            .init(
+                id: "popular", name: "Most Viewed", subtitle: "Most read of all time", order: 3,
+                sort: .init(optionID: "views")),
+            .init(
+                id: "trending", name: "Trending This Week", subtitle: "Hot in the last seven days",
+                order: 4,
+                sort: .init(optionID: "trending")),
         ]
     }
 
@@ -167,13 +176,17 @@ struct ToonilySource: SourceService, AuthenticatingSource {
 // MARK: - Requests
 
 extension ToonilySource {
-    private func request(_ url: URL, method: String = "GET", body: Data? = nil, mature: Bool) -> URLRequest {
+    private func request(_ url: URL, method: String = "GET", body: Data? = nil, mature: Bool)
+        -> URLRequest
+    {
         var request = URLRequest(url: url)
         request.httpMethod = method
         request.setValue(descriptor.referer.absoluteString, forHTTPHeaderField: "Referer")
         if let body {
             request.httpBody = body
-            request.setValue("application/x-www-form-urlencoded; charset=UTF-8", forHTTPHeaderField: "Content-Type")
+            request.setValue(
+                "application/x-www-form-urlencoded; charset=UTF-8",
+                forHTTPHeaderField: "Content-Type")
             request.setValue("XMLHttpRequest", forHTTPHeaderField: "X-Requested-With")
         }
         // request-scoped, never in the credential: search sends it only when the
@@ -200,7 +213,8 @@ extension ToonilySource {
     // presets riding the same path
     func search(_ query: SearchQuery) async throws -> SearchPage<SeriesStub> {
         let gateOpen = allowsAdult(for: query)
-        let (data, _) = try await requester.send(request(searchURL(for: query, gateOpen: gateOpen), mature: gateOpen), for: self)
+        let (data, _) = try await requester.send(
+            request(searchURL(for: query, gateOpen: gateOpen), mature: gateOpen), for: self)
 
         let document = try SwiftSoup.parse(String(decoding: data, as: UTF8.self))
         let stubs = try Self.stubs(from: document, adult: gateOpen)
@@ -216,7 +230,7 @@ extension ToonilySource {
     private func searchURL(for query: SearchQuery, gateOpen: Bool) -> URL {
         var items: [URLQueryItem] = [
             .init(name: "post_type", value: "wp-manga"),
-            .init(name: "s", value: Self.sanitized(query.text))
+            .init(name: "s", value: Self.sanitized(query.text)),
         ]
 
         let sort = resolvedSort(for: query)
@@ -226,11 +240,11 @@ extension ToonilySource {
 
         for filter in query.filters {
             switch filter {
-            case let .text(id, value) where !value.isEmpty:
+            case .text(let id, let value) where !value.isEmpty:
                 items.append(.init(name: id, value: value))
-            case let .multiSelect(id, included, _) where id == "genre":
+            case .multiSelect(let id, let included, _) where id == "genre":
                 items.append(contentsOf: included.map { .init(name: "genre[]", value: $0) })
-            case let .multiSelect(id, included, _) where id == "status":
+            case .multiSelect(let id, let included, _) where id == "status":
                 items.append(contentsOf: included.map { .init(name: "status[]", value: $0) })
             case .select(_, "all") where filter.id == "op":
                 items.append(.init(name: "op", value: "1"))
@@ -242,11 +256,12 @@ extension ToonilySource {
         // the form's own radio: "" all content, 0 family friendly, 1 mature only.
         // any adult-marked tick (the mature select or the mature genre) opens to
         // all - only the explicit Only narrows to 1
-        let adult: String = switch query.filters.first(where: { $0.id == "mature" }) {
-        case .select(_, "only"): "1"
-        case .select(_, "included"): ""
-        default: gateOpen ? "" : "0"
-        }
+        let adult: String =
+            switch query.filters.first(where: { $0.id == "mature" }) {
+            case .select(_, "only"): "1"
+            case .select(_, "included"): ""
+            default: gateOpen ? "" : "0"
+            }
         items.append(.init(name: "adult", value: adult))
 
         var base = descriptor.baseURL
@@ -284,7 +299,8 @@ extension ToonilySource {
     private static func slug(from href: String) -> String? {
         let parts = href.split(separator: "/")
         for marker in [Substring(seriesPath), "webtoon"] {
-            if let index = parts.firstIndex(of: marker), parts.index(after: index) < parts.endIndex {
+            if let index = parts.firstIndex(of: marker), parts.index(after: index) < parts.endIndex
+            {
                 return String(parts[parts.index(after: index)])
             }
         }
@@ -311,11 +327,14 @@ extension ToonilySource {
 
         let title = try document.select(Selector.title).first()?.text() ?? ""
         let synopsis = try document.select(Selector.synopsis).first()?.text() ?? ""
-        let authors = try (document.select(Selector.author).map { try $0.text() }
+        let authors = try
+            (document.select(Selector.author).map { try $0.text() }
             + document.select(Selector.artist).map { try $0.text() })
             .filter { !$0.isEmpty }
 
-        let cover = try document.select(Selector.cover).first().flatMap { try Self.imageURL(from: $0) }
+        let cover = try document.select(Selector.cover).first().flatMap {
+            try Self.imageURL(from: $0)
+        }
         let tags = try document.select(Selector.genres).map { try $0.text() }.filter { !$0.isEmpty }
 
         // the site 301s legacy /webtoon/ paths, so the canonical slug is whatever
@@ -364,14 +383,17 @@ extension ToonilySource {
 extension ToonilySource {
     func chapters(seriesSlug: String) async throws -> [ChapterEntry] {
         let url = seriesURL(seriesSlug).appendingPathComponent("ajax/chapters")
-        let (data, _) = try await requester.send(request(url, method: "POST", body: Data(), mature: true), for: self)
+        let (data, _) = try await requester.send(
+            request(url, method: "POST", body: Data(), mature: true), for: self)
         let document = try SwiftSoup.parse(String(decoding: data, as: UTF8.self))
 
         return try document.select(Selector.chapterRow).compactMap { row -> ChapterEntry? in
             guard let link = try row.select("a").first() else { return nil }
 
             let href = try link.attr("href")
-            guard let slug = href.split(separator: "/").last.map(String.init), !slug.isEmpty else { return nil }
+            guard let slug = href.split(separator: "/").last.map(String.init), !slug.isEmpty else {
+                return nil
+            }
 
             let title = try link.text().trimmingCharacters(in: .whitespacesAndNewlines)
             let date = try row.select(Selector.chapterDate).first()?.text()
@@ -413,7 +435,8 @@ extension ToonilySource {
     // "Aug 8, 25", "August 8, 2025", "2 days ago", "UP" (a badge meaning today).
     // unparseable dates fall to .distantPast rather than failing the list
     private static func date(from value: String?) -> Date {
-        guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty else {
+        guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty
+        else {
             return .distantPast
         }
 
@@ -431,18 +454,19 @@ extension ToonilySource {
 
     private static func relative(from value: String) -> Date? {
         guard value.contains("ago"),
-              let match = value.firstMatch(of: /(\d+)\s*(min|hour|day|week|month|year)/)
+            let match = value.firstMatch(of: /(\d+)\s*(min|hour|day|week|month|year)/)
         else { return nil }
 
         guard let count = Double(match.1) else { return nil }
-        let unit: TimeInterval = switch match.2 {
-        case "min": 60
-        case "hour": 3_600
-        case "day": 86_400
-        case "week": 604_800
-        case "month": 2_592_000
-        default: 31_536_000
-        }
+        let unit: TimeInterval =
+            switch match.2 {
+            case "min": 60
+            case "hour": 3_600
+            case "day": 86_400
+            case "week": 604_800
+            case "month": 2_592_000
+            default: 31_536_000
+            }
         return .now.addingTimeInterval(-count * unit)
     }
 }

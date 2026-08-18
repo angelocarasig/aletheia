@@ -58,7 +58,7 @@ struct MangaBakaService: TrackerService, BulkListingTracker {
 
         var items = [
             URLQueryItem(name: "q", value: trimmed),
-            URLQueryItem(name: "limit", value: "20")
+            URLQueryItem(name: "limit", value: "20"),
         ]
 
         // this endpoint returns pornographic results by default and unauthenticated,
@@ -83,7 +83,8 @@ struct MangaBakaService: TrackerService, BulkListingTracker {
         try await entry(remoteId: remoteId, token: token, following: true)
     }
 
-    private func entry(remoteId: Int64, token: String, following: Bool) async throws -> TrackerEntry {
+    private func entry(remoteId: Int64, token: String, following: Bool) async throws -> TrackerEntry
+    {
         // the two halves are independent: the media is public and edge-cached,
         // the listing is authenticated and never cached
         async let pending = media(remoteId)
@@ -100,7 +101,9 @@ struct MangaBakaService: TrackerService, BulkListingTracker {
         // a merged series names its successor rather than disappearing, and the
         // schema asks callers to update their reference. one hop only - a chain
         // that pointed back at itself would otherwise not terminate
-        if following, series.state == "merged", let successor = series.merged_with, successor != remoteId {
+        if following, series.state == "merged", let successor = series.merged_with,
+            successor != remoteId
+        {
             _ = try? await pendingListing
             return try await entry(remoteId: successor, token: token, following: false)
         }
@@ -135,14 +138,15 @@ struct MangaBakaService: TrackerService, BulkListingTracker {
         // failing origin's (sourceId, slug) unique constraint. limit is
         // therefore resent explicitly on every page instead
         while true {
-            let response: ListPage = try await decode(make(
-                "/v2/my/library",
-                token: token,
-                query: [
-                    URLQueryItem(name: "page", value: String(page)),
-                    URLQueryItem(name: "limit", value: "100")
-                ]
-            ))
+            let response: ListPage = try await decode(
+                make(
+                    "/v2/my/library",
+                    token: token,
+                    query: [
+                        URLQueryItem(name: "page", value: String(page)),
+                        URLQueryItem(name: "limit", value: "100"),
+                    ]
+                ))
             entries.append(contentsOf: response.data.compactMap(\.listEntry))
 
             guard !response.data.isEmpty, entries.count < response.pagination.count else { break }
@@ -167,7 +171,9 @@ struct MangaBakaService: TrackerService, BulkListingTracker {
             patch.start_date = Self.dateFormatter.string(from: startDate)
         }
 
-        guard !patch.isEmpty else { return try await entry(remoteId: update.remoteId, token: token) }
+        guard !patch.isEmpty else {
+            return try await entry(remoteId: update.remoteId, token: token)
+        }
 
         try await commit(patch, to: update.remoteId, token: token)
 
@@ -268,14 +274,17 @@ struct MangaBakaService: TrackerService, BulkListingTracker {
 
     // repeated keys are the only array form this api accepts, so the query is
     // built from items rather than a dictionary
-    private func make(_ path: String, token: String? = nil, query: [URLQueryItem] = []) -> URLRequest {
+    private func make(_ path: String, token: String? = nil, query: [URLQueryItem] = [])
+        -> URLRequest
+    {
         var components = URLComponents(
             url: Constants.Trackers.mangaBakaAPI.appending(path: path),
             resolvingAgainstBaseURL: false
         )
         if !query.isEmpty { components?.queryItems = query }
 
-        var request = URLRequest(url: components?.url ?? Constants.Trackers.mangaBakaAPI.appending(path: path))
+        var request = URLRequest(
+            url: components?.url ?? Constants.Trackers.mangaBakaAPI.appending(path: path))
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue(Constants.Trackers.userAgent, forHTTPHeaderField: "User-Agent")
         // absent on purpose for the public endpoints: they are edge-cached, only
@@ -317,7 +326,8 @@ struct MangaBakaService: TrackerService, BulkListingTracker {
 
         do {
             let (data, response) = try await network.send(request)
-            TrackerLog.received(tracker, method, path, status: response.statusCode, bytes: data.count)
+            TrackerLog.received(
+                tracker, method, path, status: response.statusCode, bytes: data.count)
             return (data, response)
         } catch is CancellationError {
             throw TrackerError.cancelled
@@ -340,7 +350,8 @@ struct MangaBakaService: TrackerService, BulkListingTracker {
     // so it is quoted where there is one rather than replaced with our guess at
     // what happened
     private static func failure(status: Int, body: Data?) -> TrackerError {
-        let message = body
+        let message =
+            body
             .flatMap { try? JSONDecoder().decode(ErrorBody.self, from: $0) }
             .map(\.message)
             .flatMap { $0.isEmpty ? nil : $0 }
@@ -626,7 +637,8 @@ private struct Series: Decodable {
 
     var pool: [String] {
         var seen = Set<String>()
-        let all = [title, native_title, romanized_title].compactMap { $0 }
+        let all =
+            [title, native_title, romanized_title].compactMap { $0 }
             + (titles ?? []).compactMap(\.title)
         return all.filter { !$0.isEmpty && seen.insert($0).inserted }
     }
@@ -705,8 +717,8 @@ extension Status {
     }
 }
 
-private extension Status {
-    var mangaBaka: String {
+extension Status {
+    fileprivate var mangaBaka: String {
         switch self {
         case .reading: "reading"
         case .planning: "plan_to_read"

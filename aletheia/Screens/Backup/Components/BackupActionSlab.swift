@@ -30,7 +30,9 @@ struct BackupActionSlab: View {
             if let glyph {
                 Image(systemName: glyph)
                     .font(.title2)
-                    .symbolEffect(.rotate, options: .repeat(.continuous), isActive: isLoading && !reduceMotion)
+                    .symbolEffect(
+                        .rotate, options: .repeat(.continuous), isActive: isLoading && !reduceMotion
+                    )
                     .contentTransition(reduceMotion ? .opacity : .symbolEffect(.replace))
             }
 

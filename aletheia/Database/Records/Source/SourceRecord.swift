@@ -12,7 +12,7 @@ import Tagged
 struct SourceRecord: Codable, DatabaseRecord {
     typealias ID = Tagged<Self, Int64>
     private(set) var id: ID?
-    
+
     var slug: String
     var name: String
     var hash: String
@@ -66,10 +66,10 @@ extension SourceRecord {
     static var databaseTableName: String {
         "source"
     }
-    
+
     enum Columns {
         static let id = Column(CodingKeys.id)
-        
+
         static let slug = Column(CodingKeys.slug)
         static let name = Column(CodingKeys.name)
         static let hash = Column(CodingKeys.hash)
@@ -93,12 +93,14 @@ extension SourceRecord {
             t.column(Columns.installed.name, .boolean).notNull().defaults(to: true)
         }
     }
-    
+
     static func createIndexes(db: Database) throws {
         // slug lookups (also enforced unique at column level)
-        try db.create(index: "idx_source_slug", on: databaseTableName, columns: [Columns.slug.name], ifNotExists: true)
+        try db.create(
+            index: "idx_source_slug", on: databaseTableName, columns: [Columns.slug.name],
+            ifNotExists: true)
     }
-    
+
     mutating func didInsert(_ inserted: InsertionSuccess) {
         id = ID(rawValue: inserted.rowID)
     }
@@ -108,7 +110,7 @@ extension SourceRecord {
 
 extension SourceRecord {
     static let origins = hasMany(OriginRecord.self)
-    
+
     var origins: QueryInterfaceRequest<OriginRecord> {
         request(for: SourceRecord.origins)
     }

@@ -5,8 +5,8 @@
 //  Created by Angelo Carasig on 11/8/2026.
 //
 
-import SwiftUI
 import Kingfisher
+import SwiftUI
 
 // artwork with three states, not two. every call site in the app drew a
 // shimmering placeholder while loading and left it there when the load FAILED -

@@ -41,7 +41,7 @@ struct NHentaiSource: AuthenticatingSource {
                 .init(id: "date", name: "Recent"),
                 .init(id: "popular-today", name: "Popular today"),
                 .init(id: "popular-week", name: "Popular this week"),
-                .init(id: "popular-month", name: "Popular this month")
+                .init(id: "popular-month", name: "Popular this month"),
             ],
             defaultSort: "popular"
         ),
@@ -50,16 +50,23 @@ struct NHentaiSource: AuthenticatingSource {
 
     var presets: [SourcePreset] {
         [
-            .init(id: "new", name: "Recently Added", subtitle: "Freshly uploaded",
-                  order: 0, sort: .init(optionID: "date")),
-            .init(id: "popular-today", name: "Popular Today", subtitle: "Most viewed in the last day",
-                  order: 1, sort: .init(optionID: "popular-today")),
-            .init(id: "popular-week", name: "Popular This Week", subtitle: "Most viewed in the last week",
-                  order: 2, sort: .init(optionID: "popular-week")),
-            .init(id: "popular-month", name: "Popular This Month", subtitle: "Most viewed in the last month",
-                  order: 3, sort: .init(optionID: "popular-month")),
-            .init(id: "popular", name: "Popular All Time", subtitle: "Most viewed ever",
-                  order: 4, sort: .init(optionID: "popular"))
+            .init(
+                id: "new", name: "Recently Added", subtitle: "Freshly uploaded",
+                order: 0, sort: .init(optionID: "date")),
+            .init(
+                id: "popular-today", name: "Popular Today", subtitle: "Most viewed in the last day",
+                order: 1, sort: .init(optionID: "popular-today")),
+            .init(
+                id: "popular-week", name: "Popular This Week",
+                subtitle: "Most viewed in the last week",
+                order: 2, sort: .init(optionID: "popular-week")),
+            .init(
+                id: "popular-month", name: "Popular This Month",
+                subtitle: "Most viewed in the last month",
+                order: 3, sort: .init(optionID: "popular-month")),
+            .init(
+                id: "popular", name: "Popular All Time", subtitle: "Most viewed ever",
+                order: 4, sort: .init(optionID: "popular")),
         ]
     }
 
@@ -95,7 +102,7 @@ extension NHentaiSource {
             ("artist", "Artists"),
             ("character", "Characters"),
             ("parody", "Parodies"),
-            ("group", "Groups")
+            ("group", "Groups"),
         ]
         return namespaces.map { scope, name in
             var seen = Set<String>()
@@ -111,10 +118,12 @@ extension NHentaiSource {
     // the source is unaffected and search still works without it
     private static func load(_ resource: String) -> [String: [Entry]] {
         guard let url = Bundle.main.url(forResource: resource, withExtension: "json"),
-              let data = try? Data(contentsOf: url),
-              let entries = try? JSONDecoder().decode([String: [Entry]].self, from: data)
+            let data = try? Data(contentsOf: url),
+            let entries = try? JSONDecoder().decode([String: [Entry]].self, from: data)
         else {
-            AppLog.shared.log("vocabulary \(resource).json missing or unreadable", level: .warning, category: "source")
+            AppLog.shared.log(
+                "vocabulary \(resource).json missing or unreadable", level: .warning,
+                category: "source")
             return [:]
         }
         return entries
@@ -165,7 +174,8 @@ extension NHentaiSource {
 
     private static func cased(_ segment: Substring) -> String {
         let lowered = segment.lowercased()
-        let shaped = (2...5).contains(segment.count)
+        let shaped =
+            (2...5).contains(segment.count)
             && segment.allSatisfy(\.isLetter)
             && !lowered.contains(where: vowels.contains)
             && !words.contains(lowered)
@@ -187,8 +197,9 @@ extension NHentaiSource {
         // first, then the takedown archive. a code that resolves nowhere falls
         // through to text search unchanged
         if query.page == 1, query.filters.isEmpty,
-           (1...7).contains(raw.count), raw.allSatisfy({ $0.isASCII && $0.isNumber }),
-           let match = await gallery(code: raw) {
+            (1...7).contains(raw.count), raw.allSatisfy({ $0.isASCII && $0.isNumber }),
+            let match = await gallery(code: raw)
+        {
             return SearchPage(items: [match], next: nil)
         }
 
@@ -196,7 +207,7 @@ extension NHentaiSource {
         // its search grammar. the filter id is the grammar scope, the option id
         // is the name the scope takes, exclusion is a leading minus
         var terms: [String] = raw.isEmpty ? [] : [raw]
-        for case let .multiSelect(scope, included, excluded) in query.filters {
+        for case .multiSelect(let scope, let included, let excluded) in query.filters {
             terms.append(contentsOf: included.map { "\(scope):\"\(Self.quotable($0))\"" })
             terms.append(contentsOf: excluded.map { "-\(scope):\"\(Self.quotable($0))\"" })
         }
@@ -208,11 +219,14 @@ extension NHentaiSource {
         // /galleries/popular routes are unpaged or sort-blind and go unused
         let text = terms.isEmpty ? "*" : terms.joined(separator: " ")
 
-        let response: SearchResponse = try await get(Self.url("search", [
-            .init(name: "query", value: text),
-            .init(name: "sort", value: resolvedSort(for: query).optionID),
-            .init(name: "page", value: String(query.page))
-        ]))
+        let response: SearchResponse = try await get(
+            Self.url(
+                "search",
+                [
+                    .init(name: "query", value: text),
+                    .init(name: "sort", value: resolvedSort(for: query).optionID),
+                    .init(name: "page", value: String(query.page)),
+                ]))
         return SearchPage(
             items: response.result.map(Self.stub),
             next: query.page < response.numPages ? query.page + 1 : nil
@@ -228,7 +242,9 @@ extension NHentaiSource {
     // adultOnly, so every stub is adult by construction - gate-exempt
     private static func stub(from item: SearchItem) -> SeriesStub {
         let composite = item.englishTitle ?? item.japaneseTitle
-        let names = composite.map { titles(stripped($0), language: language(from: item.tagIDs ?? [])) }
+        let names = composite.map {
+            titles(stripped($0), language: language(from: item.tagIDs ?? []))
+        }
 
         return SeriesStub(
             slug: String(item.id),
@@ -241,9 +257,10 @@ extension NHentaiSource {
     private func gallery(code: String) async -> SeriesStub? {
         let url = Self.url("galleries/\(code)", [.init(name: "include", value: "images,tags")])
         if let gallery: Gallery = try? await get(url) {
-            let names = gallery.title.pretty.map {
-                Self.titles($0, language: Self.language(from: gallery.tags))
-            } ?? []
+            let names =
+                gallery.title.pretty.map {
+                    Self.titles($0, language: Self.language(from: gallery.tags))
+                } ?? []
             return SeriesStub(
                 slug: String(gallery.id),
                 title: names.first ?? gallery.title.english ?? gallery.title.japanese ?? "Untitled",
@@ -255,7 +272,8 @@ extension NHentaiSource {
         // a taken-down code still resolves as browse-only metadata, the same
         // fallback details() takes when opened
         guard let detail = try? await archived(code) else { return nil }
-        return SeriesStub(slug: detail.slug, title: detail.title, cover: detail.covers.first, adult: true)
+        return SeriesStub(
+            slug: detail.slug, title: detail.title, cover: detail.covers.first, adult: true)
     }
 }
 
@@ -263,7 +281,8 @@ extension NHentaiSource {
 
 extension NHentaiSource {
     func details(seriesSlug: String) async throws -> SeriesDetail {
-        let url = Self.url("galleries/\(seriesSlug)", [.init(name: "include", value: "images,tags")])
+        let url = Self.url(
+            "galleries/\(seriesSlug)", [.init(name: "include", value: "images,tags")])
         let request = URLRequest(url: url)
         let (data, response) = try await requester.send(request, for: self)
 
@@ -306,16 +325,18 @@ extension NHentaiSource {
         let url = Self.url("galleries/\(seriesSlug)", [.init(name: "include", value: "tags")])
         let gallery: Gallery = try await get(url)
 
-        return [ChapterEntry(
-            slug: seriesSlug,
-            title: "",
-            number: 1,
-            language: Self.language(from: gallery.tags),
-            // no scanlator concept on a gallery; the site itself stands in
-            scanlator: "NHentai",
-            url: URL(string: "https://nhentai.net/g/\(seriesSlug)/")!,
-            publishedDate: Date(timeIntervalSince1970: TimeInterval(gallery.uploadDate ?? 0))
-        )]
+        return [
+            ChapterEntry(
+                slug: seriesSlug,
+                title: "",
+                number: 1,
+                language: Self.language(from: gallery.tags),
+                // no scanlator concept on a gallery; the site itself stands in
+                scanlator: "NHentai",
+                url: URL(string: "https://nhentai.net/g/\(seriesSlug)/")!,
+                publishedDate: Date(timeIntervalSince1970: TimeInterval(gallery.uploadDate ?? 0))
+            )
+        ]
     }
 }
 
@@ -346,7 +367,8 @@ extension NHentaiSource {
 
 extension NHentaiSource {
     private static func url(_ path: String, _ items: [URLQueryItem]) -> URL {
-        var components = URLComponents(url: api.appendingPathComponent(path), resolvingAgainstBaseURL: false)!
+        var components = URLComponents(
+            url: api.appendingPathComponent(path), resolvingAgainstBaseURL: false)!
         components.queryItems = items.isEmpty ? nil : items
         return components.url!
     }
@@ -364,9 +386,12 @@ extension NHentaiSource {
     private static func detail(from gallery: Gallery) -> SeriesDetail {
         // pretty is the bracket-stripped display title; the composite english
         // string is a filename, not a name, so it pools as an alternate
-        let names = gallery.title.pretty.map { titles($0, language: language(from: gallery.tags)) } ?? []
+        let names =
+            gallery.title.pretty.map { titles($0, language: language(from: gallery.tags)) } ?? []
         let title = names.first ?? gallery.title.english ?? gallery.title.japanese ?? "Untitled"
-        let alternates = (Array(names.dropFirst()) + [gallery.title.english, gallery.title.japanese].compactMap { $0 })
+        let alternates =
+            (Array(names.dropFirst())
+            + [gallery.title.english, gallery.title.japanese].compactMap { $0 })
             .filter { !$0.isEmpty && $0 != title }
 
         return SeriesDetail(
@@ -384,16 +409,20 @@ extension NHentaiSource {
     }
 
     private static func detail(from entry: Archived) -> SeriesDetail {
-        let names = entry.title.pretty.map { titles($0, language: language(from: entry.tags)) } ?? []
+        let names =
+            entry.title.pretty.map { titles($0, language: language(from: entry.tags)) } ?? []
         let title = names.first ?? entry.title.english ?? entry.title.japanese ?? "Untitled"
-        let alternates = (Array(names.dropFirst()) + [entry.title.english, entry.title.japanese].compactMap { $0 })
+        let alternates =
+            (Array(names.dropFirst())
+            + [entry.title.english, entry.title.japanese].compactMap { $0 })
             .filter { !$0.isEmpty && $0 != title }
 
         // the archive carries no cover path - best-effort from media_id, webp being
         // nhentai's dominant format. degraded on purpose: this gallery is gone
-        let covers = entry.mediaId.flatMap { media in
-            thumbs.appendingPathComponent("galleries/\(media)/cover.webp")
-        }.map { [$0] } ?? []
+        let covers =
+            entry.mediaId.flatMap { media in
+                thumbs.appendingPathComponent("galleries/\(media)/cover.webp")
+            }.map { [$0] } ?? []
 
         return SeriesDetail(
             slug: String(entry.id),
@@ -458,11 +487,13 @@ extension NHentaiSource {
             var previous: String
             repeat {
                 previous = text
-                text = text.replacingOccurrences(of: pattern, with: " ", options: .regularExpression)
+                text = text.replacingOccurrences(
+                    of: pattern, with: " ", options: .regularExpression)
             } while text != previous
         }
 
-        let name = text
+        let name =
+            text
             .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
             .trimmingCharacters(in: .whitespaces)
         return name.isEmpty ? composite : name

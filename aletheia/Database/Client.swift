@@ -15,9 +15,9 @@ final class DatabaseClient: Sendable {
     // property, so in a preview - where the container is not the app's - the
     // trap fired before any body ran. debug falls back to memory instead
     #if DEBUG
-    static let client = (try? DatabaseClient()) ?? preview
+        static let client = (try? DatabaseClient()) ?? preview
     #else
-    static let client = try! DatabaseClient()
+        static let client = try! DatabaseClient()
     #endif
 
     let reader: DatabaseReader
@@ -48,7 +48,7 @@ final class DatabaseClient: Sendable {
         SeriesLanguagePriorityRecord.self,
         ReadingEventRecord.self,
         ReadingSessionRecord.self,
-        
+
         // no foreign keys, so its position is free - it sits with the other two
         // append-only logs
         RecommendationImpressionRecord.self,
@@ -68,17 +68,17 @@ final class DatabaseClient: Sendable {
         config.foreignKeysEnabled = true
 
         config.prepareDatabase { db in
-            try db.execute(sql: "PRAGMA synchronous = NORMAL")        // keep - WAL pairing
-            try db.execute(sql: "PRAGMA wal_autocheckpoint = 2000")   // keep - sync-burst scar
-            try db.execute(sql: "PRAGMA cache_size = -4000")          // keep - see reader note
+            try db.execute(sql: "PRAGMA synchronous = NORMAL")  // keep - WAL pairing
+            try db.execute(sql: "PRAGMA wal_autocheckpoint = 2000")  // keep - sync-burst scar
+            try db.execute(sql: "PRAGMA cache_size = -4000")  // keep - see reader note
 
             #if DEBUG
-//            db.trace { print("[SQL]> \($0)") }
+                //            db.trace { print("[SQL]> \($0)") }
             #endif
         }
 
         #if DEBUG
-        config.publicStatementArguments = true
+            config.publicStatementArguments = true
         #endif
 
         return config
@@ -94,20 +94,21 @@ final class DatabaseClient: Sendable {
 
         var migrator = DatabaseMigrator()
         #if DEBUG
-        // deliberately off since 2026-08-15. v1.0.0 and v1.0.1 were reopened once
-        // to take recommendation_impression and series.catalogId, which changed
-        // their checksums - and with this on, that edit would have been absorbed
-        // silently by a wipe, which is the opposite of what a reopened migration
-        // should feel like
-        //
-        // the consequence is the point: a changed checksum now THROWS at launch,
-        // so a schema edit has to be answered by deleting the app and letting the
-        // database be rebuilt on purpose. turning this back on returns the
-        // silence along with the convenience
-        //
-        // migrator.eraseDatabaseOnSchemaChange = true
+            // deliberately off since 2026-08-15. v1.0.0 and v1.0.1 were reopened once
+            // to take recommendation_impression and series.catalogId, which changed
+            // their checksums - and with this on, that edit would have been absorbed
+            // silently by a wipe, which is the opposite of what a reopened migration
+            // should feel like
+            //
+            // the consequence is the point: a changed checksum now THROWS at launch,
+            // so a schema edit has to be answered by deleting the app and letting the
+            // database be rebuilt on purpose. turning this back on returns the
+            // silence along with the convenience
+            //
+            // migrator.eraseDatabaseOnSchemaChange = true
         #endif
-        Migrations.register(with: &migrator, records: DatabaseClient.allRecords, views: DatabaseClient.allViews)
+        Migrations.register(
+            with: &migrator, records: DatabaseClient.allRecords, views: DatabaseClient.allViews)
         try migrator.migrate(pool)
 
         self.reader = pool
@@ -115,19 +116,20 @@ final class DatabaseClient: Sendable {
     }
 
     #if DEBUG
-    // previews and tests: the schema with nothing in it, no app group and no
-    // file. a pool needs WAL companions on disk, so memory is a queue
-    static let preview: DatabaseClient = try! DatabaseClient(inMemory: ())
+        // previews and tests: the schema with nothing in it, no app group and no
+        // file. a pool needs WAL companions on disk, so memory is a queue
+        static let preview: DatabaseClient = try! DatabaseClient(inMemory: ())
 
-    private init(inMemory: Void) throws {
-        let queue = try DatabaseQueue(configuration: DatabaseClient.configuration)
+        private init(inMemory: Void) throws {
+            let queue = try DatabaseQueue(configuration: DatabaseClient.configuration)
 
-        var migrator = DatabaseMigrator()
-        Migrations.register(with: &migrator, records: DatabaseClient.allRecords, views: DatabaseClient.allViews)
-        try migrator.migrate(queue)
+            var migrator = DatabaseMigrator()
+            Migrations.register(
+                with: &migrator, records: DatabaseClient.allRecords, views: DatabaseClient.allViews)
+            try migrator.migrate(queue)
 
-        self.reader = queue
-        self.writer = queue
-    }
+            self.reader = queue
+            self.writer = queue
+        }
     #endif
 }

@@ -122,10 +122,18 @@ struct DetailsEdit: View {
 
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Done") {
-                        if stagedTitle != titles.first(where: \.isPreferred)?.id { onSetTitle(stagedTitle) }
-                        if stagedSynopsis != synopses.first(where: \.isPreferred)?.id { onSetSynopsis(stagedSynopsis) }
-                        if stagedClassification != metadata.first(where: \.isClassification)?.id { onSetClassification(stagedClassification) }
-                        if stagedPublication != metadata.first(where: \.isPublication)?.id { onSetPublication(stagedPublication) }
+                        if stagedTitle != titles.first(where: \.isPreferred)?.id {
+                            onSetTitle(stagedTitle)
+                        }
+                        if stagedSynopsis != synopses.first(where: \.isPreferred)?.id {
+                            onSetSynopsis(stagedSynopsis)
+                        }
+                        if stagedClassification != metadata.first(where: \.isClassification)?.id {
+                            onSetClassification(stagedClassification)
+                        }
+                        if stagedPublication != metadata.first(where: \.isPublication)?.id {
+                            onSetPublication(stagedPublication)
+                        }
                         dismiss()
                     }
                     .fontWeight(.semibold)
@@ -175,7 +183,9 @@ extension DetailsEdit {
                         Synopses
                     case .rating:
                         if !metadata.isEmpty { AutomaticRow { stagedClassification = nil } }
-                        Suppliers(.rating, staged: stagedClassification) { stagedClassification = $0 }
+                        Suppliers(.rating, staged: stagedClassification) {
+                            stagedClassification = $0
+                        }
                     case .status:
                         if !metadata.isEmpty { AutomaticRow { stagedPublication = nil } }
                         Suppliers(.status, staged: stagedPublication) { stagedPublication = $0 }
@@ -264,7 +274,9 @@ extension DetailsEdit {
                         Source(entry.sourceName, preferred: staged, detached: entry.detached)
 
                         if answering == .rating {
-                            Badge(text: entry.classification.rawValue, tone: entry.classification.tone)
+                            Badge(
+                                text: entry.classification.rawValue, tone: entry.classification.tone
+                            )
                         } else {
                             Badge(text: entry.publication.rawValue, tone: entry.publication.tone)
                         }
@@ -408,8 +420,12 @@ private enum Sample {
             sourceIcon: .mangaFire,
             isPreferred: true
         ),
-        .init(id: 2, value: "I Exiled Myself Before the Villains Could", sourceName: "MangaDex", sourceIcon: .mangaDex, isPreferred: false),
-        .init(id: 3, value: "追放系の悪役パーティーのリーダーに転生した", sourceName: nil, sourceIcon: nil, isPreferred: false)
+        .init(
+            id: 2, value: "I Exiled Myself Before the Villains Could", sourceName: "MangaDex",
+            sourceIcon: .mangaDex, isPreferred: false),
+        .init(
+            id: 3, value: "追放系の悪役パーティーのリーダーに転生した", sourceName: nil, sourceIcon: nil,
+            isPreferred: false),
     ]
 
     static let synopses: [DetailsEdit.Synopsis] = [
@@ -430,15 +446,21 @@ private enum Sample {
             sourceIcon: .mangaDex,
             text: "He was born into the party destined to lose. So he left first.",
             isPreferred: false
-        )
+        ),
     ]
 
     // the case the split exists for: the rating is taken from the source and the
     // status from the tracker, which is the only one that can say Hiatus
     static let metadata: [DetailsEdit.Metadata] = [
-        .init(id: 10, sourceName: "MangaFire", sourceIcon: .mangaFire, classification: .Safe, publication: .Ongoing, isClassification: true, isPublication: false, detached: false),
-        .init(id: 11, sourceName: "AniList", sourceIcon: .aniList, classification: .Suggestive, publication: .Hiatus, isClassification: false, isPublication: true, detached: false),
-        .init(id: 12, sourceName: "MangaDex", sourceIcon: nil, classification: .Suggestive, publication: .Ongoing, isClassification: false, isPublication: false, detached: true)
+        .init(
+            id: 10, sourceName: "MangaFire", sourceIcon: .mangaFire, classification: .Safe,
+            publication: .Ongoing, isClassification: true, isPublication: false, detached: false),
+        .init(
+            id: 11, sourceName: "AniList", sourceIcon: .aniList, classification: .Suggestive,
+            publication: .Hiatus, isClassification: false, isPublication: true, detached: false),
+        .init(
+            id: 12, sourceName: "MangaDex", sourceIcon: nil, classification: .Suggestive,
+            publication: .Ongoing, isClassification: false, isPublication: false, detached: true),
     ]
 }
 

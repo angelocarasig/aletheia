@@ -46,7 +46,7 @@ final class DetailsComposer {
     let cadence: Cadence
 
     let entry: SeriesEntry
-    
+
     let registry: Compositor.Registry
     let assets: Compositor.Assets
     let refresher: Compositor.Refresh

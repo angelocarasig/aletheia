@@ -5,8 +5,8 @@
 //  Created by Angelo Carasig on 9/8/2026.
 //
 
-import SwiftUI
 import Kingfisher
+import SwiftUI
 import Tagged
 
 // a continue-reading entry: cover, title, and what tapping it opens. the
@@ -79,9 +79,9 @@ struct ContinueCard: View {
 
     private var subtitle: String {
         switch target {
-        case let .resume(_, number, progress):
+        case .resume(_, let number, let progress):
             "Continue Ch \(number.formatted()) · \(Int((progress * 100).rounded()))%"
-        case let .start(_, number):
+        case .start(_, let number):
             "Start Ch \(number.formatted())"
         }
     }
@@ -94,7 +94,9 @@ struct ContinueCard: View {
                 if let cover {
                     KFImage(cover)
                         .resizable()
-                        .placeholder { Rectangle().fill(.primary.opacity(Layout.placeholderOpacity)).shimmer() }
+                        .placeholder {
+                            Rectangle().fill(.primary.opacity(Layout.placeholderOpacity)).shimmer()
+                        }
                         .fade(duration: 0.25)
                         .scaledToFill()
                 } else {

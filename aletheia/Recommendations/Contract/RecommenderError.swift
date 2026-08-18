@@ -33,7 +33,8 @@ enum RecommenderError: DescribableError {
             // it sees until the bundle is copied in
             return "This build doesn't include the recommendation model."
         case .unsupportedFormat(let found, let supported):
-            return "The data is version \(found) and \(Constants.App.name) reads version \(supported)."
+            return
+                "The data is version \(found) and \(Constants.App.name) reads version \(supported)."
         case .malformed, .truncated, .misaligned:
             return "The recommendation data appears to be incomplete."
         }

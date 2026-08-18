@@ -53,12 +53,12 @@ final class SourcePresetViewModel {
     }
 
     #if DEBUG
-    // previews drive the four branches by hand rather than by loading, so the
-    // one setter lives here beside the property it writes - `phase` is
-    // private(set), and an extension in another file could not reach it
-    func preview(phase: Phase) {
-        self.phase = phase
-    }
+        // previews drive the four branches by hand rather than by loading, so the
+        // one setter lives here beside the property it writes - `phase` is
+        // private(set), and an extension in another file could not reach it
+        func preview(phase: Phase) {
+            self.phase = phase
+        }
     #endif
 
     func load() async {
@@ -71,9 +71,12 @@ final class SourcePresetViewModel {
             // navigating away cancels every in-flight preset, which is ordinary
             // and not worth a line each. it arrives as either type - urlsession
             // maps its own cancellation onto NetworkError
-            let cancelled = error is CancellationError || (error as? NetworkError)?.isCancellation == true
+            let cancelled =
+                error is CancellationError || (error as? NetworkError)?.isCancellation == true
             if !cancelled {
-                AppLog.shared.log("preset '\(preset.id)' load failed - \(error)", level: .error, category: "sources")
+                AppLog.shared.log(
+                    "preset '\(preset.id)' load failed - \(error)", level: .error,
+                    category: "sources")
             }
             phase = .failed(Failure(error, fallback: "Couldn't Load"))
         }

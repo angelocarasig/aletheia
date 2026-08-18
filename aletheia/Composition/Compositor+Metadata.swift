@@ -5,12 +5,12 @@
 //  Created by Angelo Carasig on 17/8/26.
 //
 
-import Foundation
 import BackgroundTasks
+import Foundation
 import GRDB
+import Observation
 import Tagged
 import UIKit
-import Observation
 
 extension Compositor {
     // the whole-library counterpart to a single series' Refresh Metadata
@@ -93,7 +93,8 @@ extension Compositor {
         // found anything
         private func report() async {
             guard UIApplication.shared.applicationState != .active else { return }
-            await Notifier.metadataRefreshed(updated: updated, series: completed, failures: failures)
+            await Notifier.metadataRefreshed(
+                updated: updated, series: completed, failures: failures)
         }
 
         private func walk() async {
@@ -178,34 +179,43 @@ extension Compositor {
         // system's decision, this only removes the floor it was told to wait
         // behind
         func schedule(asap: Bool = false) {
-            let interval = MetadataRefreshInterval(
-                rawValue: UserDefaults.standard.string(forKey: Preferences.Key.metadataRefreshInterval) ?? ""
-            ) ?? Preferences.Default.metadataRefreshInterval
+            let interval =
+                MetadataRefreshInterval(
+                    rawValue: UserDefaults.standard.string(
+                        forKey: Preferences.Key.metadataRefreshInterval) ?? ""
+                ) ?? Preferences.Default.metadataRefreshInterval
 
             #if targetEnvironment(simulator)
-            log.log("scheduled metadata refresh skipped - the simulator never accepts one", category: "metadata")
-            #else
-            BGTaskScheduler.shared.cancel(taskRequestWithIdentifier: Constants.Tasks.scheduledMetadataRefresh)
-
-            guard let seconds = interval.seconds else {
-                log.log("scheduled metadata refresh cancelled - automatic checks are off", category: "metadata")
-                return
-            }
-
-            let request = BGProcessingTaskRequest(identifier: Constants.Tasks.scheduledMetadataRefresh)
-            request.requiresNetworkConnectivity = true
-            request.requiresExternalPower = false
-            request.earliestBeginDate = asap ? nil : anchor.addingTimeInterval(seconds)
-
-            do {
-                try BGTaskScheduler.shared.submit(request)
                 log.log(
-                    "scheduled metadata refresh armed - \(request.earliestBeginDate.map { "no earlier than \($0.formatted())" } ?? "at the system's next opportunity")",
-                    category: "metadata"
-                )
-            } catch {
-                log.log("scheduled metadata refresh not accepted - \(error)", category: "metadata")
-            }
+                    "scheduled metadata refresh skipped - the simulator never accepts one",
+                    category: "metadata")
+            #else
+                BGTaskScheduler.shared.cancel(
+                    taskRequestWithIdentifier: Constants.Tasks.scheduledMetadataRefresh)
+
+                guard let seconds = interval.seconds else {
+                    log.log(
+                        "scheduled metadata refresh cancelled - automatic checks are off",
+                        category: "metadata")
+                    return
+                }
+
+                let request = BGProcessingTaskRequest(
+                    identifier: Constants.Tasks.scheduledMetadataRefresh)
+                request.requiresNetworkConnectivity = true
+                request.requiresExternalPower = false
+                request.earliestBeginDate = asap ? nil : anchor.addingTimeInterval(seconds)
+
+                do {
+                    try BGTaskScheduler.shared.submit(request)
+                    log.log(
+                        "scheduled metadata refresh armed - \(request.earliestBeginDate.map { "no earlier than \($0.formatted())" } ?? "at the system's next opportunity")",
+                        category: "metadata"
+                    )
+                } catch {
+                    log.log(
+                        "scheduled metadata refresh not accepted - \(error)", category: "metadata")
+                }
             #endif
         }
 
@@ -213,13 +223,15 @@ extension Compositor {
         // never run the task, so the interval is also checked on app open
         func catchUp() {
             let defaults = UserDefaults.standard
-            let interval = MetadataRefreshInterval(
-                rawValue: defaults.string(forKey: Preferences.Key.metadataRefreshInterval) ?? ""
-            ) ?? Preferences.Default.metadataRefreshInterval
+            let interval =
+                MetadataRefreshInterval(
+                    rawValue: defaults.string(forKey: Preferences.Key.metadataRefreshInterval) ?? ""
+                ) ?? Preferences.Default.metadataRefreshInterval
 
             guard let seconds = interval.seconds, !isRunning else { return }
 
-            guard let last = defaults.object(forKey: Preferences.Key.metadataRefreshedDate) as? Date else {
+            guard let last = defaults.object(forKey: Preferences.Key.metadataRefreshedDate) as? Date
+            else {
                 // a first-ever launch stamps and waits, rather than walking a
                 // library that was only just added
                 defaults.set(Date.now, forKey: Preferences.Key.metadataRefreshedDate)
@@ -234,7 +246,8 @@ extension Compositor {
         }
 
         private var anchor: Date {
-            UserDefaults.standard.object(forKey: Preferences.Key.metadataRefreshedDate) as? Date ?? .now
+            UserDefaults.standard.object(forKey: Preferences.Key.metadataRefreshedDate) as? Date
+                ?? .now
         }
 
         // MARK: The background task
@@ -325,7 +338,9 @@ extension Compositor.Metadata {
             guard registry.source(slug: row.sourceSlug) != nil else { continue }
             if origins[row.seriesId] == nil { order.append(row.seriesId) }
             origins[row.seriesId, default: []].append(
-                Origin(id: OriginRecord.ID(rawValue: row.originId), slug: row.originSlug, sourceSlug: row.sourceSlug)
+                Origin(
+                    id: OriginRecord.ID(rawValue: row.originId), slug: row.originSlug,
+                    sourceSlug: row.sourceSlug)
             )
         }
 
@@ -382,8 +397,11 @@ extension Compositor.Metadata {
             var parts: [String] = []
 
             if completed {
-                parts.append("AND e.\(EntryView.Columns.status.name) != '\(Status.completed.rawValue)'")
-                parts.append("AND e.\(EntryView.Columns.publication.name) != '\(Publication.Completed.rawValue)'")
+                parts.append(
+                    "AND e.\(EntryView.Columns.status.name) != '\(Status.completed.rawValue)'")
+                parts.append(
+                    "AND e.\(EntryView.Columns.publication.name) != '\(Publication.Completed.rawValue)'"
+                )
             }
 
             if unread {
@@ -391,7 +409,8 @@ extension Compositor.Metadata {
             }
 
             if notStarted {
-                parts.append("AND e.\(EntryView.Columns.lastReadDate.name) > '1970-01-01 00:00:00.000'")
+                parts.append(
+                    "AND e.\(EntryView.Columns.lastReadDate.name) > '1970-01-01 00:00:00.000'")
             }
 
             return parts.joined(separator: "\n              ")

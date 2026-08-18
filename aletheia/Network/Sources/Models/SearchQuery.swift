@@ -32,7 +32,7 @@ enum FilterSelection: Sendable, Hashable {
 
     var id: String {
         switch self {
-        case let .text(id, _), let .number(id, _), let .select(id, _), let .multiSelect(id, _, _):
+        case .text(let id, _), .number(let id, _), .select(let id, _), .multiSelect(let id, _, _):
             return id
         }
     }

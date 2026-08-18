@@ -19,13 +19,13 @@ enum ContinueTarget: Hashable, Sendable {
 
     var chapterId: ChapterRecord.ID {
         switch self {
-        case let .resume(id, _, _), let .start(id, _): id
+        case .resume(let id, _, _), .start(let id, _): id
         }
     }
 
     var number: Double {
         switch self {
-        case let .resume(_, number, _), let .start(_, number): number
+        case .resume(_, let number, _), .start(_, let number): number
         }
     }
 
@@ -57,18 +57,22 @@ enum ContinueTarget: Hashable, Sendable {
         let rows = try Row.fetchAll(db, sql: sql, arguments: StatementArguments(seriesIds))
 
         return Dictionary(grouping: rows, by: \.seriesId).compactMapValues { chapters in
-            if let partial = chapters
+            if let partial =
+                chapters
                 .filter({ $0.progress > 0 && $0.progress < 1 })
-                .max(by: { ($0.lastReadDate ?? .distantPast) < ($1.lastReadDate ?? .distantPast) }) {
+                .max(by: { ($0.lastReadDate ?? .distantPast) < ($1.lastReadDate ?? .distantPast) })
+            {
                 return .resume(
                     chapterId: ChapterRecord.ID(rawValue: partial.chapterId),
                     number: partial.number,
                     progress: partial.progress
                 )
             }
-            if let next = chapters
+            if let next =
+                chapters
                 .filter({ $0.progress < 1 })
-                .min(by: { $0.number < $1.number }) {
+                .min(by: { $0.number < $1.number })
+            {
                 return .start(
                     chapterId: ChapterRecord.ID(rawValue: next.chapterId),
                     number: next.number

@@ -63,22 +63,24 @@ struct RecommendationImpressionRecord: Codable, DatabaseRecord {
     var occurredDate: Date
     var localDayKey: Int
 
-    init(catalogId: Int64,
-         catalogTitle: String,
-         seedSeriesId: SeriesRecord.ID,
-         seedCatalogId: Int64?,
-         batchId: String,
-         rank: Int,
-         surface: Surface = .detailsRail,
-         modelVersion: String,
-         score: Double,
-         confidence: Double,
-         blockTag: Double,
-         blockEmbedding: Double,
-         blockEra: Double,
-         alreadyInLibrary: Bool,
-         shuffled: Bool = false,
-         occurredDate: Date = .now) {
+    init(
+        catalogId: Int64,
+        catalogTitle: String,
+        seedSeriesId: SeriesRecord.ID,
+        seedCatalogId: Int64?,
+        batchId: String,
+        rank: Int,
+        surface: Surface = .detailsRail,
+        modelVersion: String,
+        score: Double,
+        confidence: Double,
+        blockTag: Double,
+        blockEmbedding: Double,
+        blockEra: Double,
+        alreadyInLibrary: Bool,
+        shuffled: Bool = false,
+        occurredDate: Date = .now
+    ) {
         self.catalogId = catalogId
         self.catalogTitle = catalogTitle
         self.seedSeriesId = seedSeriesId

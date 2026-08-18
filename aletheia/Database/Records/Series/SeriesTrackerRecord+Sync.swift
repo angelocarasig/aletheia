@@ -22,21 +22,27 @@ extension SeriesTrackerRecord {
     // their sources. hence flat against chapter joined to origin, max rather than
     // count, and floored. see docs/features/trackers.md §8
     static func furthest(for seriesId: SeriesRecord.ID, in db: Database) throws -> Int {
-        let highest = try Double.fetchOne(db, sql: """
-            SELECT MAX(c.\(ChapterRecord.Columns.number.name))
-            FROM \(ChapterRecord.databaseTableName) c
-            JOIN \(OriginRecord.databaseTableName) o
-              ON o.\(OriginRecord.Columns.id.name) = c.\(ChapterRecord.Columns.originId.name)
-            WHERE o.\(OriginRecord.Columns.seriesId.name) = ?
-              AND c.\(ChapterRecord.Columns.progress.name) >= 1
-            """, arguments: [seriesId.rawValue]) ?? 0
+        let highest =
+            try Double.fetchOne(
+                db,
+                sql: """
+                    SELECT MAX(c.\(ChapterRecord.Columns.number.name))
+                    FROM \(ChapterRecord.databaseTableName) c
+                    JOIN \(OriginRecord.databaseTableName) o
+                      ON o.\(OriginRecord.Columns.id.name) = c.\(ChapterRecord.Columns.originId.name)
+                    WHERE o.\(OriginRecord.Columns.seriesId.name) = ?
+                      AND c.\(ChapterRecord.Columns.progress.name) >= 1
+                    """, arguments: [seriesId.rawValue]) ?? 0
 
         return max(0, Int(highest.rounded(.down)))
     }
 
     // called by every path that records reading
-    static func enqueue(for seriesId: SeriesRecord.ID, status: Status? = nil, in db: Database) throws {
-        let links = try SeriesTrackerRecord
+    static func enqueue(for seriesId: SeriesRecord.ID, status: Status? = nil, in db: Database)
+        throws
+    {
+        let links =
+            try SeriesTrackerRecord
             .filter(Columns.seriesId == seriesId.rawValue)
             .fetchAll(db)
 
@@ -54,7 +60,9 @@ extension SeriesTrackerRecord {
             // passes through here - an explicit edit writes to the service
             // directly and is allowed to say whatever the reader picked
             let finished = link.remoteStatus == .completed
-            let moves = !finished && (status.map { $0 != link.remoteStatus && $0 != link.pendingStatus } ?? false)
+            let moves =
+                !finished
+                && (status.map { $0 != link.remoteStatus && $0 != link.pendingStatus } ?? false)
 
             // nothing to say is not a write. the row was being touched on every
             // page turn regardless, and each touch wakes the queue observation
@@ -69,8 +77,10 @@ extension SeriesTrackerRecord {
 
     // scoped to one service, because that is the unit the drain walks: a lane
     // paces itself against its own rate limit and halts on its own dead token
-    static func dirty(for tracker: Tracker? = nil, in db: Database) throws -> [SeriesTrackerRecord] {
-        var request = SeriesTrackerRecord
+    static func dirty(for tracker: Tracker? = nil, in db: Database) throws -> [SeriesTrackerRecord]
+    {
+        var request =
+            SeriesTrackerRecord
             .filter(Columns.pendingProgress != nil || Columns.pendingStatus != nil)
 
         if let tracker {

@@ -227,11 +227,15 @@ struct DetailsActions: View {
 
             Divider()
 
-            Button { onMarkAll(true) } label: {
+            Button {
+                onMarkAll(true)
+            } label: {
                 Label("Mark All as Read", systemImage: "checkmark.circle.fill")
             }
 
-            Button { onMarkAll(false) } label: {
+            Button {
+                onMarkAll(false)
+            } label: {
                 Label("Mark All as Unread", systemImage: "x.circle.fill")
             }
         } label: {
@@ -388,7 +392,8 @@ private struct ActionsPreview: View {
             ActionsPreview(collectionCount: 0, caption: "In library, no collections")
             ActionsPreview(caption: "In library, 2 collections")
             ActionsPreview(isSaving: true, caption: "Saving")
-            ActionsPreview(inLibrary: false, canToggle: false, collectionCount: 0, caption: "Can't toggle yet")
+            ActionsPreview(
+                inLibrary: false, canToggle: false, collectionCount: 0, caption: "Can't toggle yet")
             ActionsPreview(canRefresh: false, caption: "No refreshable origin")
         }
         .padding(16)

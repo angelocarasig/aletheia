@@ -278,9 +278,12 @@ struct ReadingHeatmap: View {
         for week in stride(from: weeks - 1, through: 0, by: -1) {
             guard let current = date(week: week, day: 0) else { continue }
             guard let previous = date(week: week - 1, day: 0),
-                  !calendar.isDate(current, equalTo: previous, toGranularity: .month)
+                !calendar.isDate(current, equalTo: previous, toGranularity: .month)
             else {
-                if week == weeks - 1, last == nil { labelled.insert(week); last = week }
+                if week == weeks - 1, last == nil {
+                    labelled.insert(week)
+                    last = week
+                }
                 continue
             }
 
@@ -303,7 +306,8 @@ struct ReadingHeatmap: View {
     // calendar. dates come from the calendar, never from key arithmetic
     private func date(week: Int, day: Int) -> Date? {
         guard let thisWeek = calendar.dateInterval(of: .weekOfYear, for: asOf)?.start,
-              let weekStart = calendar.date(byAdding: .weekOfYear, value: week - (weeks - 1), to: thisWeek)
+            let weekStart = calendar.date(
+                byAdding: .weekOfYear, value: week - (weeks - 1), to: thisWeek)
         else { return nil }
         return calendar.date(byAdding: .day, value: day, to: weekStart)
     }
@@ -317,7 +321,9 @@ struct ReadingHeatmap: View {
             var heat: [Int: Int] = [:]
             let calendar = Calendar.current
             for offset in stride(from: 0, to: 90, by: 2) {
-                guard let date = calendar.date(byAdding: .day, value: -offset, to: .now) else { continue }
+                guard let date = calendar.date(byAdding: .day, value: -offset, to: .now) else {
+                    continue
+                }
                 heat[date.localDayKey] = offset % 5
             }
             return heat
@@ -337,7 +343,9 @@ struct ReadingHeatmap: View {
             var heat: [Int: Int] = [:]
             let calendar = Calendar.current
             for (offset, count) in [(0, 8), (1, 3), (2, 1), (3, 0), (7, 12), (8, 2)] {
-                guard let date = calendar.date(byAdding: .day, value: -offset, to: .now) else { continue }
+                guard let date = calendar.date(byAdding: .day, value: -offset, to: .now) else {
+                    continue
+                }
                 heat[date.localDayKey] = count
             }
             return heat

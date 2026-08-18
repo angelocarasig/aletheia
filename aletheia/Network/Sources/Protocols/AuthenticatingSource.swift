@@ -64,12 +64,16 @@ extension AuthenticatingSource {
         }
 
         if response.statusCode == 403 || response.statusCode == 503,
-           response.value(forHTTPHeaderField: "Server")?.lowercased().contains("cloudflare") == true {
+            response.value(forHTTPHeaderField: "Server")?.lowercased().contains("cloudflare")
+                == true
+        {
             return true
         }
 
         if let html = String(data: body, encoding: .utf8) {
-            let markers = ["__cf_chl", "cf-browser-verification", "challenge-platform", "Just a moment"]
+            let markers = [
+                "__cf_chl", "cf-browser-verification", "challenge-platform", "Just a moment",
+            ]
             if markers.contains(where: html.contains) {
                 return true
             }

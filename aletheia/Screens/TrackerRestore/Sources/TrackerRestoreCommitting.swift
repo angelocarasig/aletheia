@@ -57,10 +57,12 @@ struct LiveTrackerRestoreCommitter: MigrationCommitting {
             let detail = try await source.details(seriesSlug: candidate.stub.slug)
 
             (seriesId, originId) = try await database.writer.write { db in
-                guard let sourceId = try SourceRecord
-                    .select(SourceRecord.Columns.id, as: SourceRecord.ID.self)
-                    .filter(SourceRecord.Columns.slug == candidate.sourceSlug)
-                    .fetchOne(db)
+                guard
+                    let sourceId =
+                        try SourceRecord
+                        .select(SourceRecord.Columns.id, as: SourceRecord.ID.self)
+                        .filter(SourceRecord.Columns.slug == candidate.sourceSlug)
+                        .fetchOne(db)
                 else { throw RecordError.missingIdentifier }
 
                 // a restore row can resolve to a series already known locally
@@ -70,7 +72,8 @@ struct LiveTrackerRestoreCommitter: MigrationCommitting {
                 // existence check DetailsComposer's own "add a source" flow
                 // uses (store(into:)) catches it here too, attaching to what
                 // is already there instead of failing the whole row
-                let known = try OriginRecord
+                let known =
+                    try OriginRecord
                     .filter(OriginRecord.Columns.sourceId == sourceId)
                     .filter([detail.slug, candidate.stub.slug].contains(OriginRecord.Columns.slug))
                     .fetchOne(db)
@@ -94,14 +97,17 @@ struct LiveTrackerRestoreCommitter: MigrationCommitting {
         } catch is CancellationError {
             return .cancelled
         } catch {
-            log.log("restore commit could not create '\(candidate.title)' - \(error)", level: .error, category: "restore")
+            log.log(
+                "restore commit could not create '\(candidate.title)' - \(error)", level: .error,
+                category: "restore")
             return .failed(Failure(error, fallback: "Couldn't create this series").sentence)
         }
 
         // the series is real and in the library from here on - a failure past
         // this point is reported, not rolled back
         do {
-            let outcome = await refresher.chapters(source: source, seriesSlug: candidate.stub.slug, originId: originId)
+            let outcome = await refresher.chapters(
+                source: source, seriesSlug: candidate.stub.slug, originId: originId)
 
             switch outcome {
             case .failed(let reason): return .failed(reason)
@@ -110,13 +116,15 @@ struct LiveTrackerRestoreCommitter: MigrationCommitting {
             }
 
             try await database.writer.write { db in
-                let numbers = try ChapterRecord
+                let numbers =
+                    try ChapterRecord
                     .filter(ChapterRecord.Columns.originId == originId.rawValue)
                     .select(ChapterRecord.Columns.number, as: Double.self)
                     .fetchAll(db)
                     .filter { $0 <= Double(entry.progress) }
 
-                try ChapterRecord.apply(progress: 1.0, toNumbers: numbers, in: seriesId, monotonic: true, db: db)
+                try ChapterRecord.apply(
+                    progress: 1.0, toNumbers: numbers, in: seriesId, monotonic: true, db: db)
             }
 
             let trackerCandidate = TrackerCandidate(
@@ -136,8 +144,12 @@ struct LiveTrackerRestoreCommitter: MigrationCommitting {
         } catch is CancellationError {
             return .cancelled
         } catch {
-            log.log("restore commit could not finish '\(candidate.title)' - \(error)", level: .error, category: "restore")
-            return .failed(Failure(error, fallback: "Series was created, but chapters or tracking failed").sentence)
+            log.log(
+                "restore commit could not finish '\(candidate.title)' - \(error)", level: .error,
+                category: "restore")
+            return .failed(
+                Failure(error, fallback: "Series was created, but chapters or tracking failed")
+                    .sentence)
         }
     }
 }

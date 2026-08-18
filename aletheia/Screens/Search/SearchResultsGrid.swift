@@ -12,8 +12,10 @@ struct SearchResultsGrid: View {
     let onOpen: (SeriesStub) -> Void
 
     @Environment(\.dimensions) private var dimensions
-    @AppStorage(Preferences.Key.gridColumns) private var gridColumns = Preferences.Default.gridColumns
-    @AppStorage(Preferences.Key.blurAdultSearch) private var blurAdult = Preferences.Default.blurAdultSearch
+    @AppStorage(Preferences.Key.gridColumns) private var gridColumns = Preferences.Default
+        .gridColumns
+    @AppStorage(Preferences.Key.blurAdultSearch) private var blurAdult = Preferences.Default
+        .blurAdultSearch
     @State private var currentPage = 1
 
     // resolved once here rather than per card: the preference and the reveal are
@@ -36,11 +38,17 @@ struct SearchResultsGrid: View {
     // branch selector and animation key are one value - the old isLoading key
     // left empty -> content and failure swaps as hard cuts
     private var phase: LoadPhase? {
-        if vm.isIdle { nil }
-        else if vm.isLoading, vm.entries.isEmpty { .pending }
-        else if vm.failure != nil, vm.entries.isEmpty { .failed }
-        else if vm.entries.isEmpty { .empty }
-        else { .content }
+        if vm.isIdle {
+            nil
+        } else if vm.isLoading, vm.entries.isEmpty {
+            .pending
+        } else if vm.failure != nil, vm.entries.isEmpty {
+            .failed
+        } else if vm.entries.isEmpty {
+            .empty
+        } else {
+            .content
+        }
     }
 
     var body: some View {
@@ -55,7 +63,9 @@ struct SearchResultsGrid: View {
                 Skeleton
             case .failed:
                 ContentUnavailableView {
-                    Label(vm.failure?.title ?? "Couldn't Search", systemImage: "exclamationmark.triangle")
+                    Label(
+                        vm.failure?.title ?? "Couldn't Search",
+                        systemImage: "exclamationmark.triangle")
                 } description: {
                     Text(vm.failure?.message ?? "")
                 } actions: {
@@ -230,10 +240,10 @@ private struct PageSection: View, Equatable {
                         match: vm.match(for: entry.stub),
                         obscured: obscured && entry.stub.adult
                     )
-                        .tappable { onOpen(entry.stub) }
-                        .onAppear {
-                            if entry.id == vm.entries.last?.id { vm.loadMore() }
-                        }
+                    .tappable { onOpen(entry.stub) }
+                    .onAppear {
+                        if entry.id == vm.entries.last?.id { vm.loadMore() }
+                    }
                 }
             }
         }
@@ -341,7 +351,9 @@ struct SearchGridControls: View {
                 Circle()
                     .fill(.danger)
                     .frame(width: Layout.dot, height: Layout.dot)
-                    .overlay { Circle().strokeBorder(Color.background, lineWidth: Layout.dotBorder) }
+                    .overlay {
+                        Circle().strokeBorder(Color.background, lineWidth: Layout.dotBorder)
+                    }
                     .offset(x: Layout.dotInset, y: -Layout.dotInset)
                     .transition(.scale.combined(with: .opacity))
             }

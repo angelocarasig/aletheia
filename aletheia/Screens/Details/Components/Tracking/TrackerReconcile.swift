@@ -18,7 +18,7 @@ enum TrackerReconcile: Equatable {
 
     var chapter: Int {
         switch self {
-        case let .pull(value), let .push(value): value
+        case .pull(let value), .push(let value): value
         }
     }
 }
@@ -60,8 +60,8 @@ private struct TrackerReconcileAlert: ViewModifier {
 
     private var title: String {
         switch pending {
-        case let .pull(chapter): "Mark \(chapter) chapters read?"
-        case let .push(chapter): "Update \(subject) to \(chapter)?"
+        case .pull(let chapter): "Mark \(chapter) chapters read?"
+        case .push(let chapter): "Update \(subject) to \(chapter)?"
         case nil: ""
         }
     }
@@ -74,7 +74,7 @@ private struct TrackerReconcileAlert: ViewModifier {
         content
             .alert(title, isPresented: presented, presenting: pending) { reconcile in
                 switch reconcile {
-                case let .pull(chapter):
+                case .pull(let chapter):
                     Button("Mark as Read", role: .destructive) {
                         onCatchUp(chapter)
                         pending = nil
@@ -89,10 +89,14 @@ private struct TrackerReconcileAlert: ViewModifier {
                 Button("Cancel", role: .cancel) { pending = nil }
             } message: { reconcile in
                 switch reconcile {
-                case let .pull(chapter):
-                    Text("Chapters 1 to \(chapter) are marked read across every source on this series, dated today. Unmarking them later will not remove them from your reading stats.")
-                case let .push(chapter):
-                    Text("Sends chapter \(chapter) to every service this series is linked to. You can change their entries back on their own websites.")
+                case .pull(let chapter):
+                    Text(
+                        "Chapters 1 to \(chapter) are marked read across every source on this series, dated today. Unmarking them later will not remove them from your reading stats."
+                    )
+                case .push(let chapter):
+                    Text(
+                        "Sends chapter \(chapter) to every service this series is linked to. You can change their entries back on their own websites."
+                    )
                 }
             }
     }

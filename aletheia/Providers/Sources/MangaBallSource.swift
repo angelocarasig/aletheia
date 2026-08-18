@@ -37,7 +37,8 @@ struct MangaBallSource: SourceService, AuthenticatingSource {
     let descriptor = SourceDescriptor(
         slug: "mangaball",
         name: "MangaBall",
-        description: "A vast aggregated library of manga, manhwa and manhua, gathered from two dozen scanlation sites and updated constantly.",
+        description:
+            "A vast aggregated library of manga, manhwa and manhua, gathered from two dozen scanlation sites and updated constantly.",
         icon: .mangaBall,
         languages: [.english, .chinese],
         baseURL: URL(string: "https://mangaball.net")!,
@@ -51,7 +52,7 @@ struct MangaBallSource: SourceService, AuthenticatingSource {
                 name: "Include Tags Matching",
                 options: [
                     .init(id: "and", name: "All"),
-                    .init(id: "or", name: "Any")
+                    .init(id: "or", name: "Any"),
                 ]
             ),
             .select(
@@ -59,7 +60,7 @@ struct MangaBallSource: SourceService, AuthenticatingSource {
                 name: "Exclude Tags Matching",
                 options: [
                     .init(id: "and", name: "All"),
-                    .init(id: "or", name: "Any")
+                    .init(id: "or", name: "Any"),
                 ]
             ),
             .select(
@@ -70,7 +71,7 @@ struct MangaBallSource: SourceService, AuthenticatingSource {
                     .init(id: "shoujo", name: "Shoujo"),
                     .init(id: "seinen", name: "Seinen"),
                     .init(id: "josei", name: "Josei"),
-                    .init(id: "yuri", name: "Yuri", sensitivity: .suggestive)
+                    .init(id: "yuri", name: "Yuri", sensitivity: .suggestive),
                 ]
             ),
             .select(
@@ -80,7 +81,7 @@ struct MangaBallSource: SourceService, AuthenticatingSource {
                     .init(id: "ongoing", name: "Ongoing"),
                     .init(id: "completed", name: "Completed"),
                     .init(id: "hiatus", name: "Hiatus"),
-                    .init(id: "cancelled", name: "Cancelled")
+                    .init(id: "cancelled", name: "Cancelled"),
                 ]
             ),
             // the site's own spellings: `jp` returns 63,482 titles where `ja`
@@ -93,7 +94,7 @@ struct MangaBallSource: SourceService, AuthenticatingSource {
                     .init(id: "en", name: "English"),
                     .init(id: "jp", name: "Japanese"),
                     .init(id: "kr", name: "Korean"),
-                    .init(id: "zh", name: "Chinese")
+                    .init(id: "zh", name: "Chinese"),
                 ]
             ),
             // carries no request parameter of its own. the gate here is a cookie
@@ -103,7 +104,7 @@ struct MangaBallSource: SourceService, AuthenticatingSource {
                 id: "adult",
                 name: "Adult Content",
                 options: [.init(id: "included", name: "Included", sensitivity: .adult)]
-            )
+            ),
         ],
         // nine of the twelve orderings the site offers. rating_desc and
         // rating_asc return the same order as each other, so rating is
@@ -119,7 +120,7 @@ struct MangaBallSource: SourceService, AuthenticatingSource {
                 .init(id: "name_desc", name: "Title (Z-A)"),
                 .init(id: "views_desc", name: "Most Viewed"),
                 .init(id: "views_asc", name: "Least Viewed"),
-                .init(id: "updated_at_asc", name: "Least Recently Updated")
+                .init(id: "updated_at_asc", name: "Least Recently Updated"),
             ],
             defaultSort: "updated_chapters_desc"
         )
@@ -127,14 +128,20 @@ struct MangaBallSource: SourceService, AuthenticatingSource {
 
     var presets: [SourcePreset] {
         [
-            .init(id: "latest", name: "Latest Updates", subtitle: "Freshly released chapters", order: 0,
-                  sort: .init(optionID: "updated_chapters_desc")),
-            .init(id: "new", name: "Recently Added", subtitle: "New series in the library", order: 1,
-                  sort: .init(optionID: "created_at_desc")),
-            .init(id: "popular", name: "Most Viewed", subtitle: "Most read of all time", order: 2,
-                  sort: .init(optionID: "views_desc")),
-            .init(id: "alphabetical", name: "Browse A-Z", subtitle: "The whole catalogue by title", order: 3,
-                  sort: .init(optionID: "name_asc"))
+            .init(
+                id: "latest", name: "Latest Updates", subtitle: "Freshly released chapters",
+                order: 0,
+                sort: .init(optionID: "updated_chapters_desc")),
+            .init(
+                id: "new", name: "Recently Added", subtitle: "New series in the library", order: 1,
+                sort: .init(optionID: "created_at_desc")),
+            .init(
+                id: "popular", name: "Most Viewed", subtitle: "Most read of all time", order: 2,
+                sort: .init(optionID: "views_desc")),
+            .init(
+                id: "alphabetical", name: "Browse A-Z", subtitle: "The whole catalogue by title",
+                order: 3,
+                sort: .init(optionID: "name_asc")),
         ]
     }
 
@@ -150,7 +157,7 @@ struct MangaBallSource: SourceService, AuthenticatingSource {
                 // even to a real browser, so waiting on it would time out every
                 // capture. held and sent if a challenge ever starts issuing one
                 .cookie(name: "cf_clearance", optional: true),
-                .meta(name: "csrf-token", header: "X-CSRF-TOKEN")
+                .meta(name: "csrf-token", header: "X-CSRF-TOKEN"),
             ],
             // a 302 sets the session but carries no body, so only a 200 html page
             // holds the token. the error page is the cheapest one that does
@@ -182,7 +189,8 @@ extension MangaBallSource {
     private func post(_ path: String, _ fields: [(String, String)], adult: Bool) -> URLRequest {
         var request = URLRequest(url: Self.api.appendingPathComponent(path))
         request.httpMethod = "POST"
-        request.setValue("application/x-www-form-urlencoded; charset=UTF-8", forHTTPHeaderField: "Content-Type")
+        request.setValue(
+            "application/x-www-form-urlencoded; charset=UTF-8", forHTTPHeaderField: "Content-Type")
         request.httpBody = Self.form(fields)
         Self.gate(&request, open: adult)
         return request
@@ -255,7 +263,9 @@ extension MangaBallSource {
             // recovery says nothing to the reader: a warning on a query that did
             // return results reads as a hard failure
             (data, response) = try await requester.send(
-                post("title/search-advanced/", Self.fields(for: query, text: cleaned), adult: gateOpen),
+                post(
+                    "title/search-advanced/", Self.fields(for: query, text: cleaned),
+                    adult: gateOpen),
                 for: self
             )
         }
@@ -274,7 +284,8 @@ extension MangaBallSource {
             )
         }
 
-        let next = page.pagination.currentPage < page.pagination.lastPage
+        let next =
+            page.pagination.currentPage < page.pagination.lastPage
             ? page.pagination.currentPage + 1
             : nil
         return SearchPage(items: stubs, next: next)
@@ -287,7 +298,7 @@ extension MangaBallSource {
         var fields: [(String, String)] = [
             ("search_input", text),
             ("filters[page]", String(query.page)),
-            ("filters[userSettingsEnabled]", "false")
+            ("filters[userSettingsEnabled]", "false"),
         ]
 
         let sort = query.sort ?? SortSelection(optionID: "updated_chapters_desc")
@@ -298,15 +309,15 @@ extension MangaBallSource {
 
         for filter in query.filters {
             switch filter {
-            case let .multiSelect(id, included, excluded) where id == "tags":
+            case .multiSelect(let id, let included, let excluded) where id == "tags":
                 fields.append(contentsOf: included.map { ("filters[tag_included_ids][]", $0) })
                 fields.append(contentsOf: excluded.map { ("filters[tag_excluded_ids][]", $0) })
-            case let .select(id, optionID) where id == "tag_included_mode":
+            case .select(let id, let optionID) where id == "tag_included_mode":
                 includedMode = optionID
-            case let .select(id, optionID) where id == "tag_excluded_mode":
+            case .select(let id, let optionID) where id == "tag_excluded_mode":
                 excludedMode = optionID
-            case let .select(id, optionID)
-                where ["demographic", "publicationStatus", "originalLanguages"].contains(id):
+            case .select(let id, let optionID)
+            where ["demographic", "publicationStatus", "originalLanguages"].contains(id):
                 fields.append(("filters[\(id)]", optionID))
             default:
                 break
@@ -319,7 +330,8 @@ extension MangaBallSource {
     }
 
     private static func isBlocked(status: Int, body: Data) -> Bool {
-        status == 403 && String(decoding: body, as: UTF8.self).contains("Malicious payload detected")
+        status == 403
+            && String(decoding: body, as: UTF8.self).contains("Malicious payload detected")
     }
 
     // tokens are normalised only to decide whether to drop them; whatever
@@ -372,7 +384,9 @@ extension MangaBallSource {
     private static func altTitles(of document: Document) throws -> [String] {
         guard let container = try document.select(Selector.altTitles).first() else { return [] }
         let titles = container.getChildNodes()
-            .compactMap { ($0 as? TextNode)?.text().trimmingCharacters(in: .whitespacesAndNewlines) }
+            .compactMap {
+                ($0 as? TextNode)?.text().trimmingCharacters(in: .whitespacesAndNewlines)
+            }
             .filter { !$0.isEmpty }
         return unique(titles)
     }
@@ -400,7 +414,8 @@ extension MangaBallSource {
 
     private static func unique(_ values: [String]) -> [String] {
         var seen: Set<String> = []
-        return values
+        return
+            values
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty && seen.insert($0).inserted }
     }
@@ -427,7 +442,8 @@ extension MangaBallSource {
         let ceiling = Self.ceiling(for: numbers)
 
         return listing.chapters.flatMap { chapter -> [ChapterEntry] in
-            guard let number = chapter.number, number.isFinite, number >= 0, number <= ceiling else { return [] }
+            guard let number = chapter.number, number.isFinite, number >= 0, number <= ceiling
+            else { return [] }
 
             return chapter.translations.compactMap { translation -> ChapterEntry? in
                 // a language we cannot render is dropped, never downgraded: the
@@ -650,7 +666,7 @@ extension MangaBallSource {
         .init("685148e115e8b86aae68e53c", "Video Games"),
         .init("6851492115e8b86aae68e602", "Villainess"),
         .init("68514a1115e8b86aae68e83e", "Virtual Reality"),
-        .init("6851490c15e8b86aae68e5d3", "Zombies")
+        .init("6851490c15e8b86aae68e5d3", "Zombies"),
     ]
 }
 

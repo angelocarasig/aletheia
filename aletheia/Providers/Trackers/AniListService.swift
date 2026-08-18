@@ -29,8 +29,8 @@ struct AniListService: TrackerService, BulkListingTracker {
 
     func viewer(token: String) async throws -> TrackerViewer {
         let query = """
-        query { Viewer { id name avatar { large } mediaListOptions { scoreFormat } } }
-        """
+            query { Viewer { id name avatar { large } mediaListOptions { scoreFormat } } }
+            """
 
         let response: ViewerResponse = try await send(query: query, token: token)
         let viewer = response.Viewer
@@ -49,29 +49,31 @@ struct AniListService: TrackerService, BulkListingTracker {
         // is a filter rather than a flag - false excludes the whole hentai genre,
         // and note that Ecchi survives it, which is the app-review hazard
         let document = """
-        query ($q: String, $adult: Boolean) {
-          Page(page: 1, perPage: 50) {
-            media(search: $q, type: MANGA, isAdult: $adult, format_not_in: [NOVEL], sort: SEARCH_MATCH) {
-              id
-              title { romaji english native }
-              coverImage { extraLarge }
-              chapters
-              status
-              isAdult
-              format
-              startDate { year }
-              description(asHtml: false)
-              staff(perPage: 2) { edges { role node { name { full } } } }
+            query ($q: String, $adult: Boolean) {
+              Page(page: 1, perPage: 50) {
+                media(search: $q, type: MANGA, isAdult: $adult, format_not_in: [NOVEL], sort: SEARCH_MATCH) {
+                  id
+                  title { romaji english native }
+                  coverImage { extraLarge }
+                  chapters
+                  status
+                  isAdult
+                  format
+                  startDate { year }
+                  description(asHtml: false)
+                  staff(perPage: 2) { edges { role node { name { full } } } }
+                }
+              }
             }
-          }
-        }
-        """
+            """
 
-        let variables: [String: Any] = adult
+        let variables: [String: Any] =
+            adult
             ? ["q": query]
             : ["q": query, "adult": false]
 
-        let response: SearchResponse = try await send(query: document, variables: variables, token: token)
+        let response: SearchResponse = try await send(
+            query: document, variables: variables, token: token)
 
         return response.Page.media.map { media in
             TrackerCandidate(
@@ -97,30 +99,30 @@ struct AniListService: TrackerService, BulkListingTracker {
         // ordinary case would arrive as a failure. this fetches the media and
         // the entry in one round trip, which matters at 30 requests a minute
         let document = """
-        query ($id: Int) {
-          Media(id: $id, type: MANGA) {
-            id
-            title { romaji english native }
-            chapters
-            coverImage { extraLarge }
-            status
-            isAdult
-            genres
-            synonyms
-            tags { name rank isAdult isGeneralSpoiler isMediaSpoiler }
-            format
-            startDate { year }
-            description(asHtml: false)
-            staff(perPage: 2) { edges { role node { name { full } } } }
-            mediaListEntry {
-              id
-              status
-              progress
-              scoreRaw: score(format: POINT_100)
+            query ($id: Int) {
+              Media(id: $id, type: MANGA) {
+                id
+                title { romaji english native }
+                chapters
+                coverImage { extraLarge }
+                status
+                isAdult
+                genres
+                synonyms
+                tags { name rank isAdult isGeneralSpoiler isMediaSpoiler }
+                format
+                startDate { year }
+                description(asHtml: false)
+                staff(perPage: 2) { edges { role node { name { full } } } }
+                mediaListEntry {
+                  id
+                  status
+                  progress
+                  scoreRaw: score(format: POINT_100)
+                }
+              }
             }
-          }
-        }
-        """
+            """
 
         let response: MediaResponse = try await send(
             query: document,
@@ -139,25 +141,25 @@ struct AniListService: TrackerService, BulkListingTracker {
         let account = try await viewer(token: token)
 
         let document = """
-        query ($userName: String) {
-          MediaListCollection(userName: $userName, type: MANGA) {
-            lists {
-              entries {
-                id
-                status
-                progress
-                media {
-                  id
-                  title { romaji english native }
-                  coverImage { extraLarge }
-                  chapters
-                  isAdult
+            query ($userName: String) {
+              MediaListCollection(userName: $userName, type: MANGA) {
+                lists {
+                  entries {
+                    id
+                    status
+                    progress
+                    media {
+                      id
+                      title { romaji english native }
+                      coverImage { extraLarge }
+                      chapters
+                      isAdult
+                    }
+                  }
                 }
               }
             }
-          }
-        }
-        """
+            """
 
         let response: ListCollectionResponse = try await send(
             query: document,
@@ -175,15 +177,16 @@ struct AniListService: TrackerService, BulkListingTracker {
         for group in response.MediaListCollection.lists ?? [] {
             for entry in group.entries ?? [] {
                 guard seen.insert(entry.id).inserted, let media = entry.media else { continue }
-                entries.append(TrackerListEntry(
-                    remoteId: media.id,
-                    title: media.title.preferred,
-                    cover: media.coverImage?.extraLarge.flatMap(URL.init(string:)),
-                    totalChapters: media.chapters,
-                    progress: entry.progress ?? 0,
-                    status: entry.status,
-                    adult: media.isAdult ?? false
-                ))
+                entries.append(
+                    TrackerListEntry(
+                        remoteId: media.id,
+                        title: media.title.preferred,
+                        cover: media.coverImage?.extraLarge.flatMap(URL.init(string:)),
+                        totalChapters: media.chapters,
+                        progress: entry.progress ?? 0,
+                        status: entry.status,
+                        adult: media.isAdult ?? false
+                    ))
             }
         }
 
@@ -227,23 +230,24 @@ struct AniListService: TrackerService, BulkListingTracker {
             variables["startedAt"] = [
                 "year": parts.year ?? 0,
                 "month": parts.month ?? 0,
-                "day": parts.day ?? 0
+                "day": parts.day ?? 0,
             ]
         }
 
         let document = """
-        mutation (\(declarations.joined(separator: ", "))) {
-          SaveMediaListEntry(\(arguments.joined(separator: ", "))) {
-            id
-            status
-            progress
-            scoreRaw: score(format: POINT_100)
-            media { id title { romaji english native } chapters }
-          }
-        }
-        """
+            mutation (\(declarations.joined(separator: ", "))) {
+              SaveMediaListEntry(\(arguments.joined(separator: ", "))) {
+                id
+                status
+                progress
+                scoreRaw: score(format: POINT_100)
+                media { id title { romaji english native } chapters }
+              }
+            }
+            """
 
-        let response: SaveResponse = try await send(query: document, variables: variables, token: token)
+        let response: SaveResponse = try await send(
+            query: document, variables: variables, token: token)
         return response.SaveMediaListEntry.entry
     }
 
@@ -289,7 +293,8 @@ struct AniListService: TrackerService, BulkListingTracker {
 
         do {
             (data, response) = try await network.send(request)
-            TrackerLog.received(tracker, "POST", operation, status: response.statusCode, bytes: data.count)
+            TrackerLog.received(
+                tracker, "POST", operation, status: response.statusCode, bytes: data.count)
         } catch is CancellationError {
             throw TrackerError.cancelled
         } catch NetworkError.cancelled {
@@ -319,8 +324,9 @@ struct AniListService: TrackerService, BulkListingTracker {
         // never arrived at all, which is our bug - re-authenticating on it
         // would sign the reader out for a mistake they did not make
         if let error = errors?.first,
-           error.status == 400,
-           error.message.localizedCaseInsensitiveContains("token") {
+            error.status == 400,
+            error.message.localizedCaseInsensitiveContains("token")
+        {
             throw TrackerError.reauthenticationRequired
         }
 
@@ -353,12 +359,15 @@ struct AniListService: TrackerService, BulkListingTracker {
     // the operation name out of `query Foo(...)` or `mutation Bar(...)`, which is
     // all that distinguishes one request to this endpoint from another
     private static func operation(in query: String) -> String {
-        guard let line = query
-            .split(separator: "\n", omittingEmptySubsequences: true)
-            .first(where: { $0.contains("query ") || $0.contains("mutation ") })
+        guard
+            let line =
+                query
+                .split(separator: "\n", omittingEmptySubsequences: true)
+                .first(where: { $0.contains("query ") || $0.contains("mutation ") })
         else { return "graphql" }
 
-        let name = line
+        let name =
+            line
             .trimmingCharacters(in: .whitespaces)
             .prefix { $0 != "(" && $0 != "{" }
             .trimmingCharacters(in: .whitespaces)
@@ -609,8 +618,8 @@ private struct Title: Decodable {
 
 // MARK: - Mapping
 
-private extension Optional where Wrapped == String {
-    var publication: Publication {
+extension Optional where Wrapped == String {
+    fileprivate var publication: Publication {
         switch self {
         case "RELEASING": .Ongoing
         case "FINISHED": .Completed
@@ -638,8 +647,8 @@ extension Status {
     }
 }
 
-private extension Status {
-    var anilist: String {
+extension Status {
+    fileprivate var anilist: String {
         switch self {
         case .reading: "CURRENT"
         case .planning: "PLANNING"

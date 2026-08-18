@@ -5,8 +5,8 @@
 //  Created by Angelo Carasig on 10/8/2026.
 //
 
-import SwiftUI
 import Kingfisher
+import SwiftUI
 
 // one candidate, in full, and the last thing between the reader and a write to a
 // public list.
@@ -116,14 +116,12 @@ struct DetailsTrackerCandidate: View {
     @State private var typing = false
     @State private var draft = ""
 
-
     private enum SaveState: Equatable {
         case idle
         case saving
         case saved
         case failed(String)
     }
-
 
     private enum Layout {
         // fractions of the artwork's own 700pt height. it is untouched above
@@ -244,7 +242,9 @@ struct DetailsTrackerCandidate: View {
 
             Button("Cancel", role: .cancel) { unlinking = false }
         } message: {
-            Text("Unlinking stops syncing and leaves your \(tracker.name) entry as it is. Deleting removes it from your list entirely, along with its score and dates. That can't be undone.")
+            Text(
+                "Unlinking stops syncing and leaves your \(tracker.name) entry as it is. Deleting removes it from your list entirely, along with its score and dates. That can't be undone."
+            )
         }
         .trackerReconcile(
             $confirming,
@@ -356,7 +356,11 @@ struct DetailsTrackerCandidate: View {
                     if unlinkable {
                         Image(systemName: "personalhotspot.slash")
                             .foregroundStyle(Palette.dangerText)
-                            .modifier(Control(tint: Palette.danger.opacity(Layout.washOpacity), circular: true))
+                            .modifier(
+                                Control(
+                                    tint: Palette.danger.opacity(Layout.washOpacity), circular: true
+                                )
+                            )
                             .tappable { unlinking = true }
                             .accessibilityLabel("Unlink from \(tracker.name)")
                     }
@@ -376,7 +380,8 @@ struct DetailsTrackerCandidate: View {
 
         @ViewBuilder
         func body(content: Content) -> some View {
-            let sized = content
+            let sized =
+                content
                 .font(.subheadline)
                 .fontWeight(.medium)
                 .padding(.horizontal, circular ? 0 : dimensions.spacing.space12)
@@ -953,7 +958,7 @@ struct DetailsTrackerCandidate: View {
                 .symbolEffect(.rotate, options: .repeat(.continuous), isActive: !reduceMotion)
         case .saved:
             Label("Saved", systemImage: "checkmark")
-        case let .failed(reason):
+        case .failed(let reason):
             Label(reason, systemImage: "exclamationmark.triangle")
         }
     }
@@ -1005,7 +1010,8 @@ struct DetailsTrackerCandidate: View {
 
                 Fact(
                     "Chapters",
-                    subject.totalChapters.flatMap { $0 > 0 ? String($0) : nil } ?? "Still publishing"
+                    subject.totalChapters.flatMap { $0 > 0 ? String($0) : nil }
+                        ?? "Still publishing"
                 )
 
                 if let format = subject.format {
@@ -1116,7 +1122,7 @@ struct DetailsTrackerCandidate: View {
             case .saving:
                 Label("Linking", systemImage: "progress.indicator")
                     .symbolEffect(.rotate, options: .repeat(.continuous), isActive: !reduceMotion)
-            case let .failed(reason):
+            case .failed(let reason):
                 Label(reason, systemImage: "exclamationmark.triangle")
             default:
                 Text("Link to \(tracker.name)")
@@ -1227,7 +1233,10 @@ struct DetailsTrackerCandidate: View {
 private struct CandidatePreview: View {
     // a real cover, unlike the search list's specimens: the backdrop IS what
     // these previews are for, and it has nothing to blur or dim without one
-    static let cover = URL(string: "https://s4.anilist.co/file/anilistcdn/media/manga/cover/large/bx159655-Kv58QINz1rXm.jpg")
+    static let cover = URL(
+        string:
+            "https://s4.anilist.co/file/anilistcdn/media/manga/cover/large/bx159655-Kv58QINz1rXm.jpg"
+    )
 
     var tracker: Tracker = .anilist
     var candidate: TrackerCandidate = .init(
@@ -1238,7 +1247,8 @@ private struct CandidatePreview: View {
         totalChapters: 122,
         status: .Completed,
         authors: "Hiroyuki",
-        synopsis: "Naoya Mukai has been in love with his childhood friend Saki for years, and when she finally accepts his confession he could not be happier. Then Nagisa Minase confesses to him too, and rather than turn her down he proposes something no one asked for: that he date them both, honestly and in the open."
+        synopsis:
+            "Naoya Mukai has been in love with his childhood friend Saki for years, and when she finally accepts his confession he could not be happier. Then Nagisa Minase confesses to him too, and rather than turn her down he proposes something no one asked for: that he date them both, honestly and in the open."
     )
     var localProgress = 42
     var conflict: String?

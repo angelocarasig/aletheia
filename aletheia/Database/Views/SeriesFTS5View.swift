@@ -28,7 +28,7 @@ internal struct SeriesFTS5View: ViewRecord {
         TitleRecord.self,
         MetadataRecord.self,
         TagRecord.self,
-        SeriesTagRecord.self
+        SeriesTagRecord.self,
     ]
 
     static var viewDefinition: SQLRequest<SeriesFTS5View> {
@@ -43,7 +43,8 @@ internal struct SeriesFTS5View: ViewRecord {
 extension SeriesFTS5View {
     static func createView(db: Database) throws {
         // create FTS5 table (populated and maintained via triggers)
-        try db.create(virtualTable: databaseTableName, options: [.ifNotExists], using: FTS5()) { t in
+        try db.create(virtualTable: databaseTableName, options: [.ifNotExists], using: FTS5()) {
+            t in
             // Unicode tokenizer with diacritic removal (for international titles)
             t.tokenizer = .unicode61(diacritics: .remove)
 
@@ -92,86 +93,93 @@ extension SeriesFTS5View {
         // series carries no indexed text of its own - the row is created empty and
         // filled in by the title/origin/tag triggers. nothing on series can dirty
         // the index, so there is deliberately no AFTER UPDATE ON series trigger.
-        try db.execute(sql: """
-            CREATE TRIGGER IF NOT EXISTS \(databaseTableName)_series_ai
-            AFTER INSERT ON \(SeriesRecord.databaseTableName)
-            BEGIN
-                INSERT INTO \(databaseTableName) (rowid, titles, synopses, tags)
-                VALUES (NEW.id, '', '', '');
-            END
-            """)
+        try db.execute(
+            sql: """
+                CREATE TRIGGER IF NOT EXISTS \(databaseTableName)_series_ai
+                AFTER INSERT ON \(SeriesRecord.databaseTableName)
+                BEGIN
+                    INSERT INTO \(databaseTableName) (rowid, titles, synopses, tags)
+                    VALUES (NEW.id, '', '', '');
+                END
+                """)
 
-        try db.execute(sql: """
-            CREATE TRIGGER IF NOT EXISTS \(databaseTableName)_series_ad
-            AFTER DELETE ON \(SeriesRecord.databaseTableName)
-            BEGIN
-                DELETE FROM \(databaseTableName) WHERE rowid = OLD.id;
-            END
-            """)
+        try db.execute(
+            sql: """
+                CREATE TRIGGER IF NOT EXISTS \(databaseTableName)_series_ad
+                AFTER DELETE ON \(SeriesRecord.databaseTableName)
+                BEGIN
+                    DELETE FROM \(databaseTableName) WHERE rowid = OLD.id;
+                END
+                """)
 
         for (suffix, event, row) in [
             ("ai", "AFTER INSERT", "NEW"),
             ("au", "AFTER UPDATE OF \(TitleRecord.Columns.value.name)", "NEW"),
-            ("ad", "AFTER DELETE", "OLD")
+            ("ad", "AFTER DELETE", "OLD"),
         ] {
-            try db.execute(sql: """
-                CREATE TRIGGER IF NOT EXISTS \(databaseTableName)_title_\(suffix)
-                \(event) ON \(TitleRecord.databaseTableName)
-                BEGIN
-                    UPDATE \(databaseTableName)
-                    SET titles = \(titlesSQL(for: "\(row).seriesId"))
-                    WHERE rowid = \(row).seriesId;
-                END
-                """)
+            try db.execute(
+                sql: """
+                    CREATE TRIGGER IF NOT EXISTS \(databaseTableName)_title_\(suffix)
+                    \(event) ON \(TitleRecord.databaseTableName)
+                    BEGIN
+                        UPDATE \(databaseTableName)
+                        SET titles = \(titlesSQL(for: "\(row).seriesId"))
+                        WHERE rowid = \(row).seriesId;
+                    END
+                    """)
         }
 
         for (suffix, event, row) in [
             ("ai", "AFTER INSERT", "NEW"),
             ("au", "AFTER UPDATE OF \(MetadataRecord.Columns.synopsis.name)", "NEW"),
-            ("ad", "AFTER DELETE", "OLD")
+            ("ad", "AFTER DELETE", "OLD"),
         ] {
-            try db.execute(sql: """
-                CREATE TRIGGER IF NOT EXISTS \(databaseTableName)_metadata_\(suffix)
-                \(event) ON \(MetadataRecord.databaseTableName)
-                BEGIN
-                    UPDATE \(databaseTableName)
-                    SET synopses = \(synopsesSQL(for: "\(row).seriesId"))
-                    WHERE rowid = \(row).seriesId;
-                END
-                """)
+            try db.execute(
+                sql: """
+                    CREATE TRIGGER IF NOT EXISTS \(databaseTableName)_metadata_\(suffix)
+                    \(event) ON \(MetadataRecord.databaseTableName)
+                    BEGIN
+                        UPDATE \(databaseTableName)
+                        SET synopses = \(synopsesSQL(for: "\(row).seriesId"))
+                        WHERE rowid = \(row).seriesId;
+                    END
+                    """)
         }
 
         for (suffix, event, row) in [
             ("ai", "AFTER INSERT", "NEW"),
-            ("ad", "AFTER DELETE", "OLD")
+            ("ad", "AFTER DELETE", "OLD"),
         ] {
-            try db.execute(sql: """
-                CREATE TRIGGER IF NOT EXISTS \(databaseTableName)_seriestag_\(suffix)
-                \(event) ON \(SeriesTagRecord.databaseTableName)
-                BEGIN
-                    UPDATE \(databaseTableName)
-                    SET tags = \(tagsSQL(for: "\(row).seriesId"))
-                    WHERE rowid = \(row).seriesId;
-                END
-                """)
+            try db.execute(
+                sql: """
+                    CREATE TRIGGER IF NOT EXISTS \(databaseTableName)_seriestag_\(suffix)
+                    \(event) ON \(SeriesTagRecord.databaseTableName)
+                    BEGIN
+                        UPDATE \(databaseTableName)
+                        SET tags = \(tagsSQL(for: "\(row).seriesId"))
+                        WHERE rowid = \(row).seriesId;
+                    END
+                    """)
         }
 
         // trigger for tag displayName updates
-        try db.execute(sql: """
-            CREATE TRIGGER IF NOT EXISTS \(databaseTableName)_tag_au
-            AFTER UPDATE OF displayName ON \(TagRecord.databaseTableName)
-            BEGIN
-                UPDATE \(databaseTableName)
-                SET tags = \(tagsSQL(for: "\(databaseTableName).rowid"))
-                WHERE rowid IN (
-                    SELECT seriesId FROM \(SeriesTagRecord.databaseTableName) WHERE tagId = NEW.id
-                );
-            END
-            """)
+        try db.execute(
+            sql: """
+                CREATE TRIGGER IF NOT EXISTS \(databaseTableName)_tag_au
+                AFTER UPDATE OF displayName ON \(TagRecord.databaseTableName)
+                BEGIN
+                    UPDATE \(databaseTableName)
+                    SET tags = \(tagsSQL(for: "\(databaseTableName).rowid"))
+                    WHERE rowid IN (
+                        SELECT seriesId FROM \(SeriesTagRecord.databaseTableName) WHERE tagId = NEW.id
+                    );
+                END
+                """)
     }
 
     static func rebuild(db: Database) throws {
-        try db.execute(sql: "INSERT INTO \(databaseTableName)(\(databaseTableName)) VALUES('rebuild')")
+        try db.execute(
+            sql: "INSERT INTO \(databaseTableName)(\(databaseTableName)) VALUES('rebuild')")
     }
 
     // no indexes needed - FTS5 virtual table has its own indexing

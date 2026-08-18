@@ -6,9 +6,9 @@
 //
 
 import Foundation
-import WebKit
-import UIKit
 import Observation
+import UIKit
+import WebKit
 
 enum CaptureFailure: DescribableError {
     case timedOut
@@ -86,8 +86,8 @@ final class WebAuthCapturer: NSObject, AuthCapturing {
 
         let wants = specification.requirements.map { requirement in
             switch requirement {
-            case let .cookie(name, isOptional): isOptional ? "\(name)?" : name
-            case let .meta(name, header): "\(name)->\(header)"
+            case .cookie(let name, let isOptional): isOptional ? "\(name)?" : name
+            case .meta(let name, let header): "\(name)->\(header)"
             }
         }
         let url = specification.challengeURL
@@ -159,7 +159,8 @@ final class WebAuthCapturer: NSObject, AuthCapturing {
     // three sources and each other's cf_clearance - but the challenge itself
     // sets cookies on more than one domain, and only one of them is the site
     private func matches(host: String, cookie: HTTPCookie) -> Bool {
-        let domain = cookie.domain.hasPrefix(".") ? String(cookie.domain.dropFirst()) : cookie.domain
+        let domain =
+            cookie.domain.hasPrefix(".") ? String(cookie.domain.dropFirst()) : cookie.domain
         return host == domain || host.hasSuffix(".\(domain)")
     }
 
@@ -204,9 +205,9 @@ final class WebAuthCapturer: NSObject, AuthCapturing {
         var metas: [(name: String, header: String)] = []
         for requirement in specification.requirements {
             switch requirement {
-            case let .cookie(name, isOptional):
+            case .cookie(let name, let isOptional):
                 if isOptional { optional.append(name) } else { required.append(name) }
-            case let .meta(name, header):
+            case .meta(let name, let header):
                 metas.append((name, header))
             }
         }
@@ -265,7 +266,9 @@ final class WebAuthCapturer: NSObject, AuthCapturing {
         // that was never minted, or one minted with a lifetime far shorter than
         // the reader is being told - and a count tells none of those apart
         let taken = captured.keys.sorted().map { name -> String in
-            guard let expiry = cookies.first(where: { $0.name == name })?.expiresDate else { return name }
+            guard let expiry = cookies.first(where: { $0.name == name })?.expiresDate else {
+                return name
+            }
             return "\(name) (\(Int(expiry.timeIntervalSinceNow / 60))m)"
         }
         log.log(
@@ -273,13 +276,15 @@ final class WebAuthCapturer: NSObject, AuthCapturing {
             category: "auth"
         )
 
-        finish(.success(SourceCredential(
-            cookies: captured,
-            headers: headers.isEmpty ? nil : headers,
-            userAgent: await liveUserAgent(),
-            expiresAt: expiries.min(),
-            capturedDate: Date()
-        )))
+        finish(
+            .success(
+                SourceCredential(
+                    cookies: captured,
+                    headers: headers.isEmpty ? nil : headers,
+                    userAgent: await liveUserAgent(),
+                    expiresAt: expiries.min(),
+                    capturedDate: Date()
+                )))
     }
 
     // what the engine says it is, which is the only agent cloudflare will accept
@@ -287,7 +292,8 @@ final class WebAuthCapturer: NSObject, AuthCapturing {
     // reached for an answer
     private func liveUserAgent() async -> String {
         guard let page else { return userAgent }
-        let result = try? await page.callJavaScript("return navigator.userAgent", contentWorld: .page)
+        let result = try? await page.callJavaScript(
+            "return navigator.userAgent", contentWorld: .page)
         guard let live = result as? String, !live.isEmpty else { return userAgent }
 
         if live != userAgent {
@@ -304,10 +310,10 @@ final class WebAuthCapturer: NSObject, AuthCapturing {
     private func isChallengeDocument() async -> Bool {
         guard let page else { return false }
         let script = """
-        if (window._cf_chl_opt !== undefined) { return true }
-        if (document.title.trim() === 'Just a moment...') { return true }
-        return document.body?.textContent?.includes('Ray ID is') === true
-        """
+            if (window._cf_chl_opt !== undefined) { return true }
+            if (document.title.trim() === 'Just a moment...') { return true }
+            return document.body?.textContent?.includes('Ray ID is') === true
+            """
         let result = try? await page.callJavaScript(script, contentWorld: .page)
         return result as? Bool ?? false
     }
@@ -316,8 +322,10 @@ final class WebAuthCapturer: NSObject, AuthCapturing {
     // the poll comes back - same shape as a cookie that has not been set
     private func content(ofMeta name: String) async -> String? {
         guard let page else { return nil }
-        let script = "return document.querySelector('meta[name=\"' + name + '\"]')?.getAttribute('content') ?? null"
-        let result = try? await page.callJavaScript(script, arguments: ["name": name], contentWorld: .page)
+        let script =
+            "return document.querySelector('meta[name=\"' + name + '\"]')?.getAttribute('content') ?? null"
+        let result = try? await page.callJavaScript(
+            script, arguments: ["name": name], contentWorld: .page)
         return result as? String
     }
 
@@ -327,10 +335,10 @@ final class WebAuthCapturer: NSObject, AuthCapturing {
     // would sit until the timeout burning runtime the rest of the library needed
     private func escalate() async {
         guard !presented,
-              continuation != nil,
-              let page,
-              let specification, specification.interactive,
-              let reason = await escalation()
+            continuation != nil,
+            let page,
+            let specification, specification.interactive,
+            let reason = await escalation()
         else { return }
 
         // logged once: the poll keeps probing, and a backgrounded capture would
@@ -376,7 +384,7 @@ final class WebAuthCapturer: NSObject, AuthCapturing {
         }
 
         guard holding, let startedAt,
-              ContinuousClock.now - startedAt > .seconds(Self.stallSeconds)
+            ContinuousClock.now - startedAt > .seconds(Self.stallSeconds)
         else { return nil }
 
         if let host = specification?.challengeURL.host() {
@@ -394,15 +402,15 @@ final class WebAuthCapturer: NSObject, AuthCapturing {
     private func isAwaitingHuman() async -> Bool {
         guard let page else { return false }
         let script = """
-        const visible = (element) => {
-            const box = element.getBoundingClientRect()
-            return box.width > 4 && box.height > 4
-        }
-        const frames = document.querySelectorAll('iframe[src*="challenges.cloudflare.com"]')
-        if (Array.from(frames).some(visible)) { return true }
-        const box = document.querySelector('input[type="checkbox"][aria-label*="Verify you are human" i]')
-        return box !== null && visible(box)
-        """
+            const visible = (element) => {
+                const box = element.getBoundingClientRect()
+                return box.width > 4 && box.height > 4
+            }
+            const frames = document.querySelectorAll('iframe[src*="challenges.cloudflare.com"]')
+            if (Array.from(frames).some(visible)) { return true }
+            const box = document.querySelector('input[type="checkbox"][aria-label*="Verify you are human" i]')
+            return box !== null && visible(box)
+            """
         let result = try? await page.callJavaScript(script, contentWorld: .page)
         return result as? Bool ?? false
     }
@@ -422,10 +430,11 @@ final class WebAuthCapturer: NSObject, AuthCapturing {
         // the one line that says how a capture actually went. a timeout logs
         // nothing else at all, and "never saw a widget" versus "saw one and the
         // reader never finished it" are two entirely different problems
-        let (outcome, level): (String, AppLog.Level) = switch result {
-        case .success: ("captured", .info)
-        case let .failure(error): ("FAILED - \(error)", .error)
-        }
+        let (outcome, level): (String, AppLog.Level) =
+            switch result {
+            case .success: ("captured", .info)
+            case .failure(let error): ("FAILED - \(error)", .error)
+            }
         log.log(
             "capture \(outcome) in \(elapsed) - widget \(sawWidget ? "seen" : "never seen"), sheet \(presented ? "shown" : "never shown"), challenge \(holding ? "was served" : "never seen")",
             level: level,

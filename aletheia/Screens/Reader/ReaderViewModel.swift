@@ -5,9 +5,9 @@
 //  Created by Angelo Carasig on 7/8/2026.
 //
 
-import SwiftUI
-import Observation
 import GRDB
+import Observation
+import SwiftUI
 import Tagged
 
 @MainActor
@@ -145,23 +145,28 @@ final class ReaderViewModel {
                 return
             }
 
-            let (orientation, tags, title, offer) = try await database.reader.read { [seriesId] db in
+            let (orientation, tags, title, offer) = try await database.reader.read {
+                [seriesId] db in
                 let series = try SeriesRecord.fetchOne(db, key: seriesId.rawValue)
                 let orientation = series?.orientation ?? .unknown
-                let tags = try TagRecord
-                    .joining(required: TagRecord.seriesTags
-                        .filter(SeriesTagRecord.Columns.seriesId == seriesId.rawValue))
+                let tags =
+                    try TagRecord
+                    .joining(
+                        required: TagRecord.seriesTags
+                            .filter(SeriesTagRecord.Columns.seriesId == seriesId.rawValue)
+                    )
                     .select(TagRecord.Columns.normalizedName, as: String.self)
                     .fetchSet(db)
-                let title = try String.fetchOne(
-                    db,
-                    sql: """
-                        SELECT \(EntryView.Columns.title.name)
-                        FROM \(EntryView.databaseTableName)
-                        WHERE \(EntryView.Columns.seriesId.name) = ?
-                        """,
-                    arguments: [seriesId.rawValue]
-                ) ?? ""
+                let title =
+                    try String.fetchOne(
+                        db,
+                        sql: """
+                            SELECT \(EntryView.Columns.title.name)
+                            FROM \(EntryView.databaseTableName)
+                            WHERE \(EntryView.Columns.seriesId.name) = ?
+                            """,
+                        arguments: [seriesId.rawValue]
+                    ) ?? ""
                 let offer = try Self.completable(series, in: db)
                 return (orientation, tags, title, offer)
             }
@@ -185,11 +190,12 @@ final class ReaderViewModel {
                 )
             }
 
-            sourceNames = loaded
+            sourceNames =
+                loaded
                 .compactMap(\.sourceSlug)
                 .reduce(into: [String]()) { names, slug in
                     guard let name = registry.source(slug: slug)?.descriptor.name,
-                          !names.contains(name)
+                        !names.contains(name)
                     else { return }
                     names.append(name)
                 }
@@ -199,7 +205,8 @@ final class ReaderViewModel {
                 numbers[ChapterRecord.ID(rawValue: chapter.id)] = chapter.number
                 // a series can carry origins from several sources, so the icon
                 // is per chapter rather than per series
-                icons[chapter.id] = chapter.sourceSlug
+                icons[chapter.id] =
+                    chapter.sourceSlug
                     .flatMap { registry.source(slug: $0) }?
                     .descriptor.icon
             }
@@ -321,7 +328,8 @@ final class ReaderViewModel {
                 registry.source(slug: slug)?.descriptor.icon
             }
         } catch {
-            AppLog.shared.log("failed to load chapter list - \(error)", level: .error, category: "reader")
+            AppLog.shared.log(
+                "failed to load chapter list - \(error)", level: .error, category: "reader")
         }
     }
 
@@ -335,12 +343,14 @@ final class ReaderViewModel {
         Task { [database, seriesId] in
             do {
                 try await database.writer.write { db in
-                    _ = try SeriesRecord
+                    _ =
+                        try SeriesRecord
                         .filter(SeriesRecord.Columns.id == seriesId.rawValue)
                         .updateAll(db, SeriesRecord.Columns.orientation.set(to: mode.rawValue))
                 }
             } catch {
-                AppLog.shared.log("failed to persist orientation - \(error)", level: .error, category: "reader")
+                AppLog.shared.log(
+                    "failed to persist orientation - \(error)", level: .error, category: "reader")
             }
         }
     }
@@ -639,7 +649,8 @@ final class ReaderViewModel {
             // so what the rows are told is what the enqueue actually decided
             // rather than what finishing a chapter usually means. read after the
             // write and inside it: a drain cannot clear a column mid-transaction
-            let links = try await database.writer.write { [seriesId, seriesTitle] db -> [SeriesTrackerRecord] in
+            let links = try await database.writer.write {
+                [seriesId, seriesTitle] db -> [SeriesTrackerRecord] in
                 var event = ReadingEventRecord(
                     kind: .chapterCompleted,
                     seriesId: seriesId,
@@ -655,7 +666,8 @@ final class ReaderViewModel {
                 // both are the same completion
                 try SeriesRecord.markRead(seriesId, at: .now, db: db)
 
-                return try SeriesTrackerRecord
+                return
+                    try SeriesTrackerRecord
                     .filter(SeriesTrackerRecord.Columns.seriesId == seriesId.rawValue)
                     .fetchAll(db)
             }
@@ -665,7 +677,8 @@ final class ReaderViewModel {
         } catch {
             // nothing landed, so the badge says nothing rather than lying
             engine?.setEvent(nil, for: chapter.id)
-            AppLog.shared.log("failed to record reading event - \(error)", level: .error, category: "reader")
+            AppLog.shared.log(
+                "failed to record reading event - \(error)", level: .error, category: "reader")
         }
     }
 
@@ -691,7 +704,9 @@ final class ReaderViewModel {
                     self.settle(links)
                 }
             } catch {
-                AppLog.shared.log("reader tracker observation failed - \(error)", level: .error, category: "reader")
+                AppLog.shared.log(
+                    "reader tracker observation failed - \(error)", level: .error,
+                    category: "reader")
             }
         }
     }
@@ -733,19 +748,21 @@ final class ReaderViewModel {
     // left the state frozen would spin forever
     func retryTracker(_ service: String, on chapter: ReaderChapter.ID) {
         guard let tracker = Tracker(rawValue: service),
-              trackerRows.contains(where: { $0.id == service })
+            trackerRows.contains(where: { $0.id == service })
         else { return }
 
         engine?.setTrackerState(.loading, for: chapter, service: service)
         awaitingTrackers.insert(chapter)
 
         Task { [seriesId, database, trackers] in
-            guard let link = try? await database.reader.read({ db in
-                try SeriesTrackerRecord
-                    .filter(SeriesTrackerRecord.Columns.seriesId == seriesId.rawValue)
-                    .filter(SeriesTrackerRecord.Columns.tracker == tracker.rawValue)
-                    .fetchOne(db)
-            }) ?? nil else { return }
+            guard
+                let link = try? await database.reader.read({ db in
+                    try SeriesTrackerRecord
+                        .filter(SeriesTrackerRecord.Columns.seriesId == seriesId.rawValue)
+                        .filter(SeriesTrackerRecord.Columns.tracker == tracker.rawValue)
+                        .fetchOne(db)
+                }) ?? nil
+            else { return }
 
             trackers.retry(link)
         }
@@ -766,7 +783,9 @@ final class ReaderViewModel {
 
             var waiting = false
             for link in links {
-                let state = Self.state(of: link, forChapter: number, stalled: trackers.needingSignIn.contains(link.tracker))
+                let state = Self.state(
+                    of: link, forChapter: number,
+                    stalled: trackers.needingSignIn.contains(link.tracker))
                 engine?.setTrackerState(state, for: chapter, service: link.tracker.rawValue)
                 waiting = waiting || state == .loading
             }
@@ -843,7 +862,8 @@ final class ReaderViewModel {
                 try session.insert(db)
             }
         } catch {
-            AppLog.shared.log("failed to record reading session - \(error)", level: .error, category: "reader")
+            AppLog.shared.log(
+                "failed to record reading session - \(error)", level: .error, category: "reader")
         }
     }
 
@@ -864,13 +884,16 @@ final class ReaderViewModel {
     // a claim, and a source that does not track publication state reports
     // Ongoing forever - so requiring agreement would silence the prompt on every
     // multi-source series with one lazy source in it
-    nonisolated private static func completable(_ series: SeriesRecord?, in db: Database) throws -> Bool {
+    nonisolated private static func completable(_ series: SeriesRecord?, in db: Database) throws
+        -> Bool
+    {
         guard let series, series.status != .completed else { return false }
 
         // the same order EntryView resolves a primary origin in: usable sources
         // first, then priority. a dead source must not be the one answering for
         // the series
-        let primary = try OriginRecord
+        let primary =
+            try OriginRecord
             .filter(OriginRecord.Columns.seriesId == series.id)
             .including(optional: OriginRecord.source)
             .order(
@@ -913,7 +936,8 @@ final class ReaderViewModel {
 
         do {
             try await database.writer.write { [seriesId] db in
-                _ = try SeriesRecord
+                _ =
+                    try SeriesRecord
                     .filter(key: seriesId.rawValue)
                     .updateAll(db, SeriesRecord.Columns.status.set(to: Status.completed.rawValue))
             }
@@ -921,7 +945,8 @@ final class ReaderViewModel {
             // the offer comes back rather than disappearing on a write that
             // never landed
             completable = true
-            AppLog.shared.log("failed to mark series completed - \(error)", level: .error, category: "reader")
+            AppLog.shared.log(
+                "failed to mark series completed - \(error)", level: .error, category: "reader")
         }
     }
 
@@ -957,7 +982,8 @@ final class ReaderViewModel {
             stored[id] = progress
             lastSave = .now
         } catch {
-            AppLog.shared.log("failed to save progress - \(error)", level: .error, category: "reader")
+            AppLog.shared.log(
+                "failed to save progress - \(error)", level: .error, category: "reader")
         }
     }
 

@@ -12,13 +12,14 @@ struct SourcesScreen: View {
     @Environment(\.compositor) private var compositor
     @Environment(\.dimensions) private var dimensions
 
-    @AppStorage(Preferences.Key.bypassAdultSources) private var bypassAdult = Preferences.Default.bypassAdultSources
+    @AppStorage(Preferences.Key.bypassAdultSources) private var bypassAdult = Preferences.Default
+        .bypassAdultSources
     @State private var vm: SourcesViewModel?
     @State private var searchText = ""
     @State private var collapsed: Set<String> = ["disabled"]
     @State private var route: Route?
     @State private var globalSearch: GlobalSearch?
-    
+
     private struct Route: Identifiable, Hashable {
         let slug: String
         var id: String { slug }
@@ -30,7 +31,7 @@ struct SourcesScreen: View {
         let text: String
         var id: String { text }
     }
-    
+
     var body: some View {
         NavigationStack {
             ScrollView(.vertical, showsIndicators: false) {
@@ -44,22 +45,28 @@ struct SourcesScreen: View {
                             onSelect: { text in globalSearch = GlobalSearch(text: text) }
                         )
                     )
-                    
+
                     if let vm {
                         let pinned = filtered(vm.pinned)
                         let active = filtered(vm.active)
                         let disabled = filtered(vm.disabled)
-                        
+
                         if !pinned.isEmpty {
-                            ExpandableSection(title: "Pinned", isExpanded: isExpanded("pinned"), toggle: { toggle("pinned") }) {
+                            ExpandableSection(
+                                title: "Pinned", isExpanded: isExpanded("pinned"),
+                                toggle: { toggle("pinned") }
+                            ) {
                                 Rows(pinned)
                             }
                         }
-                        
+
                         Rows(active)
-                        
+
                         if !disabled.isEmpty {
-                            ExpandableSection(title: "Disabled", count: disabled.count, isExpanded: isExpanded("disabled"), toggle: { toggle("disabled") }) {
+                            ExpandableSection(
+                                title: "Disabled", count: disabled.count,
+                                isExpanded: isExpanded("disabled"), toggle: { toggle("disabled") }
+                            ) {
                                 Rows(disabled)
                             }
                         }
@@ -73,7 +80,8 @@ struct SourcesScreen: View {
             .toolbarTitleDisplayMode(.large)
             .navigationDestination(item: $route) { route in
                 if let source = compositor.registry.source(slug: route.slug) {
-                    SourceHomeScreen(source: source, record: vm?.sources.first { $0.slug == route.slug })
+                    SourceHomeScreen(
+                        source: source, record: vm?.sources.first { $0.slug == route.slug })
                 }
             }
             // embedded: this stack is the Sources tab's, so the pushed screen
@@ -90,7 +98,7 @@ struct SourcesScreen: View {
             .task(id: bypassAdult) { vm?.bypassAdult = bypassAdult }
         }
     }
-    
+
     // containered because several glass views in one tree share a render pass -
     // applying the effect outside a container is what degrades performance.
     // spacing is small on purpose: a value larger than the stack's own spacing
@@ -114,31 +122,35 @@ struct SourcesScreen: View {
                 Button {
                     vm?.togglePinned(record)
                 } label: {
-                    Label(record.pinned ? "Unpin" : "Pin", systemImage: record.pinned ? "pin.slash" : "pin")
+                    Label(
+                        record.pinned ? "Unpin" : "Pin",
+                        systemImage: record.pinned ? "pin.slash" : "pin")
                 }
 
                 Button(role: record.disabled ? nil : .destructive) {
                     vm?.toggleDisabled(record)
                 } label: {
-                    Label(record.disabled ? "Enable" : "Disable", systemImage: record.disabled ? "checkmark.circle" : "xmark.circle")
+                    Label(
+                        record.disabled ? "Enable" : "Disable",
+                        systemImage: record.disabled ? "checkmark.circle" : "xmark.circle")
                 }
             }
         }
     }
-    
+
     private func filtered(_ list: [SourceRecord]) -> [SourceRecord] {
         guard !searchText.isEmpty else { return list }
         return list.filter { record in
             let name = compositor.registry.source(slug: record.slug)?.descriptor.name ?? record.slug
             return name.localizedCaseInsensitiveContains(searchText)
-            || record.slug.localizedCaseInsensitiveContains(searchText)
+                || record.slug.localizedCaseInsensitiveContains(searchText)
         }
     }
-    
+
     private func isExpanded(_ key: String) -> Bool {
         !collapsed.contains(key)
     }
-    
+
     private func toggle(_ key: String) {
         withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
             if collapsed.contains(key) {
@@ -156,11 +168,11 @@ struct SourcesScreen: View {
 private struct SourceRow: View {
     @Environment(\.dimensions) private var dimensions
     @Environment(\.compositor) private var compositor
-    
+
     let record: SourceRecord
     let source: Source?
     var onTap: () -> Void
-    
+
     @State private var ping: PingResult?
 
     private enum Layout {
@@ -210,7 +222,7 @@ private struct SourceRow: View {
             withAnimation(.smooth) { ping = result }
         }
     }
-    
+
     @ViewBuilder
     private var Icon: some View {
         let shape = RoundedRectangle(cornerRadius: dimensions.radius.radius8)
@@ -226,7 +238,7 @@ private struct SourceRow: View {
         .frame(width: dimensions.size.icon40, height: dimensions.size.icon40)
         .clipShape(shape)
     }
-    
+
     // a badge rather than a section of its own: the row already sorts and groups
     // by pinned/disabled, and a fourth grouping would structure the screen around
     // a property most sources do not have. nothing here shows content - only that
@@ -248,7 +260,7 @@ private struct SourceRow: View {
                         .background(.danger, in: .capsule)
                 }
             }
-            
+
             HStack(spacing: dimensions.spacing.space4) {
                 Text(source?.descriptor.baseURL.host() ?? record.slug)
                     .foregroundStyle(.secondary)
@@ -260,7 +272,7 @@ private struct SourceRow: View {
             .lineLimit(1)
         }
     }
-    
+
     @ViewBuilder
     private var Ping: some View {
         if !record.disabled, let ping {
@@ -278,7 +290,7 @@ private struct SourceRow: View {
             .transition(.opacity.combined(with: .scale))
         }
     }
-    
+
     private func color(for status: PingStatus) -> Color {
         switch status {
         case .healthy: .success

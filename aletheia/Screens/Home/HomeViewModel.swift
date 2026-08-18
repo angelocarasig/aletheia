@@ -7,8 +7,8 @@
 
 import Foundation
 import GRDB
-import Tagged
 import Observation
+import Tagged
 
 @MainActor
 @Observable
@@ -49,8 +49,10 @@ final class HomeViewModel {
         self.registry = registry
 
         if let data = UserDefaults.standard.data(forKey: Preferences.Key.homeDismissed),
-           let stored = try? JSONDecoder().decode([Int64: Date].self, from: data) {
-            dismissed = Dictionary(uniqueKeysWithValues: stored.map { (SeriesRecord.ID(rawValue: $0.key), $0.value) })
+            let stored = try? JSONDecoder().decode([Int64: Date].self, from: data)
+        {
+            dismissed = Dictionary(
+                uniqueKeysWithValues: stored.map { (SeriesRecord.ID(rawValue: $0.key), $0.value) })
         } else {
             dismissed = [:]
         }
@@ -103,7 +105,8 @@ final class HomeViewModel {
         let hidden = Dictionary(uniqueKeysWithValues: dismissed.map { ($0.key.rawValue, $0.value) })
 
         stream = Task { [weak self, database] in
-            let observation = ValueObservation
+            let observation =
+                ValueObservation
                 .tracking { db in
                     try Self.stored(
                         cutoff: cutoff,
@@ -123,7 +126,8 @@ final class HomeViewModel {
             } catch {
                 guard let self else { return }
                 self.failure = Failure(error, fallback: "Couldn't Load Home")
-                AppLog.shared.log("home observation failed - \(error)", level: .error, category: "home")
+                AppLog.shared.log(
+                    "home observation failed - \(error)", level: .error, category: "home")
             }
         }
     }
@@ -187,7 +191,6 @@ final class HomeViewModel {
         let target: ContinueTarget
     }
 
-
     nonisolated private static func stored(
         cutoff: Date,
         adultSlugs: [String],
@@ -198,11 +201,13 @@ final class HomeViewModel {
 
         // the exclusion rides in the query rather than trimming the result, so
         // the limit counts rows the rail can actually show
-        let library = EntryView
+        let library =
+            EntryView
             .filter(EntryView.Columns.inLibrary == true)
             .filter(!excluded.contains(EntryView.Columns.seriesId))
 
-        let added = try library
+        let added =
+            try library
             .order(EntryView.Columns.addedDate.desc)
             .limit(Rule.addedLimit)
             .fetchAll(db)
@@ -266,7 +271,8 @@ final class HomeViewModel {
         guard !grouped.isEmpty else { return [] }
 
         let ids = grouped.map { $0.0 }
-        let entries = try EntryView
+        let entries =
+            try EntryView
             .filter(ids.contains(EntryView.Columns.seriesId))
             .fetchAll(db)
             .reduce(into: [Int64: EntryView]()) { $0[$1.seriesId] = $1 }
@@ -295,7 +301,8 @@ final class HomeViewModel {
         var offset = 0
 
         while rows.count < Rule.continueLimit {
-            let page = try library
+            let page =
+                try library
                 .filter(EntryView.Columns.lastReadDate >= cutoff)
                 .order(EntryView.Columns.lastReadDate.desc)
                 .limit(Rule.continueBatch, offset: offset)
@@ -340,7 +347,8 @@ final class HomeViewModel {
         // never read at all is not "fell behind" - it is a series you added and
         // have not started, which Recently Added used to carry and nothing on
         // this screen claims any more
-        let cold = try library
+        let cold =
+            try library
             .filter(EntryView.Columns.lastReadDate < cutoff)
             .filter(EntryView.Columns.lastReadDate > Date.distantPast)
             .order(EntryView.Columns.lastReadDate.desc)
@@ -389,7 +397,8 @@ final class HomeViewModel {
         excluded: Set<Int64>,
         in db: Database
     ) throws -> Int {
-        let exclusion = excluded.isEmpty
+        let exclusion =
+            excluded.isEmpty
             ? ""
             : "AND o.\(OriginRecord.Columns.seriesId.name) NOT IN (\(excluded.map(String.init).joined(separator: ", ")))"
 
@@ -415,7 +424,8 @@ final class HomeViewModel {
         excluded: Set<Int64>,
         in db: Database
     ) throws -> Int {
-        let exclusion = excluded.isEmpty
+        let exclusion =
+            excluded.isEmpty
             ? ""
             : "AND t.\(SeriesTrackerRecord.Columns.seriesId.name) NOT IN (\(excluded.map(String.init).joined(separator: ", ")))"
 
@@ -448,23 +458,23 @@ extension HomeViewModel {
         let failingTrackers: Int
 
         #if DEBUG
-        init(
-            continueReading: [ContinueEntry],
-            updates: [UpdateEntry],
-            recentlyAdded: [AddedEntry],
-            stalled: [ShelfEntry] = [],
-            waiting: [ShelfEntry] = [],
-            failingSources: Int = 0,
-            failingTrackers: Int = 0
-        ) {
-            self.continueReading = continueReading
-            self.updates = updates
-            self.recentlyAdded = recentlyAdded
-            self.stalled = stalled
-            self.waiting = waiting
-            self.failingSources = failingSources
-            self.failingTrackers = failingTrackers
-        }
+            init(
+                continueReading: [ContinueEntry],
+                updates: [UpdateEntry],
+                recentlyAdded: [AddedEntry],
+                stalled: [ShelfEntry] = [],
+                waiting: [ShelfEntry] = [],
+                failingSources: Int = 0,
+                failingTrackers: Int = 0
+            ) {
+                self.continueReading = continueReading
+                self.updates = updates
+                self.recentlyAdded = recentlyAdded
+                self.stalled = stalled
+                self.waiting = waiting
+                self.failingSources = failingSources
+                self.failingTrackers = failingTrackers
+            }
         #endif
 
         fileprivate init(_ stored: Stored, assets: Compositor.Assets) {
@@ -540,21 +550,21 @@ extension HomeViewModel {
         let adult: Bool
 
         #if DEBUG
-        init(
-            id: SeriesRecord.ID,
-            title: String,
-            cover: URL? = nil,
-            unreadCount: Int,
-            target: ContinueTarget,
-            adult: Bool = false
-        ) {
-            self.id = id
-            self.title = title
-            self.cover = cover
-            self.unreadCount = unreadCount
-            self.target = target
-            self.adult = adult
-        }
+            init(
+                id: SeriesRecord.ID,
+                title: String,
+                cover: URL? = nil,
+                unreadCount: Int,
+                target: ContinueTarget,
+                adult: Bool = false
+            ) {
+                self.id = id
+                self.title = title
+                self.cover = cover
+                self.unreadCount = unreadCount
+                self.target = target
+                self.adult = adult
+            }
         #endif
 
         fileprivate init(_ row: ContinueRow, assets: Compositor.Assets) {
@@ -580,25 +590,26 @@ extension HomeViewModel {
 // MARK: - Preview
 
 #if DEBUG
-extension HomeViewModel {
-    // a model already holding its answer. observe() is never called, so nothing
-    // reads a database and every phase is reachable by what is handed in here
-    static func preview(
-        snapshot: Snapshot? = nil,
-        failure: Failure? = nil
-    ) -> HomeViewModel {
-        // the pieces directly rather than a whole Compositor - building that
-        // constructs every source, and a preview has no use for one
-        let database = DatabaseClient.preview
-        let registry = Compositor.Registry(sources: [], database: database)
-        let model = HomeViewModel(
-            database: database,
-            assets: Compositor.Assets(database: database, registry: registry, network: NetworkService()),
-            registry: registry
-        )
-        model.snapshot = snapshot
-        model.failure = failure
-        return model
+    extension HomeViewModel {
+        // a model already holding its answer. observe() is never called, so nothing
+        // reads a database and every phase is reachable by what is handed in here
+        static func preview(
+            snapshot: Snapshot? = nil,
+            failure: Failure? = nil
+        ) -> HomeViewModel {
+            // the pieces directly rather than a whole Compositor - building that
+            // constructs every source, and a preview has no use for one
+            let database = DatabaseClient.preview
+            let registry = Compositor.Registry(sources: [], database: database)
+            let model = HomeViewModel(
+                database: database,
+                assets: Compositor.Assets(
+                    database: database, registry: registry, network: NetworkService()),
+                registry: registry
+            )
+            model.snapshot = snapshot
+            model.failure = failure
+            return model
+        }
     }
-}
 #endif

@@ -66,7 +66,9 @@ extension CollectionRecord {
 
     static func createIndexes(db: Database) throws {
         // sorting collections by name for display
-        try db.create(index: "idx_collection_name", on: databaseTableName, columns: [Columns.name.name], ifNotExists: true)
+        try db.create(
+            index: "idx_collection_name", on: databaseTableName, columns: [Columns.name.name],
+            ifNotExists: true)
     }
 
     mutating func didInsert(_ inserted: InsertionSuccess) {

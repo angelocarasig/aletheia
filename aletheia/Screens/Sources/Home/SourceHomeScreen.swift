@@ -74,7 +74,8 @@ struct SourceHomeScreen: View {
 
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
-                    AppLog.shared.log("settings tapped for '\(source.descriptor.slug)'", category: "sources")
+                    AppLog.shared.log(
+                        "settings tapped for '\(source.descriptor.slug)'", category: "sources")
                 } label: {
                     Image(systemName: "gearshape")
                 }
@@ -90,8 +91,12 @@ struct SourceHomeScreen: View {
 
     private var About: some View {
         HStack(spacing: dimensions.spacing.space8) {
-            Pill(value: sourceHost, label: "Website", icon: "globe", color: .brand, url: source.descriptor.baseURL)
-            Pill(value: languages, label: "Languages", icon: "character.book.closed.fill", color: .warning)
+            Pill(
+                value: sourceHost, label: "Website", icon: "globe", color: .brand,
+                url: source.descriptor.baseURL)
+            Pill(
+                value: languages, label: "Languages", icon: "character.book.closed.fill",
+                color: .warning)
             Pill(value: hash, label: "Version", icon: "number", color: .success)
             if vm?.isAuthenticating == true {
                 CredentialPill
@@ -139,7 +144,9 @@ struct SourceHomeScreen: View {
     }
 
     @ViewBuilder
-    private func Pill(value: String, label: String, icon: String, color: Color, url: URL? = nil) -> some View {
+    private func Pill(value: String, label: String, icon: String, color: Color, url: URL? = nil)
+        -> some View
+    {
         let content = PillCard(color: color) {
             PillIcon {
                 Image(systemName: icon)
@@ -157,7 +164,9 @@ struct SourceHomeScreen: View {
         }
     }
 
-    private func PillCard<Content: View>(color: Color, @ViewBuilder content: () -> Content) -> some View {
+    private func PillCard<Content: View>(color: Color, @ViewBuilder content: () -> Content)
+        -> some View
+    {
         VStack(spacing: dimensions.spacing.space4) {
             content()
         }
@@ -173,7 +182,9 @@ struct SourceHomeScreen: View {
             .frame(height: dimensions.size.icon24)
     }
 
-    private func PillValue<Content: View>(color: Color = .primary, @ViewBuilder content: () -> Content) -> some View {
+    private func PillValue<Content: View>(
+        color: Color = .primary, @ViewBuilder content: () -> Content
+    ) -> some View {
         content()
             .font(.caption)
             .fontWeight(.semibold)
@@ -197,7 +208,8 @@ struct SourceHomeScreen: View {
         let codes = source.descriptor.languages
         guard let first = codes.first else { return "All" }
         let remaining = codes.count - 1
-        return remaining == 0 ? first.rawValue.uppercased() : "\(first.rawValue.uppercased()) +\(remaining)"
+        return remaining == 0
+            ? first.rawValue.uppercased() : "\(first.rawValue.uppercased()) +\(remaining)"
     }
 
     private var hash: String {

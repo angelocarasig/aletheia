@@ -5,8 +5,8 @@
 //  Created by Angelo Carasig on 17/8/26.
 //
 
-import SwiftUI
 import Kingfisher
+import SwiftUI
 
 // one queue row. icon/message vocabulary mirrors DetailsMetadataRefreshPill's
 // for the same states, so a reader who has seen one recognises the other.
@@ -89,7 +89,7 @@ struct TrackerRestoreRowView: View {
                         SearchingPrompt
                             .transition(.opacity)
 
-                    case let .found(candidates, selected):
+                    case .found(let candidates, let selected):
                         // once saved this is a one-and-done operation: the
                         // commit already created a series, fetched its
                         // chapters and linked the tracker, so the carousel's
@@ -109,7 +109,7 @@ struct TrackerRestoreRowView: View {
                         NoMatchPrompt
                             .transition(.opacity)
 
-                    case let .failed(reason):
+                    case .failed(let reason):
                         FailurePrompt(reason)
                             .transition(.opacity)
                     }
@@ -161,7 +161,9 @@ struct TrackerRestoreRowView: View {
         .animation(.settle, value: row.outcome)
         .animation(.settle, value: row.saving)
         .padding(dimensions.spacing.space12)
-        .glassEffect(.regular, in: .rect(cornerRadius: dimensions.radius.radius12, style: .continuous))
+        .glassEffect(
+            .regular, in: .rect(cornerRadius: dimensions.radius.radius12, style: .continuous)
+        )
         .sheet(isPresented: $showingPicker) {
             MigrationCandidatePicker(
                 title: row.entry.title,
@@ -420,7 +422,9 @@ struct TrackerRestoreRowView: View {
     // truncated silently. the selected candidate's title is not repeated
     // here - the row's own title above already says it - so this line names
     // the source it came from instead, or how many matches there are
-    private func ResultsCarousel(_ candidates: [MigrationCandidate], selected: MigrationCandidate?) -> some View {
+    private func ResultsCarousel(_ candidates: [MigrationCandidate], selected: MigrationCandidate?)
+        -> some View
+    {
         let shown = candidates.prefix(Layout.previewCount)
 
         return VStack(alignment: .leading, spacing: dimensions.spacing.space8) {
@@ -434,16 +438,19 @@ struct TrackerRestoreRowView: View {
                     ForEach(Array(shown)) { candidate in
                         let source = sourcesBySlug[candidate.sourceSlug]
 
-                        SourceCard(stub: candidate.stub, referer: source?.descriptor.referer, selected: candidate == selected)
-                            .animation(.settle, value: candidate == selected)
-                            .overlay(alignment: .topLeading) { SourceIcon(source) }
-                            .containerRelativeFrame(
-                                .horizontal,
-                                count: Layout.carouselVisible,
-                                spacing: dimensions.spacing.space8
-                            )
-                            .contentShape(.rect)
-                            .tappable { onSelect(candidate) }
+                        SourceCard(
+                            stub: candidate.stub, referer: source?.descriptor.referer,
+                            selected: candidate == selected
+                        )
+                        .animation(.settle, value: candidate == selected)
+                        .overlay(alignment: .topLeading) { SourceIcon(source) }
+                        .containerRelativeFrame(
+                            .horizontal,
+                            count: Layout.carouselVisible,
+                            spacing: dimensions.spacing.space8
+                        )
+                        .contentShape(.rect)
+                        .tappable { onSelect(candidate) }
                     }
                 }
             }
@@ -451,7 +458,9 @@ struct TrackerRestoreRowView: View {
     }
 
     @ViewBuilder
-    private func Subheadline(_ candidates: [MigrationCandidate], selected: MigrationCandidate?) -> some View {
+    private func Subheadline(_ candidates: [MigrationCandidate], selected: MigrationCandidate?)
+        -> some View
+    {
         if let selected {
             Text(sourcesBySlug[selected.sourceSlug]?.descriptor.name ?? selected.sourceSlug)
         } else {
@@ -480,108 +489,149 @@ struct TrackerRestoreRowView: View {
 // Next pair over a single live row shows what a reader actually sees rather
 // than a static gallery of all of them side by side
 #if DEBUG
-private struct RowPreview: View {
-    @State private var index = 0
+    private struct RowPreview: View {
+        @State private var index = 0
 
-    private static let source = AtsumaruSource(network: NetworkService())
-    private static let sourcesBySlug: [String: Source] = [source.descriptor.slug: source]
+        private static let source = AtsumaruSource(network: NetworkService())
+        private static let sourcesBySlug: [String: Source] = [source.descriptor.slug: source]
 
-    private static func entry(_ id: Int64, _ title: String) -> TrackerImportEntry {
-        TrackerImportEntry(id: id, title: title, cover: nil, progress: 42, remoteStatus: "CURRENT", totalChapters: nil)
-    }
+        private static func entry(_ id: Int64, _ title: String) -> TrackerImportEntry {
+            TrackerImportEntry(
+                id: id, title: title, cover: nil, progress: 42, remoteStatus: "CURRENT",
+                totalChapters: nil)
+        }
 
-    private static func candidate(_ slug: String, _ title: String) -> MigrationCandidate {
-        MigrationCandidate(sourceSlug: source.descriptor.slug, stub: SeriesStub(slug: slug, title: title, cover: nil))
-    }
+        private static func candidate(_ slug: String, _ title: String) -> MigrationCandidate {
+            MigrationCandidate(
+                sourceSlug: source.descriptor.slug,
+                stub: SeriesStub(slug: slug, title: title, cover: nil))
+        }
 
-    // genuinely ambiguous: none of these titles is an exact match for the
-    // entry, which is exactly what LiveTrackerRestoreSearcher needs to leave
-    // `selected` nil rather than auto-picking one
-    private static let ambiguous = [candidate("a", "Solo Leveling: Ragnarok"), candidate("b", "Solo Leveling (Volume)"), candidate("c", "Only I Level Up")]
-    private static let exact = [candidate("a", "Chainsaw Man"), candidate("b", "Chainsaw Man: Volume 1")]
+        // genuinely ambiguous: none of these titles is an exact match for the
+        // entry, which is exactly what LiveTrackerRestoreSearcher needs to leave
+        // `selected` nil rather than auto-picking one
+        private static let ambiguous = [
+            candidate("a", "Solo Leveling: Ragnarok"), candidate("b", "Solo Leveling (Volume)"),
+            candidate("c", "Only I Level Up"),
+        ]
+        private static let exact = [
+            candidate("a", "Chainsaw Man"), candidate("b", "Chainsaw Man: Volume 1"),
+        ]
 
-    private static let states: [(name: String, row: MigrationRow<TrackerImportEntry>)] = [
-        ("Idle", MigrationRow<TrackerImportEntry>(entry: entry(1, "Solo Leveling"))),
-        ("Already linked", MigrationRow<TrackerImportEntry>(entry: entry(11, "Vagabond"), precheckMatched: true)),
-        ("Searching", MigrationRow<TrackerImportEntry>(entry: entry(2, "Chainsaw Man"), match: .searching)),
-        ("Found, ambiguous", MigrationRow<TrackerImportEntry>(entry: entry(3, "Solo Leveling"), match: .found(ambiguous, selected: nil))),
-        // one candidate is an exact title match among alternates -
-        // LiveTrackerRestoreSearcher auto-selects it, so the fixture does
-        // too rather than leaving the row inconsistent with real search
-        // behaviour
-        ("Found, exact match auto-selected", MigrationRow<TrackerImportEntry>(entry: entry(4, "Chainsaw Man"), match: .found(exact, selected: exact[0]))),
-        ("Saving", MigrationRow<TrackerImportEntry>(entry: entry(5, "Chainsaw Man"), match: .found(exact, selected: exact[0]), saving: true)),
-        (
-            "Saved",
-            MigrationRow<TrackerImportEntry>(
-                // a real total, unlike the other fixtures' - SavedSummary's
-                // "N of total" branch has nothing else to preview it with
-                entry: TrackerImportEntry(id: 6, title: "Chainsaw Man", cover: nil, progress: 97, remoteStatus: "CURRENT", totalChapters: 156),
-                match: .found(exact, selected: exact[0]),
-                outcome: .saved
-            )
-        ),
-        ("Not found", MigrationRow<TrackerImportEntry>(entry: entry(7, "A Fabricated Title"), match: .notFound)),
-        ("Search failed", MigrationRow<TrackerImportEntry>(entry: entry(8, "One Piece"), match: .failed("Every source failed to respond."))),
-        (
-            "Save failed - offers Skip",
-            MigrationRow<TrackerImportEntry>(
-                entry: entry(9, "Chainsaw Man"),
-                match: .found(exact, selected: exact[0]),
-                outcome: .failed("You're not signed in to AniList.")
-            )
-        ),
-        (
-            "Skipped",
-            MigrationRow<TrackerImportEntry>(
-                entry: entry(10, "Chainsaw Man"),
-                match: .found(exact, selected: exact[0]),
-                outcome: .skipped("You're not signed in to AniList.")
-            )
-        )
-    ]
+        private static let states: [(name: String, row: MigrationRow<TrackerImportEntry>)] = [
+            ("Idle", MigrationRow<TrackerImportEntry>(entry: entry(1, "Solo Leveling"))),
+            (
+                "Already linked",
+                MigrationRow<TrackerImportEntry>(
+                    entry: entry(11, "Vagabond"), precheckMatched: true)
+            ),
+            (
+                "Searching",
+                MigrationRow<TrackerImportEntry>(entry: entry(2, "Chainsaw Man"), match: .searching)
+            ),
+            (
+                "Found, ambiguous",
+                MigrationRow<TrackerImportEntry>(
+                    entry: entry(3, "Solo Leveling"), match: .found(ambiguous, selected: nil))
+            ),
+            // one candidate is an exact title match among alternates -
+            // LiveTrackerRestoreSearcher auto-selects it, so the fixture does
+            // too rather than leaving the row inconsistent with real search
+            // behaviour
+            (
+                "Found, exact match auto-selected",
+                MigrationRow<TrackerImportEntry>(
+                    entry: entry(4, "Chainsaw Man"), match: .found(exact, selected: exact[0]))
+            ),
+            (
+                "Saving",
+                MigrationRow<TrackerImportEntry>(
+                    entry: entry(5, "Chainsaw Man"), match: .found(exact, selected: exact[0]),
+                    saving: true)
+            ),
+            (
+                "Saved",
+                MigrationRow<TrackerImportEntry>(
+                    // a real total, unlike the other fixtures' - SavedSummary's
+                    // "N of total" branch has nothing else to preview it with
+                    entry: TrackerImportEntry(
+                        id: 6, title: "Chainsaw Man", cover: nil, progress: 97,
+                        remoteStatus: "CURRENT", totalChapters: 156),
+                    match: .found(exact, selected: exact[0]),
+                    outcome: .saved
+                )
+            ),
+            (
+                "Not found",
+                MigrationRow<TrackerImportEntry>(
+                    entry: entry(7, "A Fabricated Title"), match: .notFound)
+            ),
+            (
+                "Search failed",
+                MigrationRow<TrackerImportEntry>(
+                    entry: entry(8, "One Piece"), match: .failed("Every source failed to respond."))
+            ),
+            (
+                "Save failed - offers Skip",
+                MigrationRow<TrackerImportEntry>(
+                    entry: entry(9, "Chainsaw Man"),
+                    match: .found(exact, selected: exact[0]),
+                    outcome: .failed("You're not signed in to AniList.")
+                )
+            ),
+            (
+                "Skipped",
+                MigrationRow<TrackerImportEntry>(
+                    entry: entry(10, "Chainsaw Man"),
+                    match: .found(exact, selected: exact[0]),
+                    outcome: .skipped("You're not signed in to AniList.")
+                )
+            ),
+        ]
 
-    private var state: (name: String, row: MigrationRow<TrackerImportEntry>) { Self.states[index] }
+        private var state: (name: String, row: MigrationRow<TrackerImportEntry>) {
+            Self.states[index]
+        }
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack {
-                Button("Previous") { step(-1) }
-                Button("Next") { step(1) }
-                Spacer()
-                Text("\(index + 1)/\(Self.states.count)")
+        var body: some View {
+            VStack(alignment: .leading, spacing: 16) {
+                HStack {
+                    Button("Previous") { step(-1) }
+                    Button("Next") { step(1) }
+                    Spacer()
+                    Text("\(index + 1)/\(Self.states.count)")
+                        .font(.caption)
+                        .foregroundStyle(.muted)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+
+                Text(state.name)
                     .font(.caption)
                     .foregroundStyle(.muted)
+
+                TrackerRestoreRowView(
+                    row: state.row,
+                    tracker: .anilist,
+                    sourcesBySlug: Self.sourcesBySlug,
+                    onSelect: { _ in },
+                    onSave: {},
+                    onSkip: {},
+                    onSearch: { _ in }
+                )
+
+                Spacer()
             }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
-
-            Text(state.name)
-                .font(.caption)
-                .foregroundStyle(.muted)
-
-            TrackerRestoreRowView(
-                row: state.row,
-                tracker: .anilist,
-                sourcesBySlug: Self.sourcesBySlug,
-                onSelect: { _ in },
-                onSave: {},
-                onSkip: {},
-                onSearch: { _ in }
-            )
-
-            Spacer()
+            .padding(16)
+            .background(.canvas)
         }
-        .padding(16)
-        .background(.canvas)
+
+        private func step(_ delta: Int) {
+            index = (index + delta + Self.states.count) % Self.states.count
+        }
     }
 
-    private func step(_ delta: Int) {
-        index = (index + delta + Self.states.count) % Self.states.count
+    #Preview("Row states") {
+        RowPreview()
     }
-}
-
-#Preview("Row states") {
-    RowPreview()
-}
 #endif

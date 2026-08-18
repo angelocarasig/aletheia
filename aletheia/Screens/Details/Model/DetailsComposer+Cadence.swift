@@ -5,8 +5,8 @@
 //  Created by Angelo Carasig on 15/8/26
 //
 
-import SwiftUI
 import Observation
+import SwiftUI
 
 extension DetailsComposer {
     // when the next chapter is likely, inferred from this series' own release
@@ -104,8 +104,11 @@ extension DetailsComposer {
         // ignores the supplier's claim and drops to a single gap, because the
         // reader asking is different from the app volunteering
         func force() {
-            forced = Self.resolve(events: events, claim: nil,
-                                  minimum: Limits.forcedEvents).state
+            forced =
+                Self.resolve(
+                    events: events, claim: nil,
+                    minimum: Limits.forcedEvents
+                ).state
         }
 
         func apply(_ stored: Stored) {
@@ -127,8 +130,8 @@ extension DetailsComposer {
 
 // MARK: - Derivation
 
-private extension DetailsComposer.Cadence {
-    enum Limits {
+extension DetailsComposer.Cadence {
+    fileprivate enum Limits {
         // one release event, not one chapter. measured 2026-08-15 across 2,570
         // chapters: 48h beats the 12h the spec asked for on every metric at no
         // cost in coverage - median error 0.81d to 0.40d - because a scanlator
@@ -158,7 +161,7 @@ private extension DetailsComposer.Cadence {
         static let loose: Double = 0.40
     }
 
-    struct Resolved {
+    fileprivate struct Resolved {
         let state: State
         let interval: Double?
         let dispersion: Double?
@@ -168,7 +171,7 @@ private extension DetailsComposer.Cadence {
     // per number collapses origins - the same chapter mirrored by three sources
     // is one release - and the batch window then folds a backlog dump into the
     // single event it actually was
-    static func events(in stored: DetailsComposer.Stored) -> [Date] {
+    fileprivate static func events(in stored: DetailsComposer.Stored) -> [Date] {
         var earliest: [Double: Date] = [:]
         for row in stored.chapters {
             // a parse failure lands on distantPast and would otherwise inject a
@@ -180,7 +183,10 @@ private extension DetailsComposer.Cadence {
 
         var collapsed: [Date] = []
         for date in earliest.values.sorted() {
-            guard let last = collapsed.last else { collapsed.append(date); continue }
+            guard let last = collapsed.last else {
+                collapsed.append(date)
+                continue
+            }
             if date.timeIntervalSince(last) > Limits.batchHours * 3600 {
                 collapsed.append(date)
             }
@@ -188,29 +194,35 @@ private extension DetailsComposer.Cadence {
         return collapsed
     }
 
-    static func resolve(events: [Date],
-                        claim: (value: Publication, attribution: String?)?,
-                        minimum: Int = Limits.minimumEvents,
-                        now: Date = .now) -> Resolved {
+    fileprivate static func resolve(
+        events: [Date],
+        claim: (value: Publication, attribution: String?)?,
+        minimum: Int = Limits.minimumEvents,
+        now: Date = .now
+    ) -> Resolved {
         let publication = claim
 
         // a finished work has no next chapter. checked before the arithmetic so a
         // completed series never reaches the overdue branch, which would report
         // its final chapter as a silence
         if publication?.value == .Completed || publication?.value == .Cancelled {
-            return Resolved(state: .finished(publication?.value ?? .Completed,
-                                             source: publication?.attribution),
-                            interval: nil, dispersion: nil)
+            return Resolved(
+                state: .finished(
+                    publication?.value ?? .Completed,
+                    source: publication?.attribution),
+                interval: nil, dispersion: nil)
         }
         if publication?.value == .Hiatus {
-            return Resolved(state: .hiatus(source: publication?.attribution),
-                            interval: nil, dispersion: nil)
+            return Resolved(
+                state: .hiatus(source: publication?.attribution),
+                interval: nil, dispersion: nil)
         }
         guard events.count >= minimum, let last = events.last else {
             // no releases at all is a different silence from too few: one has not
             // been fetched, the other has and has nothing to work with
-            return Resolved(state: events.isEmpty ? .none : .sparse(releases: events.count),
-                            interval: nil, dispersion: nil)
+            return Resolved(
+                state: events.isEmpty ? .none : .sparse(releases: events.count),
+                interval: nil, dispersion: nil)
         }
 
         let gaps = zip(events, events.dropFirst()).map { $1.timeIntervalSince($0) / 86400 }
@@ -245,8 +257,9 @@ private extension DetailsComposer.Cadence {
             return Resolved(state: .irregular, interval: gHat, dispersion: spread)
         }
         if elapsed > gHat {
-            return Resolved(state: .overdue(by: Int((elapsed - gHat).rounded())),
-                            interval: gHat, dispersion: spread)
+            return Resolved(
+                state: .overdue(by: Int((elapsed - gHat).rounded())),
+                interval: gHat, dispersion: spread)
         }
 
         // one gap has a deviation of zero by construction, so the tier would
@@ -254,21 +267,25 @@ private extension DetailsComposer.Cadence {
         // thin is hedged regardless of what the arithmetic says
         let thin = seasonal.count < Limits.minimumEvents - 1
         let due = last.addingTimeInterval(gHat * 86400)
-        return Resolved(state: .predicted(due, !thin && spread < Limits.tight ? .high : .medium),
-                        interval: gHat, dispersion: spread)
+        return Resolved(
+            state: .predicted(due, !thin && spread < Limits.tight ? .high : .medium),
+            interval: gHat, dispersion: spread)
     }
 
     // the supplier the reader pinned for publication, else any that states one.
     // either kind can be named: publication arrives in a source's own details
     // response, so it is a claim that source is making rather than an inference
-    static func publication(in stored: DetailsComposer.Stored)
-    -> (value: Publication, attribution: String?)? {
+    fileprivate static func publication(in stored: DetailsComposer.Stored)
+        -> (value: Publication, attribution: String?)?
+    {
         let stating = stored.suppliers.filter { $0.publication != .Unknown && !$0.detached }
-        guard let chosen = stating.first(where: \.isPublication) ?? stating.first else { return nil }
+        guard let chosen = stating.first(where: \.isPublication) ?? stating.first else {
+            return nil
+        }
         return (chosen.publication, chosen.tracker?.name ?? chosen.sourceName)
     }
 
-    static func median(_ values: [Double]) -> Double {
+    fileprivate static func median(_ values: [Double]) -> Double {
         guard !values.isEmpty else { return 0 }
         let sorted = values.sorted()
         let mid = sorted.count / 2
@@ -307,8 +324,9 @@ extension DetailsComposer.Cadence.State {
         case .none:
             // our copy is empty, which is not the same as the series having
             // released nothing - and the reader can only act on the first one
-            return Display(glyph: "questionmark.circle",
-                           label: "No chapters to predict from", value: nil)
+            return Display(
+                glyph: "questionmark.circle",
+                label: "No chapters to predict from", value: nil)
 
         case .finished(let publication, let source):
             // "Series" rather than a bare adjective, so it reads as a fact about
@@ -318,10 +336,10 @@ extension DetailsComposer.Cadence.State {
             // its own literal or the key is built at runtime and never extracted
             let label: LocalizedStringKey
             switch (publication == .Cancelled, source) {
-            case (true, let who?):   label = "Series cancelled, per \(who)"
-            case (true, nil):        label = "Series cancelled"
-            case (false, let who?):  label = "Series completed, per \(who)"
-            case (false, nil):       label = "Series completed"
+            case (true, let who?): label = "Series cancelled, per \(who)"
+            case (true, nil): label = "Series cancelled"
+            case (false, let who?): label = "Series completed, per \(who)"
+            case (false, nil): label = "Series completed"
             }
             return Display(glyph: "checkmark.circle", label: label, value: nil)
 
@@ -329,39 +347,45 @@ extension DetailsComposer.Cadence.State {
             // one release means every chapter landed together, which is a
             // different fact from having too few and the only one the reader can
             // reconcile with what is on screen
-            return Display(glyph: "questionmark.circle",
-                           label: releases <= 1
-                               ? "All chapters arrived at once"
-                               : "Not enough separate releases to predict yet",
-                           value: nil)
+            return Display(
+                glyph: "questionmark.circle",
+                label: releases <= 1
+                    ? "All chapters arrived at once"
+                    : "Not enough separate releases to predict yet",
+                value: nil)
 
         case .irregular:
-            return Display(glyph: "questionmark.circle",
-                           label: "Chapters arrive too irregularly to predict", value: nil)
+            return Display(
+                glyph: "questionmark.circle",
+                label: "Chapters arrive too irregularly to predict", value: nil)
 
         case .hiatus(let source):
             // an unattributed claim reads as the app's own voice, which is
             // authority it has not got. only a supplier that can be named says
             // this at all
-            let label: LocalizedStringKey = source.map { "On hiatus, reported by \($0)" }
+            let label: LocalizedStringKey =
+                source.map { "On hiatus, reported by \($0)" }
                 ?? "On hiatus"
             return Display(glyph: "pause.circle", label: label, value: nil)
 
         case .dormant(let since):
-            return Display(glyph: "moon.zzz",
-                           label: "No chapters since", value: Self.back(since))
+            return Display(
+                glyph: "moon.zzz",
+                label: "No chapters since", value: Self.back(since))
 
         case .overdue(let days):
             // still a statement about the next chapter: it was expected and has
             // not arrived, which is the honest form of a prediction that missed
-            return Display(glyph: "clock.badge.exclamationmark",
-                           label: "Next chapter overdue by",
-                           value: "^[\(days) day](inflect: true)")
+            return Display(
+                glyph: "clock.badge.exclamationmark",
+                label: "Next chapter overdue by",
+                value: "^[\(days) day](inflect: true)")
 
         case .predicted(let date, let confidence):
-            return Display(glyph: "clock",
-                           label: confidence == .high ? "Next chapter" : "Next chapter around",
-                           value: Self.forward(date))
+            return Display(
+                glyph: "clock",
+                label: confidence == .high ? "Next chapter" : "Next chapter around",
+                value: Self.forward(date))
         }
     }
 
@@ -372,9 +396,10 @@ extension DetailsComposer.Cadence.State {
         if Calendar.current.isDateInToday(date) { return "today" }
         if Calendar.current.isDateInTomorrow(date) { return "tomorrow" }
         let sameYear = Calendar.current.isDate(date, equalTo: .now, toGranularity: .year)
-        let text = date.formatted(sameYear
-            ? .dateTime.day().month(.abbreviated)
-            : .dateTime.day().month(.abbreviated).year())
+        let text = date.formatted(
+            sameYear
+                ? .dateTime.day().month(.abbreviated)
+                : .dateTime.day().month(.abbreviated).year())
         return "\(text)"
     }
 
@@ -383,9 +408,10 @@ extension DetailsComposer.Cadence.State {
     // arithmetic, and the year appears once it can no longer be assumed
     private static func back(_ date: Date) -> LocalizedStringKey {
         let sameYear = Calendar.current.isDate(date, equalTo: .now, toGranularity: .year)
-        let text = date.formatted(sameYear
-            ? .dateTime.month(.wide)
-            : .dateTime.month(.wide).year())
+        let text = date.formatted(
+            sameYear
+                ? .dateTime.month(.wide)
+                : .dateTime.month(.wide).year())
         return "\(text)"
     }
 }

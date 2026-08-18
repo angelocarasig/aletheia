@@ -91,7 +91,8 @@ enum Tracker: String, Codable, Sendable, CaseIterable, Identifiable {
 
         // .../manga/101177/kanojo-mo-kanojo - the id is the first all-digit
         // component after the host, never the slug beside it
-        return trimmed
+        return
+            trimmed
             .split(whereSeparator: { "/?#".contains($0) })
             .compactMap { Int64($0) }
             .first

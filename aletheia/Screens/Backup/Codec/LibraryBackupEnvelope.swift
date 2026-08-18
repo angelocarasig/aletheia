@@ -17,7 +17,7 @@ enum LibraryBackupEnvelope {
     static let currentVersion: UInt16 = 1
 
     private static let magic: [UInt8] = Array("ALTH".utf8)
-    private static let headerSize = 10 // magic(4) + version(2) + originalSize(4)
+    private static let headerSize = 10  // magic(4) + version(2) + originalSize(4)
 
     enum EnvelopeError: Error, Equatable {
         case truncated
@@ -42,7 +42,8 @@ enum LibraryBackupEnvelope {
         let version = UInt16(bytes[4]) << 8 | UInt16(bytes[5])
         guard version <= currentVersion else { throw EnvelopeError.newerVersion(version) }
 
-        let originalSize = UInt32(bytes[6]) << 24 | UInt32(bytes[7]) << 16
+        let originalSize =
+            UInt32(bytes[6]) << 24 | UInt32(bytes[7]) << 16
             | UInt32(bytes[8]) << 8 | UInt32(bytes[9])
 
         let compressed = data.suffix(from: data.startIndex + headerSize)
@@ -55,7 +56,10 @@ enum LibraryBackupEnvelope {
     }
 
     private static func bigEndianBytes(_ value: UInt32) -> [UInt8] {
-        [UInt8(value >> 24), UInt8((value >> 16) & 0xFF), UInt8((value >> 8) & 0xFF), UInt8(value & 0xFF)]
+        [
+            UInt8(value >> 24), UInt8((value >> 16) & 0xFF), UInt8((value >> 8) & 0xFF),
+            UInt8(value & 0xFF),
+        ]
     }
 
     private static func deflate(_ source: Data) throws -> Data {
@@ -97,7 +101,9 @@ enum LibraryBackupEnvelope {
             }
         }
 
-        guard result == Z_OK, Int(destLen) == originalSize else { throw EnvelopeError.compressionFailed }
+        guard result == Z_OK, Int(destLen) == originalSize else {
+            throw EnvelopeError.compressionFailed
+        }
         return Data(dest)
     }
 }

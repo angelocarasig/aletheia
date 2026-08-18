@@ -5,8 +5,8 @@
 //  Created by Angelo Carasig on 15/8/26
 //
 
-import SwiftUI
 import Observation
+import SwiftUI
 
 // cross-tab navigation. a tab root owns its own stack, so a view inside one has
 // no way to reach another - and the alternative to this is a closure per
@@ -32,8 +32,9 @@ final class Router {
         let next = Search(text: trimmed, token: (search?.token ?? 0) + 1)
         search = next
         tab = .search
-        AppLog.shared.log("search all sources '\(trimmed)' token \(next.token)",
-                          category: "router")
+        AppLog.shared.log(
+            "search all sources '\(trimmed)' token \(next.token)",
+            category: "router")
     }
 }
 

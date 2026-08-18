@@ -22,7 +22,10 @@ actor TrackerAuthority {
 
     private var refreshTasks: [Tracker: Task<TrackerCredential, Error>] = [:]
 
-    init(network: NetworkConfiguration, services: [Tracker: any TrackerService], log: AppLog = .shared) {
+    init(
+        network: NetworkConfiguration, services: [Tracker: any TrackerService],
+        log: AppLog = .shared
+    ) {
         self.network = network
         self.services = services
         self.log = log
@@ -37,9 +40,10 @@ actor TrackerAuthority {
     }
 
     nonisolated func accounts() -> [Tracker: TrackerCredential] {
-        Dictionary(uniqueKeysWithValues: Tracker.allCases.compactMap { tracker in
-            peek(tracker).map { (tracker, $0) }
-        })
+        Dictionary(
+            uniqueKeysWithValues: Tracker.allCases.compactMap { tracker in
+                peek(tracker).map { (tracker, $0) }
+            })
     }
 
     // the entry point for anything about to make a request
@@ -51,7 +55,9 @@ actor TrackerAuthority {
             // anilist's year is up, or myanimelist's refresh token was refused.
             // not an error state to the reader in the first case and rare in the
             // second, but every request from here fails until they sign in again
-            log.log("[\(tracker.rawValue)] token expired with no refresh - reauthentication required", level: .warning, category: "trackers")
+            log.log(
+                "[\(tracker.rawValue)] token expired with no refresh - reauthentication required",
+                level: .warning, category: "trackers")
             throw TrackerError.reauthenticationRequired
         }
 
@@ -105,8 +111,11 @@ actor TrackerAuthority {
             throw TrackerError.signedOut
 
         case .anilist:
-            guard !Constants.Trackers.anilistClientId.isEmpty else { throw TrackerError.notConfigured }
-            components = URLComponents(url: Constants.Trackers.anilistAuthorize, resolvingAgainstBaseURL: false)!
+            guard !Constants.Trackers.anilistClientId.isEmpty else {
+                throw TrackerError.notConfigured
+            }
+            components = URLComponents(
+                url: Constants.Trackers.anilistAuthorize, resolvingAgainstBaseURL: false)!
             // exactly two parameters, and adding a third breaks the flow: the
             // redirect comes from the application's own settings rather than the
             // request, and sending redirect_uri or state anyway comes back as
@@ -117,17 +126,20 @@ actor TrackerAuthority {
             // nothing to exchange - no secret ships in the binary
             components.queryItems = [
                 .init(name: "client_id", value: Constants.Trackers.anilistClientId),
-                .init(name: "response_type", value: "token")
+                .init(name: "response_type", value: "token"),
             ]
             // no state to compare, so nothing pretends to. what stands in for it
             // is the session itself: ASWebAuthenticationSession only resolves
             // for the callback of the request it opened, so a response cannot
             // arrive from anywhere else the way a web redirect can
-            return Authorization(tracker: tracker, url: components.url ?? Constants.Trackers.anilistAuthorize, state: "", verifier: verifier)
+            return Authorization(
+                tracker: tracker, url: components.url ?? Constants.Trackers.anilistAuthorize,
+                state: "", verifier: verifier)
 
         case .myAnimeList:
             guard !Constants.Trackers.malClientId.isEmpty else { throw TrackerError.notConfigured }
-            components = URLComponents(url: Constants.Trackers.malAuthorize, resolvingAgainstBaseURL: false)!
+            components = URLComponents(
+                url: Constants.Trackers.malAuthorize, resolvingAgainstBaseURL: false)!
             components.queryItems = [
                 .init(name: "response_type", value: "code"),
                 .init(name: "client_id", value: Constants.Trackers.malClientId),
@@ -136,7 +148,7 @@ actor TrackerAuthority {
                 // required here, unlike the rfc, and `plain` is the only method
                 // myanimelist accepts - S256 is rejected outright
                 .init(name: "code_challenge", value: verifier),
-                .init(name: "code_challenge_method", value: "plain")
+                .init(name: "code_challenge_method", value: "plain"),
             ]
         }
 
@@ -144,7 +156,9 @@ actor TrackerAuthority {
         return Authorization(tracker: tracker, url: url, state: state, verifier: verifier)
     }
 
-    func complete(_ callback: URL, with authorization: Authorization) async throws -> TrackerCredential {
+    func complete(_ callback: URL, with authorization: Authorization) async throws
+        -> TrackerCredential
+    {
         let tracker = authorization.tracker
         let parameters = Self.parameters(from: callback)
 
@@ -181,7 +195,8 @@ actor TrackerAuthority {
             // the fragment carries expires_in alongside the token (undocumented,
             // but three shipping clients depend on it); the jwt's own exp is the
             // fallback, so a nil expiry is not a state this can reach
-            expiresDate = parameters["expires_in"]
+            expiresDate =
+                parameters["expires_in"]
                 .flatMap(TimeInterval.init)
                 .map { Date().addingTimeInterval($0) }
                 ?? TrackerCredential.expiry(inJWT: accessToken)
@@ -196,7 +211,7 @@ actor TrackerAuthority {
                     "code": code,
                     "code_verifier": authorization.verifier,
                     "grant_type": "authorization_code",
-                    "redirect_uri": Constants.Trackers.malRedirect
+                    "redirect_uri": Constants.Trackers.malRedirect,
                 ]
             )
             token = response.accessToken
@@ -267,7 +282,9 @@ actor TrackerAuthority {
         if let existing = refreshTasks[tracker] {
             // myanimelist rotates its refresh token, so two concurrent refreshes
             // invalidate each other and the loser is signed out for no reason
-            log.log("[\(tracker.rawValue)] joining in-flight refresh (single-flight)", category: "trackers")
+            log.log(
+                "[\(tracker.rawValue)] joining in-flight refresh (single-flight)",
+                category: "trackers")
             return try await existing.value
         }
 
@@ -301,7 +318,7 @@ actor TrackerAuthority {
                 fields: [
                     "client_id": Constants.Trackers.malClientId,
                     "grant_type": "refresh_token",
-                    "refresh_token": refreshToken
+                    "refresh_token": refreshToken,
                 ]
             )
         } catch TrackerError.reauthenticationRequired {
@@ -319,7 +336,9 @@ actor TrackerAuthority {
             stranded.refreshToken = nil
             stranded.expiresDate = .distantPast
             try? store(stranded, for: tracker)
-            log.log("[\(tracker.rawValue)] refresh token rejected - reauthentication required", level: .error, category: "trackers")
+            log.log(
+                "[\(tracker.rawValue)] refresh token rejected - reauthentication required",
+                level: .error, category: "trackers")
             throw TrackerError.reauthenticationRequired
         }
 
@@ -342,7 +361,9 @@ actor TrackerAuthority {
         do {
             try Keychain.trackers.save(credential, account: tracker.rawValue)
         } catch {
-            log.log("[\(tracker.rawValue)] keychain save FAILED - \(error)", level: .error, category: "trackers")
+            log.log(
+                "[\(tracker.rawValue)] keychain save FAILED - \(error)", level: .error,
+                category: "trackers")
             throw error
         }
     }
@@ -398,7 +419,8 @@ actor TrackerAuthority {
         var allowed = CharacterSet.alphanumerics
         allowed.insert(charactersIn: "-._~")
 
-        return fields
+        return
+            fields
             .map { key, value in
                 let encoded = value.addingPercentEncoding(withAllowedCharacters: allowed) ?? value
                 return "\(key)=\(encoded)"

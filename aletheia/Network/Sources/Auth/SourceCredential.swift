@@ -47,7 +47,8 @@ struct SourceCredential: Sendable, Codable {
     // request the reader is waiting on
     func isValid(skew: TimeInterval = 60) -> Bool {
         if let capturedDate,
-           Date().timeIntervalSince(capturedDate) > Constants.Network.credentialLifetime {
+            Date().timeIntervalSince(capturedDate) > Constants.Network.credentialLifetime
+        {
             return false
         }
 
@@ -63,7 +64,8 @@ struct SourceCredential: Sendable, Codable {
         }
 
         if !cookies.isEmpty {
-            let cookieHeader = cookies
+            let cookieHeader =
+                cookies
                 .map { "\($0.key)=\($0.value)" }
                 .joined(separator: "; ")
             // merged, not overwritten: a source may set request-scoped cookies of

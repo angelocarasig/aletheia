@@ -7,8 +7,9 @@
 
 import Foundation
 import GRDB
-import Tagged
 import Observation
+import Tagged
+
 import struct SwiftUI.ImageResource
 
 extension DetailsComposer {
@@ -39,7 +40,9 @@ extension DetailsComposer {
 
             if chapters != stored.chapters { chapters = stored.chapters }
             if showAll != stored.series.showAllChapters { showAll = stored.series.showAllChapters }
-            if showHalf != stored.series.showHalfChapters { showHalf = stored.series.showHalfChapters }
+            if showHalf != stored.series.showHalfChapters {
+                showHalf = stored.series.showHalfChapters
+            }
         }
 
         // from DetailsWriting
@@ -159,7 +162,8 @@ extension DetailsComposer {
 
             do {
                 try await database.writer.write { db in
-                    _ = try SeriesRecord
+                    _ =
+                        try SeriesRecord
                         .filter(key: seriesId.rawValue)
                         .updateAll(db, column.set(to: value))
                 }

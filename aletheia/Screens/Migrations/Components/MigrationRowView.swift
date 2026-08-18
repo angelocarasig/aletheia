@@ -5,8 +5,8 @@
 //  Created by Angelo Carasig on 18/8/26.
 //
 
-import SwiftUI
 import Kingfisher
+import SwiftUI
 
 // file-scope rather than nested - a static stored property is not allowed
 // inside a type nested in a generic type
@@ -72,7 +72,7 @@ struct MigrationRowView<Entry: MigrationEntry>: View {
                     SearchingPrompt
                         .transition(.opacity)
 
-                case let .found(candidates, selected):
+                case .found(let candidates, let selected):
                     if row.outcome == .saved {
                         SavedSummary(selected)
                             .transition(.opacity)
@@ -85,7 +85,7 @@ struct MigrationRowView<Entry: MigrationEntry>: View {
                     NoMatchPrompt
                         .transition(.opacity)
 
-                case let .failed(reason):
+                case .failed(let reason):
                     FailurePrompt(reason)
                         .transition(.opacity)
                 }
@@ -115,7 +115,9 @@ struct MigrationRowView<Entry: MigrationEntry>: View {
         .animation(.settle, value: row.outcome)
         .animation(.settle, value: row.saving)
         .padding(dimensions.spacing.space12)
-        .glassEffect(.regular, in: .rect(cornerRadius: dimensions.radius.radius12, style: .continuous))
+        .glassEffect(
+            .regular, in: .rect(cornerRadius: dimensions.radius.radius12, style: .continuous)
+        )
         .sheet(isPresented: $showingPicker) {
             MigrationCandidatePicker(
                 title: row.entry.title,
@@ -166,7 +168,10 @@ struct MigrationRowView<Entry: MigrationEntry>: View {
         .foregroundStyle(.secondary)
         .padding(.horizontal, dimensions.spacing.space16)
         .padding(.vertical, dimensions.spacing.space8)
-        .glassEffect(.regular.tint(Palette.muted.opacity(MigrationRowLayout.tint)).interactive(), in: .capsule)
+        .glassEffect(
+            .regular.tint(Palette.muted.opacity(MigrationRowLayout.tint)).interactive(),
+            in: .capsule
+        )
         .contentShape(.capsule)
         .tappable(action: onSkip)
     }
@@ -307,7 +312,9 @@ struct MigrationRowView<Entry: MigrationEntry>: View {
         Button("Retry") { onSearch(nil) }
     }
 
-    private func ResultsCarousel(_ candidates: [MigrationCandidate], selected: MigrationCandidate?) -> some View {
+    private func ResultsCarousel(_ candidates: [MigrationCandidate], selected: MigrationCandidate?)
+        -> some View
+    {
         let shown = candidates.prefix(MigrationRowLayout.previewCount)
 
         return VStack(alignment: .leading, spacing: dimensions.spacing.space8) {
@@ -321,16 +328,19 @@ struct MigrationRowView<Entry: MigrationEntry>: View {
                     ForEach(Array(shown)) { candidate in
                         let source = sourcesBySlug[candidate.sourceSlug]
 
-                        SourceCard(stub: candidate.stub, referer: source?.descriptor.referer, selected: candidate == selected)
-                            .animation(.settle, value: candidate == selected)
-                            .overlay(alignment: .topLeading) { SourceIcon(source) }
-                            .containerRelativeFrame(
-                                .horizontal,
-                                count: MigrationRowLayout.carouselVisible,
-                                spacing: dimensions.spacing.space8
-                            )
-                            .contentShape(.rect)
-                            .tappable { onSelect(candidate) }
+                        SourceCard(
+                            stub: candidate.stub, referer: source?.descriptor.referer,
+                            selected: candidate == selected
+                        )
+                        .animation(.settle, value: candidate == selected)
+                        .overlay(alignment: .topLeading) { SourceIcon(source) }
+                        .containerRelativeFrame(
+                            .horizontal,
+                            count: MigrationRowLayout.carouselVisible,
+                            spacing: dimensions.spacing.space8
+                        )
+                        .contentShape(.rect)
+                        .tappable { onSelect(candidate) }
                     }
                 }
             }
@@ -338,7 +348,9 @@ struct MigrationRowView<Entry: MigrationEntry>: View {
     }
 
     @ViewBuilder
-    private func Subheadline(_ candidates: [MigrationCandidate], selected: MigrationCandidate?) -> some View {
+    private func Subheadline(_ candidates: [MigrationCandidate], selected: MigrationCandidate?)
+        -> some View
+    {
         if let selected {
             Text(sourcesBySlug[selected.sourceSlug]?.descriptor.name ?? selected.sourceSlug)
         } else {
@@ -352,7 +364,10 @@ struct MigrationRowView<Entry: MigrationEntry>: View {
             Image(icon)
                 .resizable()
                 .scaledToFit()
-                .frame(width: MigrationRowLayout.sourceIconSize, height: MigrationRowLayout.sourceIconSize)
+                .frame(
+                    width: MigrationRowLayout.sourceIconSize,
+                    height: MigrationRowLayout.sourceIconSize
+                )
                 .clipShape(.rect(cornerRadius: dimensions.radius.radius4))
                 .padding(dimensions.spacing.space4)
         }

@@ -20,7 +20,8 @@ extension SeriesRecord {
         // contradicts. two exemptions, both because the write would say nothing -
         // reading is already the answer, and completed outranks it, since a
         // reread does not un-finish a series you finished
-        _ = try SeriesRecord
+        _ =
+            try SeriesRecord
             .filter(key: seriesId.rawValue)
             .filter(Columns.status != Status.reading.rawValue)
             .filter(Columns.status != Status.completed.rawValue)
@@ -28,7 +29,8 @@ extension SeriesRecord {
 
         // written whether or not the series is in the library: the launch purge
         // spares anything carrying a read date
-        _ = try SeriesRecord
+        _ =
+            try SeriesRecord
             .filter(key: seriesId.rawValue)
             .updateAll(db, Columns.lastReadDate.set(to: date))
 

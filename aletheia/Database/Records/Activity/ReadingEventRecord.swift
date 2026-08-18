@@ -23,7 +23,10 @@ struct ReadingEventRecord: Codable, DatabaseRecord {
     var occurredDate: Date
     var localDayKey: Int
 
-    init(kind: Kind, seriesId: SeriesRecord.ID, seriesTitle: String, chapterNumber: Double, occurredDate: Date = .now) {
+    init(
+        kind: Kind, seriesId: SeriesRecord.ID, seriesTitle: String, chapterNumber: Double,
+        occurredDate: Date = .now
+    ) {
         self.kind = kind
         self.seriesId = seriesId
         self.seriesTitle = seriesTitle

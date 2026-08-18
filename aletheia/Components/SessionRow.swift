@@ -5,9 +5,9 @@
 //  Created by Angelo Carasig on 9/8/2026.
 //
 
+import Kingfisher
 import SwiftUI
 import Tagged
-import Kingfisher
 
 // a sitting, told the same way wherever it appears
 // the destination is the caller's to declare, not a value pushed at the stack:
@@ -75,7 +75,9 @@ struct SessionRow: View {
             }
         }
         .padding(dimensions.spacing.space12)
-        .background(.primary.opacity(Layout.fillOpacity), in: .rect(cornerRadius: dimensions.radius.radius12))
+        .background(
+            .primary.opacity(Layout.fillOpacity),
+            in: .rect(cornerRadius: dimensions.radius.radius12))
     }
 
     // history is never deleted, so a session outlives the series it names. the
@@ -89,7 +91,9 @@ struct SessionRow: View {
                 if let cover = local ?? session.cover {
                     KFImage(cover)
                         .resizable()
-                        .placeholder { Rectangle().fill(.primary.opacity(Layout.placeholderOpacity)).shimmer() }
+                        .placeholder {
+                            Rectangle().fill(.primary.opacity(Layout.placeholderOpacity)).shimmer()
+                        }
                         .fade(duration: 0.25)
                         .scaledToFill()
                 } else {

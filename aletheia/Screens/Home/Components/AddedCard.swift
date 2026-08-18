@@ -5,8 +5,8 @@
 //  Created by Angelo Carasig on 9/8/2026.
 //
 
-import SwiftUI
 import Kingfisher
+import SwiftUI
 
 // a recently added series at the size the art deserves. Library shows many
 // covers small; Home shows a few large, and says when each one arrived - the

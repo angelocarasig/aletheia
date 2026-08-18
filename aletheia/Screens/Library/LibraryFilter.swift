@@ -6,10 +6,10 @@
 //
 
 import Foundation
-import Tagged
 // for ImageResource - the tracker chips draw the service marks, and the type is
 // generated into the asset symbol namespace rather than Foundation
 import SwiftUI
+import Tagged
 
 // an empty set means "not filtering on this", never "match nothing" - the two
 // read the same in a Set and only one of them is ever what someone meant.
@@ -76,7 +76,7 @@ struct LibraryFilter: Equatable, Codable {
 
         if !classifications.isEmpty {
             guard let classification = entry.classification,
-                  classifications.matches(classification)
+                classifications.matches(classification)
             else { return false }
         }
 
@@ -182,7 +182,7 @@ enum TrackerFilter: Codable, Hashable {
 
     var tracker: Tracker? {
         switch self {
-        case let .linked(tracker): tracker
+        case .linked(let tracker): tracker
         case .untracked: nil
         }
     }

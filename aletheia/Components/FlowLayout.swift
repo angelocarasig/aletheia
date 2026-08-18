@@ -16,7 +16,9 @@ struct FlowLayout: Layout {
         return result.size
     }
 
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout Void) {
+    func placeSubviews(
+        in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout Void
+    ) {
         let result = layout(subviews: subviews, maxWidth: bounds.width)
         for (index, position) in result.positions.enumerated() {
             subviews[index].place(
@@ -26,7 +28,9 @@ struct FlowLayout: Layout {
         }
     }
 
-    private func layout(subviews: Subviews, maxWidth: CGFloat) -> (size: CGSize, positions: [CGPoint]) {
+    private func layout(subviews: Subviews, maxWidth: CGFloat) -> (
+        size: CGSize, positions: [CGPoint]
+    ) {
         var positions: [CGPoint] = []
         var currentX: CGFloat = 0
         var currentY: CGFloat = 0

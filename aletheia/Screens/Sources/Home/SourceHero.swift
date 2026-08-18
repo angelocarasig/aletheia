@@ -5,18 +5,18 @@
 //  Created by Angelo Carasig on 5/8/2026.
 //
 
-import SwiftUI
 import Kingfisher
+import SwiftUI
 
 struct SourceHero: View {
     let source: Source
     let record: SourceRecord?
     let entries: [SeriesStub]
     let isLoading: Bool
-    
+
     @Environment(\.dimensions) private var dimensions
     @State private var width: CGFloat = 0
-    
+
     private enum Layout {
         static let heroHeight: CGFloat = 400
         static let coverWidthDivisor: CGFloat = 2.5
@@ -28,48 +28,52 @@ struct SourceHero: View {
         static let shadowRadius: CGFloat = 8
         static let shadowY: CGFloat = 4
     }
-    
+
     private enum Motion {
         static let easing: Double = 0.3
         static let breatheRate: Double = 0.3
         static let breatheAmplitude: Double = 0.015
         static let linearFactor: Double = 0.7
     }
-    
+
     private var coverWidth: CGFloat { max(width, 1) / Layout.coverWidthDivisor }
-    private var cycleDuration: Double { Double(max(entries.count, 1)) * Layout.cycleDurationPerEntry }
-    
+    private var cycleDuration: Double {
+        Double(max(entries.count, 1)) * Layout.cycleDurationPerEntry
+    }
+
     var body: some View {
         ZStack(alignment: .bottom) {
             Background
-            
+
             LinearGradient(
                 stops: [
                     .init(color: .clear, location: 0.0),
                     .init(color: .canvas.opacity(0.3), location: 0.4),
                     .init(color: .canvas.opacity(0.7), location: 0.8),
-                    .init(color: .canvas, location: 1.0)
+                    .init(color: .canvas, location: 1.0),
                 ],
                 startPoint: .top,
                 endPoint: .bottom
             )
             .allowsHitTesting(false)
-            
+
             Overlay
         }
         .frame(height: Layout.heroHeight)
         .frame(maxWidth: .infinity)
         .clipped()
         .animation(.settle, value: phase)
-        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
+        .onGeometryChange(for: CGFloat.self) {
+            $0.size.width
+        } action: {
+            width = $0
+        }
     }
-    
+
     // branch selector and animation key are one value - see
     // docs/features/loading-transitions.md
     private var phase: LoadPhase {
-        if !entries.isEmpty { .content }
-        else if isLoading { .pending }
-        else { .empty }
+        if !entries.isEmpty { .content } else if isLoading { .pending } else { .empty }
     }
 
     @ViewBuilder
@@ -84,14 +88,18 @@ struct SourceHero: View {
                 let breathe = sin(elapsed * Motion.breatheRate) * Motion.breatheAmplitude
                 let progress = linear * Motion.linearFactor + eased + breathe
                 let offset = -totalWidth * progress
-                
+
                 Canvas { context, size in
                     for (index, entry) in doubled.enumerated() {
                         let x = CGFloat(index) * coverWidth + offset
                         let wrapped = x < -coverWidth ? x + totalWidth * 2 : x
-                        guard wrapped > -coverWidth, wrapped < size.width + coverWidth else { continue }
+                        guard wrapped > -coverWidth, wrapped < size.width + coverWidth else {
+                            continue
+                        }
                         if let symbol = context.resolveSymbol(id: entry.slug + String(index)) {
-                            context.draw(symbol, at: CGPoint(x: wrapped + coverWidth / 2, y: size.height / 2))
+                            context.draw(
+                                symbol, at: CGPoint(x: wrapped + coverWidth / 2, y: size.height / 2)
+                            )
                         }
                     }
                 } symbols: {
@@ -119,7 +127,7 @@ struct SourceHero: View {
                 .transition(.opacity)
         }
     }
-    
+
     private var Overlay: some View {
         HStack(alignment: .center, spacing: dimensions.spacing.space20) {
             Image(source.descriptor.icon)
@@ -132,9 +140,12 @@ struct SourceHero: View {
                         .strokeBorder(.white.opacity(0.15), lineWidth: 1)
                 }
                 .scaleEffect(Layout.iconScale)
-                .shadow(color: .black.opacity(Layout.shadowOpacity), radius: Layout.shadowRadius, y: Layout.shadowY)
+                .shadow(
+                    color: .black.opacity(Layout.shadowOpacity), radius: Layout.shadowRadius,
+                    y: Layout.shadowY
+                )
                 .opacity(record?.disabled == true ? 0.5 : 1)
-            
+
             VStack(alignment: .leading, spacing: dimensions.spacing.space4) {
                 Text(source.descriptor.name)
                     .font(.title2)
@@ -148,13 +159,13 @@ struct SourceHero: View {
                     .lineLimit(3)
                     .truncationMode(.tail)
             }
-            
+
             Spacer()
         }
         .padding(.horizontal, dimensions.screenMargin)
         .padding(.bottom, dimensions.screenMargin)
     }
-    
+
     private var refererModifier: AnyModifier {
         let referer = source.descriptor.referer.absoluteString
         return AnyModifier { request in

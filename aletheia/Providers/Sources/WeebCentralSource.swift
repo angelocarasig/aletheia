@@ -29,7 +29,8 @@ struct WeebCentralSource: SourceService {
     let descriptor = SourceDescriptor(
         slug: "weebcentral",
         name: "WeebCentral",
-        description: "Explore Weeb Central for top manga titles, hidden gems, and the latest releases. Join our community of manga enthusiasts!",
+        description:
+            "Explore Weeb Central for top manga titles, hidden gems, and the latest releases. Join our community of manga enthusiasts!",
         icon: .weebCentral,
         languages: [.english],
         baseURL: URL(string: "https://weebcentral.com")!,
@@ -42,7 +43,7 @@ struct WeebCentralSource: SourceService {
                     .init(id: "Ongoing", name: "Ongoing"),
                     .init(id: "Complete", name: "Complete"),
                     .init(id: "Hiatus", name: "Hiatus"),
-                    .init(id: "Canceled", name: "Cancelled")
+                    .init(id: "Canceled", name: "Cancelled"),
                 ],
                 canExclude: false
             ),
@@ -53,7 +54,7 @@ struct WeebCentralSource: SourceService {
                     .init(id: "Manga", name: "Manga"),
                     .init(id: "Manhwa", name: "Manhwa"),
                     .init(id: "Manhua", name: "Manhua"),
-                    .init(id: "OEL", name: "OEL")
+                    .init(id: "OEL", name: "OEL"),
                 ],
                 canExclude: false
             ),
@@ -100,7 +101,7 @@ struct WeebCentralSource: SourceService {
                     .init(id: "Supernatural", name: "Supernatural"),
                     .init(id: "Tragedy", name: "Tragedy"),
                     .init(id: "Yaoi", name: "Yaoi", sensitivity: .suggestive),
-                    .init(id: "Yuri", name: "Yuri")
+                    .init(id: "Yuri", name: "Yuri"),
                 ],
                 canExclude: true
             ),
@@ -110,7 +111,7 @@ struct WeebCentralSource: SourceService {
                 options: [
                     .init(id: "Any", name: "Any"),
                     .init(id: "True", name: "Official only"),
-                    .init(id: "False", name: "Scanlations only")
+                    .init(id: "False", name: "Scanlations only"),
                 ]
             ),
             .select(
@@ -119,7 +120,7 @@ struct WeebCentralSource: SourceService {
                 options: [
                     .init(id: "Any", name: "Any"),
                     .init(id: "True", name: "Adapted"),
-                    .init(id: "False", name: "Not adapted")
+                    .init(id: "False", name: "Not adapted"),
                 ]
             ),
             // binary on purpose. the api also takes Any, but Any returns a mixed
@@ -132,9 +133,9 @@ struct WeebCentralSource: SourceService {
                 name: "Adult Content",
                 options: [
                     .init(id: "False", name: "Exclude"),
-                    .init(id: "True", name: "Include only", sensitivity: .adult)
+                    .init(id: "True", name: "Include only", sensitivity: .adult),
                 ]
-            )
+            ),
         ],
         // this api takes sort and order as two parameters, but to the app an
         // option IS a direction - so the id carries both and the source splits
@@ -149,7 +150,7 @@ struct WeebCentralSource: SourceService {
                 .init(id: "Recently Added", name: "Recently added"),
                 .init(id: "Recently Added|Ascending", name: "Oldest added"),
                 .init(id: "Alphabet|Ascending", name: "Title (A-Z)"),
-                .init(id: "Alphabet", name: "Title (Z-A)")
+                .init(id: "Alphabet", name: "Title (Z-A)"),
             ],
             defaultSort: "Best Match"
         )
@@ -157,14 +158,20 @@ struct WeebCentralSource: SourceService {
 
     var presets: [SourcePreset] {
         [
-            .init(id: "popular", name: "Popular", subtitle: "Most read on WeebCentral", order: 0,
-                  sort: .init(optionID: "Popularity")),
-            .init(id: "latest", name: "Latest Updates", subtitle: "Freshly released chapters", order: 1,
-                  sort: .init(optionID: "Latest Updates")),
-            .init(id: "new", name: "New Releases", subtitle: "Recently added series", order: 2,
-                  sort: .init(optionID: "Recently Added")),
-            .init(id: "subscribed", name: "Most Followed", subtitle: "Series with the most subscribers", order: 3,
-                  sort: .init(optionID: "Subscribers"))
+            .init(
+                id: "popular", name: "Popular", subtitle: "Most read on WeebCentral", order: 0,
+                sort: .init(optionID: "Popularity")),
+            .init(
+                id: "latest", name: "Latest Updates", subtitle: "Freshly released chapters",
+                order: 1,
+                sort: .init(optionID: "Latest Updates")),
+            .init(
+                id: "new", name: "New Releases", subtitle: "Recently added series", order: 2,
+                sort: .init(optionID: "Recently Added")),
+            .init(
+                id: "subscribed", name: "Most Followed",
+                subtitle: "Series with the most subscribers", order: 3,
+                sort: .init(optionID: "Subscribers")),
         ]
     }
 }
@@ -175,7 +182,7 @@ extension WeebCentralSource {
     func search(_ query: SearchQuery) async throws -> SearchPage<SeriesStub> {
         var items: [URLQueryItem] = [
             .init(name: "display_mode", value: Self.display),
-            .init(name: "offset", value: String(max(0, query.page - 1) * Self.window))
+            .init(name: "offset", value: String(max(0, query.page - 1) * Self.window)),
         ]
 
         if let text = query.text, !text.isEmpty {
@@ -199,12 +206,14 @@ extension WeebCentralSource {
 
         guard let url = components.url else { throw URLError(.badURL) }
 
-        let data = try await network.get(url: url, headers: ["Referer": descriptor.referer.absoluteString])
+        let data = try await network.get(
+            url: url, headers: ["Referer": descriptor.referer.absoluteString])
         // rung 2: the result card is a title, a cover and a chapter count - no
         // adult signal anywhere in the fragment. the request answers instead,
         // and can only ever be one-sided because Any was dropped from the filter
-        let stubs = try Self.stubs(from: String(decoding: data, as: UTF8.self),
-                                   adult: allowsAdult(for: query))
+        let stubs = try Self.stubs(
+            from: String(decoding: data, as: UTF8.self),
+            adult: allowsAdult(for: query))
 
         // no total comes back, so a full window is the only sign there is more
         return SearchPage(items: stubs, next: stubs.count == Self.window ? query.page + 1 : nil)
@@ -249,7 +258,8 @@ extension WeebCentralSource {
     // what identifies the series
     private static func identifier(from href: String) -> String? {
         let parts = href.split(separator: "/")
-        guard let index = parts.firstIndex(of: "series"), parts.index(after: index) < parts.endIndex else {
+        guard let index = parts.firstIndex(of: "series"), parts.index(after: index) < parts.endIndex
+        else {
             return nil
         }
         return String(parts[parts.index(after: index)])
@@ -267,7 +277,8 @@ extension WeebCentralSource {
             .appendingPathComponent("series")
             .appendingPathComponent(seriesSlug)
 
-        let data = try await network.get(url: url, headers: ["Referer": descriptor.referer.absoluteString])
+        let data = try await network.get(
+            url: url, headers: ["Referer": descriptor.referer.absoluteString])
         let document = try SwiftSoup.parse(String(decoding: data, as: UTF8.self))
 
         // two h1 elements carry the same title, one per breakpoint. og:title
@@ -286,7 +297,8 @@ extension WeebCentralSource {
             synopsis: synopsis.trimmingCharacters(in: .whitespacesAndNewlines),
             url: url,
             classification: Self.classification(try Self.values(in: document, for: "adult").first),
-            publication: Self.publication(try Self.values(in: document, for: "included_status").first),
+            publication: Self.publication(
+                try Self.values(in: document, for: "included_status").first),
             covers: [Self.cover(for: seriesSlug)].compactMap { $0 },
             tags: try Self.values(in: document, for: "included_tag"),
             authors: try Self.values(in: document, for: "author")
@@ -312,11 +324,13 @@ extension WeebCentralSource {
 
     private static func associated(in document: Document) throws -> [String] {
         guard let label = try document.select("strong:contains(Associated Name)").first(),
-              let list = try label.parent()?.select("ul").first()
+            let list = try label.parent()?.select("ul").first()
         else { return [] }
 
-        return try list.select("li").map { try $0.text().trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
+        return try list.select("li").map {
+            try $0.text().trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        .filter { !$0.isEmpty }
     }
 
     // the site exposes a binary adult flag where others have four levels, so
@@ -349,7 +363,8 @@ extension WeebCentralSource {
             .appendingPathComponent(seriesSlug)
             .appendingPathComponent("full-chapter-list")
 
-        let data = try await network.get(url: url, headers: ["Referer": descriptor.referer.absoluteString])
+        let data = try await network.get(
+            url: url, headers: ["Referer": descriptor.referer.absoluteString])
         let document = try SwiftSoup.parse(String(decoding: data, as: UTF8.self))
 
         let rows = try document.select("a[href*=/chapters/]")
@@ -360,13 +375,16 @@ extension WeebCentralSource {
         // was parsed wrong to the wrong values permanently
         return try rows.compactMap { row -> ChapterEntry? in
             let href = try row.attr("href")
-            guard let slug = href.split(separator: "/").last.map(String.init), !slug.isEmpty else { return nil }
+            guard let slug = href.split(separator: "/").last.map(String.init), !slug.isEmpty else {
+                return nil
+            }
 
             // the row's first span holds the badge image, and the one after it
             // only wraps more spans - the label sits nested inside. taking the
             // first span that owns text rather than the first span at all is
             // what stops every chapter parsing as "" and numbering itself 0
-            let label = try row.select("span")
+            let label =
+                try row.select("span")
                 .map { $0.ownText() }
                 .first { !$0.isEmpty } ?? ""
             let published = try row.select("time[datetime]").first()?.attr("datetime")
@@ -379,7 +397,8 @@ extension WeebCentralSource {
                 // the fragment carries no group attribution, and this keys the
                 // scanlator priority rows, so it has to be stable across fetches
                 scanlator: descriptor.name,
-                url: descriptor.baseURL.appendingPathComponent("chapters").appendingPathComponent(slug),
+                url: descriptor.baseURL.appendingPathComponent("chapters").appendingPathComponent(
+                    slug),
                 publishedDate: Self.date(from: published)
             )
         }
@@ -418,12 +437,13 @@ extension WeebCentralSource {
         )!
         components.queryItems = [
             .init(name: "is_prev", value: "False"),
-            .init(name: "reading_style", value: "long_strip")
+            .init(name: "reading_style", value: "long_strip"),
         ]
 
         guard let url = components.url else { throw URLError(.badURL) }
 
-        let data = try await network.get(url: url, headers: ["Referer": descriptor.referer.absoluteString])
+        let data = try await network.get(
+            url: url, headers: ["Referer": descriptor.referer.absoluteString])
         let document = try SwiftSoup.parse(String(decoding: data, as: UTF8.self))
 
         // already absolute, on a separate host - the reader's referer modifier is
@@ -451,18 +471,18 @@ extension WeebCentralSource {
             switch filter {
             // the ids are already the request's own parameter names, so the
             // excluded side is the same name with the prefix swapped
-            case let .multiSelect(id, included, excluded) where !excluded.isEmpty:
+            case .multiSelect(let id, let included, let excluded) where !excluded.isEmpty:
                 let opposite = id.replacingOccurrences(of: "included_", with: "excluded_")
                 return included.map { .init(name: id, value: $0) }
                     + excluded.map { .init(name: opposite, value: $0) }
 
-            case let .multiSelect(id, included, _):
+            case .multiSelect(let id, let included, _):
                 return included.map { .init(name: id, value: $0) }
-            case let .select(id, optionID):
+            case .select(let id, let optionID):
                 return [.init(name: id, value: optionID)]
-            case let .text(id, value):
+            case .text(let id, let value):
                 return value.isEmpty ? [] : [.init(name: id, value: value)]
-            case let .number(id, value):
+            case .number(let id, let value):
                 return [.init(name: id, value: String(value))]
             }
         }

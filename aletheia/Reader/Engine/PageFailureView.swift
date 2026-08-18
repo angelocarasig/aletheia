@@ -82,7 +82,7 @@ final class PageFailureView: UIView {
         NSLayoutConstraint.activate([
             stack.centerXAnchor.constraint(equalTo: centerXAnchor),
             stack.centerYAnchor.constraint(equalTo: centerYAnchor),
-            message.widthAnchor.constraint(lessThanOrEqualToConstant: Layout.messageWidth)
+            message.widthAnchor.constraint(lessThanOrEqualToConstant: Layout.messageWidth),
         ])
     }
 

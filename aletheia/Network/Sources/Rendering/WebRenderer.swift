@@ -51,10 +51,13 @@ final class WebRenderer {
         for attempt in 1...max(1, attempts) {
             let session = await Session(url: url, credential: credential, capturing: pattern)
             if let body = try await Capture.wait(from: session.bridge, timeout: timeout) {
-                log.log("sniffed \(pattern) (\(body.count) bytes)", level: .debug, category: "render")
+                log.log(
+                    "sniffed \(pattern) (\(body.count) bytes)", level: .debug, category: "render")
                 return body
             }
-            log.log("sniff timed out for \(pattern) (attempt \(attempt)/\(attempts))", level: .debug, category: "render")
+            log.log(
+                "sniff timed out for \(pattern) (attempt \(attempt)/\(attempts))", level: .debug,
+                category: "render")
         }
         throw RenderError.noContent
     }
@@ -78,9 +81,14 @@ final class WebRenderer {
         bodies.append(first)
 
         while bodies.count < maxPages {
-            guard try await bridge.bool("return !!document.querySelector(sel)", ["sel": nextSelector]) else { break }
-            try await bridge.call("document.querySelector(sel)?.click(); return null", ["sel": nextSelector])
-            guard let body = try await Capture.wait(from: bridge, timeout: .seconds(8)) else { break }
+            guard
+                try await bridge.bool("return !!document.querySelector(sel)", ["sel": nextSelector])
+            else { break }
+            try await bridge.call(
+                "document.querySelector(sel)?.click(); return null", ["sel": nextSelector])
+            guard let body = try await Capture.wait(from: bridge, timeout: .seconds(8)) else {
+                break
+            }
             bodies.append(body)
         }
 
@@ -103,18 +111,22 @@ final class WebRenderer {
         let bridge = session.bridge
 
         var pages: [String] = []
-        guard let first = try await waitRendered(bridge, selector: selector, timeout: timeout) else {
+        guard let first = try await waitRendered(bridge, selector: selector, timeout: timeout)
+        else {
             log.log("renderPaged: \(selector) never appeared", level: .debug, category: "render")
             return pages
         }
         pages.append(first)
 
         while pages.count < maxPages {
-            guard try await advance(bridge, next: nextSelector, tracking: rowSelector) else { break }
+            guard try await advance(bridge, next: nextSelector, tracking: rowSelector) else {
+                break
+            }
             if let html = try await outerHTML(bridge) { pages.append(html) }
         }
 
-        log.log("renderPaged \(selector): \(pages.count) page(s)", level: .debug, category: "render")
+        log.log(
+            "renderPaged \(selector): \(pages.count) page(s)", level: .debug, category: "render")
         return pages
     }
 
@@ -150,12 +162,14 @@ final class WebRenderer {
         defer { withExtendedLifetime(session) {} }
 
         guard try await session.ready(anchor: selector, within: timeout) else {
-            log.log("run: \(selector ?? "document") never settled", level: .debug, category: "render")
+            log.log(
+                "run: \(selector ?? "document") never settled", level: .debug, category: "render")
             throw RenderError.noContent
         }
         let settled = clock.now
 
-        let json = try await bounded(session, script: script, arguments: arguments, timeout: timeout)
+        let json = try await bounded(
+            session, script: script, arguments: arguments, timeout: timeout)
 
         // split three ways because they fail for different reasons: build is
         // process launch, settle is the site booting, script is the work itself
@@ -203,7 +217,9 @@ final class WebRenderer {
             return json
 
         case .overran:
-            log.log("run: script overran \(timeout), abandoning the page", level: .debug, category: "render")
+            log.log(
+                "run: script overran \(timeout), abandoning the page", level: .debug,
+                category: "render")
             // best effort - the stuck call may never notice, but a fresh session
             // is cheaper than a wedged one held open
             session.discard()
@@ -215,10 +231,14 @@ final class WebRenderer {
     }
 
     private static func ms(_ duration: Duration) -> Int {
-        Int(duration.components.seconds * 1000 + duration.components.attoseconds / 1_000_000_000_000_000)
+        Int(
+            duration.components.seconds * 1000 + duration.components.attoseconds
+                / 1_000_000_000_000_000)
     }
 
-    private func waitRendered(_ bridge: Bridge, selector: String, timeout: Duration) async throws -> String? {
+    private func waitRendered(_ bridge: Bridge, selector: String, timeout: Duration) async throws
+        -> String?
+    {
         var waited: Duration = .zero
         var delay: Duration = .milliseconds(300)
         while waited < timeout {
@@ -232,8 +252,13 @@ final class WebRenderer {
         return nil
     }
 
-    private func advance(_ bridge: Bridge, next: String, tracking rowSelector: String, timeout: Duration = .seconds(8)) async throws -> Bool {
-        guard try await bridge.bool("return !!document.querySelector(sel)", ["sel": next]) else { return false }
+    private func advance(
+        _ bridge: Bridge, next: String, tracking rowSelector: String,
+        timeout: Duration = .seconds(8)
+    ) async throws -> Bool {
+        guard try await bridge.bool("return !!document.querySelector(sel)", ["sel": next]) else {
+            return false
+        }
 
         let before = try await firstHref(bridge, rowSelector)
         try await bridge.call("document.querySelector(sel)?.click(); return null", ["sel": next])
@@ -255,6 +280,8 @@ final class WebRenderer {
     }
 
     private func firstHref(_ bridge: Bridge, _ selector: String) async throws -> String? {
-        try await bridge.string("let e = document.querySelector(sel); return e ? e.getAttribute('href') : null", ["sel": selector])
+        try await bridge.string(
+            "let e = document.querySelector(sel); return e ? e.getAttribute('href') : null",
+            ["sel": selector])
     }
 }

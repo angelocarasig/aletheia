@@ -60,10 +60,11 @@ struct ExpandableSection<Content: View>: View {
                 VStack(spacing: 0) {
                     content()
                 }
-                .transition(.asymmetric(
-                    insertion: .push(from: .top).combined(with: .opacity),
-                    removal: .push(from: .bottom).combined(with: .opacity)
-                ))
+                .transition(
+                    .asymmetric(
+                        insertion: .push(from: .top).combined(with: .opacity),
+                        removal: .push(from: .bottom).combined(with: .opacity)
+                    ))
             }
         }
     }

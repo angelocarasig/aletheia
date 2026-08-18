@@ -19,13 +19,14 @@ import Foundation
 struct MangaFireDeprecatedSource: SourceService, AuthenticatingSource {
     let requester: AuthRequester
     let renderer: WebRenderer
-    
+
     private let detailsPath = "title"
 
     let descriptor = SourceDescriptor(
         slug: "mangafire",
         name: "MangaFire",
-        description: "Free read manga online in high quality. Update hourly, No ads, No registration required. Just enjoy your manga ;)",
+        description:
+            "Free read manga online in high quality. Update hourly, No ads, No registration required. Just enjoy your manga ;)",
         icon: .mangaFire,
         languages: [.english, .chinese, .japanese, .korean],
         baseURL: URL(string: "https://mangafire.to")!,
@@ -41,7 +42,7 @@ struct MangaFireDeprecatedSource: SourceService, AuthenticatingSource {
                     .init(id: "safe", name: "Safe"),
                     .init(id: "suggestive", name: "Suggestive"),
                     .init(id: "erotica", name: "Erotica", sensitivity: .suggestive),
-                    .init(id: "pornographic", name: "Pornographic", sensitivity: .adult)
+                    .init(id: "pornographic", name: "Pornographic", sensitivity: .adult),
                 ],
                 canExclude: false
             ),
@@ -52,7 +53,7 @@ struct MangaFireDeprecatedSource: SourceService, AuthenticatingSource {
                     .init(id: "manga", name: "Manga"),
                     .init(id: "manhwa", name: "Manhwa"),
                     .init(id: "manhua", name: "Manhua"),
-                    .init(id: "other", name: "Other")
+                    .init(id: "other", name: "Other"),
                 ],
                 canExclude: false
             ),
@@ -63,7 +64,7 @@ struct MangaFireDeprecatedSource: SourceService, AuthenticatingSource {
                     .init(id: "268919", name: "Josei"),
                     .init(id: "268920", name: "Seinen"),
                     .init(id: "268917", name: "Shoujo"),
-                    .init(id: "268918", name: "Shounen")
+                    .init(id: "268918", name: "Shounen"),
                 ],
                 canExclude: false
             ),
@@ -72,7 +73,7 @@ struct MangaFireDeprecatedSource: SourceService, AuthenticatingSource {
                 name: "Genre Inclusion",
                 options: [
                     .init(id: "and", name: "All"),
-                    .init(id: "or", name: "Any")
+                    .init(id: "or", name: "Any"),
                 ]
             ),
             .multiSelect(
@@ -131,7 +132,7 @@ struct MangaFireDeprecatedSource: SourceService, AuthenticatingSource {
                     .init(id: "38", name: "Thriller"),
                     .init(id: "268927", name: "Tragedy"),
                     .init(id: "39", name: "Vampire"),
-                    .init(id: "268928", name: "Wuxia")
+                    .init(id: "268928", name: "Wuxia"),
                 ],
                 canExclude: true
             ),
@@ -140,7 +141,7 @@ struct MangaFireDeprecatedSource: SourceService, AuthenticatingSource {
                 name: "Theme Inclusion",
                 options: [
                     .init(id: "and", name: "All"),
-                    .init(id: "or", name: "Any")
+                    .init(id: "or", name: "Any"),
                 ]
             ),
             .multiSelect(
@@ -183,7 +184,7 @@ struct MangaFireDeprecatedSource: SourceService, AuthenticatingSource {
                     .init(id: "268966", name: "Video Games"),
                     .init(id: "268967", name: "Villainess"),
                     .init(id: "268968", name: "Virtual Reality"),
-                    .init(id: "268969", name: "Zombies")
+                    .init(id: "268969", name: "Zombies"),
                 ],
                 canExclude: false
             ),
@@ -192,10 +193,10 @@ struct MangaFireDeprecatedSource: SourceService, AuthenticatingSource {
                 name: "Language",
                 options: [
                     .init(id: "en", name: "English"),
-                    .init(id: "ja", name: "Japanese")
+                    .init(id: "ja", name: "Japanese"),
                 ],
                 canExclude: false
-            )
+            ),
         ],
         supportedSort: .init(
             options: [
@@ -211,7 +212,7 @@ struct MangaFireDeprecatedSource: SourceService, AuthenticatingSource {
                 .init(id: "views_7d:desc", name: "Most viewed · 7 days"),
                 .init(id: "views_30d:desc", name: "Most viewed · 30 days"),
                 .init(id: "views_total:desc", name: "Most viewed · all time"),
-                .init(id: "follows_total:desc", name: "Most followed")
+                .init(id: "follows_total:desc", name: "Most followed"),
             ],
             defaultSort: "relevance:desc"
         )
@@ -219,16 +220,24 @@ struct MangaFireDeprecatedSource: SourceService, AuthenticatingSource {
 
     var presets: [SourcePreset] {
         [
-            .init(id: "trending", name: "Trending", subtitle: "What everyone's reading now", order: 0,
-                  sort: .init(optionID: "trending:desc")),
-            .init(id: "latest", name: "Latest Updates", subtitle: "Freshly released chapters", order: 1,
-                  sort: .init(optionID: "updated_at:desc")),
-            .init(id: "new", name: "New Releases", subtitle: "Recently added series", order: 2,
-                  sort: .init(optionID: "created_at:desc")),
-            .init(id: "top-rated", name: "Top Rated", subtitle: "Highest scored on MangaFire", order: 3,
-                  sort: .init(optionID: "score:desc")),
-            .init(id: "popular", name: "All-Time Popular", subtitle: "Most viewed of all time", order: 4,
-                  sort: .init(optionID: "views_total:desc"))
+            .init(
+                id: "trending", name: "Trending", subtitle: "What everyone's reading now", order: 0,
+                sort: .init(optionID: "trending:desc")),
+            .init(
+                id: "latest", name: "Latest Updates", subtitle: "Freshly released chapters",
+                order: 1,
+                sort: .init(optionID: "updated_at:desc")),
+            .init(
+                id: "new", name: "New Releases", subtitle: "Recently added series", order: 2,
+                sort: .init(optionID: "created_at:desc")),
+            .init(
+                id: "top-rated", name: "Top Rated", subtitle: "Highest scored on MangaFire",
+                order: 3,
+                sort: .init(optionID: "score:desc")),
+            .init(
+                id: "popular", name: "All-Time Popular", subtitle: "Most viewed of all time",
+                order: 4,
+                sort: .init(optionID: "views_total:desc")),
         ]
     }
 
@@ -236,11 +245,12 @@ struct MangaFireDeprecatedSource: SourceService, AuthenticatingSource {
         AuthSpecification(
             requirements: [
                 .cookie(name: "cf_clearance"),
-                .cookie(name: "session")
+                .cookie(name: "session"),
             ],
             challengeURL: descriptor.baseURL,
             userAgent: nil,
-            maneuver: "Leave this window open to capture cookies. This window will close automatically.",
+            maneuver:
+                "Leave this window open to capture cookies. This window will close automatically.",
             interactive: false
         )
     }
@@ -285,7 +295,10 @@ extension MangaFireDeprecatedSource {
     // sent the clean whitelist
     private static func stampsAdult(for query: SearchQuery, gateOpen: Bool) -> Bool {
         guard gateOpen else { return false }
-        guard case let .multiSelect(_, included, _)? = query.filters.first(where: { $0.id == "content_rating" })
+        guard
+            case .multiSelect(_, let included, _)? = query.filters.first(where: {
+                $0.id == "content_rating"
+            })
         else { return true }
 
         return included.contains("pornographic")
@@ -317,10 +330,10 @@ extension MangaFireDeprecatedSource {
     }
 
     private func genres(from selection: FilterSelection) -> [URLQueryItem] {
-        guard case let .multiSelect(_, included, excluded) = selection else { return [] }
+        guard case .multiSelect(_, let included, let excluded) = selection else { return [] }
         return [
             (GenreFilter.included, included),
-            (GenreFilter.excluded, excluded)
+            (GenreFilter.excluded, excluded),
         ].compactMap { key, ids in
             ids.isEmpty ? nil : URLQueryItem(name: key.rawValue, value: ids.joined(separator: ","))
         }
@@ -336,7 +349,8 @@ extension MangaFireDeprecatedSource {
         // is the whole gate here, and nothing needs writing to storage
         if !query.filters.contains(where: { $0.id == "content_rating" }) {
             let allowed = allowsAdult(for: query) ? Self.clean + ["pornographic"] : Self.clean
-            items.append(URLQueryItem(name: "content_rating", value: allowed.joined(separator: ",")))
+            items.append(
+                URLQueryItem(name: "content_rating", value: allowed.joined(separator: ",")))
         }
 
         if let text = query.text, !text.isEmpty {
@@ -346,13 +360,13 @@ extension MangaFireDeprecatedSource {
 
         for filter in query.filters {
             switch filter {
-            case let .number(id, value):
+            case .number(let id, let value):
                 items.append(URLQueryItem(name: id, value: String(value)))
-            case let .text(id, value):
+            case .text(let id, let value):
                 items.append(URLQueryItem(name: id, value: value))
-            case let .select(id, optionID):
+            case .select(let id, let optionID):
                 items.append(URLQueryItem(name: id, value: optionID))
-            case let .multiSelect(id, included, _):
+            case .multiSelect(let id, let included, _):
                 if id == "genres" {
                     items.append(contentsOf: genres(from: filter))
                 } else if !included.isEmpty {
@@ -365,7 +379,9 @@ extension MangaFireDeprecatedSource {
             items.append(URLQueryItem(name: "page", value: String(query.page)))
         }
 
-        var components = URLComponents(url: descriptor.baseURL.appendingPathComponent("browse"), resolvingAgainstBaseURL: false)!
+        var components = URLComponents(
+            url: descriptor.baseURL.appendingPathComponent("browse"), resolvingAgainstBaseURL: false
+        )!
         components.queryItems = items.isEmpty ? nil : items
         return components.url!
     }
@@ -378,10 +394,12 @@ extension MangaFireDeprecatedSource {
     func details(seriesSlug: String) async throws -> SeriesDetail {
         let pageURL = detailsURL(for: seriesSlug)
         let credential = try await requester.credential(for: self)
-        let json = try await renderer.sniff(pageURL, credential: credential, matching: "/api/titles/\(seriesSlug)?")
+        let json = try await renderer.sniff(
+            pageURL, credential: credential, matching: "/api/titles/\(seriesSlug)?")
         let data = try JSONDecoder().decode(TitleResponse.self, from: Data(json.utf8)).data
 
-        let tags = (data.genres ?? []).map(\.title)
+        let tags =
+            (data.genres ?? []).map(\.title)
             + (data.themes ?? []).map(\.title)
             + (data.demographics ?? []).map(\.title)
         let authors = (data.authors ?? []).map(\.title) + (data.artists ?? []).map(\.title)
@@ -457,15 +475,18 @@ extension MangaFireDeprecatedSource {
         for json in pages {
             let items = try JSONDecoder().decode(ChaptersResponse.self, from: Data(json.utf8)).items
             for item in items where seen.insert(item.id).inserted {
-                entries.append(ChapterEntry(
-                    slug: String(item.id),
-                    title: item.name.isEmpty ? "Chapter \(Self.number(item.number))" : item.name,
-                    number: item.number,
-                    language: LanguageCode(rawValue: item.language) ?? .english,
-                    scanlator: "MangaFire",
-                    url: pageURL.appendingPathComponent("chapter").appendingPathComponent(String(item.id)),
-                    publishedDate: Date(timeIntervalSince1970: item.createdAt)
-                ))
+                entries.append(
+                    ChapterEntry(
+                        slug: String(item.id),
+                        title: item.name.isEmpty
+                            ? "Chapter \(Self.number(item.number))" : item.name,
+                        number: item.number,
+                        language: LanguageCode(rawValue: item.language) ?? .english,
+                        scanlator: "MangaFire",
+                        url: pageURL.appendingPathComponent("chapter").appendingPathComponent(
+                            String(item.id)),
+                        publishedDate: Date(timeIntervalSince1970: item.createdAt)
+                    ))
             }
         }
         return entries
@@ -497,8 +518,10 @@ extension MangaFireDeprecatedSource {
             .appendingPathComponent("chapter")
             .appendingPathComponent(chapterSlug)
         let credential = try await requester.credential(for: self)
-        let json = try await renderer.sniff(readerURL, credential: credential, matching: "/api/chapters/\(chapterSlug)")
-        let pages = try JSONDecoder().decode(ChapterContentResponse.self, from: Data(json.utf8)).data.pages
+        let json = try await renderer.sniff(
+            readerURL, credential: credential, matching: "/api/chapters/\(chapterSlug)")
+        let pages = try JSONDecoder().decode(ChapterContentResponse.self, from: Data(json.utf8))
+            .data.pages
 
         // the sniffed payload carries dimensions per page, so the reader can
         // size a chapter before a single image lands. note this is richer than

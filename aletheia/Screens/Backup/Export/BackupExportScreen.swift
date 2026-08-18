@@ -38,7 +38,7 @@ struct BackupExportScreen: View {
 
     var body: some View {
         ZStack {
-            if case let .failed(reason) = phase {
+            if case .failed(let reason) = phase {
                 Failed(reason)
                     .transition(.opacity)
             } else {
@@ -55,9 +55,10 @@ struct BackupExportScreen: View {
             summary = try? await LibraryBackupBuilder.summary(database: compositor.database)
         }
         .task {
-            lastBackupDate = UserDefaults.standard.object(
-                forKey: Preferences.Key.libraryBackupExportedDate
-            ) as? Date
+            lastBackupDate =
+                UserDefaults.standard.object(
+                    forKey: Preferences.Key.libraryBackupExportedDate
+                ) as? Date
         }
         .fileExporter(
             isPresented: $showingExporter,
@@ -71,18 +72,18 @@ struct BackupExportScreen: View {
                 let now = Date.now
                 UserDefaults.standard.set(now, forKey: Preferences.Key.libraryBackupExportedDate)
                 lastBackupDate = now
-            case let .failure(error):
+            case .failure(let error):
                 phase = .failed(Failure(error, fallback: "Couldn't save the backup").sentence)
             }
         }
     }
 
     private var exportedDocument: LibraryBackupDocument? {
-        if case let .ready(document, _) = phase { document } else { nil }
+        if case .ready(let document, _) = phase { document } else { nil }
     }
 
     private var exportedFilename: String? {
-        if case let .ready(_, filename) = phase { filename } else { nil }
+        if case .ready(_, let filename) = phase { filename } else { nil }
     }
 
     private var Content: some View {
@@ -110,7 +111,9 @@ struct BackupExportScreen: View {
                         Spacer(minLength: 0)
                     }
                     .padding(dimensions.spacing.space16)
-                    .glassEffect(.regular, in: .rect(cornerRadius: dimensions.radius.radius16, style: .continuous))
+                    .glassEffect(
+                        .regular,
+                        in: .rect(cornerRadius: dimensions.radius.radius16, style: .continuous))
                 }
 
                 LastBackupRow
@@ -119,7 +122,7 @@ struct BackupExportScreen: View {
                     title: "Library",
                     rows: [
                         ("book.closed", "Series", summary?.seriesCount),
-                        ("square.stack", "Chapters", summary?.chapterCount)
+                        ("square.stack", "Chapters", summary?.chapterCount),
                     ]
                 )
 
@@ -129,15 +132,17 @@ struct BackupExportScreen: View {
                         ("tag", "Tags", summary?.tagCount),
                         ("person", "Authors", summary?.authorCount),
                         ("folder", "Collections", summary?.collectionCount),
-                        ("link", "Tracker Links", summary?.trackerLinkCount)
+                        ("link", "Tracker Links", summary?.trackerLinkCount),
                     ]
                 )
 
-                Text("Cover images and downloaded chapters stay on this device - a restore rebuilds them from your sources.")
-                    .font(.caption)
-                    .foregroundStyle(.muted)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, dimensions.spacing.space8)
+                Text(
+                    "Cover images and downloaded chapters stay on this device - a restore rebuilds them from your sources."
+                )
+                .font(.caption)
+                .foregroundStyle(.muted)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, dimensions.spacing.space8)
             }
             .padding(.horizontal, dimensions.screenMargin)
             .padding(.top, dimensions.spacing.space16)
@@ -182,7 +187,7 @@ struct BackupExportScreen: View {
             "Everything below goes into one file you can restore from later."
         case .exporting:
             "Reading your library."
-        case let .ready(document, _):
+        case .ready(let document, _):
             "\(byteCount(document.data.count)) - save it somewhere safe, like iCloud Drive or Files."
         case .failed:
             ""
@@ -270,32 +275,37 @@ struct BackupExportScreen: View {
 // MARK: - Previews
 
 #if DEBUG
-private struct ExportPreview: View {
-    @State private var index = 0
+    private struct ExportPreview: View {
+        @State private var index = 0
 
-    private static let summary = LibraryBackupSummary(
-        seriesCount: 142,
-        chapterCount: 12480,
-        tagCount: 58,
-        authorCount: 96,
-        collectionCount: 6,
-        trackerLinkCount: 37
-    )
+        private static let summary = LibraryBackupSummary(
+            seriesCount: 142,
+            chapterCount: 12480,
+            tagCount: 58,
+            authorCount: 96,
+            collectionCount: 6,
+            trackerLinkCount: 37
+        )
 
-    private static let states: [(name: String, phase: BackupExportScreen.Phase)] = [
-        ("Idle", .idle),
-        ("Exporting", .exporting),
-        ("Ready", .ready(LibraryBackupDocument(data: Data("preview".utf8)), filename: "aletheia-backup-2026-08-18")),
-        ("Failed", .failed("The database could not be read."))
-    ]
+        private static let states: [(name: String, phase: BackupExportScreen.Phase)] = [
+            ("Idle", .idle),
+            ("Exporting", .exporting),
+            (
+                "Ready",
+                .ready(
+                    LibraryBackupDocument(data: Data("preview".utf8)),
+                    filename: "aletheia-backup-2026-08-18")
+            ),
+            ("Failed", .failed("The database could not be read.")),
+        ]
 
-    var body: some View {
-        NavigationStack {
-            BackupExportScreen(
-                phase: Self.states[index].phase,
-                summary: Self.summary,
-                lastBackupDate: .now.addingTimeInterval(-2 * 24 * 60 * 60)
-            )
+        var body: some View {
+            NavigationStack {
+                BackupExportScreen(
+                    phase: Self.states[index].phase,
+                    summary: Self.summary,
+                    lastBackupDate: .now.addingTimeInterval(-2 * 24 * 60 * 60)
+                )
                 // @State only reads init's value once, so a fresh .id per
                 // tap is what makes cycling the index actually redraw
                 .id(index)
@@ -306,11 +316,11 @@ private struct ExportPreview: View {
                         }
                     }
                 }
+            }
         }
     }
-}
 
-#Preview("Export phases") {
-    ExportPreview()
-}
+    #Preview("Export phases") {
+        ExportPreview()
+    }
 #endif

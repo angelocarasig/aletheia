@@ -31,7 +31,10 @@ struct BackupPhaseIcon: View {
                 Image(systemName: systemImage)
                     .font(.system(size: Layout.iconSize))
                     .foregroundStyle(tint)
-                    .symbolEffect(.rotate, options: .repeat(.continuous), isActive: isSpinning && !reduceMotion)
+                    .symbolEffect(
+                        .rotate, options: .repeat(.continuous),
+                        isActive: isSpinning && !reduceMotion
+                    )
                     .symbolEffect(.bounce, value: bounceTrigger)
                     .contentTransition(reduceMotion ? .opacity : .symbolEffect(.replace))
                     .transition(reduceMotion ? .opacity : AnyTransition(.symbolEffect(.drawOn)))

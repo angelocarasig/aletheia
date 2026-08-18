@@ -70,8 +70,8 @@ struct ReaderOverlay: View {
 
 // MARK: - Header
 
-private extension ReaderOverlay {
-    var Header: some View {
+extension ReaderOverlay {
+    fileprivate var Header: some View {
         GlassEffectContainer(spacing: dimensions.spacing.space8) {
             HStack(spacing: dimensions.spacing.space8) {
                 // the source's own icon, so the button doubles as "which source
@@ -93,7 +93,7 @@ private extension ReaderOverlay {
     }
 
     @ViewBuilder
-    var SourceButton: some View {
+    fileprivate var SourceButton: some View {
         if let sourceIcon {
             // the artwork fills the control, so there is no glass ring around
             // it - the icon is the button
@@ -120,7 +120,7 @@ private extension ReaderOverlay {
         }
     }
 
-    var Identity: some View {
+    fileprivate var Identity: some View {
         VStack(alignment: .leading, spacing: dimensions.spacing.space2) {
             // two views rather than one string: "Loading" and a chapter number
             // are different kinds of thing, and numericText cannot morph a word
@@ -171,7 +171,7 @@ private extension ReaderOverlay {
 
     // most sources title a chapter with its own number, which then reads as the
     // same line twice
-    var subtitle: String? {
+    fileprivate var subtitle: String? {
         guard let chapter = engine.current else { return nil }
         let title = chapter.title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !title.isEmpty else { return nil }
@@ -186,8 +186,8 @@ private extension ReaderOverlay {
 
 // MARK: - Controls
 
-private extension ReaderOverlay {
-    var Controls: some View {
+extension ReaderOverlay {
+    fileprivate var Controls: some View {
         GlassEffectContainer(spacing: dimensions.spacing.space8) {
             VStack(spacing: dimensions.spacing.space12) {
                 SeekRow
@@ -204,7 +204,7 @@ private extension ReaderOverlay {
         }
     }
 
-    var SeekRow: some View {
+    fileprivate var SeekRow: some View {
         HStack(spacing: dimensions.spacing.space12) {
             Step("chevron.left", enabled: engine.canGoPrevious, action: onPreviousChapter)
             Scrubber
@@ -212,21 +212,21 @@ private extension ReaderOverlay {
         }
     }
 
-    var LeadingActions: some View {
+    fileprivate var LeadingActions: some View {
         HStack(spacing: dimensions.spacing.space4) {
             AutoScrollToggle
             FiltersButton
         }
     }
 
-    var TrailingActions: some View {
+    fileprivate var TrailingActions: some View {
         HStack(spacing: dimensions.spacing.space4) {
             ModeMenu
             Action("hand.tap", action: onTapZones)
         }
     }
 
-    var Position: some View {
+    fileprivate var Position: some View {
         Text(position)
             .font(.subheadline)
             .fontWeight(.semibold)
@@ -234,7 +234,7 @@ private extension ReaderOverlay {
             .contentTransition(.numericText())
     }
 
-    var position: String {
+    fileprivate var position: String {
         guard engine.pageCount > 0 else { return "-" }
         return "\(engine.page + 1) / \(engine.pageCount)"
     }
@@ -242,9 +242,9 @@ private extension ReaderOverlay {
 
 // MARK: - Scrubber
 
-private extension ReaderOverlay {
+extension ReaderOverlay {
     @ViewBuilder
-    var Scrubber: some View {
+    fileprivate var Scrubber: some View {
         // read here rather than inside the binding. a getter runs outside body
         // evaluation, so a page read that only happens in there never registers
         // as a dependency and the thumb stops following the reader
@@ -279,8 +279,8 @@ private extension ReaderOverlay {
 
 // MARK: - Buttons
 
-private extension ReaderOverlay {
-    var AutoScrollToggle: some View {
+extension ReaderOverlay {
+    fileprivate var AutoScrollToggle: some View {
         Action(
             engine.isAutoScrolling ? "pause.fill" : "play.fill",
             action: { engine.toggleAutoScroll() }
@@ -291,11 +291,13 @@ private extension ReaderOverlay {
 
     // filled while anything is on, so the button reports the page's state rather
     // than only offering to change it
-    var FiltersButton: some View {
-        Action(filtering ? "circle.lefthalf.filled.inverse" : "circle.lefthalf.filled", action: onFilters)
+    fileprivate var FiltersButton: some View {
+        Action(
+            filtering ? "circle.lefthalf.filled.inverse" : "circle.lefthalf.filled",
+            action: onFilters)
     }
 
-    var ModeMenu: some View {
+    fileprivate var ModeMenu: some View {
         Menu {
             Picker("Reading Mode", selection: modeBinding) {
                 ForEach(modes, id: \.self) { mode in
@@ -313,14 +315,15 @@ private extension ReaderOverlay {
         .opacity(engine.error != nil ? Layout.disabledOpacity : 1)
     }
 
-    var SpeedPanel: some View {
+    fileprivate var SpeedPanel: some View {
         HStack(spacing: dimensions.spacing.space12) {
             Icon("tortoise.fill")
 
             if engine.configuration.mode.isContinuous {
                 Slider(
                     value: speedBinding,
-                    in: ReaderConfiguration.Defaults.minAutoScrollSpeed...ReaderConfiguration.Defaults.maxAutoScrollSpeed,
+                    in: ReaderConfiguration.Defaults
+                        .minAutoScrollSpeed...ReaderConfiguration.Defaults.maxAutoScrollSpeed,
                     step: 5
                 )
             } else {
@@ -328,7 +331,9 @@ private extension ReaderOverlay {
                 // has no reason to quantise - nothing displays the number
                 Slider(
                     value: intervalBinding,
-                    in: ReaderConfiguration.Defaults.minAutoAdvanceInterval...ReaderConfiguration.Defaults.maxAutoAdvanceInterval
+                    in: ReaderConfiguration.Defaults
+                        .minAutoAdvanceInterval...ReaderConfiguration.Defaults
+                        .maxAutoAdvanceInterval
                 )
             }
 
@@ -339,11 +344,11 @@ private extension ReaderOverlay {
         .glassEffect(surface, in: .capsule)
     }
 
-    var modes: [Orientation] {
+    fileprivate var modes: [Orientation] {
         [.infinite, .vertical, .leftToRight, .rightToLeft]
     }
 
-    func icon(for mode: Orientation) -> String {
+    fileprivate func icon(for mode: Orientation) -> String {
         switch mode.resolved {
         case .infinite: "arrow.down.to.line"
         case .vertical: "square.stack"
@@ -353,7 +358,7 @@ private extension ReaderOverlay {
         }
     }
 
-    var filtering: Bool {
+    fileprivate var filtering: Bool {
         let configuration = engine.configuration
         return configuration.dim > 0
             || configuration.warmth != 0
@@ -361,19 +366,20 @@ private extension ReaderOverlay {
             || configuration.inverted
     }
 
-    var modeBinding: Binding<Orientation> {
+    fileprivate var modeBinding: Binding<Orientation> {
         Binding(get: { engine.configuration.mode.resolved }, set: onModeChange)
     }
 
-    var speedBinding: Binding<CGFloat> {
+    fileprivate var speedBinding: Binding<CGFloat> {
         Binding(get: { engine.configuration.autoScrollSpeed }, set: onSpeedChange)
     }
 
     // a dwell gets shorter as the reader gets faster, so the raw value would put
     // the quick end under the tortoise. mirrored across the range instead, and
     // hare keeps meaning sooner
-    var intervalBinding: Binding<TimeInterval> {
-        let span = ReaderConfiguration.Defaults.minAutoAdvanceInterval
+    fileprivate var intervalBinding: Binding<TimeInterval> {
+        let span =
+            ReaderConfiguration.Defaults.minAutoAdvanceInterval
             + ReaderConfiguration.Defaults.maxAutoAdvanceInterval
 
         return Binding(
@@ -385,8 +391,8 @@ private extension ReaderOverlay {
 
 // MARK: - Primitives
 
-private extension ReaderOverlay {
-    func Icon(_ name: String) -> some View {
+extension ReaderOverlay {
+    fileprivate func Icon(_ name: String) -> some View {
         Image(systemName: name)
             .font(.system(size: dimensions.size.icon16, weight: .semibold))
     }
@@ -394,7 +400,7 @@ private extension ReaderOverlay {
     // nothing in this overlay sets a colour. glass resolves its own light or
     // dark appearance from what it samples and vends a matching content colour -
     // pinning a foreground fights that, and only ever matches by luck
-    func Circular(
+    fileprivate func Circular(
         _ name: String,
         size: CGFloat? = nil,
         action: @escaping () -> Void
@@ -410,7 +416,7 @@ private extension ReaderOverlay {
 
     // no glass of its own: these sit on the control slab, and glass cannot
     // sample glass - nesting it renders a flat sticker on the surface
-    func Action(
+    fileprivate func Action(
         _ name: String,
         action: @escaping () -> Void
     ) -> some View {
@@ -420,7 +426,8 @@ private extension ReaderOverlay {
             .tappable(action: action)
     }
 
-    func Step(_ name: String, enabled: Bool, action: @escaping () -> Void) -> some View {
+    fileprivate func Step(_ name: String, enabled: Bool, action: @escaping () -> Void) -> some View
+    {
         Icon(name)
             .frame(width: dimensions.size.icon32, height: dimensions.size.icon32)
             .contentShape(.circle)

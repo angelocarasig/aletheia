@@ -62,8 +62,12 @@ extension CoverRecord {
     }
 
     static func createIndexes(db: Database) throws {
-        try db.create(index: "idx_cover_seriesId", on: databaseTableName, columns: [Columns.seriesId.name], ifNotExists: true)
-        try db.create(index: "idx_cover_metadataId", on: databaseTableName, columns: [Columns.metadataId.name], ifNotExists: true)
+        try db.create(
+            index: "idx_cover_seriesId", on: databaseTableName, columns: [Columns.seriesId.name],
+            ifNotExists: true)
+        try db.create(
+            index: "idx_cover_metadataId", on: databaseTableName,
+            columns: [Columns.metadataId.name], ifNotExists: true)
     }
 
     mutating func didInsert(_ inserted: InsertionSuccess) {

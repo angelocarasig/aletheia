@@ -22,7 +22,8 @@ enum TrackerLog {
     static let category = "trackers"
 
     static func sent(_ tracker: Tracker, _ method: String, _ path: String) {
-        AppLog.shared.log("[\(tracker.rawValue)] -> \(method) \(path)", level: .debug, category: category)
+        AppLog.shared.log(
+            "[\(tracker.rawValue)] -> \(method) \(path)", level: .debug, category: category)
     }
 
     static func received(
@@ -54,7 +55,9 @@ enum TrackerLog {
     // with no status code to explain it, and it is indistinguishable on screen
     // from the service being down - so the field that went wrong and a slice of
     // what actually arrived are recorded here
-    static func undecodable(_ tracker: Tracker, _ path: String, expected: Any.Type, error: Error, body: Data) {
+    static func undecodable(
+        _ tracker: Tracker, _ path: String, expected: Any.Type, error: Error, body: Data
+    ) {
         AppLog.shared.log(
             "[\(tracker.rawValue)] could not read \(expected) from \(path) - \(reason(error)) | \(preview(body))",
             level: .error,
@@ -76,13 +79,13 @@ enum TrackerLog {
         }
 
         switch decoding {
-        case let .keyNotFound(key, context):
+        case .keyNotFound(let key, let context):
             return "missing key '\(key.stringValue)' at \(path(context))"
-        case let .typeMismatch(type, context):
+        case .typeMismatch(let type, let context):
             return "expected \(type) at \(path(context))"
-        case let .valueNotFound(type, context):
+        case .valueNotFound(let type, let context):
             return "null where \(type) required at \(path(context))"
-        case let .dataCorrupted(context):
+        case .dataCorrupted(let context):
             return "corrupt at \(path(context)) - \(context.debugDescription)"
         @unknown default:
             return "\(decoding)"
@@ -96,7 +99,8 @@ enum TrackerLog {
             return "<\(body.count) bytes, not utf8>"
         }
 
-        let flattened = text
+        let flattened =
+            text
             .replacingOccurrences(of: "\n", with: " ")
             .replacingOccurrences(of: "\r", with: " ")
             .trimmingCharacters(in: .whitespaces)

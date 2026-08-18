@@ -110,7 +110,8 @@ extension DetailsComposer {
             let observation = ValueObservation.tracking { db -> Stored? in
                 guard
                     let series = try SeriesRecord.fetchOne(db, key: id.rawValue),
-                    let entry = try RichfulEntryView
+                    let entry =
+                        try RichfulEntryView
                         .filter(RichfulEntryView.Columns.seriesId == id.rawValue)
                         .fetchOne(db)
                 else { return nil }
@@ -123,13 +124,15 @@ extension DetailsComposer {
                     // hundred chapters was rebuilding every row on the main
                     // actor on every emission - measured at ~700ms after a
                     // bulk insert
-                    chapters: Chapters.display(try Chapters.rows(for: id, in: db), registry: registry),
+                    chapters: Chapters.display(
+                        try Chapters.rows(for: id, in: db), registry: registry),
                     origins: try Self.origins(for: id, in: db),
                     suppliers: try Self.suppliers(for: id, in: db),
                     covers: try Self.covers(for: id, in: db),
                     titles: try Self.titles(for: id, in: db),
                     collections: try Self.collections(for: id, in: db),
-                    trackers: try SeriesTrackerRecord
+                    trackers:
+                        try SeriesTrackerRecord
                         .filter(SeriesTrackerRecord.Columns.seriesId == id.rawValue)
                         .fetchAll(db),
                     furthest: try SeriesTrackerRecord.furthest(for: id, in: db)
@@ -145,7 +148,8 @@ extension DetailsComposer {
                 }
             } catch {
                 // a background load. the screen keeps what it has rather than nagging about it
-                AppLog.shared.log("observation failed - \(error)", level: .error, category: "details")
+                AppLog.shared.log(
+                    "observation failed - \(error)", level: .error, category: "details")
             }
         }
     }
@@ -235,16 +239,19 @@ extension DetailsComposer {
             let stubCover = stub.cover
 
             let ids = try await database.writer.write { db -> (SeriesRecord.ID, OriginRecord.ID) in
-                guard let sourceId = try SourceRecord
-                    .select(SourceRecord.Columns.id, as: SourceRecord.ID.self)
-                    .filter(SourceRecord.Columns.slug == sourceSlug)
-                    .fetchOne(db)
+                guard
+                    let sourceId =
+                        try SourceRecord
+                        .select(SourceRecord.Columns.id, as: SourceRecord.ID.self)
+                        .filter(SourceRecord.Columns.slug == sourceSlug)
+                        .fetchOne(db)
                 else { throw RecordError.missingIdentifier }
 
                 // the details response carries the canonical slug, and the stub
                 // may have been opened under an older one - both have to be
                 // checked or a series already stored is created a second time
-                let known = try OriginRecord
+                let known =
+                    try OriginRecord
                     .filter(OriginRecord.Columns.sourceId == sourceId)
                     .filter([detail.slug, stub.slug].contains(OriginRecord.Columns.slug))
                     .fetchOne(db)
@@ -466,15 +473,16 @@ extension DetailsComposer {
 
         try SeriesLanguagePriorityRecord.seedDefaults(for: seriesId, in: db)
 
-        let priority = try Int.fetchOne(
-            db,
-            sql: """
-                SELECT COALESCE(MAX(\(OriginRecord.Columns.priority.name)), -1) + 1
-                FROM \(OriginRecord.databaseTableName)
-                WHERE \(OriginRecord.Columns.seriesId.name) = ?
-                """,
-            arguments: [seriesId]
-        ) ?? 0
+        let priority =
+            try Int.fetchOne(
+                db,
+                sql: """
+                    SELECT COALESCE(MAX(\(OriginRecord.Columns.priority.name)), -1) + 1
+                    FROM \(OriginRecord.databaseTableName)
+                    WHERE \(OriginRecord.Columns.seriesId.name) = ?
+                    """,
+                arguments: [seriesId]
+            ) ?? 0
 
         var origin = OriginRecord(
             id: nil,
@@ -493,7 +501,8 @@ extension DetailsComposer {
         var metadata = MetadataRecord(
             seriesId: seriesId,
             originId: originId,
-            supplier: MetadataRecord.supplier(source: source?.slug ?? "\(sourceId.rawValue)", origin: detail.slug),
+            supplier: MetadataRecord.supplier(
+                source: source?.slug ?? "\(sourceId.rawValue)", origin: detail.slug),
             synopsis: detail.synopsis,
             classification: detail.classification,
             publication: detail.publication,
@@ -534,7 +543,8 @@ extension DetailsComposer {
         var preferredCoverId: CoverRecord.ID?
         for url in pool {
             let cover = try CoverRecord.findOrCreate(
-                CoverRecord(id: nil, seriesId: seriesId, metadataId: metadataId, url: url, path: nil),
+                CoverRecord(
+                    id: nil, seriesId: seriesId, metadataId: metadataId, url: url, path: nil),
                 in: db
             )
             if url == primary { preferredCoverId = cover.id }

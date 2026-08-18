@@ -5,8 +5,8 @@
 //  Created by Angelo Carasig on 7/8/2026.
 //
 
-import UIKit
 import Kingfisher
+import UIKit
 
 // warms a band of pages either side of what is on screen. symmetric on purpose
 // - scrolling back a page should be as instant as scrolling forward

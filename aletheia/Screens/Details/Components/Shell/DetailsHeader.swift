@@ -5,9 +5,9 @@
 //  Created by Angelo Carasig on 6/8/2026.
 //
 
+import Kingfisher
 import SwiftUI
 import UIKit
-import Kingfisher
 
 struct DetailsHeader: View {
     let cover: URL?

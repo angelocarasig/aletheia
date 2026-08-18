@@ -17,7 +17,9 @@ struct RecentBackupsScreen: View {
         ContentUnavailableView {
             Label("No Backups Yet", systemImage: "clock.arrow.circlepath")
         } description: {
-            Text("Backups you export or that run automatically will show up here, ready to download again.")
+            Text(
+                "Backups you export or that run automatically will show up here, ready to download again."
+            )
         }
         .navigationTitle("Recent Backups")
         .navigationBarTitleDisplayMode(.inline)

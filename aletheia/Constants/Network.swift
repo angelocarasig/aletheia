@@ -9,7 +9,8 @@ import Foundation
 
 extension Constants {
     enum Network {
-        static let userAgent = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7_8 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Mobile/15E148 Safari/604.1"
+        static let userAgent =
+            "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7_8 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Mobile/15E148 Safari/604.1"
 
         // how long a host may go silent before the request is dead. thirty is
         // chosen against BGContinuedProcessingTask, which expires a run whose

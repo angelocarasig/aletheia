@@ -12,10 +12,12 @@ struct HomeScreen: View {
     @Environment(\.compositor) private var compositor
     @Environment(\.dimensions) private var dimensions
 
-    @AppStorage(Preferences.Key.blurAdultHome) private var blurAdult = Preferences.Default.blurAdultHome
+    @AppStorage(Preferences.Key.blurAdultHome) private var blurAdult = Preferences.Default
+        .blurAdultHome
     // read only to notice it changing: the gate itself is resolved inside the
     // observation, and the ten-tap that flips it happens on another tab
-    @AppStorage(Preferences.Key.bypassAdultSources) private var bypassAdult = Preferences.Default.bypassAdultSources
+    @AppStorage(Preferences.Key.bypassAdultSources) private var bypassAdult = Preferences.Default
+        .bypassAdultSources
 
     @State private var vm: HomeViewModel?
     @State private var path = NavigationPath()
@@ -63,10 +65,15 @@ struct HomeScreen: View {
 
     private var phase: LoadPhase {
         if let vm {
-            if vm.failure != nil { .failed }
-            else if vm.snapshot == nil { .pending }
-            else if vm.isEmpty { .empty }
-            else { .content }
+            if vm.failure != nil {
+                .failed
+            } else if vm.snapshot == nil {
+                .pending
+            } else if vm.isEmpty {
+                .empty
+            } else {
+                .content
+            }
         } else {
             .pending
         }
@@ -157,8 +164,8 @@ struct HomeScreen: View {
 
 // MARK: - Content
 
-private extension HomeScreen {
-    func Content(_ vm: HomeViewModel) -> some View {
+extension HomeScreen {
+    fileprivate func Content(_ vm: HomeViewModel) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: dimensions.spacing.space24) {
                 // its presence is the whole signal, so it costs nothing at rest
@@ -247,10 +254,12 @@ private extension HomeScreen {
         .scrollIndicators(.hidden)
     }
 
-    func ContinueSection(_ vm: HomeViewModel, entries: [HomeViewModel.ContinueEntry]) -> some View {
+    fileprivate func ContinueSection(_ vm: HomeViewModel, entries: [HomeViewModel.ContinueEntry])
+        -> some View
+    {
         VStack(alignment: .leading, spacing: dimensions.spacing.space12) {
             SectionHeader("Continue Reading")
-            .padding(.horizontal, dimensions.screenMargin)
+                .padding(.horizontal, dimensions.screenMargin)
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: dimensions.spacing.space12) {
@@ -273,7 +282,8 @@ private extension HomeScreen {
                         )
                         .contentShape(.rect)
                         .tappable {
-                            reading = ReadingTarget(seriesId: entry.id, chapterId: entry.target.chapterId)
+                            reading = ReadingTarget(
+                                seriesId: entry.id, chapterId: entry.target.chapterId)
                         }
                         .contextMenu {
                             Button {
@@ -297,18 +307,17 @@ private extension HomeScreen {
         }
     }
 
-
     // no action any more: Reading Activity moved into the Activity tab on
     // 2026-08-11, and a Home shortcut to a tab is the one link this screen has
     // always refused to carry
-    var ContinueEmpty: some View {
+    fileprivate var ContinueEmpty: some View {
         Section(
             title: "Continue Reading",
             message: "Open something from your library and it will wait for you here."
         )
     }
 
-    var UpdatesEmpty: some View {
+    fileprivate var UpdatesEmpty: some View {
         Section(
             title: "New Chapters",
             message: "New chapters from your sources land here after a refresh."
@@ -320,7 +329,7 @@ private extension HomeScreen {
     // no action parameter any more: both destinations this screen used to offer
     // are gone - Reading Activity moved into the Activity tab, and the updates
     // list with it - so a section is a title and a sentence
-    func Section(title: String, message: String) -> some View {
+    fileprivate func Section(title: String, message: String) -> some View {
         VStack(alignment: .leading, spacing: dimensions.spacing.space12) {
             SectionHeader(title)
 
@@ -340,7 +349,7 @@ private extension HomeScreen {
     // tiles only - the numbers' rows live one tap deeper, and the whole strip
     // is that tap. record-framed: a run is a fact, never a countdown. the window
     // is named once, in the subtitle, rather than on every label
-    func UpdatesSection(_ updates: [HomeViewModel.UpdateEntry]) -> some View {
+    fileprivate func UpdatesSection(_ updates: [HomeViewModel.UpdateEntry]) -> some View {
         VStack(alignment: .leading, spacing: dimensions.spacing.space12) {
             SectionHeader("New Chapters")
 
@@ -350,8 +359,8 @@ private extension HomeScreen {
                 VStack(spacing: dimensions.spacing.space12) {
                     ForEach(updates) { entry in
                         UpdateCard(
-                        title: entry.title,
-                        cover: entry.cover,
+                            title: entry.title,
+                            cover: entry.cover,
                             count: entry.count,
                             latest: entry.latest,
                             obscured: obscured && entry.adult
@@ -370,9 +379,12 @@ private extension HomeScreen {
                         .contextMenu {
                             // the fast path survives as the deliberate one
                             Button {
-                                reading = ReadingTarget(seriesId: entry.id, chapterId: entry.target.chapterId)
+                                reading = ReadingTarget(
+                                    seriesId: entry.id, chapterId: entry.target.chapterId)
                             } label: {
-                                Label("Read \(ReadingFormat.chapter(entry.target.number))", systemImage: "book.pages")
+                                Label(
+                                    "Read \(ReadingFormat.chapter(entry.target.number))",
+                                    systemImage: "book.pages")
                             }
                         }
                     }
@@ -385,7 +397,7 @@ private extension HomeScreen {
     // "couldn't update" names what happened and to what. a bare status word
     // carries no subject, and both a new reader and one returning after a gap
     // read it as their own fault
-    func FailingBanner(_ count: Int) -> some View {
+    fileprivate func FailingBanner(_ count: Int) -> some View {
         Banner(
             "^[\(count) source](inflect: true) couldn't update",
             message: "Series on them are missing new chapters",
@@ -401,7 +413,7 @@ private extension HomeScreen {
 
     // "isn't reaching" rather than "failed": nothing here is lost, the push is
     // still queued, and the reader's own read state is untouched
-    func StalledBanner(_ count: Int) -> some View {
+    fileprivate func StalledBanner(_ count: Int) -> some View {
         Banner(
             "^[\(count) series](inflect: true) isn't syncing",
             message: "Your progress hasn't reached the tracker yet",
@@ -420,7 +432,7 @@ private extension HomeScreen {
     // one builder for both shelves: they differ by their second line and whether
     // they carry a count, and a second hand-written copy would drift the moment
     // one of them is touched
-    func ShelfSection(
+    fileprivate func ShelfSection(
         title: String,
         entries: [HomeViewModel.ShelfEntry],
         detail: @escaping (HomeViewModel.ShelfEntry) -> String,
@@ -447,9 +459,12 @@ private extension HomeScreen {
                     }
                     .contextMenu {
                         Button {
-                            reading = ReadingTarget(seriesId: entry.id, chapterId: entry.target.chapterId)
+                            reading = ReadingTarget(
+                                seriesId: entry.id, chapterId: entry.target.chapterId)
                         } label: {
-                            Label("Read \(ReadingFormat.chapter(entry.target.number))", systemImage: "book.pages")
+                            Label(
+                                "Read \(ReadingFormat.chapter(entry.target.number))",
+                                systemImage: "book.pages")
                         }
                     }
                 }
@@ -461,21 +476,21 @@ private extension HomeScreen {
     // where you are, not how long you have been away. a duration reads as
     // neglect and a position reads as a place to stand, which is the difference
     // between a shelf a reader uses and one they scroll past
-    nonisolated static func position(_ entry: HomeViewModel.ShelfEntry) -> String {
-        guard case let .resume(_, number, progress) = entry.target else {
+    fileprivate nonisolated static func position(_ entry: HomeViewModel.ShelfEntry) -> String {
+        guard case .resume(_, let number, let progress) = entry.target else {
             return "Partway through"
         }
         return "\(Int(progress * 100))% through \(ReadingFormat.chapter(number))"
     }
 
-    nonisolated static func next(_ entry: HomeViewModel.ShelfEntry) -> String {
+    fileprivate nonisolated static func next(_ entry: HomeViewModel.ShelfEntry) -> String {
         "Next up: \(ReadingFormat.chapter(entry.target.number))"
     }
 
     // a rail rather than the two-column grid it was: this is a log of what you
     // added, which is the Library's default sort with a caption on it, and a
     // grid of it was the largest block on the screen for the least news
-    func AddedSection(entries: [HomeViewModel.AddedEntry]) -> some View {
+    fileprivate func AddedSection(entries: [HomeViewModel.AddedEntry]) -> some View {
         VStack(alignment: .leading, spacing: dimensions.spacing.space12) {
             SectionHeader("Recently Added")
                 .padding(.horizontal, dimensions.screenMargin)
@@ -508,8 +523,8 @@ private extension HomeScreen {
 
 // MARK: - States
 
-private extension HomeScreen {
-    var Empty: some View {
+extension HomeScreen {
+    fileprivate var Empty: some View {
         ContentUnavailableView {
             Label("Nothing to Read Yet", systemImage: "book.closed")
         } description: {
@@ -520,7 +535,7 @@ private extension HomeScreen {
         }
     }
 
-    func Unavailable(_ failure: Failure) -> some View {
+    fileprivate func Unavailable(_ failure: Failure) -> some View {
         ContentUnavailableView {
             Label(failure.title, systemImage: "exclamationmark.triangle")
         } description: {
@@ -533,7 +548,7 @@ private extension HomeScreen {
         }
     }
 
-    var Skeleton: some View {
+    fileprivate var Skeleton: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: dimensions.spacing.space24) {
                 VStack(alignment: .leading, spacing: dimensions.spacing.space12) {
@@ -586,161 +601,167 @@ private extension HomeScreen {
 // MARK: - Previews
 
 #if DEBUG
-private enum Mock {
-    static let titles: [String] = [
-        "A Former Hero Returned From Another World",
-        "Heavenly Solo Defender",
-        "The Villainess Wants a Quiet Life",
-        "Blade of the Waning Moon",
-        "Nine Lives of the Sword Saint",
-        "Café at the End of the Line",
-        "Regressor's Instruction Manual",
-        "Tower of Ash"
-    ]
+    private enum Mock {
+        static let titles: [String] = [
+            "A Former Hero Returned From Another World",
+            "Heavenly Solo Defender",
+            "The Villainess Wants a Quiet Life",
+            "Blade of the Waning Moon",
+            "Nine Lives of the Sword Saint",
+            "Café at the End of the Line",
+            "Regressor's Instruction Manual",
+            "Tower of Ash",
+        ]
 
-    static func title(_ index: Int) -> String {
-        titles[index % titles.count]
-    }
-
-    // even entries are partway through a chapter, odd ones are waiting on the
-    // next - both subtitles want to be visible in one preview
-    static func target(_ index: Int) -> ContinueTarget {
-        let id = ChapterRecord.ID(rawValue: Int64(index + 1))
-        if index.isMultiple(of: 2) {
-            return .resume(chapterId: id, number: Double(40 + index), progress: 0.45)
-        } else {
-            return .start(chapterId: id, number: Double(12 + index))
+        static func title(_ index: Int) -> String {
+            titles[index % titles.count]
         }
-    }
 
-    static func continuing(_ count: Int) -> [HomeViewModel.ContinueEntry] {
-        (0..<count).map { index in
-            let id = SeriesRecord.ID(rawValue: Int64(index + 1))
-            let read: Date = .now.addingTimeInterval(TimeInterval(-index * 3_600))
-            return HomeViewModel.ContinueEntry(
-                id: id,
-                title: title(index),
-                cover: nil,
-                unreadCount: index * 3,
-                lastReadDate: read,
-                target: target(index),
-                adult: index.isMultiple(of: 4)
+        // even entries are partway through a chapter, odd ones are waiting on the
+        // next - both subtitles want to be visible in one preview
+        static func target(_ index: Int) -> ContinueTarget {
+            let id = ChapterRecord.ID(rawValue: Int64(index + 1))
+            if index.isMultiple(of: 2) {
+                return .resume(chapterId: id, number: Double(40 + index), progress: 0.45)
+            } else {
+                return .start(chapterId: id, number: Double(12 + index))
+            }
+        }
+
+        static func continuing(_ count: Int) -> [HomeViewModel.ContinueEntry] {
+            (0..<count).map { index in
+                let id = SeriesRecord.ID(rawValue: Int64(index + 1))
+                let read: Date = .now.addingTimeInterval(TimeInterval(-index * 3_600))
+                return HomeViewModel.ContinueEntry(
+                    id: id,
+                    title: title(index),
+                    cover: nil,
+                    unreadCount: index * 3,
+                    lastReadDate: read,
+                    target: target(index),
+                    adult: index.isMultiple(of: 4)
+                )
+            }
+        }
+
+        static func added(_ count: Int) -> [HomeViewModel.AddedEntry] {
+            (0..<count).map { index in
+                let id = SeriesRecord.ID(rawValue: Int64(100 + index))
+                let unread: Int = index.isMultiple(of: 3) ? 0 : index * 7
+                return HomeViewModel.AddedEntry(
+                    id: id,
+                    title: title(index + 3),
+                    cover: nil,
+                    unreadCount: unread,
+                    addedDate: .now.addingTimeInterval(TimeInterval(-index * 86_400)),
+                    adult: index.isMultiple(of: 4)
+                )
+            }
+        }
+
+        static func updates(_ count: Int) -> [HomeViewModel.UpdateEntry] {
+            (0..<count).map { index in
+                let id = SeriesRecord.ID(rawValue: Int64(200 + index))
+                return HomeViewModel.UpdateEntry(
+                    id: id,
+                    title: title(index + 1),
+                    cover: nil,
+                    // a spread rather than a constant: one new chapter and twelve
+                    // are different news, and the row has to hold both
+                    count: [3, 1, 12, 2, 7][index % 5],
+                    latest: .now.addingTimeInterval(TimeInterval(-index * 5_400)),
+                    target: target(index),
+                    adult: index.isMultiple(of: 4)
+                )
+            }
+        }
+
+        // the two shelves, built from the same titles so a preview reads as one
+        // library rather than three unrelated ones
+        static func shelf(_ count: Int, resuming: Bool) -> [HomeViewModel.ShelfEntry] {
+            (0..<count).map { index in
+                let chapter = ChapterRecord.ID(rawValue: Int64(900 + index))
+                let target: ContinueTarget =
+                    resuming
+                    ? .resume(
+                        chapterId: chapter, number: Double(40 + index),
+                        progress: Double(20 + index * 17) / 100)
+                    : .start(chapterId: chapter, number: Double(112 + index * 3))
+                let unread: Int = resuming ? index : (index + 1) * 7
+
+                return HomeViewModel.ShelfEntry(
+                    id: SeriesRecord.ID(rawValue: Int64(500 + index)),
+                    title: titles[(index + 3) % titles.count],
+                    unreadCount: unread,
+                    target: target,
+                    adult: index.isMultiple(of: 4)
+                )
+            }
+        }
+
+        static func snapshot(
+            continuing count: Int = 4,
+            added addedCount: Int = 8,
+            updates updateCount: Int = 5,
+            stalled stalledCount: Int = 3,
+            waiting waitingCount: Int = 4,
+            failing: Int = 0
+        ) -> HomeViewModel.Snapshot {
+            HomeViewModel.Snapshot(
+                continueReading: continuing(count),
+                updates: updates(updateCount),
+                recentlyAdded: added(addedCount),
+                stalled: shelf(stalledCount, resuming: true),
+                waiting: shelf(waitingCount, resuming: false),
+                failingSources: failing
             )
         }
     }
 
-    static func added(_ count: Int) -> [HomeViewModel.AddedEntry] {
-        (0..<count).map { index in
-            let id = SeriesRecord.ID(rawValue: Int64(100 + index))
-            let unread: Int = index.isMultiple(of: 3) ? 0 : index * 7
-            return HomeViewModel.AddedEntry(
-                id: id,
-                title: title(index + 3),
-                cover: nil,
-                unreadCount: unread,
-                addedDate: .now.addingTimeInterval(TimeInterval(-index * 86_400)),
-                adult: index.isMultiple(of: 4)
-            )
-        }
+    #Preview("Content") {
+        HomeScreen(vm: .preview(snapshot: Mock.snapshot()))
     }
 
-    static func updates(_ count: Int) -> [HomeViewModel.UpdateEntry] {
-        (0..<count).map { index in
-            let id = SeriesRecord.ID(rawValue: Int64(200 + index))
-            return HomeViewModel.UpdateEntry(
-                id: id,
-                title: title(index + 1),
-                cover: nil,
-                // a spread rather than a constant: one new chapter and twelve
-                // are different news, and the row has to hold both
-                count: [3, 1, 12, 2, 7][index % 5],
-                latest: .now.addingTimeInterval(TimeInterval(-index * 5_400)),
-                target: target(index),
-                adult: index.isMultiple(of: 4)
-            )
-        }
+    // nothing new anywhere: the updates block goes rather than rendering a header
+    // over an empty list, and Continue Reading carries the screen
+    #Preview("Nothing Waiting") {
+        HomeScreen(vm: .preview(snapshot: Mock.snapshot(updates: 0)))
     }
 
-    // the two shelves, built from the same titles so a preview reads as one
-    // library rather than three unrelated ones
-    static func shelf(_ count: Int, resuming: Bool) -> [HomeViewModel.ShelfEntry] {
-        (0..<count).map { index in
-            let chapter = ChapterRecord.ID(rawValue: Int64(900 + index))
-            let target: ContinueTarget = resuming
-                ? .resume(chapterId: chapter, number: Double(40 + index), progress: Double(20 + index * 17) / 100)
-                : .start(chapterId: chapter, number: Double(112 + index * 3))
-            let unread: Int = resuming ? index : (index + 1) * 7
-
-            return HomeViewModel.ShelfEntry(
-                id: SeriesRecord.ID(rawValue: Int64(500 + index)),
-                title: titles[(index + 3) % titles.count],
-                unreadCount: unread,
-                target: target,
-                adult: index.isMultiple(of: 4)
-            )
-        }
+    // absent entirely when nothing is failing, which is what lets it be loud when
+    // it is not: a notice that is always on screen is one nobody reads
+    // the two shelves alone, at their caps, which is where the page first has to
+    // justify scrolling past the rails
+    #Preview("Shelves") {
+        HomeScreen(
+            vm: .preview(
+                snapshot: Mock.snapshot(continuing: 1, added: 2, updates: 0, stalled: 4, waiting: 4)
+            ))
     }
 
-    static func snapshot(
-        continuing count: Int = 4,
-        added addedCount: Int = 8,
-        updates updateCount: Int = 5,
-        stalled stalledCount: Int = 3,
-        waiting waitingCount: Int = 4,
-        failing: Int = 0
-    ) -> HomeViewModel.Snapshot {
-        HomeViewModel.Snapshot(
-            continueReading: continuing(count),
-            updates: updates(updateCount),
-            recentlyAdded: added(addedCount),
-            stalled: shelf(stalledCount, resuming: true),
-            waiting: shelf(waitingCount, resuming: false),
-            failingSources: failing
+    // neither shelf has anything: a caught-up library, where both sections are
+    // absent rather than empty
+    #Preview("Caught Up") {
+        HomeScreen(vm: .preview(snapshot: Mock.snapshot(stalled: 0, waiting: 0)))
+    }
+
+    #Preview("Sources Failing") {
+        HomeScreen(vm: .preview(snapshot: Mock.snapshot(failing: 3)))
+    }
+
+    #Preview("Failed") {
+        HomeScreen(
+            vm: .preview(
+                failure: Failure(
+                    title: "Couldn't Load Home",
+                    message: "Something unexpected went wrong. Please try again.",
+                    isRetryable: true
+                )
+            )
         )
     }
-}
 
-#Preview("Content") {
-    HomeScreen(vm: .preview(snapshot: Mock.snapshot()))
-}
-
-// nothing new anywhere: the updates block goes rather than rendering a header
-// over an empty list, and Continue Reading carries the screen
-#Preview("Nothing Waiting") {
-    HomeScreen(vm: .preview(snapshot: Mock.snapshot(updates: 0)))
-}
-
-// absent entirely when nothing is failing, which is what lets it be loud when
-// it is not: a notice that is always on screen is one nobody reads
-// the two shelves alone, at their caps, which is where the page first has to
-// justify scrolling past the rails
-#Preview("Shelves") {
-    HomeScreen(vm: .preview(snapshot: Mock.snapshot(continuing: 1, added: 2, updates: 0, stalled: 4, waiting: 4)))
-}
-
-// neither shelf has anything: a caught-up library, where both sections are
-// absent rather than empty
-#Preview("Caught Up") {
-    HomeScreen(vm: .preview(snapshot: Mock.snapshot(stalled: 0, waiting: 0)))
-}
-
-#Preview("Sources Failing") {
-    HomeScreen(vm: .preview(snapshot: Mock.snapshot(failing: 3)))
-}
-
-#Preview("Failed") {
-    HomeScreen(
-        vm: .preview(
-            failure: Failure(
-                title: "Couldn't Load Home",
-                message: "Something unexpected went wrong. Please try again.",
-                isRetryable: true
-            )
-        )
-    )
-}
-
-#Preview("Loading") {
-    HomeScreen(vm: .preview())
-}
+    #Preview("Loading") {
+        HomeScreen(vm: .preview())
+    }
 #endif

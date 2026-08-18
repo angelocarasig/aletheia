@@ -90,19 +90,29 @@ extension ChapterRecord {
 
     static func createIndexes(db: Database) throws {
         // foreign key indexes
-        try db.create(index: "idx_chapter_originId", on: databaseTableName, columns: [Columns.originId.name], ifNotExists: true)
-        try db.create(index: "idx_chapter_scanlatorId", on: databaseTableName, columns: [Columns.scanlatorId.name], ifNotExists: true)
-        try db.create(index: "idx_chapter_slug", on: databaseTableName, columns: [Columns.slug.name], ifNotExists: true)
+        try db.create(
+            index: "idx_chapter_originId", on: databaseTableName, columns: [Columns.originId.name],
+            ifNotExists: true)
+        try db.create(
+            index: "idx_chapter_scanlatorId", on: databaseTableName,
+            columns: [Columns.scanlatorId.name], ifNotExists: true)
+        try db.create(
+            index: "idx_chapter_slug", on: databaseTableName, columns: [Columns.slug.name],
+            ifNotExists: true)
 
         // composite index for deduplication queries
-        try db.create(index: "idx_chapter_dedup", on: databaseTableName, columns: [
-            Columns.originId.name,
-            Columns.number.name
-        ], ifNotExists: true)
+        try db.create(
+            index: "idx_chapter_dedup", on: databaseTableName,
+            columns: [
+                Columns.originId.name,
+                Columns.number.name,
+            ], ifNotExists: true)
 
         // chapter identity within an origin - makes refresh an upsert rather than
         // an append. note: ifNotExists not supported with unique option
-        if try !db.indexes(on: databaseTableName).contains(where: { $0.name == "idx_chapter_originId_slug_unique" }) {
+        if try !db.indexes(on: databaseTableName).contains(where: {
+            $0.name == "idx_chapter_originId_slug_unique"
+        }) {
             try db.create(
                 index: "idx_chapter_originId_slug_unique",
                 on: databaseTableName,
@@ -112,13 +122,19 @@ extension ChapterRecord {
         }
 
         // progress filtering for read/unread chapters
-        try db.create(index: "idx_chapter_progress", on: databaseTableName, columns: [Columns.progress.name], ifNotExists: true)
+        try db.create(
+            index: "idx_chapter_progress", on: databaseTableName, columns: [Columns.progress.name],
+            ifNotExists: true)
 
         // last read chapter lookup and sorting
-        try db.create(index: "idx_chapter_lastReadDate", on: databaseTableName, columns: [Columns.lastReadDate.name], ifNotExists: true)
+        try db.create(
+            index: "idx_chapter_lastReadDate", on: databaseTableName,
+            columns: [Columns.lastReadDate.name], ifNotExists: true)
 
         // the updates feed orders by the day a chapter arrived here
-        try db.create(index: "idx_chapter_addedDate", on: databaseTableName, columns: [Columns.addedDate.name], ifNotExists: true)
+        try db.create(
+            index: "idx_chapter_addedDate", on: databaseTableName,
+            columns: [Columns.addedDate.name], ifNotExists: true)
     }
 
     mutating func didInsert(_ inserted: InsertionSuccess) {

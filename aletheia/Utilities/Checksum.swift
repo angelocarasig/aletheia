@@ -5,8 +5,8 @@
 //  Created by Angelo Carasig on 6/8/2026.
 //
 
-import Foundation
 import CryptoKit
+import Foundation
 
 enum Checksum {
     static func hex(_ value: String) -> String {

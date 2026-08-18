@@ -30,7 +30,8 @@ struct DetailsContent: View {
             ActionsSection(composer: composer, actions: actions)
             SynopsisSection(series: composer.series)
             TagsSection(series: composer.series)
-            TrackingSection(tracking: composer.tracking, library: composer.library, actions: actions)
+            TrackingSection(
+                tracking: composer.tracking, library: composer.library, actions: actions)
             SourcesSection(sources: composer.sources, refresh: composer.refresh, actions: actions)
             MetadataSection(series: composer.series)
             ChaptersSection(composer: composer, actions: actions)
@@ -213,7 +214,9 @@ private struct SourcesSection: View {
                     onReorder: { ids in Task { await sources.reorder(ids) } },
                     // its chapters go with it, so this one asks first
                     onRemove: { id in
-                        guard let origin = sources.origins.first(where: { $0.id == id }) else { return }
+                        guard let origin = sources.origins.first(where: { $0.id == id }) else {
+                            return
+                        }
                         actions.confirmRemove(origin)
                     },
                     onRetry: { id in Task { await refresh.retry(id) } }

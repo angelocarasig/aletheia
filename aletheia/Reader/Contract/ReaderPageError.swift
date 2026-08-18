@@ -29,7 +29,7 @@ extension ReaderPageError {
         switch self {
         case .offline, .timedOut, .failed: true
         case .corrupt: false
-        case let .unavailable(status): !(400..<500).contains(status)
+        case .unavailable(let status): !(400..<500).contains(status)
         }
     }
 }
@@ -51,7 +51,7 @@ extension ReaderPageError: DescribableError {
             "Connect to the internet to keep reading."
         case .timedOut:
             "The server took too long to respond."
-        case let .unavailable(status):
+        case .unavailable(let status):
             (400..<500).contains(status)
                 ? "This page is no longer on the source's server."
                 : "The source's server is having trouble. Try again in a moment."
@@ -72,11 +72,11 @@ extension ReaderPageError {
     // its own load is not a failure the reader should ever see
     init(_ error: KingfisherError) {
         switch error {
-        case let .responseError(reason):
+        case .responseError(let reason):
             switch reason {
-            case let .invalidHTTPStatusCode(response):
+            case .invalidHTTPStatusCode(let response):
                 self = .unavailable(status: response.statusCode)
-            case let .URLSessionError(underlying):
+            case .URLSessionError(let underlying):
                 self = Self.transport(underlying)
             default:
                 self = .failed

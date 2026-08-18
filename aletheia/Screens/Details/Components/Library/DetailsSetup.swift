@@ -13,8 +13,8 @@ import SwiftUI
 // can read it. a ButtonStyle cannot re-parameterise the label it is handed, and
 // a gesture alongside a NavigationLink races the link it sits on - the
 // environment is the one channel that goes down rather than across
-private extension EnvironmentValues {
-    @Entry var stepPressed = false
+extension EnvironmentValues {
+    @Entry fileprivate var stepPressed = false
 }
 
 private struct StepButtonStyle: ButtonStyle {
@@ -135,45 +135,51 @@ struct DetailsSetup<LinkSheet: View>: View {
                     isSaving: isSaving,
                     onClose: dismiss.callAsFunction
                 ) {
-                    NavigationLink { Reading } label: { Next("Reading Status") }
-                        .buttonStyle(StepButtonStyle())
+                    NavigationLink {
+                        Reading
+                    } label: {
+                        Next("Reading Status")
+                    }
+                    .buttonStyle(StepButtonStyle())
                 }
             )
-        .sheet(item: $linking) { tracker in
-            linkSheet(tracker, opening) { linking = nil }
-        }
-        // the flow opens on this page, so the request and the reader reading it
-        // overlap. once only - the composer holds the answer, so stepping back
-        // to this page finds it rather than asking again
-        .task { onPrefetch() }
-        // declared on the page rather than as a NavigationLink inside the empty
-        // state, because connecting is what makes that empty state stop existing:
-        // a link whose own source view is removed mid-push can pop itself, and
-        // here it would do so while the sign-in sheet is still up
-        .navigationDestination(isPresented: $connecting) {
-            // pushed into this stack rather than opening Settings, so connecting
-            // does not cost the reader the flow they are in. it carries the clear
-            // background its siblings set through Chrome, or it paints over the
-            // sheet's glass on the way in
-            TrackingScreen()
-                .containerBackground(.clear, for: .navigation)
-        }
-        // driven by the link landing rather than by the sheet closing: the write
-        // goes through the observation before it reaches here, so reading the
-        // status at dismiss time would race it
-        .onChange(of: links) { was, now in
-            guard let fresh = now.first(where: { link in
-                !was.contains { $0.tracker == link.tracker }
-            }) else { return }
+            .sheet(item: $linking) { tracker in
+                linkSheet(tracker, opening) { linking = nil }
+            }
+            // the flow opens on this page, so the request and the reader reading it
+            // overlap. once only - the composer holds the answer, so stepping back
+            // to this page finds it rather than asking again
+            .task { onPrefetch() }
+            // declared on the page rather than as a NavigationLink inside the empty
+            // state, because connecting is what makes that empty state stop existing:
+            // a link whose own source view is removed mid-push can pop itself, and
+            // here it would do so while the sign-in sheet is still up
+            .navigationDestination(isPresented: $connecting) {
+                // pushed into this stack rather than opening Settings, so connecting
+                // does not cost the reader the flow they are in. it carries the clear
+                // background its siblings set through Chrome, or it paints over the
+                // sheet's glass on the way in
+                TrackingScreen()
+                    .containerBackground(.clear, for: .navigation)
+            }
+            // driven by the link landing rather than by the sheet closing: the write
+            // goes through the observation before it reaches here, so reading the
+            // status at dismiss time would race it
+            .onChange(of: links) { was, now in
+                guard
+                    let fresh = now.first(where: { link in
+                        !was.contains { $0.tracker == link.tracker }
+                    })
+                else { return }
 
-            adopted = fresh.status
-            // and the same signal closes the link sheet. the page underneath is
-            // the list of services, so the row filling in IS the outcome - the
-            // Synced button that keeps a sheet open elsewhere has nothing to
-            // show here that the flow does not already state one layer up.
-            // only a NEW link, so editing one already made is not yanked shut
-            linking = nil
-        }
+                adopted = fresh.status
+                // and the same signal closes the link sheet. the page underneath is
+                // the list of services, so the row filling in IS the outcome - the
+                // Synced button that keeps a sheet open elsewhere has nothing to
+                // show here that the flow does not already state one layer up.
+                // only a NEW link, so editing one already made is not yanked shut
+                linking = nil
+            }
     }
 
     @ViewBuilder
@@ -187,7 +193,9 @@ struct DetailsSetup<LinkSheet: View>: View {
             ContentUnavailableView {
                 Label("No Accounts", systemImage: "person.crop.circle.badge.plus")
             } description: {
-                Text("Connect AniList or MyAnimeList to keep your list in step with what you read here.")
+                Text(
+                    "Connect AniList or MyAnimeList to keep your list in step with what you read here."
+                )
             } actions: {
                 Button("Connect an Account") { connecting = true }
                     .buttonStyle(.glassProminent)
@@ -195,9 +203,11 @@ struct DetailsSetup<LinkSheet: View>: View {
         } else {
             ScrollView {
                 VStack(alignment: .leading, spacing: dimensions.spacing.space16) {
-                    Text("Link this series to keep your progress in step as you read. You can do this later from the series itself.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    Text(
+                        "Link this series to keep your progress in step as you read. You can do this later from the series itself."
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
 
                     DetailsTracking(
                         accounts: accounts,
@@ -206,8 +216,14 @@ struct DetailsSetup<LinkSheet: View>: View {
                         showsHeader: false,
                         needingSignIn: needingSignIn,
                         syncing: syncing,
-                        onLink: { linking = $0; opening = false },
-                        onOpen: { linking = $0.tracker; opening = true },
+                        onLink: {
+                            linking = $0
+                            opening = false
+                        },
+                        onOpen: {
+                            linking = $0.tracker
+                            opening = true
+                        },
                         // reachable here, not decorative: a service that needs
                         // signing in again offers exactly this from its row, and
                         // it lands on the same pushed screen the empty state does
@@ -269,8 +285,12 @@ struct DetailsSetup<LinkSheet: View>: View {
                 isSaving: isSaving,
                 onClose: dismiss.callAsFunction
             ) {
-                NavigationLink { Collections } label: { Next("Collections") }
-                    .buttonStyle(StepButtonStyle())
+                NavigationLink {
+                    Collections
+                } label: {
+                    Next("Collections")
+                }
+                .buttonStyle(StepButtonStyle())
             }
         )
     }
@@ -301,7 +321,9 @@ struct DetailsSetup<LinkSheet: View>: View {
         }
         .padding(dimensions.spacing.space12)
         .background(
-            chosen ? AnyShapeStyle(Palette.brandSubtle) : AnyShapeStyle(.primary.opacity(Layout.fillOpacity)),
+            chosen
+                ? AnyShapeStyle(Palette.brandSubtle)
+                : AnyShapeStyle(.primary.opacity(Layout.fillOpacity)),
             in: .rect(cornerRadius: dimensions.radius.radius12)
         )
         .contentShape(.rect)
@@ -413,13 +435,17 @@ struct DetailsSetup<LinkSheet: View>: View {
         // onward. the semantic table gives blue to interactive and green to
         // complete, and the reader learns the difference in one glance rather
         // than by reading the word
-        Button { dismiss() } label: {
+        Button {
+            dismiss()
+        } label: {
             Step(overline: "All set", title: "Done", glyph: "checkmark", tone: .success)
         }
         .buttonStyle(StepButtonStyle())
     }
 
-    private func Step(overline: String, title: String, glyph: String, tone: Palette.Tone) -> some View {
+    private func Step(overline: String, title: String, glyph: String, tone: Palette.Tone)
+        -> some View
+    {
         HStack(spacing: dimensions.spacing.space12) {
             VStack(alignment: .leading, spacing: dimensions.spacing.space4) {
                 // the word that does the work. a destination name with its
@@ -483,9 +509,7 @@ struct DetailsSetup<LinkSheet: View>: View {
         // arrival and the press are the same gesture at different moments and
         // two separate offsets would fight whenever they overlapped
         let reach: CGFloat =
-            if !streaked { Layout.streakEntry }
-            else if pressed { Layout.streakPressed }
-            else { 1 }
+            if !streaked { Layout.streakEntry } else if pressed { Layout.streakPressed } else { 1 }
 
         return ZStack(alignment: .trailing) {
             if streak {
@@ -573,7 +597,8 @@ private struct SetupPreview: View {
                 title: "Vagabond",
                 status: status,
                 collections: seed.map {
-                    .init(id: $0.id, name: $0.name, count: $0.count, contains: joined.contains($0.id))
+                    .init(
+                        id: $0.id, name: $0.name, count: $0.count, contains: joined.contains($0.id))
                 },
                 isSaving: false,
                 accounts: accounts,
@@ -597,7 +622,7 @@ private enum Sample {
         .init(id: 1, name: "Currently Reading", count: 12, contains: false),
         .init(id: 2, name: "Isekai", count: 48, contains: true),
         .init(id: 3, name: "Finished", count: 106, contains: false),
-        .init(id: 4, name: "Recommended by Ren", count: 1, contains: false)
+        .init(id: 4, name: "Recommended by Ren", count: 1, contains: false),
     ]
 
     static let linked = DetailsTracking.Link(

@@ -5,8 +5,8 @@
 //  Created by Angelo Carasig on 14/8/26
 //
 
-import SwiftUI
 import Kingfisher
+import SwiftUI
 
 // what the rail deliberately leaves out. everything here comes from the model
 // bundle rather than the database - this is a series the reader almost certainly
@@ -96,8 +96,10 @@ struct DetailsRecommendationSheet: View {
                 .fade(duration: 0.25)
                 .resizable()
                 .scaledToFill()
-                .frame(width: Layout.coverWidth,
-                       height: Layout.coverWidth / Layout.coverAspect)
+                .frame(
+                    width: Layout.coverWidth,
+                    height: Layout.coverWidth / Layout.coverAspect
+                )
                 .clipShape(.rect(cornerRadius: dimensions.radius.radius8, style: .continuous))
 
             VStack(alignment: .leading, spacing: dimensions.spacing.space8) {
@@ -120,12 +122,14 @@ struct DetailsRecommendationSheet: View {
                     Badge(text: result.format.label, tone: .neutral, size: .compact)
                     // both carry the app's own tone rather than neutral - these
                     // are the two facts here that vary in a way worth colouring
-                    Badge(text: result.publication.rawValue,
-                          tone: result.publication.tone,
-                          size: .compact)
-                    Badge(text: result.classification.rawValue,
-                          tone: result.classification.tone,
-                          size: .compact)
+                    Badge(
+                        text: result.publication.rawValue,
+                        tone: result.publication.tone,
+                        size: .compact)
+                    Badge(
+                        text: result.classification.rawValue,
+                        tone: result.classification.tone,
+                        size: .compact)
                     if let year = result.year {
                         // no grouping separator - a year is not a quantity
                         Badge(text: String(year), tone: .neutral, size: .compact)
@@ -170,10 +174,12 @@ struct DetailsRecommendationSheet: View {
             // a z-score against this seed's own field. states its own scope
             // because it is the one figure here that means nothing next to
             // another recommendation's
-            Text("Ranked \(result.score.formatted(.number.precision(.fractionLength(2)))) above average for this title.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+            Text(
+                "Ranked \(result.score.formatted(.number.precision(.fractionLength(2)))) above average for this title."
+            )
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -226,8 +232,8 @@ extension Float {
     }
 }
 
-private extension CatalogFormat {
-    var label: String {
+extension CatalogFormat {
+    fileprivate var label: String {
         switch self {
         case .manga: "Manga"
         case .manhwa: "Manhwa"

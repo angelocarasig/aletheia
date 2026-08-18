@@ -5,8 +5,8 @@
 //  Created by Angelo Carasig on 6/8/2026.
 //
 
-import SwiftUI
 import Foundation
+import SwiftUI
 import Tagged
 
 struct DetailsChapters: View {
@@ -164,9 +164,7 @@ struct DetailsChapters: View {
     // booleans separately would let the skeleton and the list cross-dissolve
     // through the empty state on the way
     fileprivate var phase: LoadPhase {
-        if !chapters.isEmpty { .content }
-        else if isPending { .pending }
-        else { .empty }
+        if !chapters.isEmpty { .content } else if isPending { .pending } else { .empty }
     }
 }
 
@@ -366,9 +364,9 @@ extension DetailsChapters {
     }
 }
 
-private extension View {
+extension View {
     // one definition, so the two controls cannot drift apart again
-    func chipBackground(_ opacity: Double) -> some View {
+    fileprivate func chipBackground(_ opacity: Double) -> some View {
         background(.primary.opacity(opacity), in: .capsule)
     }
 }
@@ -485,7 +483,10 @@ extension DetailsChapters {
         .foregroundStyle(.brand)
         .frame(maxWidth: .infinity)
         .padding(dimensions.spacing.space16)
-        .background(Palette.brand.opacity(Layout.fillOpacity), in: .rect(cornerRadius: dimensions.radius.radius8))
+        .background(
+            Palette.brand.opacity(Layout.fillOpacity),
+            in: .rect(cornerRadius: dimensions.radius.radius8)
+        )
         .padding(.top, dimensions.spacing.space8)
         .tappable {
             withAnimation { isExpanded.toggle() }
@@ -522,7 +523,10 @@ extension DetailsChapters {
 
             Circle()
                 .trim(from: 0, to: fraction)
-                .stroke(style: StrokeStyle(lineWidth: Layout.ringWidth, lineCap: .round, lineJoin: .round))
+                .stroke(
+                    style: StrokeStyle(
+                        lineWidth: Layout.ringWidth, lineCap: .round, lineJoin: .round)
+                )
                 .foregroundStyle(.brand)
                 .rotationEffect(.degrees(-90))
                 .opacity(state == .downloading ? 1 : 0)

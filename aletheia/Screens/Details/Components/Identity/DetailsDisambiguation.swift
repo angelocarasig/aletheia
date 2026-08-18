@@ -5,8 +5,8 @@
 //  Created by Angelo Carasig on 6/8/2026.
 //
 
-import SwiftUI
 import Kingfisher
+import SwiftUI
 
 struct DetailsDisambiguation: View {
     let candidates: [Candidate]
@@ -41,8 +41,11 @@ struct DetailsDisambiguation: View {
     private var anyStarted: Bool { candidates.contains(where: \.started) }
 
     private var headline: String {
-        if single { anyStarted ? "You're already reading this" : "You already have this" }
-        else { anyStarted ? "Which one are you reading?" : "Which one is it?" }
+        if single {
+            anyStarted ? "You're already reading this" : "You already have this"
+        } else {
+            anyStarted ? "Which one are you reading?" : "Which one is it?"
+        }
     }
 
     // series reads the same singular and plural, so this needs no inflection and
@@ -190,7 +193,9 @@ extension DetailsDisambiguation {
             Spacer(minLength: 0)
         }
         .padding(dimensions.spacing.space12)
-        .background(.surface, in: .rect(cornerRadius: dimensions.radius.radius16, style: .continuous))
+        .background(
+            .surface, in: .rect(cornerRadius: dimensions.radius.radius16, style: .continuous)
+        )
         .overlay {
             RoundedRectangle(cornerRadius: dimensions.radius.radius16, style: .continuous)
                 .strokeBorder(chosen ? Palette.brand : .clear, lineWidth: Layout.border)
@@ -207,7 +212,9 @@ extension DetailsDisambiguation {
                 KFImage(candidate.cover)
                     .requestModifier(AnyModifier.referer(candidate.referer))
                     .resizable()
-                    .placeholder { Rectangle().fill(.primary.opacity(Layout.fillOpacity)).shimmer() }
+                    .placeholder {
+                        Rectangle().fill(.primary.opacity(Layout.fillOpacity)).shimmer()
+                    }
                     .scaledToFill()
             }
             .clipShape(.rect(cornerRadius: dimensions.radius.radius8))
@@ -227,7 +234,8 @@ extension DetailsDisambiguation {
         """
 
     let cover = URL(
-        string: "https://mangadex.org/covers/c2068513-1e3b-4e44-b8f5-b0ac5567aa2b/766323e2-c863-422a-a2a5-76f3d5bee137.jpg"
+        string:
+            "https://mangadex.org/covers/c2068513-1e3b-4e44-b8f5-b0ac5567aa2b/766323e2-c863-422a-a2a5-76f3d5bee137.jpg"
     )
 
     return Color.clear.sheet(isPresented: .constant(true)) {
@@ -237,7 +245,8 @@ extension DetailsDisambiguation {
                     id: 1,
                     title: title,
                     authors: "Kaburagi Haruka, Nishizawa 5-mm",
-                    synopsis: "Reincarnated as the leader of a villain party fated for ruin, he exiles himself before the story can catch up with him.",
+                    synopsis:
+                        "Reincarnated as the leader of a villain party fated for ruin, he exiles himself before the story can catch up with him.",
                     cover: cover,
                     referer: nil,
                     read: 40,
@@ -249,7 +258,8 @@ extension DetailsDisambiguation {
                     id: 2,
                     title: title,
                     authors: "Kaburagi Haruka, Nishizawa 5-mm",
-                    synopsis: "Reincarnated as the leader of a villain party fated for ruin, he exiles himself before the story can catch up with him.",
+                    synopsis:
+                        "Reincarnated as the leader of a villain party fated for ruin, he exiles himself before the story can catch up with him.",
                     cover: cover,
                     referer: nil,
                     read: 118,
@@ -261,18 +271,19 @@ extension DetailsDisambiguation {
                     id: 3,
                     title: title,
                     authors: "Kaburagi Haruka, Nishizawa 5-mm",
-                    synopsis: "Reincarnated as the leader of a villain party fated for ruin, he exiles himself before the story can catch up with him.",
+                    synopsis:
+                        "Reincarnated as the leader of a villain party fated for ruin, he exiles himself before the story can catch up with him.",
                     cover: cover,
                     referer: nil,
                     read: 0,
                     total: 87,
                     lastReadDate: nil,
                     addedDate: Date(timeIntervalSince1970: 1_767_225_600)
-                )
+                ),
             ],
             onAttach: { _ in },
-            onKeepSeparate: { },
-            onCancel: { }
+            onKeepSeparate: {},
+            onCancel: {}
         )
         .presentationDetents([.large])
     }

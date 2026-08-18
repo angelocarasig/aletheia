@@ -40,7 +40,7 @@ struct BackupImportScreen: View {
 
     var body: some View {
         ZStack {
-            if case let .failed(reason) = phase {
+            if case .failed(let reason) = phase {
                 Failed(reason)
                     .transition(.opacity)
             } else {
@@ -60,9 +60,10 @@ struct BackupImportScreen: View {
         }
         .interactiveDismissDisabled(phase == .restoring)
         .sensoryFeedback(.success, trigger: isReady) { _, ready in ready }
-        .fileImporter(isPresented: $showingPicker, allowedContentTypes: [.aletheiaBackup, .data]) { result in
+        .fileImporter(isPresented: $showingPicker, allowedContentTypes: [.aletheiaBackup, .data]) {
+            result in
             switch result {
-            case let .success(url): Task { await load(from: url) }
+            case .success(let url): Task { await load(from: url) }
             case .failure: break
             }
         }
@@ -79,7 +80,9 @@ struct BackupImportScreen: View {
                 Task { await restore(backup) }
             }
         } message: { _ in
-            Text("This replaces your entire library with what's in this backup. Series and chapters not in the backup will be removed. This can't be undone.")
+            Text(
+                "This replaces your entire library with what's in this backup. Series and chapters not in the backup will be removed. This can't be undone."
+            )
         }
     }
 
@@ -108,17 +111,19 @@ struct BackupImportScreen: View {
                         Spacer(minLength: 0)
                     }
                     .padding(dimensions.spacing.space16)
-                    .glassEffect(.regular, in: .rect(cornerRadius: dimensions.radius.radius16, style: .continuous))
+                    .glassEffect(
+                        .regular,
+                        in: .rect(cornerRadius: dimensions.radius.radius16, style: .continuous))
                 }
 
-                if case let .ready(backup, summary) = phase {
+                if case .ready(let backup, let summary) = phase {
                     ExportedRow(backup)
 
                     LibraryBackupManifestGroup(
                         title: "Library",
                         rows: [
                             ("book.closed", "Series", summary.seriesCount),
-                            ("square.stack", "Chapters", summary.chapterCount)
+                            ("square.stack", "Chapters", summary.chapterCount),
                         ]
                     )
 
@@ -128,24 +133,26 @@ struct BackupImportScreen: View {
                             ("tag", "Tags", summary.tagCount),
                             ("person", "Authors", summary.authorCount),
                             ("folder", "Collections", summary.collectionCount),
-                            ("link", "Tracker Links", summary.trackerLinkCount)
+                            ("link", "Tracker Links", summary.trackerLinkCount),
                         ]
                     )
 
-                    Text("Your library will be replaced to match this backup exactly. Series still on an installed source attach automatically; others are added as disconnected and can be relinked later.")
-                        .font(.caption)
-                        .foregroundStyle(.muted)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, dimensions.spacing.space8)
+                    Text(
+                        "Your library will be replaced to match this backup exactly. Series still on an installed source attach automatically; others are added as disconnected and can be relinked later."
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.muted)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, dimensions.spacing.space8)
                 }
 
-                if case let .restored(summary) = phase {
+                if case .restored(let summary) = phase {
                     LibraryBackupManifestGroup(
                         title: "Restored",
                         rows: [
                             ("checkmark.circle", "Restored", summary.restoredCount),
                             ("bolt.slash", "Disconnected", summary.disconnectedCount),
-                            ("trash", "Removed", summary.removedCount)
+                            ("trash", "Removed", summary.removedCount),
                         ]
                     )
 
@@ -219,7 +226,8 @@ struct BackupImportScreen: View {
 
             HStack(spacing: dimensions.spacing.space4) {
                 Text("Exported")
-                LiveRelativeText(date: Date(timeIntervalSince1970: TimeInterval(backup.exportedDate)))
+                LiveRelativeText(
+                    date: Date(timeIntervalSince1970: TimeInterval(backup.exportedDate)))
             }
             .font(.caption)
             .foregroundStyle(.secondary)
@@ -241,7 +249,7 @@ struct BackupImportScreen: View {
             BackupActionSlab(icon: nil, label: "Reading", tinted: false, isLoading: true) {}
                 .transition(.opacity)
 
-        case let .ready(backup, _):
+        case .ready(let backup, _):
             BackupActionSlab(icon: "arrow.triangle.2.circlepath", label: "Restore Library") {
                 confirmingWipe = backup
             }
@@ -277,7 +285,8 @@ struct BackupImportScreen: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(dimensions.spacing.space16)
-        .background(.thinMaterial, in: .rect(cornerRadius: dimensions.radius.radius16, style: .continuous))
+        .background(
+            .thinMaterial, in: .rect(cornerRadius: dimensions.radius.radius16, style: .continuous))
     }
 
     private func Failed(_ reason: String) -> some View {
@@ -315,7 +324,7 @@ struct BackupImportScreen: View {
             "That doesn't look like an aletheia backup file."
         case .truncated, .compressionFailed:
             "That backup file is damaged."
-        case let .newerVersion(version):
+        case .newerVersion(let version):
             "This backup was made with a newer version of the app (format v\(version)). Update to restore it."
         }
     }
@@ -334,60 +343,61 @@ struct BackupImportScreen: View {
 // MARK: - Previews
 
 #if DEBUG
-private struct ImportPreview: View {
-    @State private var index = 0
+    private struct ImportPreview: View {
+        @State private var index = 0
 
-    private static let backup: LibraryBackup = {
-        var backup = LibraryBackup()
-        backup.exportedByAppVersion = "1.0"
-        backup.exportedDate = Int64(Date.now.addingTimeInterval(-3 * 24 * 60 * 60).timeIntervalSince1970)
-        backup.series = (0..<142).map { _ in LibraryBackup.SeriesEntry() }
-        return backup
-    }()
+        private static let backup: LibraryBackup = {
+            var backup = LibraryBackup()
+            backup.exportedByAppVersion = "1.0"
+            backup.exportedDate = Int64(
+                Date.now.addingTimeInterval(-3 * 24 * 60 * 60).timeIntervalSince1970)
+            backup.series = (0..<142).map { _ in LibraryBackup.SeriesEntry() }
+            return backup
+        }()
 
-    private static let summary = LibraryBackupSummary(
-        seriesCount: 142,
-        chapterCount: 12480,
-        tagCount: 58,
-        authorCount: 96,
-        collectionCount: 6,
-        trackerLinkCount: 37
-    )
+        private static let summary = LibraryBackupSummary(
+            seriesCount: 142,
+            chapterCount: 12480,
+            tagCount: 58,
+            authorCount: 96,
+            collectionCount: 6,
+            trackerLinkCount: 37
+        )
 
-    private static let restoredSummary = LibraryBackupRestorer.Summary(
-        restoredCount: 138,
-        disconnectedCount: 3,
-        removedCount: 5,
-        failures: [.init(title: "Some Series", reason: "Couldn't restore this series")]
-    )
+        private static let restoredSummary = LibraryBackupRestorer.Summary(
+            restoredCount: 138,
+            disconnectedCount: 3,
+            removedCount: 5,
+            failures: [.init(title: "Some Series", reason: "Couldn't restore this series")]
+        )
 
-    private static let states: [(name: String, phase: BackupImportScreen.Phase)] = [
-        ("Idle", .idle),
-        ("Reading", .reading),
-        ("Ready", .ready(backup, summary: summary)),
-        ("Restoring", .restoring),
-        ("Restored", .restored(restoredSummary)),
-        ("Failed", .failed("That doesn't look like an aletheia backup file."))
-    ]
+        private static let states: [(name: String, phase: BackupImportScreen.Phase)] = [
+            ("Idle", .idle),
+            ("Reading", .reading),
+            ("Ready", .ready(backup, summary: summary)),
+            ("Restoring", .restoring),
+            ("Restored", .restored(restoredSummary)),
+            ("Failed", .failed("That doesn't look like an aletheia backup file.")),
+        ]
 
-    var body: some View {
-        NavigationStack {
-            BackupImportScreen(onFinish: {}, phase: Self.states[index].phase)
-                // @State only reads init's value once, so a fresh .id per
-                // tap is what makes cycling the index actually redraw
-                .id(index)
-                .toolbar {
-                    ToolbarItem(placement: .topBarLeading) {
-                        Button(Self.states[index].name) {
-                            index = (index + 1) % Self.states.count
+        var body: some View {
+            NavigationStack {
+                BackupImportScreen(onFinish: {}, phase: Self.states[index].phase)
+                    // @State only reads init's value once, so a fresh .id per
+                    // tap is what makes cycling the index actually redraw
+                    .id(index)
+                    .toolbar {
+                        ToolbarItem(placement: .topBarLeading) {
+                            Button(Self.states[index].name) {
+                                index = (index + 1) % Self.states.count
+                            }
                         }
                     }
-                }
+            }
         }
     }
-}
 
-#Preview("Import phases") {
-    ImportPreview()
-}
+    #Preview("Import phases") {
+        ImportPreview()
+    }
 #endif

@@ -5,8 +5,8 @@
 //  Created by Angelo Carasig on 10/8/2026.
 //
 
-import SwiftUI
 import Kingfisher
+import SwiftUI
 
 // picking which entry on a service this series is.
 //
@@ -442,11 +442,11 @@ struct DetailsTrackerLink: View {
 
 // MARK: - Previews
 
-private extension TrackerCandidate {
+extension TrackerCandidate {
     // covers are left nil on purpose: a preview that reaches the network renders
     // differently depending on whether it did, which is the one thing a specimen
     // must not do
-    static let samples: [TrackerCandidate] = [
+    fileprivate static let samples: [TrackerCandidate] = [
         .init(
             id: 101177,
             title: "Kanojo mo Kanojo",
@@ -454,7 +454,8 @@ private extension TrackerCandidate {
             totalChapters: 122,
             status: .Completed,
             authors: "Hiroyuki",
-            synopsis: "Naoya Mukai has been in love with his childhood friend Saki for years, and when she finally accepts his confession he could not be happier. Then Nagisa Minase confesses to him too, and rather than turn her down he proposes something no one asked for."
+            synopsis:
+                "Naoya Mukai has been in love with his childhood friend Saki for years, and when she finally accepts his confession he could not be happier. Then Nagisa Minase confesses to him too, and rather than turn her down he proposes something no one asked for."
         ),
         .init(
             id: 132182,
@@ -463,7 +464,8 @@ private extension TrackerCandidate {
             totalChapters: nil,
             status: .Ongoing,
             authors: "Hiroyuki, Kazuki Yoshida",
-            synopsis: "A spin-off following the side characters after the events of the main series."
+            synopsis:
+                "A spin-off following the side characters after the events of the main series."
         ),
         .init(
             id: 45012,
@@ -492,7 +494,7 @@ private extension TrackerCandidate {
             adult: true,
             authors: "Various",
             synopsis: "A short collection by guest artists."
-        )
+        ),
     ]
 }
 

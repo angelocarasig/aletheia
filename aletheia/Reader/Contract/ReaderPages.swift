@@ -67,7 +67,7 @@ enum ReaderItem: Hashable, Sendable {
     case separator(ReaderBoundary)
 
     var page: ReaderPage? {
-        guard case let .page(page) = self else { return nil }
+        guard case .page(let page) = self else { return nil }
         return page
     }
 }

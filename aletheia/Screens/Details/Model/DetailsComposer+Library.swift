@@ -7,8 +7,8 @@
 
 import Foundation
 import GRDB
-import Tagged
 import Observation
+import Tagged
 
 extension DetailsComposer {
     @MainActor
@@ -109,7 +109,8 @@ extension DetailsComposer {
 
             do {
                 try await database.writer.write { db in
-                    _ = try SeriesRecord
+                    _ =
+                        try SeriesRecord
                         .filter(key: seriesId.rawValue)
                         .updateAll(db, SeriesRecord.Columns.status.set(to: value.rawValue))
                 }
@@ -133,7 +134,7 @@ extension DetailsComposer {
                 let id = try await database.writer.write { db -> Int64 in
                     var collection = CollectionRecord(name: name, description: description)
                     try collection.insert(db)
-                    
+
                     guard let id = collection.id else { throw RecordError.missingIdentifier }
                     return id.rawValue
                 }
@@ -149,7 +150,9 @@ extension DetailsComposer {
         // clear it while the caller is still working
         private func join(_ id: Int64) async {
             guard let seriesId else {
-                AppLog.shared.log("collection \(id) toggle skipped - no series yet", level: .warning, category: "details")
+                AppLog.shared.log(
+                    "collection \(id) toggle skipped - no series yet", level: .warning,
+                    category: "details")
                 return
             }
 
@@ -157,7 +160,8 @@ extension DetailsComposer {
 
             do {
                 try await database.writer.write { db in
-                    let existing = try SeriesCollectionRecord
+                    let existing =
+                        try SeriesCollectionRecord
                         .filter(SeriesCollectionRecord.Columns.seriesId == seriesId)
                         .filter(SeriesCollectionRecord.Columns.collectionId == collectionId)
                         .fetchOne(db)
@@ -170,7 +174,8 @@ extension DetailsComposer {
                     // appended, so a collection keeps the order the user added
                     // things in. query interface rather than raw sql because
                     // "order" is a reserved keyword and needs escaping
-                    let highest = try SeriesCollectionRecord
+                    let highest =
+                        try SeriesCollectionRecord
                         .filter(SeriesCollectionRecord.Columns.collectionId == collectionId)
                         .select(max(SeriesCollectionRecord.Columns.order), as: Int.self)
                         .fetchOne(db) ?? nil
@@ -183,10 +188,12 @@ extension DetailsComposer {
                     )
                     try link.insert(db)
                 }
-                AppLog.shared.log("collection \(id) toggled for series \(seriesId.rawValue)", category: "details")
+                AppLog.shared.log(
+                    "collection \(id) toggled for series \(seriesId.rawValue)", category: "details")
             } catch {
                 failure = Failure(error, fallback: "Couldn't Update Collection")
-                AppLog.shared.log("collection \(id) toggle FAILED - \(error)", level: .error, category: "details")
+                AppLog.shared.log(
+                    "collection \(id) toggle FAILED - \(error)", level: .error, category: "details")
             }
         }
     }
@@ -206,7 +213,8 @@ extension DetailsComposer.Library {
         for id: SeriesRecord.ID,
         in db: Database
     ) throws {
-        _ = try SeriesRecord
+        _ =
+            try SeriesRecord
             .filter(key: id.rawValue)
             .updateAll(
                 db,
@@ -222,12 +230,14 @@ extension DetailsComposer.Library {
         into target: SeriesRecord.ID,
         in db: Database
     ) throws {
-        let links = try SeriesCollectionRecord
+        let links =
+            try SeriesCollectionRecord
             .filter(SeriesCollectionRecord.Columns.seriesId == source)
             .fetchAll(db)
 
         for link in links {
-            let highest = try SeriesCollectionRecord
+            let highest =
+                try SeriesCollectionRecord
                 .filter(SeriesCollectionRecord.Columns.collectionId == link.collectionId)
                 .select(max(SeriesCollectionRecord.Columns.order), as: Int.self)
                 .fetchOne(db) ?? nil

@@ -15,9 +15,9 @@ extension WebRenderer {
     struct Session {
         let page: WebPage
         let origin: String
-        
+
         var bridge: Bridge { Bridge(page: page) }
-        
+
         init(
             url: URL,
             credential: SourceCredential,
@@ -27,30 +27,34 @@ extension WebRenderer {
         ) async {
             let dataStore = WKWebsiteDataStore.default()
             await Self.inject(credential, for: url, into: dataStore.httpCookieStore)
-            
+
             var configuration = WebPage.Configuration()
             configuration.websiteDataStore = dataStore
-            
+
             // documentStart is the only point at which a native can still be
             // wrapped before the page's own code captures a reference to it
-            for source in [storage.isEmpty ? nil : Capture.storage(storage), preload, Capture.script(matching: pattern)] {
+            for source in [
+                storage.isEmpty ? nil : Capture.storage(storage), preload,
+                Capture.script(matching: pattern),
+            ] {
                 guard let source else { continue }
-                configuration.userContentController.addUserScript(WKUserScript(
-                    source: source,
-                    injectionTime: .atDocumentStart,
-                    forMainFrameOnly: false,
-                    in: .page
-                ))
+                configuration.userContentController.addUserScript(
+                    WKUserScript(
+                        source: source,
+                        injectionTime: .atDocumentStart,
+                        forMainFrameOnly: false,
+                        in: .page
+                    ))
             }
-            
+
             let page = WebPage(configuration: configuration)
             page.customUserAgent = credential.userAgent
             page.load(URLRequest(url: url))
-            
+
             self.page = page
             self.origin = "\(url.scheme ?? "https")://\(url.host() ?? "")"
         }
-        
+
         // polled from out here rather than inside a script: each check is its own
         // short call, so a reload or hydration swap costs a retry instead of an
         // unreachable promise
@@ -65,7 +69,7 @@ extension WebRenderer {
             }
             return false
         }
-        
+
         // a fresh web view starts on an empty document that already reports
         // 'complete', so readyState alone says yes before the real page exists -
         // running a script there dies the moment the navigation commits.
@@ -83,28 +87,32 @@ extension WebRenderer {
                 ["origin": origin]
             )
         }
-        
+
         private func present(_ selector: String?) async throws -> Bool {
             guard let selector else { return true }
             return try await bridge.bool("return !!document.querySelector(sel)", ["sel": selector])
         }
-        
+
         // navigating away invalidates any pending call, which resumes it as a
         // throw - the only way to unstick a wedged web content process
         func discard() {
             page.load(URLRequest(url: WebRenderer.blank))
         }
-        
-        private static func inject(_ credential: SourceCredential, for url: URL, into store: WKHTTPCookieStore) async {
+
+        private static func inject(
+            _ credential: SourceCredential, for url: URL, into store: WKHTTPCookieStore
+        ) async {
             guard let host = url.host() else { return }
             for (name, value) in credential.cookies {
-                guard let cookie = HTTPCookie(properties: [
-                    .domain: host,
-                    .path: "/",
-                    .name: name,
-                    .value: value,
-                    .secure: "TRUE"
-                ]) else { continue }
+                guard
+                    let cookie = HTTPCookie(properties: [
+                        .domain: host,
+                        .path: "/",
+                        .name: name,
+                        .value: value,
+                        .secure: "TRUE",
+                    ])
+                else { continue }
                 await store.setCookie(cookie)
             }
         }

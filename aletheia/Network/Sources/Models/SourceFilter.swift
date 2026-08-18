@@ -14,7 +14,7 @@ enum SourceFilter: Sendable, Hashable {
     case number(id: String, name: String)
     case select(id: String, name: String, options: [Option])
     case multiSelect(id: String, name: String, options: [Option], canExclude: Bool)
-    
+
     /// what selecting an option pulls into the results. it describes the *effect of
     /// ticking*, not the rating of any one series - `Classification` answers that,
     /// and answers it too coarsely here (it folds erotica and pornographic into one
@@ -50,7 +50,7 @@ enum SourceFilter: Sendable, Hashable {
             self.sensitivity = sensitivity
         }
     }
-    
+
     /// how a source can order results: the options, and which one applies when
     /// the caller picks none - the source's "best match" or nearest equivalent.
     ///
@@ -69,13 +69,13 @@ enum SourceFilter: Sendable, Hashable {
 extension SourceFilter {
     var fingerprint: String {
         switch self {
-        case let .text(id, name):
+        case .text(let id, let name):
             return "text:\(id):\(name)"
-        case let .number(id, name):
+        case .number(let id, let name):
             return "number:\(id):\(name)"
-        case let .select(id, name, options):
+        case .select(let id, let name, let options):
             return "select:\(id):\(name):\(options.fingerprint)"
-        case let .multiSelect(id, name, options, canExclude):
+        case .multiSelect(let id, let name, let options, let canExclude):
             return "multi:\(id):\(name):\(canExclude):\(options.fingerprint)"
         }
     }
@@ -85,7 +85,7 @@ extension SourceFilter.Sort {
     var fingerprint: String {
         "\(defaultSort):\(options.fingerprint)"
     }
-    
+
     var defaultSelection: SortSelection {
         SortSelection(optionID: defaultSort)
     }

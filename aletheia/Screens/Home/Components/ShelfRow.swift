@@ -5,8 +5,8 @@
 //  Created by Angelo Carasig on 11/8/2026.
 //
 
-import SwiftUI
 import Kingfisher
+import SwiftUI
 import Tagged
 
 // the one row shape Home's vertical shelves share: artwork, two lines, one
@@ -85,7 +85,9 @@ struct ShelfRow: View {
                 if let cover {
                     KFImage(cover)
                         .resizable()
-                        .placeholder { Rectangle().fill(.primary.opacity(Layout.placeholderOpacity)).shimmer() }
+                        .placeholder {
+                            Rectangle().fill(.primary.opacity(Layout.placeholderOpacity)).shimmer()
+                        }
                         .fade(duration: 0.25)
                         .scaledToFill()
                 } else {

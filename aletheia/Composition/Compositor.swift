@@ -46,7 +46,7 @@ struct Compositor: Sendable {
             ScansGGSource(network: network),
             NHentaiSource(requester: requester, network: network),
             ToonilySource(requester: requester),
-            MangaBallSource(requester: requester)
+            MangaBallSource(requester: requester),
         ]
 
         self.database = database
@@ -64,11 +64,14 @@ struct Compositor: Sendable {
         let trackerServices: [Tracker: any TrackerService] = [
             .anilist: AniListService(network: network),
             .myAnimeList: MyAnimeListService(network: network),
-            .mangaBaka: MangaBakaService(network: network)
+            .mangaBaka: MangaBakaService(network: network),
         ]
         let authority = TrackerAuthority(network: network, services: trackerServices)
-        self.trackers = Trackers(database: database, authority: authority, services: trackerServices)
-        self.metadata = Metadata(database: database, registry: registry, refresher: self.refresh, trackers: self.trackers)
+        self.trackers = Trackers(
+            database: database, authority: authority, services: trackerServices)
+        self.metadata = Metadata(
+            database: database, registry: registry, refresher: self.refresh, trackers: self.trackers
+        )
 
         self.recommender = V01Recommender()
         self.impressions = Impressions(database: database)

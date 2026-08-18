@@ -31,7 +31,8 @@ enum ReadingFormat {
     // "Chapter 42.5". a trailing .0 on every row reads as a rendering bug
     static func chapter(_ number: Double) -> String {
         let rounded = number.rounded()
-        let value = abs(number - rounded) < 0.001
+        let value =
+            abs(number - rounded) < 0.001
             ? String(Int(rounded))
             : String(format: "%g", number)
         return "Chapter \(value)"

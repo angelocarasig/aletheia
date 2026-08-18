@@ -26,9 +26,7 @@ struct ReaderScreen: View {
     // keyed isOverlayVisible, which never changes on readiness, so the
     // skeleton's transition was dead code. see docs/features/loading-transitions.md
     private var phase: LoadPhase {
-        if vm?.engine != nil { .content }
-        else if vm?.failure != nil { .failed }
-        else { .pending }
+        if vm?.engine != nil { .content } else if vm?.failure != nil { .failed } else { .pending }
     }
 
     var body: some View {
@@ -76,7 +74,10 @@ struct ReaderScreen: View {
             await model.load()
             model.flashTapZones()
         }
-        .sheet(isPresented: Binding(get: { vm?.isShowingTapZones ?? false }, set: { vm?.isShowingTapZones = $0 })) {
+        .sheet(
+            isPresented: Binding(
+                get: { vm?.isShowingTapZones ?? false }, set: { vm?.isShowingTapZones = $0 })
+        ) {
             if let vm {
                 ReaderTapZonePicker(
                     layout: vm.tapZone,
@@ -157,7 +158,8 @@ struct ReaderScreen: View {
         // held for the reader rather than for the app, so leaving the screen by
         // any route hands it back below
         .task(id: vm?.engine?.configuration.keepScreenOn) {
-            UIApplication.shared.isIdleTimerDisabled = vm?.engine?.configuration.keepScreenOn ?? false
+            UIApplication.shared.isIdleTimerDisabled =
+                vm?.engine?.configuration.keepScreenOn ?? false
         }
         .onDisappear {
             UIApplication.shared.isIdleTimerDisabled = false
@@ -181,9 +183,9 @@ struct ReaderScreen: View {
     }
 }
 
-private extension ReaderScreen {
+extension ReaderScreen {
     @ViewBuilder
-    func Reading(_ vm: ReaderViewModel, _ engine: ReaderEngine) -> some View {
+    fileprivate func Reading(_ vm: ReaderViewModel, _ engine: ReaderEngine) -> some View {
         GeometryReader { proxy in
             ZStack {
                 // opacity rather than a branch, for both of these. a
@@ -208,7 +210,8 @@ private extension ReaderScreen {
                         // strength, so neutral is a real zero rather than a
                         // third tone that happens to be colourless
                         let warmth = engine.configuration.warmth
-                        let tone = warmth < 0
+                        let tone =
+                            warmth < 0
                             ? ReaderConfiguration.Defaults.coolTone
                             : ReaderConfiguration.Defaults.warmthTone
 
@@ -283,9 +286,11 @@ private extension ReaderScreen {
         }
     }
 
-    func Failed(_ error: ReaderError, engine: ReaderEngine) -> some View {
+    fileprivate func Failed(_ error: ReaderError, engine: ReaderEngine) -> some View {
         ContentUnavailableView {
-            Label(error.errorDescription ?? "Something Went Wrong", systemImage: "exclamationmark.triangle")
+            Label(
+                error.errorDescription ?? "Something Went Wrong",
+                systemImage: "exclamationmark.triangle")
         } description: {
             Text(error.failureReason ?? "")
         } actions: {
@@ -300,7 +305,7 @@ private extension ReaderScreen {
         .background(.ultraThinMaterial)
     }
 
-    func Unavailable(_ failure: Failure) -> some View {
+    fileprivate func Unavailable(_ failure: Failure) -> some View {
         ContentUnavailableView {
             Label(failure.title, systemImage: "book.closed")
         } description: {

@@ -52,8 +52,8 @@ struct ReaderFiltersSheet: View {
 
 // MARK: - Content
 
-private extension ReaderFiltersSheet {
-    var Content: some View {
+extension ReaderFiltersSheet {
+    fileprivate var Content: some View {
         let configuration = engine.configuration
 
         return ScrollView {
@@ -73,7 +73,7 @@ private extension ReaderFiltersSheet {
     // stated as brightness and stored as dim, so the slider runs the way the
     // word does: right is brighter, and the value behind it goes the other way.
     // the ceiling is what the screen can already do at its own minimum
-    func BrightnessRow(_ dim: Double) -> some View {
+    fileprivate func BrightnessRow(_ dim: Double) -> some View {
         let maximum = ReaderConfiguration.Defaults.maxDim
 
         return Card {
@@ -97,7 +97,7 @@ private extension ReaderFiltersSheet {
         }
     }
 
-    func WarmthRow(_ warmth: Double) -> some View {
+    fileprivate func WarmthRow(_ warmth: Double) -> some View {
         let maximum = ReaderConfiguration.Defaults.maxWarmth
         let strength = (abs(warmth) / maximum).formatted(.percent.precision(.fractionLength(0)))
 
@@ -105,7 +105,8 @@ private extension ReaderFiltersSheet {
             SliderHeader(
                 "Tint",
                 "Warmer takes the blue out for reading at night. Cooler pulls back a page that runs yellow.",
-                value: warmth == 0 ? "Neutral" : (warmth < 0 ? "Cool \(strength)" : "Warm \(strength)")
+                value: warmth == 0
+                    ? "Neutral" : (warmth < 0 ? "Cool \(strength)" : "Warm \(strength)")
             )
 
             // stepped where its neighbours are continuous, because this is the
@@ -126,7 +127,7 @@ private extension ReaderFiltersSheet {
         }
     }
 
-    func ToneRow(_ configuration: ReaderConfiguration) -> some View {
+    fileprivate func ToneRow(_ configuration: ReaderConfiguration) -> some View {
         Card {
             Toggle(isOn: Binding(get: { configuration.grayscale }, set: onGrayscale)) {
                 Row("Grayscale", "Drops colour. Kinder to a colour page read in the dark.")
@@ -141,7 +142,7 @@ private extension ReaderFiltersSheet {
         .tint(Palette.brand)
     }
 
-    func AwakeRow(_ keepScreenOn: Bool) -> some View {
+    fileprivate func AwakeRow(_ keepScreenOn: Bool) -> some View {
         Card {
             Toggle(isOn: Binding(get: { keepScreenOn }, set: onKeepScreenOn)) {
                 Row("Keep Screen On", "The display will not sleep while you are reading.")
@@ -153,8 +154,8 @@ private extension ReaderFiltersSheet {
 
 // MARK: - Primitives
 
-private extension ReaderFiltersSheet {
-    func Card(@ViewBuilder content: () -> some View) -> some View {
+extension ReaderFiltersSheet {
+    fileprivate func Card(@ViewBuilder content: () -> some View) -> some View {
         VStack(alignment: .leading, spacing: dimensions.spacing.space12) {
             content()
         }
@@ -165,13 +166,13 @@ private extension ReaderFiltersSheet {
         }
     }
 
-    func Bound(_ symbol: String) -> some View {
+    fileprivate func Bound(_ symbol: String) -> some View {
         Image(systemName: symbol)
             .font(.caption)
             .foregroundStyle(.secondary)
     }
 
-    func Row(_ title: String, _ summary: String) -> some View {
+    fileprivate func Row(_ title: String, _ summary: String) -> some View {
         VStack(alignment: .leading, spacing: dimensions.spacing.space2) {
             Text(title)
                 .font(.subheadline)
@@ -185,7 +186,7 @@ private extension ReaderFiltersSheet {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    func SliderHeader(_ title: String, _ summary: String, value: String) -> some View {
+    fileprivate func SliderHeader(_ title: String, _ summary: String, value: String) -> some View {
         HStack(alignment: .firstTextBaseline) {
             Row(title, summary)
 

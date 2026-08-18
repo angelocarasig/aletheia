@@ -11,8 +11,8 @@ import SwiftUI
 // uses, duplicated rather than shared per that file's own note: three
 // setup flows that each look nothing else like one another have no reason
 // to share this
-private extension EnvironmentValues {
-    @Entry var sourceMigrationStepPressed = false
+extension EnvironmentValues {
+    @Entry fileprivate var sourceMigrationStepPressed = false
 }
 
 private struct SourceMigrationStepButtonStyle: ButtonStyle {
@@ -54,9 +54,12 @@ struct SourceMigrationScreen: View {
     // all, not merely hidden
     private var availableSources: [Source] {
         let defaults = UserDefaults.standard
-        let unlocked = defaults.bool(forKey: Preferences.Key.bypassAdultSources)
+        let unlocked =
+            defaults.bool(forKey: Preferences.Key.bypassAdultSources)
             && defaults.bool(forKey: Preferences.Key.includeAdultSources)
-        return unlocked ? compositor.registry.sources : compositor.registry.sources.filter { !$0.descriptor.adultOnly }
+        return unlocked
+            ? compositor.registry.sources
+            : compositor.registry.sources.filter { !$0.descriptor.adultOnly }
     }
 
     var body: some View {
@@ -65,9 +68,13 @@ struct SourceMigrationScreen: View {
             // pure, nothing has run yet, so there is nothing worth
             // preserving by patching an existing instance instead
             .task(id: selectedFromSourceSlug) {
-                guard let selectedFromSourceSlug else { composer = nil; return }
+                guard let selectedFromSourceSlug else {
+                    composer = nil
+                    return
+                }
                 composer = MigrationComposer(
-                    source: SeriesOnSourceMigrationSource(sourceSlug: selectedFromSourceSlug, database: compositor.database),
+                    source: SeriesOnSourceMigrationSource(
+                        sourceSlug: selectedFromSourceSlug, database: compositor.database),
                     searching: LiveMigrationSearcher(),
                     committing: OriginMigrationCommitter(
                         database: compositor.database,
@@ -85,7 +92,8 @@ struct SourceMigrationScreen: View {
             .task(id: mode) {
                 guard let selectedFromSourceSlug else { return }
                 composer = MigrationComposer(
-                    source: SeriesOnSourceMigrationSource(sourceSlug: selectedFromSourceSlug, database: compositor.database),
+                    source: SeriesOnSourceMigrationSource(
+                        sourceSlug: selectedFromSourceSlug, database: compositor.database),
                     searching: LiveMigrationSearcher(),
                     committing: OriginMigrationCommitter(
                         database: compositor.database,
@@ -113,7 +121,9 @@ struct SourceMigrationScreen: View {
                         NavigationLink {
                             ToStep(composer)
                         } label: {
-                            Step(overline: "Next", title: "Sources", glyph: "arrow.right", tone: .brand)
+                            Step(
+                                overline: "Next", title: "Sources", glyph: "arrow.right",
+                                tone: .brand)
                         }
                         .buttonStyle(SourceMigrationStepButtonStyle())
                     }
@@ -216,7 +226,8 @@ struct SourceMigrationScreen: View {
         .modifier(
             Chrome(
                 title: "Sources",
-                subtitle: Text("^[\(composer.selectedSourceSlugs.count) source](inflect: true) selected"),
+                subtitle: Text(
+                    "^[\(composer.selectedSourceSlugs.count) source](inflect: true) selected"),
                 onClose: onFinish
             ) {
                 StartButton(composer)
@@ -269,7 +280,9 @@ struct SourceMigrationScreen: View {
         .accessibilityAddTraits(chosen ? .isSelected : [])
     }
 
-    private func ToRow(_ composer: MigrationComposer<SourceMigrationEntry>, _ source: Source) -> some View {
+    private func ToRow(_ composer: MigrationComposer<SourceMigrationEntry>, _ source: Source)
+        -> some View
+    {
         let selected = composer.selectedSourceSlugs.contains(source.descriptor.slug)
 
         return HStack(spacing: dimensions.spacing.space12) {

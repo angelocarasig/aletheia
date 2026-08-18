@@ -70,7 +70,8 @@ struct LiveMigrationSearcher: MigrationSearching {
         for (sourceSlug, outcome) in results {
             switch outcome {
             case .success(let stubs):
-                candidates.append(contentsOf: stubs.map { MigrationCandidate(sourceSlug: sourceSlug, stub: $0) })
+                candidates.append(
+                    contentsOf: stubs.map { MigrationCandidate(sourceSlug: sourceSlug, stub: $0) })
             case .failure:
                 failureCount += 1
             }
@@ -83,7 +84,8 @@ struct LiveMigrationSearcher: MigrationSearching {
         guard !candidates.isEmpty else { return .notFound }
 
         let exact = candidates.filter {
-            $0.title.compare(title, options: [.caseInsensitive, .diacriticInsensitive]) == .orderedSame
+            $0.title.compare(title, options: [.caseInsensitive, .diacriticInsensitive])
+                == .orderedSame
         }
 
         let selected = exact.count == 1 ? exact.first : nil

@@ -30,7 +30,8 @@ struct Asset: Sendable {
 extension Asset {
     var location: URL {
         let digest = Checksum.hex(key)
-        return folder
+        return
+            folder
             .appending(path: String(digest.prefix(2)))
             .appending(path: digest)
     }

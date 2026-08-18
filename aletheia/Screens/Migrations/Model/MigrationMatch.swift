@@ -18,10 +18,10 @@ enum MigrationMatch: Equatable, Sendable {
     case failed(String)
 
     var candidates: [MigrationCandidate] {
-        if case let .found(candidates, _) = self { candidates } else { [] }
+        if case .found(let candidates, _) = self { candidates } else { [] }
     }
 
     var selected: MigrationCandidate? {
-        if case let .found(_, selected) = self { selected } else { nil }
+        if case .found(_, let selected) = self { selected } else { nil }
     }
 }

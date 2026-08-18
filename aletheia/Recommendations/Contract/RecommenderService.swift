@@ -51,10 +51,12 @@ protocol RecommenderService: Sendable {
     // will not load costs a section rather than a launch
     func warm() async
 
-    func recommend(_ payload: Payload,
-                   ceiling: ContentCeiling,
-                   formats: Set<CatalogFormat>,
-                   limit: Int) async throws -> RecommendationSet
+    func recommend(
+        _ payload: Payload,
+        ceiling: ContentCeiling,
+        formats: Set<CatalogFormat>,
+        limit: Int
+    ) async throws -> RecommendationSet
 }
 
 typealias Recommender = any RecommenderService

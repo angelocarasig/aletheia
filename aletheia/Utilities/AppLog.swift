@@ -80,7 +80,9 @@ actor AppLog {
     }
 
     private nonisolated var current: URL { Constants.Paths.logs.appending(path: Rotation.current) }
-    private nonisolated var previous: URL { Constants.Paths.logs.appending(path: Rotation.previous) }
+    private nonisolated var previous: URL {
+        Constants.Paths.logs.appending(path: Rotation.previous)
+    }
 
     private init() {
         (intake, feed) = AsyncStream.makeStream(of: Entry.self, bufferingPolicy: .unbounded)
@@ -147,10 +149,15 @@ actor AppLog {
         // the interpolation is public on purpose: os.Logger redacts string
         // arguments by default, and a log the developer cannot read is not one
         switch entry.level {
-        case .debug: mirror.debug("[\(entry.category, privacy: .public)] \(entry.message, privacy: .public)")
-        case .info: mirror.info("[\(entry.category, privacy: .public)] \(entry.message, privacy: .public)")
-        case .warning: mirror.warning("[\(entry.category, privacy: .public)] \(entry.message, privacy: .public)")
-        case .error: mirror.error("[\(entry.category, privacy: .public)] \(entry.message, privacy: .public)")
+        case .debug:
+            mirror.debug("[\(entry.category, privacy: .public)] \(entry.message, privacy: .public)")
+        case .info:
+            mirror.info("[\(entry.category, privacy: .public)] \(entry.message, privacy: .public)")
+        case .warning:
+            mirror.warning(
+                "[\(entry.category, privacy: .public)] \(entry.message, privacy: .public)")
+        case .error:
+            mirror.error("[\(entry.category, privacy: .public)] \(entry.message, privacy: .public)")
         }
     }
 
@@ -169,7 +176,8 @@ actor AppLog {
     // own stream, which is what removes it here - nothing has to remember to
     func live() -> AsyncStream<Entry> {
         let id = UUID()
-        let (stream, continuation) = AsyncStream.makeStream(of: Entry.self, bufferingPolicy: .unbounded)
+        let (stream, continuation) = AsyncStream.makeStream(
+            of: Entry.self, bufferingPolicy: .unbounded)
 
         readers[id] = continuation
         continuation.onTermination = { [weak self] _ in

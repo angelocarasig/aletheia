@@ -50,7 +50,8 @@ struct DetailsRecommendations: View {
                         ForEach(Array(results.enumerated()), id: \.element.id) { rank, result in
                             Slot {
                                 Card(result: result)
-                                    .onScrollVisibilityChange(threshold: Layout.seenFraction) { visible in
+                                    .onScrollVisibilityChange(threshold: Layout.seenFraction) {
+                                        visible in
                                         guard visible, let context else { return }
                                         compositor.impressions.shown(
                                             result,
@@ -59,7 +60,8 @@ struct DetailsRecommendations: View {
                                             seed: context.series,
                                             seedCatalogId: context.seedCatalogId,
                                             modelVersion: context.modelVersion,
-                                            alreadyInLibrary: context.owned.contains(result.catalogId))
+                                            alreadyInLibrary: context.owned.contains(
+                                                result.catalogId))
                                     }
                                     .tappable {
                                         if let context {
@@ -127,11 +129,11 @@ struct DetailsRecommendations: View {
     }
 }
 
-private extension Recommendation {
+extension Recommendation {
     // SourceCard draws a stub, and a recommendation is one in everything the card
     // reads. the slug is the catalogue id because nothing here routes by slug -
     // the tap hands back the Recommendation itself
-    var stub: SeriesStub {
+    fileprivate var stub: SeriesStub {
         SeriesStub(slug: String(catalogId.rawValue), title: title, cover: cover)
     }
 }

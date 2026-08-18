@@ -5,8 +5,8 @@
 //  Created by Angelo Carasig on 7/8/2026.
 //
 
-import UIKit
 import Kingfisher
+import UIKit
 
 // the cell and the prefetcher MUST build their options the same way. a
 // processor difference changes the cache key, so prefetched pages land under a
@@ -37,7 +37,7 @@ enum ReaderImage {
             .processor(PageDownsampler(width: target)),
             .scaleFactor(scale),
             .requestModifier(AnyModifier.headers(headers)),
-            .cacheOriginalImage
+            .cacheOriginalImage,
         ]
     }
 }

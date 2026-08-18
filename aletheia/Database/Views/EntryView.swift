@@ -64,7 +64,7 @@ extension EntryView {
         SourceRecord.self,
         MetadataRecord.self,
         CoverRecord.self,
-        TitleRecord.self
+        TitleRecord.self,
     ]
 
     static let dependsOnViews: [any ViewRecord.Type] = [
@@ -72,114 +72,115 @@ extension EntryView {
     ]
 
     static var viewDefinition: SQLRequest<EntryView> {
-        SQLRequest(sql: """
-            SELECT
-                m.id as seriesId,
-                po.sourceId as sourceId,
-                COALESCE(po.slug, '') as slug,
+        SQLRequest(
+            sql: """
+                SELECT
+                    m.id as seriesId,
+                    po.sourceId as sourceId,
+                    COALESCE(po.slug, '') as slug,
 
-                -- title: the user's pick, else what the primary origin calls it,
-                -- else any title in the pool
-                COALESCE(
-                    (SELECT t.\(TitleRecord.Columns.value.name)
-                     FROM \(TitleRecord.databaseTableName) t
-                     WHERE t.id = m.\(SeriesRecord.Columns.preferredTitleId.name)),
-                    (SELECT t.\(TitleRecord.Columns.value.name)
-                     FROM \(TitleRecord.databaseTableName) t
-                     WHERE t.seriesId = m.id AND t.\(TitleRecord.Columns.metadataId.name) = pm.id
-                     ORDER BY t.id ASC LIMIT 1),
-                    (SELECT t.\(TitleRecord.Columns.value.name)
-                     FROM \(TitleRecord.databaseTableName) t
-                     WHERE t.seriesId = m.id
-                     ORDER BY t.id ASC LIMIT 1),
-                    ''
-                ) as title,
+                    -- title: the user's pick, else what the primary origin calls it,
+                    -- else any title in the pool
+                    COALESCE(
+                        (SELECT t.\(TitleRecord.Columns.value.name)
+                         FROM \(TitleRecord.databaseTableName) t
+                         WHERE t.id = m.\(SeriesRecord.Columns.preferredTitleId.name)),
+                        (SELECT t.\(TitleRecord.Columns.value.name)
+                         FROM \(TitleRecord.databaseTableName) t
+                         WHERE t.seriesId = m.id AND t.\(TitleRecord.Columns.metadataId.name) = pm.id
+                         ORDER BY t.id ASC LIMIT 1),
+                        (SELECT t.\(TitleRecord.Columns.value.name)
+                         FROM \(TitleRecord.databaseTableName) t
+                         WHERE t.seriesId = m.id
+                         ORDER BY t.id ASC LIMIT 1),
+                        ''
+                    ) as title,
 
-                -- cover: same resolution order as title. resolved by joining the
-                -- row itself rather than selecting each column separately, so the
-                -- downloaded path can never belong to a different cover than the url
-                pc.\(CoverRecord.Columns.url.name) as cover,
-                pc.\(CoverRecord.Columns.path.name) as path,
+                    -- cover: same resolution order as title. resolved by joining the
+                    -- row itself rather than selecting each column separately, so the
+                    -- downloaded path can never belong to a different cover than the url
+                    pc.\(CoverRecord.Columns.url.name) as cover,
+                    pc.\(CoverRecord.Columns.path.name) as path,
 
-                m.inLibrary,
-                m.\(SeriesRecord.Columns.status.name) as status,
+                    m.inLibrary,
+                    m.\(SeriesRecord.Columns.status.name) as status,
 
-                -- one pick each, else whatever the primary origin says. separate
-                -- because the best publication authority is often the worst
-                -- classification one
-                mc.\(MetadataRecord.Columns.classification.name) as classification,
-                mp.\(MetadataRecord.Columns.publication.name) as publication,
+                    -- one pick each, else whatever the primary origin says. separate
+                    -- because the best publication authority is often the worst
+                    -- classification one
+                    mc.\(MetadataRecord.Columns.classification.name) as classification,
+                    mp.\(MetadataRecord.Columns.publication.name) as publication,
 
-                -- unread count from best chapters (rank = 1 only)
-                -- respects showHalfChapters preference
-                COALESCE(
-                    (SELECT COUNT(*)
-                     FROM \(BestChapterView.databaseTableName) bc
-                     WHERE bc.seriesId = m.id
-                       AND bc.rank = 1  -- only best version of each chapter
-                       AND bc.progress < 1.0  -- unread
-                       AND (bc.showHalfChapters = 1 OR bc.number = CAST(bc.number AS INTEGER))
-                    ), 0
-                ) as unreadCount,
+                    -- unread count from best chapters (rank = 1 only)
+                    -- respects showHalfChapters preference
+                    COALESCE(
+                        (SELECT COUNT(*)
+                         FROM \(BestChapterView.databaseTableName) bc
+                         WHERE bc.seriesId = m.id
+                           AND bc.rank = 1  -- only best version of each chapter
+                           AND bc.progress < 1.0  -- unread
+                           AND (bc.showHalfChapters = 1 OR bc.number = CAST(bc.number AS INTEGER))
+                        ), 0
+                    ) as unreadCount,
 
-                -- date fields for sorting
-                m.addedDate,
-                m.updatedDate,
-                m.lastReadDate,
-                m.lastFetchedDate
+                    -- date fields for sorting
+                    m.addedDate,
+                    m.updatedDate,
+                    m.lastReadDate,
+                    m.lastFetchedDate
 
-            FROM \(SeriesRecord.databaseTableName) m
+                FROM \(SeriesRecord.databaseTableName) m
 
-            -- primary origin: available sources first, then by priority.
-            -- unavailable means disconnected (null sourceId) or disabled - both
-            -- sort last so a dead source stops supplying the displayed metadata.
-            -- matched on id so ties never duplicate the row.
-            LEFT JOIN \(OriginRecord.databaseTableName) po
-                ON po.id = (
-                    SELECT o2.id
-                    FROM \(OriginRecord.databaseTableName) o2
-                    LEFT JOIN \(SourceRecord.databaseTableName) s2 ON o2.sourceId = s2.id
-                    WHERE o2.seriesId = m.id
-                    ORDER BY
-                        (s2.id IS NULL OR s2.\(SourceRecord.Columns.disabled.name) = 1) ASC,
-                        o2.priority ASC,
-                        o2.id ASC
-                    LIMIT 1
-                )
+                -- primary origin: available sources first, then by priority.
+                -- unavailable means disconnected (null sourceId) or disabled - both
+                -- sort last so a dead source stops supplying the displayed metadata.
+                -- matched on id so ties never duplicate the row.
+                LEFT JOIN \(OriginRecord.databaseTableName) po
+                    ON po.id = (
+                        SELECT o2.id
+                        FROM \(OriginRecord.databaseTableName) o2
+                        LEFT JOIN \(SourceRecord.databaseTableName) s2 ON o2.sourceId = s2.id
+                        WHERE o2.seriesId = m.id
+                        ORDER BY
+                            (s2.id IS NULL OR s2.\(SourceRecord.Columns.disabled.name) = 1) ASC,
+                            o2.priority ASC,
+                            o2.id ASC
+                        LIMIT 1
+                    )
 
-            -- the primary origin's own metadata row. at most one, since metadata
-            -- is unique per supplier, and it stands in for "what the primary
-            -- origin says" everywhere the old view used po.id directly
-            LEFT JOIN \(MetadataRecord.databaseTableName) pm
-                ON pm.\(MetadataRecord.Columns.originId.name) = po.id
+                -- the primary origin's own metadata row. at most one, since metadata
+                -- is unique per supplier, and it stands in for "what the primary
+                -- origin says" everywhere the old view used po.id directly
+                LEFT JOIN \(MetadataRecord.databaseTableName) pm
+                    ON pm.\(MetadataRecord.Columns.originId.name) = po.id
 
-            -- matched on id, so a pin left over from a deleted metadata row falls
-            -- back to the primary origin rather than dropping the series
-            LEFT JOIN \(MetadataRecord.databaseTableName) mc
-                ON mc.id = COALESCE(
-                    m.\(SeriesRecord.Columns.preferredClassificationId.name),
-                    pm.id
-                )
+                -- matched on id, so a pin left over from a deleted metadata row falls
+                -- back to the primary origin rather than dropping the series
+                LEFT JOIN \(MetadataRecord.databaseTableName) mc
+                    ON mc.id = COALESCE(
+                        m.\(SeriesRecord.Columns.preferredClassificationId.name),
+                        pm.id
+                    )
 
-            LEFT JOIN \(MetadataRecord.databaseTableName) mp
-                ON mp.id = COALESCE(
-                    m.\(SeriesRecord.Columns.preferredPublicationId.name),
-                    pm.id
-                )
+                LEFT JOIN \(MetadataRecord.databaseTableName) mp
+                    ON mp.id = COALESCE(
+                        m.\(SeriesRecord.Columns.preferredPublicationId.name),
+                        pm.id
+                    )
 
-            -- the displayed cover: the user's pick, else the primary origin's
-            -- first, else any
-            LEFT JOIN \(CoverRecord.databaseTableName) pc
-                ON pc.id = COALESCE(
-                    m.\(SeriesRecord.Columns.preferredCoverId.name),
-                    (SELECT c.id FROM \(CoverRecord.databaseTableName) c
-                     WHERE c.seriesId = m.id AND c.\(CoverRecord.Columns.metadataId.name) = pm.id
-                     ORDER BY c.id ASC LIMIT 1),
-                    (SELECT c.id FROM \(CoverRecord.databaseTableName) c
-                     WHERE c.seriesId = m.id
-                     ORDER BY c.id ASC LIMIT 1)
-                )
-            """)
+                -- the displayed cover: the user's pick, else the primary origin's
+                -- first, else any
+                LEFT JOIN \(CoverRecord.databaseTableName) pc
+                    ON pc.id = COALESCE(
+                        m.\(SeriesRecord.Columns.preferredCoverId.name),
+                        (SELECT c.id FROM \(CoverRecord.databaseTableName) c
+                         WHERE c.seriesId = m.id AND c.\(CoverRecord.Columns.metadataId.name) = pm.id
+                         ORDER BY c.id ASC LIMIT 1),
+                        (SELECT c.id FROM \(CoverRecord.databaseTableName) c
+                         WHERE c.seriesId = m.id
+                         ORDER BY c.id ASC LIMIT 1)
+                    )
+                """)
     }
 
     static func createIndexes(db: Database) throws {
@@ -190,7 +191,7 @@ extension EntryView {
             columns: [
                 CoverRecord.Columns.seriesId.name,
                 CoverRecord.Columns.metadataId.name,
-                CoverRecord.Columns.id.name
+                CoverRecord.Columns.id.name,
             ],
             ifNotExists: true
         )
@@ -202,7 +203,7 @@ extension EntryView {
             columns: [
                 TitleRecord.Columns.seriesId.name,
                 TitleRecord.Columns.metadataId.name,
-                TitleRecord.Columns.id.name
+                TitleRecord.Columns.id.name,
             ],
             ifNotExists: true
         )
@@ -215,7 +216,7 @@ extension EntryView {
                 OriginRecord.Columns.seriesId.name,
                 OriginRecord.Columns.priority.name,
                 OriginRecord.Columns.sourceId.name,
-                OriginRecord.Columns.slug.name
+                OriginRecord.Columns.slug.name,
             ],
             ifNotExists: true
         )

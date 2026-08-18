@@ -20,7 +20,7 @@ enum ReadingStreak {
 
         if !days.contains(date.localDayKey) {
             guard let yesterday = calendar.date(byAdding: .day, value: -1, to: date),
-                  days.contains(yesterday.localDayKey)
+                days.contains(yesterday.localDayKey)
             else { return 0 }
             date = yesterday
         }
@@ -44,8 +44,9 @@ enum ReadingStreak {
 
         for date in dates {
             if let previous,
-               let expected = calendar.date(byAdding: .day, value: 1, to: previous),
-               calendar.isDate(expected, inSameDayAs: date) {
+                let expected = calendar.date(byAdding: .day, value: 1, to: previous),
+                calendar.isDate(expected, inSameDayAs: date)
+            {
                 run += 1
             } else {
                 run = 1
@@ -57,10 +58,11 @@ enum ReadingStreak {
     }
 
     static func date(from key: Int) -> Date? {
-        Calendar.current.date(from: DateComponents(
-            year: key / 10_000,
-            month: (key / 100) % 100,
-            day: key % 100
-        ))
+        Calendar.current.date(
+            from: DateComponents(
+                year: key / 10_000,
+                month: (key / 100) % 100,
+                day: key % 100
+            ))
     }
 }

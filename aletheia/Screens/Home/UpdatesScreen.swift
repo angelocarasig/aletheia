@@ -22,7 +22,8 @@ struct UpdatesScreen: View {
     @State private var reading: ReadingTarget?
     @State private var route: SeriesEntry?
 
-    @AppStorage(Preferences.Key.blurAdultHome) private var blurAdult = Preferences.Default.blurAdultHome
+    @AppStorage(Preferences.Key.blurAdultHome) private var blurAdult = Preferences.Default
+        .blurAdultHome
 
     init(vm: UpdatesViewModel? = nil) {
         _vm = State(initialValue: vm)
@@ -38,10 +39,15 @@ struct UpdatesScreen: View {
 
     private var phase: LoadPhase {
         if let vm {
-            if vm.failure != nil { .failed }
-            else if vm.entries == nil { .pending }
-            else if vm.isEmpty { .empty }
-            else { .content }
+            if vm.failure != nil {
+                .failed
+            } else if vm.entries == nil {
+                .pending
+            } else if vm.isEmpty {
+                .empty
+            } else {
+                .content
+            }
         } else {
             .pending
         }
@@ -103,8 +109,8 @@ struct UpdatesScreen: View {
 
 // MARK: - Content
 
-private extension UpdatesScreen {
-    func Content(_ entries: [HomeViewModel.UpdateEntry]) -> some View {
+extension UpdatesScreen {
+    fileprivate func Content(_ entries: [HomeViewModel.UpdateEntry]) -> some View {
         ScrollView {
             GlassEffectContainer(spacing: dimensions.spacing.space12) {
                 VStack(spacing: dimensions.spacing.space12) {
@@ -125,9 +131,12 @@ private extension UpdatesScreen {
                         }
                         .contextMenu {
                             Button {
-                                reading = ReadingTarget(seriesId: entry.id, chapterId: entry.target.chapterId)
+                                reading = ReadingTarget(
+                                    seriesId: entry.id, chapterId: entry.target.chapterId)
                             } label: {
-                                Label("Read \(ReadingFormat.chapter(entry.target.number))", systemImage: "book.pages")
+                                Label(
+                                    "Read \(ReadingFormat.chapter(entry.target.number))",
+                                    systemImage: "book.pages")
                             }
                         }
                     }
@@ -145,39 +154,41 @@ private extension UpdatesScreen {
 // MARK: - Previews
 
 #if DEBUG
-private enum Mock {
-    static let titles = ["Blue Lock", "The Exiled Heavy Knight Knows How to Game the System", "Mia is back"]
-    static let counts = [213, 163, 44]
+    private enum Mock {
+        static let titles = [
+            "Blue Lock", "The Exiled Heavy Knight Knows How to Game the System", "Mia is back",
+        ]
+        static let counts = [213, 163, 44]
 
-    static func entry(_ index: Int) -> HomeViewModel.UpdateEntry {
-        let id = SeriesRecord.ID(rawValue: Int64(index + 1))
-        let latest: Date = .now.addingTimeInterval(TimeInterval(-3_600 * (index + 1)))
+        static func entry(_ index: Int) -> HomeViewModel.UpdateEntry {
+            let id = SeriesRecord.ID(rawValue: Int64(index + 1))
+            let latest: Date = .now.addingTimeInterval(TimeInterval(-3_600 * (index + 1)))
 
-        return HomeViewModel.UpdateEntry(
-            id: id,
-            title: titles[index % titles.count],
-            cover: nil,
-            count: counts[index % counts.count],
-            latest: latest,
-            target: .start(chapterId: ChapterRecord.ID(rawValue: Int64(index + 1)), number: 1),
-            adult: false
-        )
+            return HomeViewModel.UpdateEntry(
+                id: id,
+                title: titles[index % titles.count],
+                cover: nil,
+                count: counts[index % counts.count],
+                latest: latest,
+                target: .start(chapterId: ChapterRecord.ID(rawValue: Int64(index + 1)), number: 1),
+                adult: false
+            )
+        }
+
+        static func entries(_ count: Int) -> [HomeViewModel.UpdateEntry] {
+            (0..<count).map(entry)
+        }
     }
 
-    static func entries(_ count: Int) -> [HomeViewModel.UpdateEntry] {
-        (0..<count).map(entry)
+    #Preview("Populated") {
+        NavigationStack {
+            UpdatesScreen(vm: .preview(entries: Mock.entries(9)))
+        }
     }
-}
 
-#Preview("Populated") {
-    NavigationStack {
-        UpdatesScreen(vm: .preview(entries: Mock.entries(9)))
+    #Preview("Empty") {
+        NavigationStack {
+            UpdatesScreen(vm: .preview(entries: []))
+        }
     }
-}
-
-#Preview("Empty") {
-    NavigationStack {
-        UpdatesScreen(vm: .preview(entries: []))
-    }
-}
 #endif

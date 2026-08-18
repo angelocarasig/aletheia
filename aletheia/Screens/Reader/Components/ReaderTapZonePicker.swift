@@ -52,8 +52,8 @@ struct ReaderTapZonePicker: View {
 
 // MARK: - Content
 
-private extension ReaderTapZonePicker {
-    var Content: some View {
+extension ReaderTapZonePicker {
+    fileprivate var Content: some View {
         ScrollView {
             LazyVStack(spacing: Layout.rowSpacing) {
                 FlipRow
@@ -71,7 +71,7 @@ private extension ReaderTapZonePicker {
         .animation(.settle, value: reversed)
     }
 
-    func Row(_ option: ReaderTapZones.Layout) -> some View {
+    fileprivate func Row(_ option: ReaderTapZones.Layout) -> some View {
         HStack(spacing: dimensions.spacing.space12) {
             // drawn by the same view as the full-screen flash, so a row can
             // never describe a layout the reader does not actually use
@@ -102,7 +102,7 @@ private extension ReaderTapZonePicker {
         .tappable { onSelect(option) }
     }
 
-    var FlipRow: some View {
+    fileprivate var FlipRow: some View {
         Toggle(isOn: Binding(get: { reversed }, set: onReverse)) {
             VStack(alignment: .leading, spacing: dimensions.spacing.space2) {
                 Text("Flip Sides")
@@ -124,7 +124,7 @@ private extension ReaderTapZonePicker {
         }
     }
 
-    var Check: some View {
+    fileprivate var Check: some View {
         Image(systemName: "checkmark")
             .font(.subheadline)
             .fontWeight(.semibold)
@@ -132,7 +132,7 @@ private extension ReaderTapZonePicker {
     }
 
     @ViewBuilder
-    func Highlight(_ shown: Bool) -> some View {
+    fileprivate func Highlight(_ shown: Bool) -> some View {
         if shown {
             RoundedRectangle(cornerRadius: dimensions.radius.radius16)
                 .fill(Palette.brand.opacity(Layout.currentOpacity))
@@ -142,14 +142,14 @@ private extension ReaderTapZonePicker {
 
 // MARK: - Copy
 
-private extension ReaderTapZonePicker {
-    var subtitle: Text {
+extension ReaderTapZonePicker {
+    fileprivate var subtitle: Text {
         Text("Saved across all your series")
     }
 
     // a right-to-left series mirrors the zones on its own, so the toggle is
     // already on when the sheet opens and saying nothing would read as a bug
-    var flipSummary: String {
+    fileprivate var flipSummary: String {
         guard isRightToLeft else { return "Swap the back and forward zones." }
         return "This series reads right to left, so the zones are mirrored already."
     }

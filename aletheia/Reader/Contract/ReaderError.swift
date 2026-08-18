@@ -20,8 +20,8 @@ enum ReaderError: Error, Equatable, Sendable {
 extension ReaderError {
     var chapter: ReaderChapter.ID {
         switch self {
-        case let .notFound(id), let .noPages(id), let .unavailable(id),
-             let .fetchFailed(id, _), let .offline(id):
+        case .notFound(let id), .noPages(let id), .unavailable(let id),
+            .fetchFailed(let id, _), .offline(let id):
             id
         }
     }
@@ -54,7 +54,7 @@ extension ReaderError: DescribableError {
             "The source returned no pages for this chapter."
         case .unavailable:
             "The source this chapter came from has been removed or disabled. Downloaded chapters still open."
-        case let .fetchFailed(_, reason):
+        case .fetchFailed(_, let reason):
             reason
         case .offline:
             "Connect to the internet to keep reading, or open a downloaded chapter."

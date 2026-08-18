@@ -75,7 +75,8 @@ enum ReadingBuckets {
         guard let dayStart = calendar.dateInterval(of: .day, for: day)?.start else { return [] }
 
         let starts = (0..<24).compactMap { calendar.date(byAdding: .hour, value: $0, to: dayStart) }
-        return distribute(sessions, into: starts, next: { calendar.date(byAdding: .hour, value: 1, to: $0) })
+        return distribute(
+            sessions, into: starts, next: { calendar.date(byAdding: .hour, value: 1, to: $0) })
     }
 
     static func daily(
@@ -83,10 +84,13 @@ enum ReadingBuckets {
         weekOf day: Date,
         calendar: Calendar = .current
     ) -> [Bucket] {
-        guard let weekStart = calendar.dateInterval(of: .weekOfYear, for: day)?.start else { return [] }
+        guard let weekStart = calendar.dateInterval(of: .weekOfYear, for: day)?.start else {
+            return []
+        }
 
         let starts = (0..<7).compactMap { calendar.date(byAdding: .day, value: $0, to: weekStart) }
-        return distribute(sessions, into: starts, next: { calendar.date(byAdding: .day, value: 1, to: $0) })
+        return distribute(
+            sessions, into: starts, next: { calendar.date(byAdding: .day, value: 1, to: $0) })
     }
 
     // the average ACTIVE bucket across everything handed in, at the same
@@ -112,7 +116,9 @@ enum ReadingBuckets {
             guard amount > 0 else { continue }
 
             guard span > 0 else {
-                if let start = calendar.dateInterval(of: granularity, for: session.startedDate)?.start {
+                if let start = calendar.dateInterval(of: granularity, for: session.startedDate)?
+                    .start
+                {
                     totals[start, default: 0] += amount
                 }
                 continue
@@ -120,8 +126,11 @@ enum ReadingBuckets {
 
             var cursor = session.startedDate
             while cursor < session.endedDate {
-                guard let interval = calendar.dateInterval(of: granularity, for: cursor) else { break }
-                let overlap = min(session.endedDate, interval.end).timeIntervalSince(max(session.startedDate, interval.start))
+                guard let interval = calendar.dateInterval(of: granularity, for: cursor) else {
+                    break
+                }
+                let overlap = min(session.endedDate, interval.end).timeIntervalSince(
+                    max(session.startedDate, interval.start))
                 if overlap > 0 { totals[interval.start, default: 0] += amount * overlap / span }
                 cursor = interval.end
             }
@@ -144,7 +153,9 @@ enum ReadingBuckets {
         of granularity: Calendar.Component,
         calendar: Calendar = .current
     ) -> [ReadingSessionEntry] {
-        guard let interval = calendar.dateInterval(of: granularity, for: bucket.start) else { return [] }
+        guard let interval = calendar.dateInterval(of: granularity, for: bucket.start) else {
+            return []
+        }
 
         return sessions.filter { session in
             guard session.endedDate > session.startedDate else {
@@ -195,88 +206,96 @@ enum ReadingBuckets {
         }
 
         return starts.indices.map {
-            Bucket(start: starts[$0], pages: pages[$0], chapters: chapters[$0], seconds: seconds[$0])
+            Bucket(
+                start: starts[$0], pages: pages[$0], chapters: chapters[$0], seconds: seconds[$0])
         }
     }
 }
 
 #if DEBUG
-extension ReadingBuckets {
-    // the boundary cases the interval maths exists for. run from a preview or a
-    // scratch target; assertions rather than a test file, since the project has
-    // no test target
-    static func check() {
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+    extension ReadingBuckets {
+        // the boundary cases the interval maths exists for. run from a preview or a
+        // scratch target; assertions rather than a test file, since the project has
+        // no test target
+        static func check() {
+            var calendar = Calendar(identifier: .gregorian)
+            calendar.timeZone = TimeZone(secondsFromGMT: 0)!
 
-        func session(from: Date, to: Date, pages: Int) -> ReadingSessionEntry {
-            ReadingSessionEntry(
-                id: 1,
-                seriesId: 1,
-                seriesTitle: "",
-                pagesRead: pages,
-                chaptersRead: 0,
-                startedDate: from,
-                endedDate: to,
-                localDayKey: to.localDayKey,
-                alive: true,
+            func session(from: Date, to: Date, pages: Int) -> ReadingSessionEntry {
+                ReadingSessionEntry(
+                    id: 1,
+                    seriesId: 1,
+                    seriesTitle: "",
+                    pagesRead: pages,
+                    chaptersRead: 0,
+                    startedDate: from,
+                    endedDate: to,
+                    localDayKey: to.localDayKey,
+                    alive: true,
                     cover: nil,
                     path: nil
+                )
+            }
+
+            let midnight = calendar.date(from: DateComponents(year: 2026, month: 8, day: 10))!
+            let straddle = session(
+                from: midnight.addingTimeInterval(-1_800),
+                to: midnight.addingTimeInterval(1_800),
+                pages: 40
             )
+
+            // half the sitting fell before midnight, so half the pages did too -
+            // the stored localDayKey would have filed all forty on the tenth
+            let hours = hourly([straddle], on: midnight, calendar: calendar)
+            assert(hours.count == 24)
+            assert(
+                hours[0].pages == 20,
+                "expected half of a midnight straddle in hour 0, got \(hours[0].pages)")
+            assert(hours[1...].allSatisfy { $0.pages == 0 })
+
+            // an instantaneous sitting divides by no span and still lands somewhere
+            let instant = midnight.addingTimeInterval(3_600 * 9)
+            let zero = hourly(
+                [session(from: instant, to: instant, pages: 12)], on: midnight, calendar: calendar)
+            assert(zero[9].pages == 12, "expected an instant sitting whole in its own hour")
+            assert(
+                zero.reduce(0) { $0 + $1.pages } == 12,
+                "an instant sitting must not be counted twice")
+
+            // the straddle built two bars, so both have to be able to name it - and
+            // a bucket it never touched must not
+            let before = hourly(
+                [straddle], on: midnight.addingTimeInterval(-3_600), calendar: calendar)
+            assert(sittings([straddle], in: hours[0], of: .hour, calendar: calendar).count == 1)
+            assert(
+                sittings([straddle], in: before[23], of: .hour, calendar: calendar).count == 1,
+                "a sitting crossing midnight must appear under the hour it started in")
+            assert(sittings([straddle], in: hours[5], of: .hour, calendar: calendar).isEmpty)
+
+            // a sitting ending exactly on a boundary belongs to the bucket it was
+            // in, not the one it stopped at
+            let upTo = session(from: midnight, to: midnight.addingTimeInterval(3_600), pages: 5)
+            assert(sittings([upTo], in: hours[0], of: .hour, calendar: calendar).count == 1)
+            assert(sittings([upTo], in: hours[1], of: .hour, calendar: calendar).isEmpty)
+
+            // a week bucket set is seven long and conserves what it was given
+            let week = daily([straddle], weekOf: midnight, calendar: calendar)
+            assert(week.count == 7)
+            assert(week.reduce(0) { $0 + $1.pages } <= 40)
+
+            AppLog.shared.log("reading buckets ok", level: .debug, category: "stats")
         }
-
-        let midnight = calendar.date(from: DateComponents(year: 2026, month: 8, day: 10))!
-        let straddle = session(
-            from: midnight.addingTimeInterval(-1_800),
-            to: midnight.addingTimeInterval(1_800),
-            pages: 40
-        )
-
-        // half the sitting fell before midnight, so half the pages did too -
-        // the stored localDayKey would have filed all forty on the tenth
-        let hours = hourly([straddle], on: midnight, calendar: calendar)
-        assert(hours.count == 24)
-        assert(hours[0].pages == 20, "expected half of a midnight straddle in hour 0, got \(hours[0].pages)")
-        assert(hours[1...].allSatisfy { $0.pages == 0 })
-
-        // an instantaneous sitting divides by no span and still lands somewhere
-        let instant = midnight.addingTimeInterval(3_600 * 9)
-        let zero = hourly([session(from: instant, to: instant, pages: 12)], on: midnight, calendar: calendar)
-        assert(zero[9].pages == 12, "expected an instant sitting whole in its own hour")
-        assert(zero.reduce(0) { $0 + $1.pages } == 12, "an instant sitting must not be counted twice")
-
-        // the straddle built two bars, so both have to be able to name it - and
-        // a bucket it never touched must not
-        let before = hourly([straddle], on: midnight.addingTimeInterval(-3_600), calendar: calendar)
-        assert(sittings([straddle], in: hours[0], of: .hour, calendar: calendar).count == 1)
-        assert(sittings([straddle], in: before[23], of: .hour, calendar: calendar).count == 1,
-               "a sitting crossing midnight must appear under the hour it started in")
-        assert(sittings([straddle], in: hours[5], of: .hour, calendar: calendar).isEmpty)
-
-        // a sitting ending exactly on a boundary belongs to the bucket it was
-        // in, not the one it stopped at
-        let upTo = session(from: midnight, to: midnight.addingTimeInterval(3_600), pages: 5)
-        assert(sittings([upTo], in: hours[0], of: .hour, calendar: calendar).count == 1)
-        assert(sittings([upTo], in: hours[1], of: .hour, calendar: calendar).isEmpty)
-
-        // a week bucket set is seven long and conserves what it was given
-        let week = daily([straddle], weekOf: midnight, calendar: calendar)
-        assert(week.count == 7)
-        assert(week.reduce(0) { $0 + $1.pages } <= 40)
-
-        AppLog.shared.log("reading buckets ok", level: .debug, category: "stats")
     }
-}
 
-// the interval maths is the one part of this feature that can be silently wrong
-// and look right, so it gets the check. run the preview: it traps on failure and
-// prints otherwise
-#Preview("Bucket check") {
-    let _ = ReadingBuckets.check()
+    // the interval maths is the one part of this feature that can be silently wrong
+    // and look right, so it gets the check. run the preview: it traps on failure and
+    // prints otherwise
+    #Preview("Bucket check") {
+        let _ = ReadingBuckets.check()
 
-    return Text("buckets ok")
-        .font(.headline)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(.canvas)
-}
+        return Text("buckets ok")
+            .font(.headline)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(.canvas)
+    }
 #endif

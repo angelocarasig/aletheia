@@ -27,7 +27,8 @@ extension StorableRecord {
     static func stored(in db: Database) throws -> Set<String> {
         let paths = try String.fetchAll(
             db,
-            sql: "SELECT \(pathColumn.name) FROM \(databaseTableName) WHERE \(pathColumn.name) IS NOT NULL"
+            sql:
+                "SELECT \(pathColumn.name) FROM \(databaseTableName) WHERE \(pathColumn.name) IS NOT NULL"
         )
         return Set(paths)
     }

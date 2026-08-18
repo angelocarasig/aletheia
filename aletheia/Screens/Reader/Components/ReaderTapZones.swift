@@ -68,25 +68,25 @@ enum ReaderTapZones {
                 [
                     Region(.previous, x: 0, y: 0, width: 0.28, height: 1),
                     Region(.menu, x: 0.28, y: 0, width: 0.44, height: 1),
-                    Region(.next, x: 0.72, y: 0, width: 0.28, height: 1)
+                    Region(.next, x: 0.72, y: 0, width: 0.28, height: 1),
                 ]
             case .edgeThin:
                 [
                     Region(.previous, x: 0, y: 0, width: 0.14, height: 1),
                     Region(.menu, x: 0.14, y: 0, width: 0.72, height: 1),
-                    Region(.next, x: 0.86, y: 0, width: 0.14, height: 1)
+                    Region(.next, x: 0.86, y: 0, width: 0.14, height: 1),
                 ]
             case .kindle:
                 [
                     Region(.menu, x: 0, y: 0, width: 1, height: 0.3),
                     Region(.previous, x: 0, y: 0.3, width: 0.25, height: 0.7),
-                    Region(.next, x: 0.25, y: 0.3, width: 0.75, height: 0.7)
+                    Region(.next, x: 0.25, y: 0.3, width: 0.75, height: 0.7),
                 ]
             case .vertical:
                 [
                     Region(.previous, x: 0, y: 0, width: 1, height: 0.28),
                     Region(.menu, x: 0, y: 0.28, width: 1, height: 0.44),
-                    Region(.next, x: 0, y: 0.72, width: 1, height: 0.28)
+                    Region(.next, x: 0, y: 0.72, width: 1, height: 0.28),
                 ]
             case .corners:
                 [
@@ -94,7 +94,7 @@ enum ReaderTapZones {
                     Region(.previous, x: 0.22, y: 0.78, width: 0.56, height: 0.22),
                     Region(.next, x: 0.78, y: 0, width: 0.22, height: 1),
                     Region(.next, x: 0.22, y: 0, width: 0.56, height: 0.22),
-                    Region(.menu, x: 0.22, y: 0.22, width: 0.56, height: 0.56)
+                    Region(.menu, x: 0.22, y: 0.22, width: 0.56, height: 0.56),
                 ]
             case .reverseCorners:
                 [
@@ -102,7 +102,7 @@ enum ReaderTapZones {
                     Region(.previous, x: 0.22, y: 0, width: 0.56, height: 0.22),
                     Region(.next, x: 0.78, y: 0, width: 0.22, height: 1),
                     Region(.next, x: 0.22, y: 0.78, width: 0.56, height: 0.22),
-                    Region(.menu, x: 0.22, y: 0.22, width: 0.56, height: 0.56)
+                    Region(.menu, x: 0.22, y: 0.22, width: 0.56, height: 0.56),
                 ]
             }
         }

@@ -29,7 +29,7 @@ enum ChapterRevalidation: Sendable {
     var summary: String {
         switch self {
         case .unchanged: "reported no change"
-        case let .changed(entries): "fetched \(entries.count) chapter(s)"
+        case .changed(let entries): "fetched \(entries.count) chapter(s)"
         }
     }
 }

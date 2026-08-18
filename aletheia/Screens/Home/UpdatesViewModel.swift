@@ -7,8 +7,8 @@
 
 import Foundation
 import GRDB
-import Tagged
 import Observation
+import Tagged
 
 // the whole updates feed, where Home carries three rows of it. one query, the
 // same one, at a different limit - two feeds that could disagree about what
@@ -45,7 +45,8 @@ final class UpdatesViewModel {
         let adultSlugs = AdultGate.slugs(in: registry)
 
         stream = Task { [weak self, database] in
-            let observation = ValueObservation
+            let observation =
+                ValueObservation
                 .tracking { db in
                     let excluded = try AdultGate.excluded(slugs: adultSlugs, in: db)
                     return try HomeViewModel.updating(excluded: excluded, limit: Rule.limit, in: db)
@@ -61,7 +62,8 @@ final class UpdatesViewModel {
             } catch {
                 guard let self else { return }
                 self.failure = Failure(error, fallback: "Couldn't Load Updates")
-                AppLog.shared.log("updates observation failed - \(error)", level: .error, category: "home")
+                AppLog.shared.log(
+                    "updates observation failed - \(error)", level: .error, category: "home")
             }
         }
     }
@@ -89,21 +91,22 @@ final class UpdatesViewModel {
 // MARK: - Preview
 
 #if DEBUG
-extension UpdatesViewModel {
-    static func preview(
-        entries: [HomeViewModel.UpdateEntry]? = nil,
-        failure: Failure? = nil
-    ) -> UpdatesViewModel {
-        let database = DatabaseClient.preview
-        let registry = Compositor.Registry(sources: [], database: database)
-        let model = UpdatesViewModel(
-            database: database,
-            assets: Compositor.Assets(database: database, registry: registry, network: NetworkService()),
-            registry: registry
-        )
-        model.entries = entries
-        model.failure = failure
-        return model
+    extension UpdatesViewModel {
+        static func preview(
+            entries: [HomeViewModel.UpdateEntry]? = nil,
+            failure: Failure? = nil
+        ) -> UpdatesViewModel {
+            let database = DatabaseClient.preview
+            let registry = Compositor.Registry(sources: [], database: database)
+            let model = UpdatesViewModel(
+                database: database,
+                assets: Compositor.Assets(
+                    database: database, registry: registry, network: NetworkService()),
+                registry: registry
+            )
+            model.entries = entries
+            model.failure = failure
+            return model
+        }
     }
-}
 #endif

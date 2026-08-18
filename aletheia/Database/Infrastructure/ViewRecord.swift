@@ -47,13 +47,15 @@ extension ViewRecord {
     static func rebuild(db: Database) throws {
         for tableDep in dependsOn {
             guard try db.tableExists(tableDep.databaseTableName) else {
-                throw ViewError.missingTableDependency(view: databaseTableName, table: tableDep.databaseTableName)
+                throw ViewError.missingTableDependency(
+                    view: databaseTableName, table: tableDep.databaseTableName)
             }
         }
 
         for viewDep in dependsOnViews {
             guard try viewDep.exists(in: db) else {
-                throw ViewError.missingViewDependency(view: databaseTableName, dependency: viewDep.databaseTableName)
+                throw ViewError.missingViewDependency(
+                    view: databaseTableName, dependency: viewDep.databaseTableName)
             }
         }
 

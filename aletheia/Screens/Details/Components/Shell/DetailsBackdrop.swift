@@ -5,8 +5,8 @@
 //  Created by Angelo Carasig on 6/8/2026.
 //
 
-import SwiftUI
 import Kingfisher
+import SwiftUI
 
 // its own reference type so only the backdrop observes it - held as state beside
 // the scroll view, every update would re-evaluate a body holding every chapter
@@ -72,7 +72,8 @@ struct DetailsBackdrop: View {
     // downsampled first - kingfisher blurs on the CPU at full pixel size, a real
     // hitch on a 6MP cover for detail this radius discards anyway
     private static let softened: any ImageProcessor =
-        DownsamplingImageProcessor(size: Layout.sample) |> BlurImageProcessor(blurRadius: Layout.radius)
+        DownsamplingImageProcessor(size: Layout.sample)
+        |> BlurImageProcessor(blurRadius: Layout.radius)
 
     private var progress: Double {
         min(max(scroll.offset / blurDistance, 0), 1)

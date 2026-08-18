@@ -79,15 +79,13 @@ struct LanguageOrder: View {
 
 // MARK: - Content
 
-private extension LanguageOrder {
-    var phase: LoadPhase {
-        if !working.isEmpty { .content }
-        else if isLoading { .pending }
-        else { .empty }
+extension LanguageOrder {
+    fileprivate var phase: LoadPhase {
+        if !working.isEmpty { .content } else if isLoading { .pending } else { .empty }
     }
 
     @ViewBuilder
-    var Content: some View {
+    fileprivate var Content: some View {
         if working.isEmpty, isLoading {
             SheetSkeleton(rows: 4)
                 .transition(.opacity)
@@ -115,7 +113,7 @@ private extension LanguageOrder {
         }
     }
 
-    func Row(_ language: Language) -> some View {
+    fileprivate func Row(_ language: Language) -> some View {
         HStack(spacing: dimensions.spacing.space12) {
             Text(language.flag)
                 .font(.title3)

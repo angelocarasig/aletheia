@@ -46,7 +46,7 @@ enum TrackerError: DescribableError, Equatable {
         case .reauthenticationRequired: "Sign in again to keep tracking"
         case .throttled: "Too many requests"
         case .cancelled: "Cancelled"
-        case let .rejected(reason): reason
+        case .rejected(let reason): reason
         case .notFound: "Entry not found"
         case .unavailable: "The service isn't responding"
         }
@@ -58,11 +58,13 @@ enum TrackerError: DescribableError, Equatable {
         case .signedOut: "Connect an account to sync your progress."
         // routine on anilist, whose token simply runs out after a year, and rare
         // on myanimelist. the reader does not care which, so neither says
-        case .reauthenticationRequired: "Your connection has run out. Sign in again to carry on syncing."
+        case .reauthenticationRequired:
+            "Your connection has run out. Sign in again to carry on syncing."
         case .throttled: "The service asked us to slow down. This will retry on its own."
         case .cancelled: nil
         case .rejected: "The service refused the change."
-        case .notFound: "The service no longer lists this entry. It may have been merged or removed."
+        case .notFound:
+            "The service no longer lists this entry. It may have been merged or removed."
         case .unavailable: "It may be down or unreachable. This will retry on its own."
         }
     }

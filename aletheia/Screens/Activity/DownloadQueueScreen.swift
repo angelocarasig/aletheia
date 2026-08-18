@@ -30,7 +30,8 @@ struct DownloadQueueScreen: View {
                 ContentUnavailableView(
                     "Queue Is Empty",
                     systemImage: "arrow.down.circle",
-                    description: Text("Chapters you download will appear here while they're being saved.")
+                    description: Text(
+                        "Chapters you download will appear here while they're being saved.")
                 )
             } else {
                 ScrollView {
@@ -63,11 +64,11 @@ struct DownloadQueueScreen: View {
 
 // MARK: - Rows
 
-private extension DownloadQueueScreen {
+extension DownloadQueueScreen {
     // the coarse counters rather than a fold over every item: reducing `order`
     // to sum progress reads every download's pages and puts this view back on
     // the ten-times-a-second path the per-item split exists to avoid
-    var Summary: some View {
+    fileprivate var Summary: some View {
         let completed = downloads.completed
         let total = downloads.total
 
@@ -87,12 +88,14 @@ private extension DownloadQueueScreen {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(dimensions.spacing.space12)
-        .background(.primary.opacity(Layout.fillOpacity), in: .rect(cornerRadius: dimensions.radius.radius12))
+        .background(
+            .primary.opacity(Layout.fillOpacity),
+            in: .rect(cornerRadius: dimensions.radius.radius12))
     }
 
     // every read below is on this download's own instance, so a page landing
     // here re-evaluates this row and nothing else
-    func Row(_ download: Download) -> some View {
+    fileprivate func Row(_ download: Download) -> some View {
         HStack(spacing: dimensions.spacing.space12) {
             VStack(alignment: .leading, spacing: dimensions.spacing.space4) {
                 Text(download.series)
@@ -120,11 +123,13 @@ private extension DownloadQueueScreen {
             .accessibilityLabel("Remove from queue")
         }
         .padding(dimensions.spacing.space12)
-        .background(.primary.opacity(Layout.fillOpacity), in: .rect(cornerRadius: dimensions.radius.radius12))
+        .background(
+            .primary.opacity(Layout.fillOpacity),
+            in: .rect(cornerRadius: dimensions.radius.radius12))
     }
 
     @ViewBuilder
-    func Status(_ download: Download) -> some View {
+    fileprivate func Status(_ download: Download) -> some View {
         switch download.state {
         case .queued:
             Text("Waiting")
@@ -162,7 +167,7 @@ private extension DownloadQueueScreen {
             }
             .padding(.top, dimensions.spacing.space2)
 
-        case let .failed(reason):
+        case .failed(let reason):
             Text(reason)
                 .font(.caption2)
                 .foregroundStyle(.danger)

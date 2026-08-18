@@ -71,12 +71,13 @@ struct Scorer: Sendable {
         yearUnknown = Int16(bundle.manifest.yearUnknown)
 
         guard let tags = bundle.manifest.files["tags.bin"],
-              let embed = bundle.manifest.files["embeddings.bin"],
-              let scale = tags.valueScale, let embedded = embed.valueScale,
-              let dims = embed.dims
+            let embed = bundle.manifest.files["embeddings.bin"],
+            let scale = tags.valueScale, let embedded = embed.valueScale,
+            let dims = embed.dims
         else {
-            throw RecommenderError.malformed(file: "manifest.json",
-                                             reason: "missing a value scale or dims")
+            throw RecommenderError.malformed(
+                file: "manifest.json",
+                reason: "missing a value scale or dims")
         }
         tagScale = Float(scale)
         embedScale = Float(embedded)
@@ -130,12 +131,15 @@ struct Scorer: Sendable {
             for i in 0..<n { score[i] /= used }
         }
 
-        let ranked = select(score: score, seed: seed, ceiling: ceiling, types: types, k: k,
-                            wTagEff: wTagEff, rawTag: rawTag, rawEmb: rawEmb, era: era)
+        let ranked = select(
+            score: score, seed: seed, ceiling: ceiling, types: types, k: k,
+            wTagEff: wTagEff, rawTag: rawTag, rawEmb: rawEmb, era: era)
 
-        return Result(applied: Applied(wTagEff: wTagEff, used: used,
-                                       embeddingRan: embeddingRan, eraRan: eraRan),
-                      ranked: ranked)
+        return Result(
+            applied: Applied(
+                wTagEff: wTagEff, used: used,
+                embeddingRan: embeddingRan, eraRan: eraRan),
+            ranked: ranked)
     }
 
     // the projected path: a payload that resolved to no catalogue row is scored
@@ -151,13 +155,16 @@ struct Scorer: Sendable {
         standardise(&score)
         // no seed row to exclude, and no register to match: a payload has neither,
         // so the guard is the caller's to apply if it knows better
-        let ranked = select(score: score, seed: -1, ceiling: ceiling, types: types, k: k,
-                            wTagEff: wTagEff, rawTag: rawTag,
-                            rawEmb: [Float](repeating: 0, count: n),
-                            era: [Float](repeating: 0, count: n))
-        return Result(applied: Applied(wTagEff: wTagEff, used: wTagEff,
-                                       embeddingRan: false, eraRan: false),
-                      ranked: ranked)
+        let ranked = select(
+            score: score, seed: -1, ceiling: ceiling, types: types, k: k,
+            wTagEff: wTagEff, rawTag: rawTag,
+            rawEmb: [Float](repeating: 0, count: n),
+            era: [Float](repeating: 0, count: n))
+        return Result(
+            applied: Applied(
+                wTagEff: wTagEff, used: wTagEff,
+                embeddingRan: false, eraRan: false),
+            ranked: ranked)
     }
 
     // a row's tag columns, for turning a result back into names
@@ -437,7 +444,8 @@ struct Scorer: Sendable {
             for i in values.indices { values[i] = 0 }
             return
         }
-        let m = Float(mean), s = Float(sd)
+        let m = Float(mean)
+        let s = Float(sd)
         for i in values.indices { values[i] = (values[i] - m) / s }
     }
 
@@ -447,8 +455,10 @@ struct Scorer: Sendable {
     // break parity: in a 200-seed sample 42 had an exact tie inside their top 20
     // and one had eight. so the order is total - score descending, then catalogue
     // id ascending - and the whole tie group is pulled in before it is applied
-    private func select(score: [Float], seed: Int, ceiling: Int, types: Set<Int>, k: Int,
-                        wTagEff: Float, rawTag: [Float], rawEmb: [Float], era: [Float]) -> [Ranked] {
+    private func select(
+        score: [Float], seed: Int, ceiling: Int, types: Set<Int>, k: Int,
+        wTagEff: Float, rawTag: [Float], rawEmb: [Float], era: [Float]
+    ) -> [Ranked] {
         // a projected query passes seed -1: there is no row to exclude and no
         // register to hold the results to, because a payload has neither
         let seedRegister: UInt8? = seed >= 0 ? (flags[seed] >> 5) & 0b11 : nil
@@ -505,12 +515,15 @@ struct Scorer: Sendable {
             // the era block is deliberately absent here. including it made a
             // title that merely shared the seed's publication year read as a 46%
             // content match
-            let confidence = denominator > 0
-                ? (wTagEff * max(rawTag[row], 0) + constants.wEmbed * max(rawEmb[row], 0)) / denominator
+            let confidence =
+                denominator > 0
+                ? (wTagEff * max(rawTag[row], 0) + constants.wEmbed * max(rawEmb[row], 0))
+                    / denominator
                 : 0
-            return Ranked(row: row, catalogId: ids[row], score: score[row],
-                          confidence: confidence, tag: rawTag[row],
-                          embedding: rawEmb[row], era: era[row])
+            return Ranked(
+                row: row, catalogId: ids[row], score: score[row],
+                confidence: confidence, tag: rawTag[row],
+                embedding: rawEmb[row], era: era[row])
         }
     }
 }

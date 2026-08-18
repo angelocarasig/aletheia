@@ -13,11 +13,14 @@ struct LibraryScreen: View {
     @Environment(\.dimensions) private var dimensions
     @Environment(\.compositor) private var compositor
 
-    @AppStorage(Preferences.Key.gridColumns) private var gridColumns = Preferences.Default.gridColumns
-    @AppStorage(Preferences.Key.blurAdultLibrary) private var blurAdult = Preferences.Default.blurAdultLibrary
+    @AppStorage(Preferences.Key.gridColumns) private var gridColumns = Preferences.Default
+        .gridColumns
+    @AppStorage(Preferences.Key.blurAdultLibrary) private var blurAdult = Preferences.Default
+        .blurAdultLibrary
     // read only to notice it changing: the gate itself is resolved inside load(),
     // and the ten-tap that flips it happens on another tab
-    @AppStorage(Preferences.Key.bypassAdultSources) private var bypassAdult = Preferences.Default.bypassAdultSources
+    @AppStorage(Preferences.Key.bypassAdultSources) private var bypassAdult = Preferences.Default
+        .bypassAdultSources
     @State private var vm: LibraryViewModel?
     @State private var showingCollectionForm = false
     @State private var showingSort = false
@@ -45,7 +48,8 @@ struct LibraryScreen: View {
                 VStack(spacing: dimensions.spacing.space16) {
                     if let vm {
                         Searchbar(
-                            searchText: Binding(get: { vm.searchText }, set: { vm.searchText = $0 }),
+                            searchText: Binding(
+                                get: { vm.searchText }, set: { vm.searchText = $0 }),
                             placeholder: "Search Your Library",
                             // the library is what you already own, so the wider
                             // set is every source. same query, one step out
@@ -180,11 +184,13 @@ struct LibraryScreen: View {
                 }
             }
             .task {
-                let vm = vm ?? LibraryViewModel(
-                    database: database,
-                    assets: compositor.assets,
-                    registry: compositor.registry
-                )
+                let vm =
+                    vm
+                    ?? LibraryViewModel(
+                        database: database,
+                        assets: compositor.assets,
+                        registry: compositor.registry
+                    )
                 self.vm = vm
                 await vm.load()
             }
@@ -212,7 +218,7 @@ struct LibraryScreen: View {
 
 // MARK: - Chrome
 
-private extension LibraryScreen {
+extension LibraryScreen {
     // dismiss-on-touch-outside, the way a menu behaves. two things it is not:
     //
     // it is not an .onTapGesture, which fires on RELEASE - so a finger that
@@ -224,7 +230,7 @@ private extension LibraryScreen {
     // and it is not tinted. a scrim that darkens says "this is modal, the thing
     // behind it is unavailable", and the panel is neither - it is a clear
     // catcher whose only job is to spend the first touch
-    var Dismisser: some View {
+    fileprivate var Dismisser: some View {
         Color.clear
             .contentShape(.rect)
             .gesture(
@@ -240,7 +246,7 @@ private extension LibraryScreen {
     }
 
     // the switcher animates its own mutation, so this stays a plain passthrough
-    func selection(_ vm: LibraryViewModel) -> Binding<CollectionRecord.ID?> {
+    fileprivate func selection(_ vm: LibraryViewModel) -> Binding<CollectionRecord.ID?> {
         Binding(
             get: { vm.selectedCollection },
             set: { vm.selectedCollection = $0 }
@@ -251,7 +257,7 @@ private extension LibraryScreen {
     // one of them is what makes this card redraw when a run moves a series from
     // queued to checking, and a ternary that never touches `queued` would leave
     // waiting cards blank until something else invalidated them
-    func activity(for id: SeriesRecord.ID) -> LibraryCard.Activity? {
+    fileprivate func activity(for id: SeriesRecord.ID) -> LibraryCard.Activity? {
         let refresh = compositor.refresh
         let checking = refresh.isChecking(series: id.rawValue)
         let queued = refresh.isQueued(series: id.rawValue)
@@ -260,25 +266,30 @@ private extension LibraryScreen {
         return queued ? .queued : nil
     }
 
-    func log(_ message: String) {
+    fileprivate func log(_ message: String) {
         AppLog.shared.log("TODO \(message)", level: .warning, category: "library")
     }
 }
 
 // MARK: - Content
 
-private extension LibraryScreen {
+extension LibraryScreen {
     // branch selector and animation key are one value - see
     // docs/features/loading-transitions.md
-    var phase: LoadPhase {
-        if vm?.failure != nil { .failed }
-        else if vm == nil || vm?.isLoading == true { .pending }
-        else if vm?.filtered.isEmpty == true { .empty }
-        else { .content }
+    fileprivate var phase: LoadPhase {
+        if vm?.failure != nil {
+            .failed
+        } else if vm == nil || vm?.isLoading == true {
+            .pending
+        } else if vm?.filtered.isEmpty == true {
+            .empty
+        } else {
+            .content
+        }
     }
 
     @ViewBuilder
-    var Content: some View {
+    fileprivate var Content: some View {
         switch phase {
         case .failed:
             if let vm, let failure = vm.failure {
@@ -302,7 +313,7 @@ private extension LibraryScreen {
     }
 
     @ViewBuilder
-    func Empty(_ vm: LibraryViewModel) -> some View {
+    fileprivate func Empty(_ vm: LibraryViewModel) -> some View {
         if vm.isFiltered {
             // distinct from an empty library: there is something to undo here
             ContentUnavailableView {
@@ -342,7 +353,7 @@ private extension LibraryScreen {
     }
 
     @ViewBuilder
-    func Grid(_ vm: LibraryViewModel) -> some View {
+    fileprivate func Grid(_ vm: LibraryViewModel) -> some View {
         let entries = vm.filtered
 
         if !entries.isEmpty {
@@ -368,7 +379,7 @@ private extension LibraryScreen {
         }
     }
 
-    func Failed(_ failure: Failure) -> some View {
+    fileprivate func Failed(_ failure: Failure) -> some View {
         ContentUnavailableView {
             Label(failure.title, systemImage: "exclamationmark.triangle")
         } description: {
@@ -384,7 +395,7 @@ private extension LibraryScreen {
     }
 
     // one sweep across the whole grid rather than per card
-    var Skeleton: some View {
+    fileprivate var Skeleton: some View {
         LazyVGrid(columns: columns, spacing: dimensions.spacing.space16) {
             ForEach(0..<Layout.placeholderCards, id: \.self) { _ in
                 LibraryCard()

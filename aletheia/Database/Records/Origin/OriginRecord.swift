@@ -13,7 +13,7 @@ struct OriginRecord: Codable, DatabaseRecord {
     typealias ID = Tagged<Self, Int64>
     private(set) var id: ID?
     private(set) var seriesId: SeriesRecord.ID
-    private(set) var sourceId: SourceRecord.ID? // mutate only via TableRecord.delete()
+    private(set) var sourceId: SourceRecord.ID?  // mutate only via TableRecord.delete()
 
     private(set) var slug: String
     private(set) var url: String
@@ -85,19 +85,27 @@ extension OriginRecord {
 
     static func createIndexes(db: Database) throws {
         // foreign key indexes
-        try db.create(index: "idx_origin_seriesId", on: databaseTableName, columns: [Columns.seriesId.name], ifNotExists: true)
-        try db.create(index: "idx_origin_sourceId", on: databaseTableName, columns: [Columns.sourceId.name], ifNotExists: true)
+        try db.create(
+            index: "idx_origin_seriesId", on: databaseTableName, columns: [Columns.seriesId.name],
+            ifNotExists: true)
+        try db.create(
+            index: "idx_origin_sourceId", on: databaseTableName, columns: [Columns.sourceId.name],
+            ifNotExists: true)
 
         // composite index for origin priority lookup
-        try db.create(index: "idx_origin_priority", on: databaseTableName, columns: [
-            Columns.seriesId.name,
-            Columns.priority.name
-        ], ifNotExists: true)
+        try db.create(
+            index: "idx_origin_priority", on: databaseTableName,
+            columns: [
+                Columns.seriesId.name,
+                Columns.priority.name,
+            ], ifNotExists: true)
 
         // a source's slug resolves to at most one origin. sourceId is nullable and
         // sqlite treats nulls as distinct, so disconnected origins never collide.
         // note: ifNotExists not supported with unique option - guard manually
-        if try !db.indexes(on: databaseTableName).contains(where: { $0.name == "idx_origin_sourceId_slug_unique" }) {
+        if try !db.indexes(on: databaseTableName).contains(where: {
+            $0.name == "idx_origin_sourceId_slug_unique"
+        }) {
             try db.create(
                 index: "idx_origin_sourceId_slug_unique",
                 on: databaseTableName,
@@ -110,10 +118,12 @@ extension OriginRecord {
         // the columns
 
         // covering index for origin lookups by series and source
-        try db.create(index: "idx_origin_seriesId_sourceId", on: databaseTableName, columns: [
-            Columns.seriesId.name,
-            Columns.sourceId.name
-        ], ifNotExists: true)
+        try db.create(
+            index: "idx_origin_seriesId_sourceId", on: databaseTableName,
+            columns: [
+                Columns.seriesId.name,
+                Columns.sourceId.name,
+            ], ifNotExists: true)
 
         // currently-failing origins are a handful out of everything, so the
         // aggregate reads a partial index rather than scanning the table

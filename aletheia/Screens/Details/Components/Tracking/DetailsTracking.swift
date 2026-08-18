@@ -5,8 +5,8 @@
 //  Created by Angelo Carasig on 10/8/2026.
 //
 
-import SwiftUI
 import Kingfisher
+import SwiftUI
 
 // what each connected service says about this series. one row per account, never
 // more than two, and the two never consult each other - a failure on one is not a
@@ -153,7 +153,7 @@ struct DetailsTracking: View {
         if let reconcile = reconcile {
             Group {
                 switch reconcile {
-                case let .pull(chapter):
+                case .pull(let chapter):
                     // branched rather than ternaried so each string stays a
                     // literal - a ternary with a String on either side erases
                     // inflection markup
@@ -176,7 +176,7 @@ struct DetailsTracking: View {
                             action: { confirming = reconcile }
                         )
                     }
-                case let .push(chapter):
+                case .push(let chapter):
                     // and this one writes to a public list
                     Banner(
                         "You're at chapter \(chapter) here",
@@ -205,7 +205,9 @@ struct DetailsTracking: View {
         // that write and the drain landing, a laggard reads as a disagreement
         // while the fix is already in the queue - and the banner would flip from
         // pull to push in front of the reader, offering the work it just did
-        let stale = links.filter { $0.behind(localProgress) && !$0.queued && !syncing.contains($0.tracker) }
+        let stale = links.filter {
+            $0.behind(localProgress) && !$0.queued && !syncing.contains($0.tracker)
+        }
         if !stale.isEmpty { return .push(localProgress) }
         return nil
     }
@@ -321,7 +323,7 @@ struct DetailsTracking: View {
             CoverFrame { EmptyView() }
                 .shimmer()
 
-        case let .found(candidate):
+        case .found(let candidate):
             CoverFrame {
                 if let cover = candidate.cover {
                     KFImage(cover)
@@ -434,7 +436,7 @@ struct DetailsTracking: View {
                         .shimmer()
                         .accessibilityLabel("Searching \(tracker.name)")
 
-                case let .found(candidate):
+                case .found(let candidate):
                     Text(facts(for: candidate))
 
                 case .unmatched:
@@ -524,7 +526,9 @@ struct DetailsTracking: View {
                 .contentShape(.circle)
                 .tappable { onRetry(link) }
                 .accessibilityLabel("Retry syncing to \(tracker.name)")
-        } else if case let .found(candidate)? = match(tracker, link: link), !syncing.contains(tracker) {
+        } else if case .found(let candidate)? = match(tracker, link: link),
+            !syncing.contains(tracker)
+        {
             // two circles where the row normally has one, in the same shape the
             // rest of the app uses for a lone control against the canvas. Link
             // commits what was found; the magnifying glass says it is not the
@@ -598,7 +602,7 @@ struct DetailsTracking: View {
 
     private func name(_ tracker: Tracker, link: Link?) -> String {
         if let link { return link.remoteTitle }
-        if case let .found(candidate)? = match(tracker, link: link) { return candidate.title }
+        if case .found(let candidate)? = match(tracker, link: link) { return candidate.title }
         return tracker.name
     }
 
@@ -632,8 +636,8 @@ extension DetailsTracking {
 
 // MARK: - Previews
 
-private extension DetailsTracking.Link {
-    static func sample(
+extension DetailsTracking.Link {
+    fileprivate static func sample(
         _ tracker: Tracker = .anilist,
         title: String = "Girlfriend, Girlfriend",
         status: Status? = .reading,
@@ -716,7 +720,9 @@ private struct TrackingPreview: View {
             )
 
             TrackingPreview(
-                links: [.sample(), .sample(.myAnimeList, status: .completed, progress: 120, score: 90)],
+                links: [
+                    .sample(), .sample(.myAnimeList, status: .completed, progress: 120, score: 90),
+                ],
                 localProgress: 120,
                 caption: "Both linked"
             )
@@ -832,10 +838,19 @@ private struct TrackingPreview: View {
         ("One linked", [.anilist, .myAnimeList], [.sample()], [], []),
         ("Pushing", [.anilist, .myAnimeList], [.sample()], [.anilist], []),
         ("Service is behind", [.anilist, .myAnimeList], [.sample(progress: 12)], [], []),
-        ("Finished on the service", [.anilist, .myAnimeList], [.sample(status: .completed, progress: 122)], [], []),
-        ("Sync failed - retry beside it", [.anilist, .myAnimeList], [.sample(failure: "You're offline.")], [], []),
-        ("Token run out - sign in beside it", [.anilist, .myAnimeList], [.sample()], [], [.anilist]),
-        ("Signed out, still linked", [.myAnimeList], [.sample()], [], [])
+        (
+            "Finished on the service", [.anilist, .myAnimeList],
+            [.sample(status: .completed, progress: 122)], [], []
+        ),
+        (
+            "Sync failed - retry beside it", [.anilist, .myAnimeList],
+            [.sample(failure: "You're offline.")], [], []
+        ),
+        (
+            "Token run out - sign in beside it", [.anilist, .myAnimeList], [.sample()], [],
+            [.anilist]
+        ),
+        ("Signed out, still linked", [.myAnimeList], [.sample()], [], []),
     ]
 
     let current = states[step % states.count]

@@ -35,10 +35,11 @@ enum Normalise {
         // combining class rather than a category test - this is exactly what
         // python's unicodedata.combining(c) reports, and it is what separates a
         // macron from the letter it sits on
-        let stripped = String(String.UnicodeScalarView(
-            decomposed.unicodeScalars.filter {
-                $0.properties.canonicalCombiningClass == .notReordered
-            }))
+        let stripped = String(
+            String.UnicodeScalarView(
+                decomposed.unicodeScalars.filter {
+                    $0.properties.canonicalCombiningClass == .notReordered
+                }))
 
         let folded = stripped.folding(options: .caseInsensitive, locale: nil)
 

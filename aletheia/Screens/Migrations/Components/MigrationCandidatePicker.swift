@@ -53,9 +53,7 @@ struct MigrationCandidatePicker: View {
     // surface that keys its swap on a different flag than the one it
     // branches on is how a transition goes dead or partial
     private var phase: LoadPhase {
-        if searching { .pending }
-        else if candidates.isEmpty { .empty }
-        else { .content }
+        if searching { .pending } else if candidates.isEmpty { .empty } else { .content }
     }
 
     var body: some View {
@@ -126,14 +124,17 @@ struct MigrationCandidatePicker: View {
     private func CandidateCard(_ candidate: MigrationCandidate) -> some View {
         let source = sourcesBySlug[candidate.sourceSlug]
 
-        return SourceCard(stub: candidate.stub, referer: source?.descriptor.referer, selected: candidate == selected)
-            .animation(.settle, value: candidate == selected)
-            .overlay(alignment: .topLeading) { SourceIcon(source) }
-            .contentShape(.rect)
-            .tappable {
-                onSelect(candidate)
-                dismiss()
-            }
+        return SourceCard(
+            stub: candidate.stub, referer: source?.descriptor.referer,
+            selected: candidate == selected
+        )
+        .animation(.settle, value: candidate == selected)
+        .overlay(alignment: .topLeading) { SourceIcon(source) }
+        .contentShape(.rect)
+        .tappable {
+            onSelect(candidate)
+            dismiss()
+        }
     }
 
     @ViewBuilder

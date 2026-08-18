@@ -103,9 +103,10 @@ final class PageProgressView: UIView {
         // UIKit needs a descriptor where SwiftUI takes `design: .rounded`
         // inline, and falls back to system if absent
         let base = UIFont.systemFont(ofSize: Layout.text, weight: .bold)
-        label.font = base.fontDescriptor.withDesign(.rounded).map {
-            UIFont(descriptor: $0, size: Layout.text)
-        } ?? base
+        label.font =
+            base.fontDescriptor.withDesign(.rounded).map {
+                UIFont(descriptor: $0, size: Layout.text)
+            } ?? base
         label.textColor = .label
         label.textAlignment = .center
         label.translatesAutoresizingMaskIntoConstraints = false
@@ -113,7 +114,7 @@ final class PageProgressView: UIView {
 
         NSLayoutConstraint.activate([
             label.centerXAnchor.constraint(equalTo: centerXAnchor),
-            label.centerYAnchor.constraint(equalTo: centerYAnchor)
+            label.centerYAnchor.constraint(equalTo: centerYAnchor),
         ])
     }
 

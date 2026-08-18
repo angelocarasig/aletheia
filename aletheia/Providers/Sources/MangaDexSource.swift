@@ -27,7 +27,8 @@ struct MangaDexSource: RevalidatingSource {
     let descriptor = SourceDescriptor(
         slug: "mangadex",
         name: "MangaDex",
-        description: "Read comics and manga online at MangaDex, with high quality images and support creators and translators!",
+        description:
+            "Read comics and manga online at MangaDex, with high quality images and support creators and translators!",
         icon: .mangaDex,
         languages: [.english, .japanese, .korean, .chinese],
         baseURL: URL(string: "https://mangadex.org")!,
@@ -40,7 +41,7 @@ struct MangaDexSource: RevalidatingSource {
                     .init(id: "safe", name: "Safe"),
                     .init(id: "suggestive", name: "Suggestive"),
                     .init(id: "erotica", name: "Erotica", sensitivity: .suggestive),
-                    .init(id: "pornographic", name: "Pornographic", sensitivity: .adult)
+                    .init(id: "pornographic", name: "Pornographic", sensitivity: .adult),
                 ],
                 canExclude: false
             ),
@@ -51,7 +52,7 @@ struct MangaDexSource: RevalidatingSource {
                     .init(id: "ongoing", name: "Ongoing"),
                     .init(id: "completed", name: "Completed"),
                     .init(id: "hiatus", name: "Hiatus"),
-                    .init(id: "cancelled", name: "Cancelled")
+                    .init(id: "cancelled", name: "Cancelled"),
                 ],
                 canExclude: false
             ),
@@ -62,7 +63,7 @@ struct MangaDexSource: RevalidatingSource {
                     .init(id: "shounen", name: "Shounen"),
                     .init(id: "shoujo", name: "Shoujo"),
                     .init(id: "seinen", name: "Seinen"),
-                    .init(id: "josei", name: "Josei")
+                    .init(id: "josei", name: "Josei"),
                 ],
                 canExclude: false
             ),
@@ -74,7 +75,7 @@ struct MangaDexSource: RevalidatingSource {
                     .init(id: "ja", name: "Japanese"),
                     .init(id: "ko", name: "Korean"),
                     .init(id: "zh", name: "Chinese"),
-                    .init(id: "en", name: "English")
+                    .init(id: "en", name: "English"),
                 ],
                 canExclude: false
             ),
@@ -111,7 +112,9 @@ struct MangaDexSource: RevalidatingSource {
                     .init(id: "aafb99c1-7f60-43fa-b75f-fc9502ce29c7", name: "Harem"),
                     .init(id: "33771934-028e-4cb3-8744-691e866a923e", name: "Historical"),
                     .init(id: "cdad7e68-1419-41dd-bdce-27753074a640", name: "Horror"),
-                    .init(id: "5bd0e105-4481-44ca-b6e7-7544da56b1a3", name: "Incest", sensitivity: .suggestive),
+                    .init(
+                        id: "5bd0e105-4481-44ca-b6e7-7544da56b1a3", name: "Incest",
+                        sensitivity: .suggestive),
                     .init(id: "ace04997-f6bd-436e-b261-779182193d3d", name: "Isekai"),
                     .init(id: "2d1f5d56-a1e5-4d0d-a961-2193588b08ec", name: "Loli"),
                     .init(id: "3e2b8dae-350e-4ab8-a8ce-016e844b9f0d", name: "Long Strip"),
@@ -141,7 +144,9 @@ struct MangaDexSource: RevalidatingSource {
                     .init(id: "caaa44eb-cd40-4177-b930-79d3ef2afe87", name: "School Life"),
                     .init(id: "256c8bd9-4904-4360-bf4f-508a76d67183", name: "Sci-Fi"),
                     .init(id: "891cf039-b895-47f0-9229-bef4c96eccd4", name: "Self-Published"),
-                    .init(id: "97893a4c-12af-4dac-b6be-0dffb353568e", name: "Sexual Violence", sensitivity: .suggestive),
+                    .init(
+                        id: "97893a4c-12af-4dac-b6be-0dffb353568e", name: "Sexual Violence",
+                        sensitivity: .suggestive),
                     .init(id: "ddefd648-5140-4e5f-ba18-4eca4071d19b", name: "Shota"),
                     .init(id: "e5301a23-ebd9-49dd-a0cb-2add944c7fe9", name: "Slice of Life"),
                     .init(id: "69964a64-2f90-4d33-beeb-f3ed2875eb4c", name: "Sports"),
@@ -158,10 +163,10 @@ struct MangaDexSource: RevalidatingSource {
                     .init(id: "8c86611e-fab7-4986-9dec-d1a2f44acdd5", name: "Virtual Reality"),
                     .init(id: "e197df38-d0e7-43b5-9b09-2842d0c326dd", name: "Web Comic"),
                     .init(id: "acc803a4-c95a-4c22-86fc-eb6b582d82a2", name: "Wuxia"),
-                    .init(id: "631ef465-9aba-4afb-b0fc-ea10efe274a8", name: "Zombies")
+                    .init(id: "631ef465-9aba-4afb-b0fc-ea10efe274a8", name: "Zombies"),
                 ],
                 canExclude: true
-            )
+            ),
         ],
         // direction is baked into each option id, the same as the other sources -
         // the api names its axes as order[key]=dir and this maps straight through
@@ -173,7 +178,7 @@ struct MangaDexSource: RevalidatingSource {
                 .init(id: "createdAt:desc", name: "Recently added"),
                 .init(id: "rating:desc", name: "Highest rated"),
                 .init(id: "year:desc", name: "Newest"),
-                .init(id: "title:asc", name: "Title (A-Z)")
+                .init(id: "title:asc", name: "Title (A-Z)"),
             ],
             defaultSort: "relevance:desc"
         )
@@ -181,14 +186,20 @@ struct MangaDexSource: RevalidatingSource {
 
     var presets: [SourcePreset] {
         [
-            .init(id: "popular", name: "Popular", subtitle: "Most followed on MangaDex", order: 0,
-                  sort: .init(optionID: "followedCount:desc")),
-            .init(id: "latest", name: "Latest Updates", subtitle: "Freshly uploaded chapters", order: 1,
-                  sort: .init(optionID: "latestUploadedChapter:desc")),
-            .init(id: "new", name: "New Releases", subtitle: "Recently added titles", order: 2,
-                  sort: .init(optionID: "createdAt:desc")),
-            .init(id: "top-rated", name: "Top Rated", subtitle: "Highest rated by the community", order: 3,
-                  sort: .init(optionID: "rating:desc"))
+            .init(
+                id: "popular", name: "Popular", subtitle: "Most followed on MangaDex", order: 0,
+                sort: .init(optionID: "followedCount:desc")),
+            .init(
+                id: "latest", name: "Latest Updates", subtitle: "Freshly uploaded chapters",
+                order: 1,
+                sort: .init(optionID: "latestUploadedChapter:desc")),
+            .init(
+                id: "new", name: "New Releases", subtitle: "Recently added titles", order: 2,
+                sort: .init(optionID: "createdAt:desc")),
+            .init(
+                id: "top-rated", name: "Top Rated", subtitle: "Highest rated by the community",
+                order: 3,
+                sort: .init(optionID: "rating:desc")),
         ]
     }
 }
@@ -202,7 +213,7 @@ extension MangaDexSource {
             .init(name: "limit", value: String(Self.limit)),
             .init(name: "offset", value: String(offset)),
             .init(name: "includes[]", value: "cover_art"),
-            .init(name: "hasAvailableChapters", value: "true")
+            .init(name: "hasAvailableChapters", value: "true"),
         ]
 
         if let text = query.text, !text.isEmpty {
@@ -215,7 +226,8 @@ extension MangaDexSource {
         // relevance only means anything alongside a title, and the api rejects it
         // without one
         let sort = resolvedSort(for: query).optionID
-        let usable = (sort == "relevance:desc" && (query.text ?? "").isEmpty) ? "followedCount:desc" : sort
+        let usable =
+            (sort == "relevance:desc" && (query.text ?? "").isEmpty) ? "followedCount:desc" : sort
         items += Self.order(usable)
 
         let response: MangaList = try await network.get(url: Self.url("manga", items))
@@ -255,7 +267,7 @@ extension MangaDexSource {
         let items: [URLQueryItem] = [
             .init(name: "includes[]", value: "cover_art"),
             .init(name: "includes[]", value: "author"),
-            .init(name: "includes[]", value: "artist")
+            .init(name: "includes[]", value: "artist"),
         ]
 
         // the manga entity carries exactly one cover_art relationship no matter
@@ -263,7 +275,8 @@ extension MangaDexSource {
         // independent of the entity, so it runs alongside rather than after
         async let listing = coverListing(for: seriesSlug)
 
-        let response: MangaEnvelope = try await network.get(url: Self.url("manga/\(seriesSlug)", items))
+        let response: MangaEnvelope = try await network.get(
+            url: Self.url("manga/\(seriesSlug)", items))
         let entry = response.data
         let attributes = entry.attributes
 
@@ -276,7 +289,8 @@ extension MangaDexSource {
             title: Self.title(from: attributes.title, falling: attributes.altTitles),
             altTitles: Array(Set(names)).sorted(),
             synopsis: Self.text(from: attributes.description) ?? "",
-            url: descriptor.baseURL.appendingPathComponent("title").appendingPathComponent(entry.id),
+            url: descriptor.baseURL.appendingPathComponent("title").appendingPathComponent(
+                entry.id),
             classification: Self.classification(attributes.contentRating),
             publication: Self.publication(attributes.status),
             covers: Self.covers(
@@ -296,7 +310,9 @@ extension MangaDexSource {
 
 extension MangaDexSource {
     func chapters(seriesSlug: String) async throws -> [ChapterEntry] {
-        guard case let .changed(entries) = try await walk(seriesSlug, stored: nil) else { return [] }
+        guard case .changed(let entries) = try await walk(seriesSlug, stored: nil) else {
+            return []
+        }
         return entries
     }
 
@@ -315,14 +331,17 @@ extension MangaDexSource {
                 .init(name: "limit", value: String(Self.feedLimit)),
                 .init(name: "offset", value: String(offset)),
                 .init(name: "includes[]", value: "scanlation_group"),
-                .init(name: "order[chapter]", value: "asc")
+                .init(name: "order[chapter]", value: "asc"),
             ]
-            items += descriptor.languages.map { .init(name: "translatedLanguage[]", value: $0.rawValue) }
+            items += descriptor.languages.map {
+                .init(name: "translatedLanguage[]", value: $0.rawValue)
+            }
             items += ["safe", "suggestive", "erotica", "pornographic"].map {
                 .init(name: "contentRating[]", value: $0)
             }
 
-            let response: ChapterList = try await network.get(url: Self.url("manga/\(seriesSlug)/feed", items))
+            let response: ChapterList = try await network.get(
+                url: Self.url("manga/\(seriesSlug)/feed", items))
 
             if offset == 0, let stored, response.total == stored { return .unchanged }
 
@@ -363,10 +382,12 @@ extension MangaDexSource {
 
 extension MangaDexSource {
     func content(seriesSlug: String, chapterSlug: String) async throws -> [PageURL] {
-        let response: AtHome = try await network.get(url: Self.url("at-home/server/\(chapterSlug)", []))
+        let response: AtHome = try await network.get(
+            url: Self.url("at-home/server/\(chapterSlug)", []))
 
         guard let base = URL(string: response.baseUrl) else { throw URLError(.badServerResponse) }
-        let directory = base
+        let directory =
+            base
             .appendingPathComponent("data")
             .appendingPathComponent(response.chapter.hash)
 
@@ -380,7 +401,8 @@ extension MangaDexSource {
 
 extension MangaDexSource {
     private static func url(_ path: String, _ items: [URLQueryItem]) -> URL {
-        var components = URLComponents(url: api.appendingPathComponent(path), resolvingAgainstBaseURL: false)!
+        var components = URLComponents(
+            url: api.appendingPathComponent(path), resolvingAgainstBaseURL: false)!
         components.queryItems = items.isEmpty ? nil : items
         return components.url!
     }
@@ -398,17 +420,17 @@ extension MangaDexSource {
             switch filter {
             // tags are the only excludable axis, and the api spells the two sides
             // as separate parameters rather than one with a sign
-            case let .multiSelect("tags", included, excluded):
+            case .multiSelect("tags", let included, let excluded):
                 return included.map { .init(name: "includedTags[]", value: $0) }
                     + excluded.map { .init(name: "excludedTags[]", value: $0) }
 
-            case let .multiSelect(id, included, _):
+            case .multiSelect(let id, let included, _):
                 return included.map { .init(name: "\(id)[]", value: $0) }
-            case let .number(id, value):
+            case .number(let id, let value):
                 return [.init(name: id, value: String(value))]
-            case let .select(id, optionID):
+            case .select(let id, let optionID):
                 return [.init(name: id, value: optionID)]
-            case let .text(id, value):
+            case .text(let id, let value):
                 return [.init(name: id, value: value)]
             }
         }
@@ -429,7 +451,9 @@ extension MangaDexSource {
     // both "ja" and "ja-ro" and the romaji is the one worth showing
     private static let titlePriority = ["en", "ja-ro", "ko-ro", "zh-ro", "ja", "ko", "zh"]
 
-    private static func title(from primary: [String: String], falling alternates: [[String: String]]) -> String {
+    private static func title(
+        from primary: [String: String], falling alternates: [[String: String]]
+    ) -> String {
         // pooled rather than searched map by map: `title` holds the original
         // language and the romanisation lives in altTitles, so going map by map
         // returns the japanese before it ever reaches the romaji one entry later.
@@ -460,9 +484,10 @@ extension MangaDexSource {
     }
 
     private static func cover(for entry: Manga) -> URL? {
-        guard let file = entry.relationships
-            .first(where: { $0.type == "cover_art" })?
-            .attributes?.fileName
+        guard
+            let file = entry.relationships
+                .first(where: { $0.type == "cover_art" })?
+                .attributes?.fileName
         else { return nil }
 
         return coverURL(entry.id, file)
@@ -474,7 +499,7 @@ extension MangaDexSource {
         let items: [URLQueryItem] = [
             .init(name: "manga[]", value: id),
             .init(name: "limit", value: String(Self.coverPageLimit)),
-            .init(name: "order[volume]", value: "asc")
+            .init(name: "order[volume]", value: "asc"),
         ]
 
         let response: CoverList? = try? await network.get(url: Self.url("cover", items))
@@ -485,7 +510,9 @@ extension MangaDexSource {
     // several editions of the same volume - 85 japanese files across 43 volumes is
     // ordinary. the picker wants one of each volume in the language it was drawn
     // in, not every reprint, and every row here is an image downloaded to disk
-    private static func covers(from listing: [CoverArt], for entry: Manga, language: String?) -> [URL] {
+    private static func covers(from listing: [CoverArt], for entry: Manga, language: String?)
+        -> [URL]
+    {
         let native = listing.filter { $0.attributes.locale == language }
         let pool = native.isEmpty ? listing : native
 

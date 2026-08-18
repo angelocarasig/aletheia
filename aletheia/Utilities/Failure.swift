@@ -48,7 +48,9 @@ extension Failure {
             title = fallback
             message = "Something unexpected went wrong. Please try again."
             isRetryable = true
-            AppLog.shared.log("unpresentable error reached a screen - \(error)", level: .error, category: "failure")
+            AppLog.shared.log(
+                "unpresentable error reached a screen - \(error)", level: .error,
+                category: "failure")
         }
     }
 }

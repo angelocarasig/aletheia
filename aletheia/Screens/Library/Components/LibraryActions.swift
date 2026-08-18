@@ -45,8 +45,8 @@ struct LibraryActions: View {
 
 // MARK: - Buttons
 
-private extension LibraryActions {
-    var Root: some View {
+extension LibraryActions {
+    fileprivate var Root: some View {
         Image(systemName: expanded ? "xmark" : "line.3.horizontal.decrease")
             .contentTransition(.symbolEffect(.replace))
             .font(.system(size: dimensions.size.icon20, weight: .medium))
@@ -70,7 +70,7 @@ private extension LibraryActions {
 
     // a notification, not decoration: something is being hidden from you right
     // now. the ring keeps it legible against whatever the glass has sampled
-    var Dot: some View {
+    fileprivate var Dot: some View {
         Circle()
             .fill(.danger)
             .frame(width: Layout.dot, height: Layout.dot)
@@ -83,7 +83,7 @@ private extension LibraryActions {
 
     // collapsing on select is the point of the cluster: the option it opened is
     // now on screen, and leaving it expanded behind a sheet means dismissing twice
-    func Action(
+    fileprivate func Action(
         _ label: String,
         systemImage: String? = nil,
         image: Image? = nil,

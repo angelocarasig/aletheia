@@ -5,16 +5,16 @@
 //  Created by Angelo Carasig on 17/8/26.
 //
 
-import SwiftUI
 import GRDB
+import SwiftUI
 
 // the press state of a Step card, published by its own button style so the
 // label can read it - the same shape DetailsSetup.swift uses for its own
 // Next/Finish cards. not reused directly: that type is private to its own
 // file, and this flow is two steps rather than three and has no reason to
 // share code with a screen it looks nothing else like
-private extension EnvironmentValues {
-    @Entry var stepPressed = false
+extension EnvironmentValues {
+    @Entry fileprivate var stepPressed = false
 }
 
 private struct StepButtonStyle: ButtonStyle {
@@ -77,9 +77,13 @@ struct TrackerRestoreSetupScreen: View {
             // already made resets with it, the same way switching trackers
             // reset nothing else about the flow either
             .task(id: selectedTracker) {
-                guard let selectedTracker else { composer = nil; return }
+                guard let selectedTracker else {
+                    composer = nil
+                    return
+                }
                 composer = MigrationComposer(
-                    source: LiveTrackerImportSource(tracker: selectedTracker, trackers: compositor.trackers),
+                    source: LiveTrackerImportSource(
+                        tracker: selectedTracker, trackers: compositor.trackers),
                     searching: LiveMigrationSearcher(),
                     committing: LiveTrackerRestoreCommitter(
                         database: compositor.database,
@@ -90,7 +94,8 @@ struct TrackerRestoreSetupScreen: View {
                     ),
                     registry: compositor.registry,
                     precheck: { [database = compositor.database] entries in
-                        await Self.alreadyLinkedRemoteIds(among: entries.map(\.id), tracker: selectedTracker, database: database)
+                        await Self.alreadyLinkedRemoteIds(
+                            among: entries.map(\.id), tracker: selectedTracker, database: database)
                     },
                     precheckLabel: "Already Linked"
                 )
@@ -152,7 +157,9 @@ struct TrackerRestoreSetupScreen: View {
                         NavigationLink {
                             SourcesStep(composer)
                         } label: {
-                            Step(overline: "Next", title: "Sources", glyph: "arrow.right", tone: .brand)
+                            Step(
+                                overline: "Next", title: "Sources", glyph: "arrow.right",
+                                tone: .brand)
                         }
                         .buttonStyle(StepButtonStyle())
                     }
@@ -293,7 +300,8 @@ struct TrackerRestoreSetupScreen: View {
         .modifier(
             Chrome(
                 title: "Sources",
-                subtitle: Text("^[\(composer.selectedSourceSlugs.count) source](inflect: true) selected"),
+                subtitle: Text(
+                    "^[\(composer.selectedSourceSlugs.count) source](inflect: true) selected"),
                 onClose: onFinish
             ) {
                 StartButton(composer)
@@ -301,7 +309,8 @@ struct TrackerRestoreSetupScreen: View {
         )
         .navigationDestination(isPresented: $showingQueue) {
             if let selectedTracker {
-                TrackerRestoreScreen(composer: composer, tracker: selectedTracker, onFinish: onFinish)
+                TrackerRestoreScreen(
+                    composer: composer, tracker: selectedTracker, onFinish: onFinish)
             }
         }
     }
@@ -315,7 +324,9 @@ struct TrackerRestoreSetupScreen: View {
     // because this screen is exactly where a reader is choosing between
     // sources that may look alike. deliberately not SourcePing - that answers
     // "is it up right now", which is a different question from "what is this"
-    private func SourceRow(_ composer: MigrationComposer<TrackerImportEntry>, _ source: Source) -> some View {
+    private func SourceRow(_ composer: MigrationComposer<TrackerImportEntry>, _ source: Source)
+        -> some View
+    {
         let selected = composer.selectedSourceSlugs.contains(source.descriptor.slug)
 
         return HStack(spacing: dimensions.spacing.space12) {

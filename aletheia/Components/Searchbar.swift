@@ -104,9 +104,9 @@ struct Searchbar: View {
 
 // MARK: - Field
 
-private extension Searchbar {
+extension Searchbar {
     @ViewBuilder
-    var Field: some View {
+    fileprivate var Field: some View {
         if let backgroundColor {
             Input.background(backgroundColor, in: .capsule)
         } else if let tint {
@@ -116,7 +116,7 @@ private extension Searchbar {
         }
     }
 
-    var Input: some View {
+    fileprivate var Input: some View {
         HStack(spacing: dimensions.spacing.space8) {
             Image(systemName: "magnifyingglass")
                 .foregroundStyle(.muted)
@@ -137,7 +137,7 @@ private extension Searchbar {
 
     // a circle, matching the system's trailing action. nothing sets a foreground:
     // glass resolves its own content colour from what it samples
-    var Clear: some View {
+    fileprivate var Clear: some View {
         Image(systemName: "xmark")
             .font(.system(size: dimensions.size.icon16, weight: .semibold))
             .frame(width: dimensions.touchTarget, height: dimensions.touchTarget)
@@ -150,8 +150,8 @@ private extension Searchbar {
 
 // MARK: - Handoff
 
-private extension Searchbar {
-    func HandoffRow(_ handoff: Handoff) -> some View {
+extension Searchbar {
+    fileprivate func HandoffRow(_ handoff: Handoff) -> some View {
         HStack(spacing: dimensions.spacing.space12) {
             Image(systemName: handoff.icon)
                 .font(.subheadline.weight(.semibold))
@@ -185,7 +185,7 @@ private extension Searchbar {
     // .regular rather than .clear: this sits over the app's own content, not over
     // media, so it should adapt to what is behind it. interactive because it is a
     // button and the press response is the affordance
-    func glass(for handoff: Handoff) -> Glass {
+    fileprivate func glass(for handoff: Handoff) -> Glass {
         guard let tint = handoff.tint else { return .regular.interactive() }
         return .regular.tint(tint).interactive()
     }

@@ -25,7 +25,7 @@ enum BypassHaptic {
             (0.32, 1.0),
             (0.46, 1.0),
             (0.72, 1.0),
-            (0.85, 1.0)
+            (0.85, 1.0),
         ]
 
         let events = beats.map { beat in
@@ -33,15 +33,15 @@ enum BypassHaptic {
                 eventType: .hapticTransient,
                 parameters: [
                     .init(parameterID: .hapticIntensity, value: beat.intensity),
-                    .init(parameterID: .hapticSharpness, value: 0.9)
+                    .init(parameterID: .hapticSharpness, value: 0.9),
                 ],
                 relativeTime: beat.offset
             )
         }
 
         guard let pattern = try? CHHapticPattern(events: events, parameters: []),
-              let player = try? engine.makePlayer(with: pattern),
-              (try? engine.start()) != nil
+            let player = try? engine.makePlayer(with: pattern),
+            (try? engine.start()) != nil
         else { return }
 
         try? player.start(atTime: CHHapticTimeImmediate)
@@ -87,7 +87,7 @@ enum CountUpHaptic {
                 eventType: .hapticTransient,
                 parameters: [
                     .init(parameterID: .hapticIntensity, value: intensity),
-                    .init(parameterID: .hapticSharpness, value: 0.4)
+                    .init(parameterID: .hapticSharpness, value: 0.4),
                 ],
                 relativeTime: eased * duration
             )
@@ -100,15 +100,15 @@ enum CountUpHaptic {
                 eventType: .hapticTransient,
                 parameters: [
                     .init(parameterID: .hapticIntensity, value: 1.0),
-                    .init(parameterID: .hapticSharpness, value: 0.9)
+                    .init(parameterID: .hapticSharpness, value: 0.9),
                 ],
                 relativeTime: duration
             )
         )
 
         guard let pattern = try? CHHapticPattern(events: events, parameters: []),
-              let player = try? engine.makePlayer(with: pattern),
-              (try? engine.start()) != nil
+            let player = try? engine.makePlayer(with: pattern),
+            (try? engine.start()) != nil
         else { return }
 
         try? player.start(atTime: CHHapticTimeImmediate)

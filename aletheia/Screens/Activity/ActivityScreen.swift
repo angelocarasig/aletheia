@@ -35,9 +35,13 @@ struct ActivityScreen: View {
     // does
     private var phase: LoadPhase {
         if let vm {
-            if vm.failure != nil { .failed }
-            else if vm.snapshot == nil { .pending }
-            else { .content }
+            if vm.failure != nil {
+                .failed
+            } else if vm.snapshot == nil {
+                .pending
+            } else {
+                .content
+            }
         } else {
             .pending
         }
@@ -104,12 +108,12 @@ struct ActivityScreen: View {
 
 // MARK: - Status
 
-private extension ActivityScreen {
+extension ActivityScreen {
     // one scroll for both halves. the operational rows lead because they are the
     // only thing here that can need acting on - a failing source found while
     // scrolling past it is the tab working, and a status block pinned above a
     // scrolling chart would make it chrome the eye stops reading
-    func Status(_ snapshot: ActivityViewModel.Snapshot) -> some View {
+    fileprivate func Status(_ snapshot: ActivityViewModel.Snapshot) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: dimensions.spacing.space24) {
                 // titled now that it shares the screen with reading history:
@@ -142,7 +146,7 @@ private extension ActivityScreen {
     // live run when there is one. the numbers come from the runner's observable
     // model; the facts come from columns, which is what makes a run that
     // happened while the app was closed still leave a trace here
-    func Now(_ snapshot: ActivityViewModel.Snapshot) -> some View {
+    fileprivate func Now(_ snapshot: ActivityViewModel.Snapshot) -> some View {
         let refresh = compositor.refresh
         let downloads = compositor.downloads
         let queued = downloads.order.count
@@ -190,7 +194,7 @@ private extension ActivityScreen {
         .animation(.settle, value: compositor.trackers.needingSignIn)
     }
 
-    var Skeleton: some View {
+    fileprivate var Skeleton: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: dimensions.spacing.space8) {
                 ForEach(0..<Layout.skeletonRows, id: \.self) { _ in

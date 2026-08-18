@@ -26,7 +26,8 @@ struct DetailsContinue: View {
     private var next: DetailsChapters.Chapter? {
         let readable = chapters.filter(\.canRead)
 
-        let resumable = readable
+        let resumable =
+            readable
             .filter { $0.progress > 0 && $0.progress < 1 }
             .min { $0.number < $1.number }
 
@@ -50,8 +51,8 @@ struct DetailsContinue: View {
 
 // MARK: - States
 
-private extension DetailsContinue {
-    func Reading(_ chapter: DetailsChapters.Chapter) -> some View {
+extension DetailsContinue {
+    fileprivate func Reading(_ chapter: DetailsChapters.Chapter) -> some View {
         HStack(spacing: dimensions.spacing.space12) {
             Icon(chapter)
 
@@ -85,7 +86,7 @@ private extension DetailsContinue {
     }
 
     // same formatting the chapter rows use - 12.0 renders as 12, 12.5 stays 12.5
-    func Subtitle(_ chapter: DetailsChapters.Chapter) -> Text {
+    fileprivate func Subtitle(_ chapter: DetailsChapters.Chapter) -> Text {
         let number = chapter.number.formatted(.number.precision(.fractionLength(0...2)))
 
         guard !chapter.scanlator.isEmpty else { return Text("Chapter \(number)") }
@@ -93,7 +94,7 @@ private extension DetailsContinue {
     }
 
     @ViewBuilder
-    func Icon(_ chapter: DetailsChapters.Chapter) -> some View {
+    fileprivate func Icon(_ chapter: DetailsChapters.Chapter) -> some View {
         let shape = RoundedRectangle(cornerRadius: dimensions.radius.radius8)
 
         Group {
@@ -111,7 +112,7 @@ private extension DetailsContinue {
 
     // untinted and not tappable: there is nothing to do, and a control that looks
     // like the primary action but does nothing is worse than a statement
-    var Finished: some View {
+    fileprivate var Finished: some View {
         HStack(spacing: dimensions.spacing.space12) {
             Image(systemName: "checkmark")
                 .font(.subheadline.weight(.semibold))

@@ -24,9 +24,11 @@ struct SeriesPageSource: ReaderPageSource {
         // still carries the token, so nothing downstream has to know
         let id = await fill.row(for: chapter)
 
-        guard let row = try await database.reader.read({ db in
-            try Self.locate(id, in: db)
-        }) else {
+        guard
+            let row = try await database.reader.read({ db in
+                try Self.locate(id, in: db)
+            })
+        else {
             throw ReaderError.notFound(chapter)
         }
 

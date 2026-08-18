@@ -7,11 +7,11 @@
 
 import Foundation
 import GRDB
-import Tagged
 import Observation
 // for withAnimation only - the search result arrives from a task, so nothing in
 // the view is in a position to wrap the mutation that reflows the grid
 import SwiftUI
+import Tagged
 
 @MainActor
 @Observable
@@ -80,7 +80,8 @@ final class LibraryViewModel {
         let defaults = UserDefaults.standard
 
         if let stored = defaults.string(forKey: Preferences.Key.librarySort),
-           let sort = LibrarySort(rawValue: stored) {
+            let sort = LibrarySort(rawValue: stored)
+        {
             self.sort = sort
         }
 
@@ -91,7 +92,8 @@ final class LibraryViewModel {
         // a stored filter naming a case that no longer exists decodes to nothing
         // rather than throwing the whole library into an unfilterable state
         if let data = defaults.data(forKey: Preferences.Key.libraryFilter),
-           let stored = try? JSONDecoder().decode(LibraryFilter.self, from: data) {
+            let stored = try? JSONDecoder().decode(LibraryFilter.self, from: data)
+        {
             filter = stored
         }
     }
@@ -103,7 +105,7 @@ final class LibraryViewModel {
     // menu chevron look decorative
     var title: String {
         guard let selectedCollection,
-              let collection = collections.first(where: { $0.id == selectedCollection })
+            let collection = collections.first(where: { $0.id == selectedCollection })
         else { return "Library" }
 
         return collection.name
@@ -164,7 +166,8 @@ final class LibraryViewModel {
             let rows = try await database.reader.read { db in
                 let excluded = try AdultGate.excluded(slugs: adultSlugs, in: db)
 
-                return try EntryView
+                return
+                    try EntryView
                     .filter(EntryView.Columns.inLibrary == true)
                     .filter(!excluded.contains(EntryView.Columns.seriesId))
                     .order(EntryView.Columns.addedDate.desc)
@@ -211,7 +214,8 @@ final class LibraryViewModel {
         }
 
         do {
-            let (tagRows, tagLinks, sourceRows, origins, links) = try await database.reader.read { db in
+            let (tagRows, tagLinks, sourceRows, origins, links) = try await database.reader.read {
+                db in
                 (
                     try TagRecord.fetchAll(db),
                     try SeriesTagRecord.fetchAll(db),
@@ -226,7 +230,8 @@ final class LibraryViewModel {
                 .mapValues { Set($0.map(\.tagId)) }
 
             let usedTags = Set(owned.map(\.tagId))
-            tags = tagRows
+            tags =
+                tagRows
                 .compactMap { tag in
                     guard let id = tag.id, usedTags.contains(id) else { return nil }
                     return Option(id: id, name: tag.displayName)
@@ -244,7 +249,8 @@ final class LibraryViewModel {
                 }
 
             let used = Set(sourceMembership.values.flatMap { $0 })
-            var options = sourceRows
+            var options =
+                sourceRows
                 .compactMap { source -> Option<SourceRecord.ID>? in
                     guard let id = source.id, used.contains(id) else { return nil }
                     return Option(
@@ -273,7 +279,8 @@ final class LibraryViewModel {
             // present to be askable
             trackers = trackerMembership.isEmpty ? [] : TrackerFilter.ordered
         } catch {
-            AppLog.shared.log("library vocabularies failed - \(error)", level: .error, category: "library")
+            AppLog.shared.log(
+                "library vocabularies failed - \(error)", level: .error, category: "library")
         }
     }
 
@@ -305,7 +312,8 @@ final class LibraryViewModel {
                 )
             }
         } catch {
-            AppLog.shared.log("collections load failed - \(error)", level: .error, category: "library")
+            AppLog.shared.log(
+                "collections load failed - \(error)", level: .error, category: "library")
         }
     }
 
@@ -326,10 +334,12 @@ final class LibraryViewModel {
                 // landing on whole words
                 guard let pattern = FTS5Pattern(matchingAllPrefixesIn: text) else { return [] }
 
-                let ids = try Int64.fetchAll(db, sql: """
-                    SELECT rowid FROM \(SeriesFTS5View.databaseTableName)
-                    WHERE \(SeriesFTS5View.databaseTableName) MATCH ?
-                    """, arguments: [pattern])
+                let ids = try Int64.fetchAll(
+                    db,
+                    sql: """
+                        SELECT rowid FROM \(SeriesFTS5View.databaseTableName)
+                        WHERE \(SeriesFTS5View.databaseTableName) MATCH ?
+                        """, arguments: [pattern])
 
                 return Set(ids.map { SeriesRecord.ID(rawValue: $0) })
             }
@@ -339,7 +349,8 @@ final class LibraryViewModel {
             guard !Task.isCancelled else { return }
             withAnimation(.smooth) { matches = found }
         } catch {
-            AppLog.shared.log("library search failed - \(error)", level: .error, category: "library")
+            AppLog.shared.log(
+                "library search failed - \(error)", level: .error, category: "library")
             withAnimation(.smooth) { matches = [] }
         }
     }
@@ -358,7 +369,8 @@ final class LibraryViewModel {
             await loadCollections()
         } catch {
             failure = Failure(error, fallback: "Couldn't Load Library")
-            AppLog.shared.log("collection create failed - \(error)", level: .error, category: "library")
+            AppLog.shared.log(
+                "collection create failed - \(error)", level: .error, category: "library")
         }
     }
 

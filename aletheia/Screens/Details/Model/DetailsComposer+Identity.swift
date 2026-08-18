@@ -7,8 +7,8 @@
 
 import Foundation
 import GRDB
-import Tagged
 import Observation
+import Tagged
 
 extension DetailsComposer {
     @MainActor
@@ -60,7 +60,8 @@ extension DetailsComposer {
                 candidates = rows.map(row(from:))
                 return true
             } catch {
-                AppLog.shared.log("candidates failed - \(error)", level: .error, category: "details")
+                AppLog.shared.log(
+                    "candidates failed - \(error)", level: .error, category: "details")
                 return false
             }
         }
@@ -101,7 +102,8 @@ extension DetailsComposer {
                     return self.match(from: row, score: match.score)
                 }
             } catch {
-                AppLog.shared.log("merge candidates failed - \(error)", level: .error, category: "details")
+                AppLog.shared.log(
+                    "merge candidates failed - \(error)", level: .error, category: "details")
                 matches = []
             }
         }
@@ -142,7 +144,9 @@ extension DetailsComposer {
                 return true
             } catch {
                 failure = Failure(error, fallback: "Couldn't Merge Series")
-                AppLog.shared.log("merge into \(target.rawValue) FAILED - \(error)", level: .error, category: "details")
+                AppLog.shared.log(
+                    "merge into \(target.rawValue) FAILED - \(error)", level: .error,
+                    category: "details")
                 return false
             }
         }
@@ -343,7 +347,8 @@ extension DetailsComposer.Identity {
         matching query: String,
         in db: Database
     ) throws -> [(id: SeriesRecord.ID, score: Double)] {
-        let own = try TitleRecord
+        let own =
+            try TitleRecord
             .select(TitleRecord.Columns.value, as: String.self)
             .filter(TitleRecord.Columns.seriesId == id)
             .fetchAll(db)
@@ -379,9 +384,11 @@ extension DetailsComposer.Identity {
             pools[row["seriesId"], default: []].append(row["value"])
         }
 
-        let scored = pools
+        let scored =
+            pools
             .map { id, titles in
-                let best = titles
+                let best =
+                    titles
                     .flatMap { title in own.map { Similarity.score($0, title) } }
                     .max() ?? 0
                 return (id: SeriesRecord.ID(rawValue: id), score: best)
@@ -412,17 +419,19 @@ extension DetailsComposer.Identity {
         into target: SeriesRecord.ID,
         in db: Database
     ) throws {
-        var next = try Int.fetchOne(
-            db,
-            sql: """
-                SELECT COALESCE(MAX(\(OriginRecord.Columns.priority.name)), -1) + 1
-                FROM \(OriginRecord.databaseTableName)
-                WHERE \(OriginRecord.Columns.seriesId.name) = ?
-                """,
-            arguments: [target]
-        ) ?? 0
+        var next =
+            try Int.fetchOne(
+                db,
+                sql: """
+                    SELECT COALESCE(MAX(\(OriginRecord.Columns.priority.name)), -1) + 1
+                    FROM \(OriginRecord.databaseTableName)
+                    WHERE \(OriginRecord.Columns.seriesId.name) = ?
+                    """,
+                arguments: [target]
+            ) ?? 0
 
-        let origins = try OriginRecord
+        let origins =
+            try OriginRecord
             .filter(OriginRecord.Columns.seriesId == series)
             .order(OriginRecord.Columns.priority.asc, OriginRecord.Columns.id.asc)
             .fetchAll(db)
@@ -444,7 +453,7 @@ extension DetailsComposer.Identity {
         for table in [
             MetadataRecord.databaseTableName,
             TitleRecord.databaseTableName,
-            CoverRecord.databaseTableName
+            CoverRecord.databaseTableName,
         ] {
             try db.execute(
                 sql: "UPDATE OR IGNORE \(table) SET seriesId = ? WHERE seriesId = ?",

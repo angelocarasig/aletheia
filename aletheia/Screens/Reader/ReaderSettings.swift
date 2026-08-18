@@ -67,7 +67,8 @@ enum ReaderSettings {
     // a value stored before the range narrowed can sit outside the slider
     static var autoScrollSpeed: CGFloat {
         get {
-            let stored = defaults.object(forKey: Key.autoScrollSpeed) as? CGFloat
+            let stored =
+                defaults.object(forKey: Key.autoScrollSpeed) as? CGFloat
                 ?? ReaderConfiguration.Defaults.autoScrollSpeed
 
             return min(
@@ -80,7 +81,8 @@ enum ReaderSettings {
 
     static var autoAdvanceInterval: TimeInterval {
         get {
-            let stored = defaults.object(forKey: Key.autoAdvanceInterval) as? TimeInterval
+            let stored =
+                defaults.object(forKey: Key.autoAdvanceInterval) as? TimeInterval
                 ?? ReaderConfiguration.Defaults.autoAdvanceInterval
 
             return min(

@@ -95,9 +95,10 @@ final class SearchViewModel {
     func configure(sources: [Source], database: DatabaseClient) {
         guard self.sources.isEmpty else { return }
         self.sources = sources
-        self.correlators = Dictionary(uniqueKeysWithValues: sources.map {
-            ($0.descriptor.slug, Correlator(sourceSlug: $0.descriptor.slug, database: database))
-        })
+        self.correlators = Dictionary(
+            uniqueKeysWithValues: sources.map {
+                ($0.descriptor.slug, Correlator(sourceSlug: $0.descriptor.slug, database: database))
+            })
     }
 
     func match(in sectionID: String, for stub: SeriesStub) -> SeriesMatch? {
@@ -106,14 +107,16 @@ final class SearchViewModel {
 
     func retry(_ sectionID: String) {
         guard let index = sections.firstIndex(where: { $0.id == sectionID }),
-              sections[index].phase == .failed else { return }
+            sections[index].phase == .failed
+        else { return }
 
         sections[index].phase = .searching
         let source = sections[index].source
         let text = submitted
         let expected = generation
         Task { [weak self] in
-            await self?.searchSection(index: index, source: source, text: text, generation: expected)
+            await self?.searchSection(
+                index: index, source: source, text: text, generation: expected)
         }
     }
 
@@ -182,7 +185,9 @@ final class SearchViewModel {
 
     // a stale task must never write into a newer run's sections, so every write
     // is gated on the generation it was spawned for
-    private func searchSection(index: Int, source: Source, text: String, generation expected: Int) async {
+    private func searchSection(index: Int, source: Source, text: String, generation expected: Int)
+        async
+    {
         let query = SearchQuery(text: text, filters: [], sort: nil, page: 1)
         do {
             let page = try await source.search(query)
@@ -198,7 +203,9 @@ final class SearchViewModel {
         } catch {
             guard generation == expected, sections.indices.contains(index) else { return }
             sections[index].phase = .failed
-            AppLog.shared.log("global search failed for '\(source.descriptor.slug)' - \(error)", level: .error, category: "search")
+            AppLog.shared.log(
+                "global search failed for '\(source.descriptor.slug)' - \(error)", level: .error,
+                category: "search")
         }
     }
 }

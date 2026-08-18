@@ -7,8 +7,8 @@
 
 import Foundation
 import GRDB
-import Tagged
 import Observation
+import Tagged
 
 extension DetailsComposer {
     @MainActor
@@ -130,15 +130,19 @@ extension DetailsComposer {
             in database: DatabaseClient
         ) async -> [Int64: String] {
             (try? await database.reader.read { db -> [Int64: String] in
-                let rows = try SeriesTrackerRecord
+                let rows =
+                    try SeriesTrackerRecord
                     .filter(SeriesTrackerRecord.Columns.tracker == tracker.rawValue)
                     .fetchAll(db)
                     .filter { $0.seriesId != current }
 
                 guard !rows.isEmpty else { return [:] }
 
-                let titles = try RichfulEntryView
-                    .filter(rows.map(\.seriesId.rawValue).contains(RichfulEntryView.Columns.seriesId))
+                let titles =
+                    try RichfulEntryView
+                    .filter(
+                        rows.map(\.seriesId.rawValue).contains(RichfulEntryView.Columns.seriesId)
+                    )
                     .fetchAll(db)
                     .reduce(into: [Int64: String]()) { out, entry in
                         out[entry.seriesId] = entry.title
@@ -188,7 +192,8 @@ extension DetailsComposer {
 
                 let search = Task { [host, database, current = seriesId] in
                     async let claimed = Self.conflicts(tracker, excluding: current, in: database)
-                    guard let found = try? await host.search(tracker, query: query, adult: adult) else {
+                    guard let found = try? await host.search(tracker, query: query, adult: adult)
+                    else {
                         return Search(failed: true)
                     }
                     return Search(results: found, conflicts: await claimed)

@@ -44,73 +44,74 @@ extension BestChapterView {
         OriginScanlatorPriorityRecord.self,
         SeriesLanguagePriorityRecord.self,
         SeriesRecord.self,
-        SourceRecord.self
+        SourceRecord.self,
     ]
 
     static var viewDefinition: SQLRequest<BestChapterView> {
-        SQLRequest(sql: """
-            SELECT
-                c.id as chapterId,
-                c.number,
-                c.progress,
-                o.seriesId,
-                m.showHalfChapters,
-                m.showAllChapters,
-                -- compute visibility based on half-chapter filtering rules
-                -- isVisible = 1 means this chapter should be shown to the user
-                CASE
-                    WHEN m.showAllChapters = 1 THEN 1
-                    WHEN m.showHalfChapters = 1 THEN 1
-                    WHEN c.number = CAST(c.number AS INTEGER) THEN 1
-                    ELSE 0
-                END as isVisible,
-                -- rank chapters within each series/number combination
-                -- rank = 1 means this is the best source for this chapter number
-                ROW_NUMBER() OVER (
-                    PARTITION BY o.seriesId, c.number
-                    ORDER BY
-                        -- language outranks origin deliberately: a source is a
-                        -- preference, a language you cannot read is a wall. the
-                        -- preferred source's chinese copy loses to a lower
-                        -- source's english one, and two copies in the same
-                        -- language tie here and fall through to origin as before
-                        COALESCE(slp.priority, 999) ASC,  -- first: language priority (null treated as worst)
-                        o.priority ASC,  -- then: origin priority (0 is best)
-                        COALESCE(osp.priority, 999) ASC,  -- then: scanlator priority (null treated as worst)
-                        o.id ASC,  -- deterministic tiebreak - priorities are no longer unique
-                        c.id ASC
-                ) as rank
-            FROM \(ChapterRecord.databaseTableName) c
-            JOIN \(OriginRecord.databaseTableName) o ON c.originId = o.id
-            LEFT JOIN \(OriginScanlatorPriorityRecord.databaseTableName) osp
-                ON osp.originId = o.id
-                AND osp.scanlatorId = c.scanlatorId
-            -- left joined so an unranked language sorts last rather than dropping
-            -- the chapter. a series with no rows here ranks exactly as before
-            LEFT JOIN \(SeriesLanguagePriorityRecord.databaseTableName) slp
-                ON slp.\(SeriesLanguagePriorityRecord.Columns.seriesId.name) = o.seriesId
-                AND slp.\(SeriesLanguagePriorityRecord.Columns.language.name) = c.\(ChapterRecord.Columns.language.name)
-            JOIN \(SeriesRecord.databaseTableName) m ON o.seriesId = m.id
-            -- a chapter earns its place by being readable, which is two different
-            -- things. either its source can still answer for it - not turned off
-            -- by the reader, still shipped with the app, still attached to the
-            -- origin - or its bytes are already on disk, in which case no source
-            -- is needed at all and one being gone changes nothing.
-            --
-            -- left joined on purpose: an inner join drops a disconnected origin
-            -- (null sourceId) before the filter can spare a downloaded chapter.
-            -- ranking is deliberately untouched - a download only outranks a live
-            -- copy when its origin already did, which is the reader's own ordering
-            LEFT JOIN \(SourceRecord.databaseTableName) src ON o.sourceId = src.id
-            WHERE (
-                (
-                    src.id IS NOT NULL
-                    AND src.\(SourceRecord.Columns.disabled.name) = 0
-                    AND src.\(SourceRecord.Columns.installed.name) = 1
+        SQLRequest(
+            sql: """
+                SELECT
+                    c.id as chapterId,
+                    c.number,
+                    c.progress,
+                    o.seriesId,
+                    m.showHalfChapters,
+                    m.showAllChapters,
+                    -- compute visibility based on half-chapter filtering rules
+                    -- isVisible = 1 means this chapter should be shown to the user
+                    CASE
+                        WHEN m.showAllChapters = 1 THEN 1
+                        WHEN m.showHalfChapters = 1 THEN 1
+                        WHEN c.number = CAST(c.number AS INTEGER) THEN 1
+                        ELSE 0
+                    END as isVisible,
+                    -- rank chapters within each series/number combination
+                    -- rank = 1 means this is the best source for this chapter number
+                    ROW_NUMBER() OVER (
+                        PARTITION BY o.seriesId, c.number
+                        ORDER BY
+                            -- language outranks origin deliberately: a source is a
+                            -- preference, a language you cannot read is a wall. the
+                            -- preferred source's chinese copy loses to a lower
+                            -- source's english one, and two copies in the same
+                            -- language tie here and fall through to origin as before
+                            COALESCE(slp.priority, 999) ASC,  -- first: language priority (null treated as worst)
+                            o.priority ASC,  -- then: origin priority (0 is best)
+                            COALESCE(osp.priority, 999) ASC,  -- then: scanlator priority (null treated as worst)
+                            o.id ASC,  -- deterministic tiebreak - priorities are no longer unique
+                            c.id ASC
+                    ) as rank
+                FROM \(ChapterRecord.databaseTableName) c
+                JOIN \(OriginRecord.databaseTableName) o ON c.originId = o.id
+                LEFT JOIN \(OriginScanlatorPriorityRecord.databaseTableName) osp
+                    ON osp.originId = o.id
+                    AND osp.scanlatorId = c.scanlatorId
+                -- left joined so an unranked language sorts last rather than dropping
+                -- the chapter. a series with no rows here ranks exactly as before
+                LEFT JOIN \(SeriesLanguagePriorityRecord.databaseTableName) slp
+                    ON slp.\(SeriesLanguagePriorityRecord.Columns.seriesId.name) = o.seriesId
+                    AND slp.\(SeriesLanguagePriorityRecord.Columns.language.name) = c.\(ChapterRecord.Columns.language.name)
+                JOIN \(SeriesRecord.databaseTableName) m ON o.seriesId = m.id
+                -- a chapter earns its place by being readable, which is two different
+                -- things. either its source can still answer for it - not turned off
+                -- by the reader, still shipped with the app, still attached to the
+                -- origin - or its bytes are already on disk, in which case no source
+                -- is needed at all and one being gone changes nothing.
+                --
+                -- left joined on purpose: an inner join drops a disconnected origin
+                -- (null sourceId) before the filter can spare a downloaded chapter.
+                -- ranking is deliberately untouched - a download only outranks a live
+                -- copy when its origin already did, which is the reader's own ordering
+                LEFT JOIN \(SourceRecord.databaseTableName) src ON o.sourceId = src.id
+                WHERE (
+                    (
+                        src.id IS NOT NULL
+                        AND src.\(SourceRecord.Columns.disabled.name) = 0
+                        AND src.\(SourceRecord.Columns.installed.name) = 1
+                    )
+                    OR c.\(ChapterRecord.Columns.path.name) IS NOT NULL
                 )
-                OR c.\(ChapterRecord.Columns.path.name) IS NOT NULL
-            )
-            """)
+                """)
     }
 
     static func createIndexes(db: Database) throws {
@@ -121,7 +122,7 @@ extension BestChapterView {
             columns: [
                 ChapterRecord.Columns.originId.name,
                 ChapterRecord.Columns.number.name,
-                ChapterRecord.Columns.progress.name
+                ChapterRecord.Columns.progress.name,
             ],
             ifNotExists: true
         )
@@ -133,7 +134,7 @@ extension BestChapterView {
             columns: [
                 OriginScanlatorPriorityRecord.Columns.originId.name,
                 OriginScanlatorPriorityRecord.Columns.scanlatorId.name,
-                OriginScanlatorPriorityRecord.Columns.priority.name
+                OriginScanlatorPriorityRecord.Columns.priority.name,
             ],
             ifNotExists: true
         )

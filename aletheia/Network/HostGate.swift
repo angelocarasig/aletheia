@@ -90,7 +90,9 @@ actor HostGate {
             watchdog.cancel()
             let held = Date.now.timeIntervalSince(queued)
             if held >= 5 {
-                log.log("released onto \(host) after \(Int(held))s", level: .warning, category: "network")
+                log.log(
+                    "released onto \(host) after \(Int(held))s", level: .warning,
+                    category: "network")
             }
         }
 
@@ -139,7 +141,9 @@ actor HostGate {
     // a waiter already handed a slot is no longer in the queue, so a cancellation
     // arriving after the hand-off finds nothing and cannot resume it twice
     private func abandon(_ id: UUID, host: String) {
-        guard var queue = waiting[host], let index = queue.firstIndex(where: { $0.id == id }) else { return }
+        guard var queue = waiting[host], let index = queue.firstIndex(where: { $0.id == id }) else {
+            return
+        }
         let waiter = queue.remove(at: index)
         waiting[host] = queue.isEmpty ? nil : queue
         waiter.continuation.resume()

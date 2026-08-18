@@ -39,7 +39,8 @@ struct ReadingSessionEntry: Identifiable, Hashable, Decodable, FetchableRecord, 
         limit: Int,
         in db: Database
     ) throws -> [ReadingSessionEntry] {
-        let exclusion = excluded.isEmpty
+        let exclusion =
+            excluded.isEmpty
             ? ""
             : "AND rs.\(ReadingSessionRecord.Columns.seriesId.name) NOT IN (\(excluded.map(String.init).joined(separator: ", ")))"
 

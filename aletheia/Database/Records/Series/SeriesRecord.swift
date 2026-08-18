@@ -85,15 +85,20 @@ extension SeriesRecord {
             // but grdb looks up the target's primary key unless the column is named,
             // so these must be explicit: the tables do not exist yet
             t.column(Columns.preferredTitleId.name, .integer)
-                .references(TitleRecord.databaseTableName, column: Columns.id.name, onDelete: .setNull)
+                .references(
+                    TitleRecord.databaseTableName, column: Columns.id.name, onDelete: .setNull)
             t.column(Columns.preferredCoverId.name, .integer)
-                .references(CoverRecord.databaseTableName, column: Columns.id.name, onDelete: .setNull)
+                .references(
+                    CoverRecord.databaseTableName, column: Columns.id.name, onDelete: .setNull)
             t.column(Columns.preferredSynopsisId.name, .integer)
-                .references(MetadataRecord.databaseTableName, column: Columns.id.name, onDelete: .setNull)
+                .references(
+                    MetadataRecord.databaseTableName, column: Columns.id.name, onDelete: .setNull)
             t.column(Columns.preferredClassificationId.name, .integer)
-                .references(MetadataRecord.databaseTableName, column: Columns.id.name, onDelete: .setNull)
+                .references(
+                    MetadataRecord.databaseTableName, column: Columns.id.name, onDelete: .setNull)
             t.column(Columns.preferredPublicationId.name, .integer)
-                .references(MetadataRecord.databaseTableName, column: Columns.id.name, onDelete: .setNull)
+                .references(
+                    MetadataRecord.databaseTableName, column: Columns.id.name, onDelete: .setNull)
 
             t.column(Columns.inLibrary.name, .boolean).notNull().defaults(to: false)
             t.column(Columns.status.name, .text).notNull().defaults(to: Status.planning.rawValue)
@@ -112,24 +117,34 @@ extension SeriesRecord {
 
     static func createIndexes(db: Database) throws {
         // library query filter
-        try db.create(index: "idx_series_catalogId", on: databaseTableName, columns: [Columns.catalogId.name], ifNotExists: true)
-        try db.create(index: "idx_series_inLibrary", on: databaseTableName, columns: [Columns.inLibrary.name], ifNotExists: true)
+        try db.create(
+            index: "idx_series_catalogId", on: databaseTableName, columns: [Columns.catalogId.name],
+            ifNotExists: true)
+        try db.create(
+            index: "idx_series_inLibrary", on: databaseTableName, columns: [Columns.inLibrary.name],
+            ifNotExists: true)
 
         // sorting with pagination
-        try db.create(index: "idx_series_addedDate_id", on: databaseTableName, columns: [
-            Columns.addedDate.name,
-            Columns.id.name
-        ], ifNotExists: true)
+        try db.create(
+            index: "idx_series_addedDate_id", on: databaseTableName,
+            columns: [
+                Columns.addedDate.name,
+                Columns.id.name,
+            ], ifNotExists: true)
 
-        try db.create(index: "idx_series_updatedDate_id", on: databaseTableName, columns: [
-            Columns.updatedDate.name,
-            Columns.id.name
-        ], ifNotExists: true)
+        try db.create(
+            index: "idx_series_updatedDate_id", on: databaseTableName,
+            columns: [
+                Columns.updatedDate.name,
+                Columns.id.name,
+            ], ifNotExists: true)
 
-        try db.create(index: "idx_series_lastReadDate_id", on: databaseTableName, columns: [
-            Columns.lastReadDate.name,
-            Columns.id.name
-        ], ifNotExists: true)
+        try db.create(
+            index: "idx_series_lastReadDate_id", on: databaseTableName,
+            columns: [
+                Columns.lastReadDate.name,
+                Columns.id.name,
+            ], ifNotExists: true)
     }
 
     mutating func didInsert(_ inserted: InsertionSuccess) {
@@ -157,7 +172,8 @@ extension SeriesRecord {
             ORDER BY bc.number ASC
             """
 
-        return ChapterRecord.filter(sql: sql, arguments: [seriesId.rawValue, showAllChapters ? 1 : 0])
+        return ChapterRecord.filter(
+            sql: sql, arguments: [seriesId.rawValue, showAllChapters ? 1 : 0])
     }
 
     /// returns all chapters without deduplication (for showAllChapters mode)
@@ -166,9 +182,13 @@ extension SeriesRecord {
             return ChapterRecord.none()
         }
 
-        return ChapterRecord
+        return
+            ChapterRecord
             .joining(required: ChapterRecord.origin)
-            .filter(sql: "\(OriginRecord.databaseTableName).seriesId = ?", arguments: [seriesId.rawValue])
+            .filter(
+                sql: "\(OriginRecord.databaseTableName).seriesId = ?",
+                arguments: [seriesId.rawValue]
+            )
             .order(ChapterRecord.Columns.number.asc)
     }
 }

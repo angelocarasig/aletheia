@@ -37,7 +37,9 @@ struct DetailsTitles: View {
         NavigationStack {
             Content
                 .navigationTitle("Titles")
-                .navigationSubtitle("^[\(titles.count) title](inflect: true) · ^[\(sourceCount) source](inflect: true)")
+                .navigationSubtitle(
+                    "^[\(titles.count) title](inflect: true) · ^[\(sourceCount) source](inflect: true)"
+                )
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .topBarTrailing) {
@@ -214,13 +216,15 @@ private enum Sample {
     // shorthand, and the native script. lengths vary wildly, which is the thing
     // the row has to survive
     static let pool: [DetailsTitles.Title] = [
-        title(1, """
+        title(
+            1,
+            """
             Tsuihou-kei no Akuyaku Party no Leader ni Tensei Shita node, Zamaa Sareru \
             Mae ni Jibun o Tsuihou Shimashita.
             """, preferred: true),
         title(2, "I Exiled Myself Before the Villains Could", source: "MangaDex", icon: .mangaDex),
         title(3, "Tsuihou-kei no Akuyaku Party", source: "MangaDex", icon: .mangaDex),
-        title(4, "追放系の悪役パーティーのリーダーに転生したので", source: nil, icon: nil)
+        title(4, "追放系の悪役パーティーのリーダーに転生したので", source: nil, icon: nil),
     ]
 }
 
@@ -240,7 +244,9 @@ private enum Sample {
     Color.clear.sheet(isPresented: .constant(true)) {
         DetailsTitles(
             titles: Sample.pool.map {
-                .init(id: $0.id, value: $0.value, sourceName: $0.sourceName, sourceIcon: $0.sourceIcon, isPreferred: false)
+                .init(
+                    id: $0.id, value: $0.value, sourceName: $0.sourceName,
+                    sourceIcon: $0.sourceIcon, isPreferred: false)
             },
             isSaving: false,
             onSetPreferred: { _ in }

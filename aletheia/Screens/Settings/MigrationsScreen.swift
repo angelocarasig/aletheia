@@ -153,7 +153,8 @@ struct MigrationsScreen: View {
         }
         .sheet(isPresented: $showingDisconnectedMigration) {
             NavigationStack {
-                DisconnectedSourceMigrationScreen(onFinish: { showingDisconnectedMigration = false })
+                DisconnectedSourceMigrationScreen(onFinish: { showingDisconnectedMigration = false }
+                )
             }
             .interactiveDismissDisabled(true)
         }
@@ -172,7 +173,8 @@ struct MigrationsScreen: View {
     }
 
     private func refreshDisconnectedCheck() async {
-        let entries = try? await DisconnectedOriginMigrationSource(database: compositor.database).fetch()
+        let entries = try? await DisconnectedOriginMigrationSource(database: compositor.database)
+            .fetch()
         hasDisconnectedSources = !(entries?.isEmpty ?? true)
     }
 

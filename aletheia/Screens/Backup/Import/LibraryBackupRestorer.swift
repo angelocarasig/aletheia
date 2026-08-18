@@ -41,12 +41,16 @@ enum LibraryBackupRestorer {
         await removeStaleLibraryMembers(backup, database: database, summary: &summary, log: log)
 
         for entry in backup.series {
-            guard let primary = entry.origins.min(by: { $0.priority < $1.priority }) else { continue }
+            guard let primary = entry.origins.min(by: { $0.priority < $1.priority }) else {
+                continue
+            }
 
             if let source = registry.source(slug: primary.sourceSlug) {
-                await attach(entry, primary, source: source, database: database, summary: &summary, log: log)
+                await attach(
+                    entry, primary, source: source, database: database, summary: &summary, log: log)
             } else {
-                await attachDisconnected(entry, primary, database: database, summary: &summary, log: log)
+                await attachDisconnected(
+                    entry, primary, database: database, summary: &summary, log: log)
             }
         }
 
@@ -61,9 +65,10 @@ enum LibraryBackupRestorer {
         summary: inout Summary,
         log: AppLog
     ) async {
-        let backupKeys = Set(backup.series.flatMap { entry in
-            entry.origins.map { "\($0.sourceSlug)::\($0.seriesSlug)" }
-        })
+        let backupKeys = Set(
+            backup.series.flatMap { entry in
+                entry.origins.map { "\($0.sourceSlug)::\($0.seriesSlug)" }
+            })
 
         do {
             let removed = try await database.writer.write { db -> Int in
@@ -73,25 +78,29 @@ enum LibraryBackupRestorer {
                     }
                 )
 
-                let librarySeries = try SeriesRecord
+                let librarySeries =
+                    try SeriesRecord
                     .filter(SeriesRecord.Columns.inLibrary == true)
                     .fetchAll(db)
 
                 var removed = 0
                 for series in librarySeries {
                     guard let seriesId = series.id else { continue }
-                    let origins = try OriginRecord
+                    let origins =
+                        try OriginRecord
                         .filter(OriginRecord.Columns.seriesId == seriesId)
                         .fetchAll(db)
 
                     let matchesBackup = origins.contains { origin in
-                        guard let sourceId = origin.sourceId, let slug = sourceSlugsById[sourceId] else { return false }
+                        guard let sourceId = origin.sourceId, let slug = sourceSlugsById[sourceId]
+                        else { return false }
                         return backupKeys.contains("\(slug)::\(origin.slug)")
                     }
 
                     guard !matchesBackup else { continue }
 
-                    _ = try SeriesRecord
+                    _ =
+                        try SeriesRecord
                         .filter(key: seriesId.rawValue)
                         .updateAll(
                             db,
@@ -104,7 +113,9 @@ enum LibraryBackupRestorer {
             }
             summary.removedCount = removed
         } catch {
-            log.log("backup restore couldn't clear stale library members - \(error)", level: .error, category: "backup")
+            log.log(
+                "backup restore couldn't clear stale library members - \(error)", level: .error,
+                category: "backup")
         }
     }
 
@@ -121,14 +132,18 @@ enum LibraryBackupRestorer {
         do {
             let detail = try await source.details(seriesSlug: primary.seriesSlug)
 
-            let (seriesId, originId) = try await database.writer.write { db -> (SeriesRecord.ID, OriginRecord.ID) in
-                guard let sourceId = try SourceRecord
-                    .select(SourceRecord.Columns.id, as: SourceRecord.ID.self)
-                    .filter(SourceRecord.Columns.slug == primary.sourceSlug)
-                    .fetchOne(db)
+            let (seriesId, originId) = try await database.writer.write {
+                db -> (SeriesRecord.ID, OriginRecord.ID) in
+                guard
+                    let sourceId =
+                        try SourceRecord
+                        .select(SourceRecord.Columns.id, as: SourceRecord.ID.self)
+                        .filter(SourceRecord.Columns.slug == primary.sourceSlug)
+                        .fetchOne(db)
                 else { throw RecordError.missingIdentifier }
 
-                let known = try OriginRecord
+                let known =
+                    try OriginRecord
                     .filter(OriginRecord.Columns.sourceId == sourceId)
                     .filter([detail.slug, primary.seriesSlug].contains(OriginRecord.Columns.slug))
                     .fetchOne(db)
@@ -137,7 +152,8 @@ enum LibraryBackupRestorer {
                 if let known, let originId = known.id {
                     ids = (known.seriesId, originId)
                 } else {
-                    ids = try DetailsComposer.write(detail, sourceId: sourceId, matching: nil, into: nil, in: db)
+                    ids = try DetailsComposer.write(
+                        detail, sourceId: sourceId, matching: nil, into: nil, in: db)
                 }
 
                 try writeSeriesState(entry, for: ids.0, in: db)
@@ -155,8 +171,13 @@ enum LibraryBackupRestorer {
 
             summary.restoredCount += 1
         } catch {
-            log.log("backup restore failed for '\(entry.preferredTitle)' - \(error)", level: .error, category: "backup")
-            summary.failures.append(Summary.Failure(title: entry.preferredTitle, reason: Failure(error, fallback: "Couldn't restore this series").sentence))
+            log.log(
+                "backup restore failed for '\(entry.preferredTitle)' - \(error)", level: .error,
+                category: "backup")
+            summary.failures.append(
+                Summary.Failure(
+                    title: entry.preferredTitle,
+                    reason: Failure(error, fallback: "Couldn't restore this series").sentence))
         }
     }
 
@@ -171,7 +192,8 @@ enum LibraryBackupRestorer {
     ) async {
         do {
             try await database.writer.write { db in
-                let known = try OriginRecord
+                let known =
+                    try OriginRecord
                     .filter(OriginRecord.Columns.sourceId == nil)
                     .filter(OriginRecord.Columns.slug == primary.seriesSlug)
                     .fetchOne(db)
@@ -198,12 +220,16 @@ enum LibraryBackupRestorer {
                     guard let newOriginId = origin.id else { throw RecordError.missingIdentifier }
 
                     let title = try TitleRecord.findOrCreate(
-                        TitleRecord(id: nil, seriesId: newSeriesId, metadataId: nil, value: entry.preferredTitle),
+                        TitleRecord(
+                            id: nil, seriesId: newSeriesId, metadataId: nil,
+                            value: entry.preferredTitle),
                         in: db
                     )
-                    _ = try SeriesRecord
+                    _ =
+                        try SeriesRecord
                         .filter(key: newSeriesId.rawValue)
-                        .updateAll(db, SeriesRecord.Columns.preferredTitleId.set(to: title.id?.rawValue))
+                        .updateAll(
+                            db, SeriesRecord.Columns.preferredTitleId.set(to: title.id?.rawValue))
 
                     (seriesId, originId) = (newSeriesId, newOriginId)
                 }
@@ -219,8 +245,13 @@ enum LibraryBackupRestorer {
 
             summary.disconnectedCount += 1
         } catch {
-            log.log("backup restore (disconnected) failed for '\(entry.preferredTitle)' - \(error)", level: .error, category: "backup")
-            summary.failures.append(Summary.Failure(title: entry.preferredTitle, reason: Failure(error, fallback: "Couldn't restore this series").sentence))
+            log.log(
+                "backup restore (disconnected) failed for '\(entry.preferredTitle)' - \(error)",
+                level: .error, category: "backup")
+            summary.failures.append(
+                Summary.Failure(
+                    title: entry.preferredTitle,
+                    reason: Failure(error, fallback: "Couldn't restore this series").sentence))
         }
     }
 
@@ -231,15 +262,20 @@ enum LibraryBackupRestorer {
         for seriesId: SeriesRecord.ID,
         in db: Database
     ) throws {
-        _ = try SeriesRecord
+        _ =
+            try SeriesRecord
             .filter(key: seriesId.rawValue)
             .updateAll(
                 db,
                 SeriesRecord.Columns.inLibrary.set(to: true),
-                SeriesRecord.Columns.addedDate.set(to: Date(timeIntervalSince1970: TimeInterval(entry.addedDate))),
-                SeriesRecord.Columns.lastReadDate.set(to: Date(timeIntervalSince1970: TimeInterval(entry.lastReadDate))),
-                SeriesRecord.Columns.status.set(to: (Status(rawValue: entry.status) ?? .planning).rawValue),
-                SeriesRecord.Columns.orientation.set(to: (Orientation(rawValue: entry.orientation) ?? .unknown).rawValue),
+                SeriesRecord.Columns.addedDate.set(
+                    to: Date(timeIntervalSince1970: TimeInterval(entry.addedDate))),
+                SeriesRecord.Columns.lastReadDate.set(
+                    to: Date(timeIntervalSince1970: TimeInterval(entry.lastReadDate))),
+                SeriesRecord.Columns.status.set(
+                    to: (Status(rawValue: entry.status) ?? .planning).rawValue),
+                SeriesRecord.Columns.orientation.set(
+                    to: (Orientation(rawValue: entry.orientation) ?? .unknown).rawValue),
                 SeriesRecord.Columns.showAllChapters.set(to: entry.showAllChapters),
                 SeriesRecord.Columns.showHalfChapters.set(to: entry.showHalfChapters)
             )
@@ -257,7 +293,8 @@ enum LibraryBackupRestorer {
             arguments: [seriesId.rawValue]
         )
         guard let latest else { return }
-        _ = try SeriesRecord
+        _ =
+            try SeriesRecord
             .filter(key: seriesId.rawValue)
             .updateAll(db, SeriesRecord.Columns.updatedDate.set(to: latest))
     }
@@ -269,7 +306,8 @@ enum LibraryBackupRestorer {
     ) throws {
         guard !chapters.isEmpty else { return }
 
-        let existing = try ChapterRecord
+        let existing =
+            try ChapterRecord
             .filter(ChapterRecord.Columns.originId == originId)
             .fetchAll(db)
         let existingSlugs = Set(existing.map(\.slug))
@@ -287,9 +325,9 @@ enum LibraryBackupRestorer {
 
         for chapterEntry in chapters {
             guard !existingSlugs.contains(chapterEntry.slug),
-                  let scanlatorId = scanlators[chapterEntry.scanlator],
-                  let language = LanguageCode(rawValue: chapterEntry.language),
-                  let url = URL(string: chapterEntry.url)
+                let scanlatorId = scanlators[chapterEntry.scanlator],
+                let language = LanguageCode(rawValue: chapterEntry.language),
+                let url = URL(string: chapterEntry.url)
             else { continue }
 
             var chapter = ChapterRecord(
@@ -299,7 +337,8 @@ enum LibraryBackupRestorer {
                 slug: chapterEntry.slug,
                 title: chapterEntry.title,
                 number: chapterEntry.number,
-                publishedDate: Date(timeIntervalSince1970: TimeInterval(chapterEntry.publishedDate)),
+                publishedDate: Date(
+                    timeIntervalSince1970: TimeInterval(chapterEntry.publishedDate)),
                 language: language,
                 progress: chapterEntry.progress,
                 lastReadDate: chapterEntry.hasLastReadDate
@@ -312,13 +351,17 @@ enum LibraryBackupRestorer {
         }
     }
 
-    private static func attachTags(_ names: [String], to seriesId: SeriesRecord.ID, in db: Database) throws {
+    private static func attachTags(_ names: [String], to seriesId: SeriesRecord.ID, in db: Database)
+        throws
+    {
         for name in names {
             _ = try TagRecord.attach(name, to: seriesId, in: db)
         }
     }
 
-    private static func attachAuthors(_ names: [String], to seriesId: SeriesRecord.ID, in db: Database) throws {
+    private static func attachAuthors(
+        _ names: [String], to seriesId: SeriesRecord.ID, in db: Database
+    ) throws {
         for name in names {
             let author = try AuthorRecord.findOrCreate(AuthorRecord(id: nil, name: name), in: db)
             guard let authorId = author.id else { continue }
@@ -327,7 +370,9 @@ enum LibraryBackupRestorer {
         }
     }
 
-    private static func attachCollections(_ names: [String], to seriesId: SeriesRecord.ID, in db: Database) throws {
+    private static func attachCollections(
+        _ names: [String], to seriesId: SeriesRecord.ID, in db: Database
+    ) throws {
         guard !names.isEmpty else { return }
 
         var byLowercasedName = Dictionary(

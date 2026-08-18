@@ -69,15 +69,18 @@ struct LogScreen: View {
                 ContentUnavailableView {
                     Label(loaded ? "No Logs" : "Reading Logs", systemImage: "text.alignleft")
                 } description: {
-                    Text(loaded
-                         ? "Nothing has been recorded since the log was last cleared."
-                         : "One moment.")
+                    Text(
+                        loaded
+                            ? "Nothing has been recorded since the log was last cleared."
+                            : "One moment.")
                 }
             } else if visible.isEmpty {
                 ContentUnavailableView {
                     Label("No Matches", systemImage: "line.3.horizontal.decrease")
                 } description: {
-                    Text("^[\(entries.count) line](inflect: true) recorded, none matching this filter.")
+                    Text(
+                        "^[\(entries.count) line](inflect: true) recorded, none matching this filter."
+                    )
                 } actions: {
                     Button("Clear Filters") {
                         level = nil
@@ -110,7 +113,8 @@ struct LogScreen: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Removes every line on disk, including the previous launch. This cannot be undone.")
+            Text(
+                "Removes every line on disk, including the previous launch. This cannot be undone.")
         }
         // history first, then live, and the gap between them is accepted: a line
         // logged in that window is missed. it is a debug tool, and closing the
@@ -204,8 +208,10 @@ struct LogScreen: View {
                     let n = counts.levels[value] ?? 0
                     // an empty level is drawn and disabled rather than hidden:
                     // the row keeps its shape, and "no errors" is worth seeing
-                    Chip(value.rawValue.capitalized, count: n,
-                         active: level == value, tint: tint(value)) {
+                    Chip(
+                        value.rawValue.capitalized, count: n,
+                        active: level == value, tint: tint(value)
+                    ) {
                         level = level == value ? nil : value
                     }
                     .disabled(n == 0)
@@ -219,8 +225,10 @@ struct LogScreen: View {
                         category = nil
                     }
                     ForEach(categories, id: \.self) { value in
-                        Chip(value, count: counts.categories[value] ?? 0,
-                             active: category == value, tint: .brand) {
+                        Chip(
+                            value, count: counts.categories[value] ?? 0,
+                            active: category == value, tint: .brand
+                        ) {
                             category = category == value ? nil : value
                         }
                     }
@@ -247,8 +255,10 @@ struct LogScreen: View {
         .padding(.horizontal, -dimensions.screenMargin)
     }
 
-    private func Chip(_ title: String, count: Int, active: Bool,
-                      tint: Color, action: @escaping () -> Void) -> some View {
+    private func Chip(
+        _ title: String, count: Int, active: Bool,
+        tint: Color, action: @escaping () -> Void
+    ) -> some View {
         HStack(spacing: dimensions.spacing.space4) {
             Text(title)
                 .fontWeight(active ? .semibold : .medium)

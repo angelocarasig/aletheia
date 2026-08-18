@@ -7,8 +7,8 @@
 
 import Foundation
 import GRDB
-import Tagged
 import Observation
+import Tagged
 
 // what is failing right now, straight off origin.fetchError. observed rather
 // than fetched once: the column is cleared the moment a source answers, so a
@@ -55,7 +55,8 @@ final class FailuresViewModel {
         stream = Task { [weak self, database] in
             // one observation over both tables: two would each re-render the
             // screen on the other's writes, and the screen has one empty state
-            let observation = ValueObservation
+            let observation =
+                ValueObservation
                 .tracking { db in
                     (origins: try Self.stored(in: db), links: try Self.links(in: db))
                 }
@@ -71,7 +72,8 @@ final class FailuresViewModel {
             } catch {
                 guard let self else { return }
                 self.failure = Failure(error, fallback: "Couldn't Load Failures")
-                AppLog.shared.log("failures observation failed - \(error)", level: .error, category: "activity")
+                AppLog.shared.log(
+                    "failures observation failed - \(error)", level: .error, category: "activity")
             }
         }
     }
@@ -204,7 +206,9 @@ extension FailuresViewModel {
                     title: rows[0].sourceName,
                     count: rows.count,
                     sourceSlug: slug,
-                    entries: rows.sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
+                    entries: rows.sorted {
+                        $0.title.localizedStandardCompare($1.title) == .orderedAscending
+                    }
                 )
             }
 
@@ -215,7 +219,9 @@ extension FailuresViewModel {
                     title: rows[0].title,
                     count: rows.count,
                     sourceSlug: nil,
-                    entries: rows.sorted { $0.sourceName.localizedStandardCompare($1.sourceName) == .orderedAscending }
+                    entries: rows.sorted {
+                        $0.sourceName.localizedStandardCompare($1.sourceName) == .orderedAscending
+                    }
                 )
             }
         }

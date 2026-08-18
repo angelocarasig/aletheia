@@ -44,7 +44,8 @@ enum Notifier {
 
         if added > 0 {
             content.title = "New Chapters"
-            content.body = series == 1
+            content.body =
+                series == 1
                 ? "\(added) new \(added == 1 ? "chapter" : "chapters") in one series."
                 : "\(added) new \(added == 1 ? "chapter" : "chapters") across \(series) series."
             content.sound = .default
@@ -53,7 +54,8 @@ enum Notifier {
             // the walk happened and how much of the library it got through, which
             // is the question a reader actually has when nothing arrived
             content.title = "Library Checked"
-            content.body = checked == 1
+            content.body =
+                checked == 1
                 ? "No new chapters in one series."
                 : "No new chapters in \(checked) series."
             // no sound: it stays in notification centre until dealt with, but
@@ -61,7 +63,8 @@ enum Notifier {
         }
 
         if failures > 0 {
-            content.body += failures == 1
+            content.body +=
+                failures == 1
                 ? " One source couldn't be reached."
                 : " \(failures) sources couldn't be reached."
         }
@@ -88,18 +91,21 @@ enum Notifier {
 
         if updated > 0 {
             content.title = "Metadata Updated"
-            content.body = series == 1
+            content.body =
+                series == 1
                 ? "One series' details were refreshed."
                 : "\(updated) of \(series) series had updated details."
         } else {
             content.title = "Metadata Checked"
-            content.body = series == 1
+            content.body =
+                series == 1
                 ? "One series' details are up to date."
                 : "\(series) series' details are up to date."
         }
 
         if failures > 0 {
-            content.body += failures == 1
+            content.body +=
+                failures == 1
                 ? " One source couldn't be reached."
                 : " \(failures) sources couldn't be reached."
         }

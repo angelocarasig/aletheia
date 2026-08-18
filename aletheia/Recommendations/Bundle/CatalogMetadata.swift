@@ -74,12 +74,15 @@ struct CatalogMetadata: Sendable {
 
     // one pool shared by both, because the same person is usually both and names
     // repeat heavily - 135,744 distinct names across 302,894 rows
-    private func people(_ row: Int,
-                        _ pointers: MappedArray<UInt32>,
-                        _ indexes: MappedArray<UInt32>) -> [String] {
+    private func people(
+        _ row: Int,
+        _ pointers: MappedArray<UInt32>,
+        _ indexes: MappedArray<UInt32>
+    ) -> [String] {
         pointers.withUnsafeBufferPointer { ptr in
             guard row + 1 < ptr.count else { return [] }
-            let lo = Int(ptr[row]), hi = Int(ptr[row + 1])
+            let lo = Int(ptr[row])
+            let hi = Int(ptr[row + 1])
             guard hi > lo else { return [] }
             return indexes.withUnsafeBufferPointer { idx in
                 (lo..<hi).compactMap { span(nameBlob, nameOffsets, Int(idx[$0])) }
@@ -90,7 +93,8 @@ struct CatalogMetadata: Sendable {
     private func span(_ blob: Data, _ offsets: MappedArray<UInt32>, _ index: Int) -> String? {
         offsets.withUnsafeBufferPointer { off in
             guard index + 1 < off.count else { return nil }
-            let lo = Int(off[index]), hi = Int(off[index + 1])
+            let lo = Int(off[index])
+            let hi = Int(off[index + 1])
             guard hi >= lo, hi <= blob.count else { return nil }
             return String(data: blob[lo..<hi], encoding: .utf8)
         }

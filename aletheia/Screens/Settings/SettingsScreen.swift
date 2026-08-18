@@ -90,7 +90,9 @@ struct SettingsScreen: View {
         .navigationBarTitleDisplayMode(.inline)
         .navigationDestination(isPresented: $showingTracking) { TrackingScreen() }
         .navigationDestination(isPresented: $showingRefresh) { RefreshSettingsScreen() }
-        .navigationDestination(isPresented: $showingMetadataRefresh) { MetadataRefreshSettingsScreen() }
+        .navigationDestination(isPresented: $showingMetadataRefresh) {
+            MetadataRefreshSettingsScreen()
+        }
         .navigationDestination(isPresented: $showingMigrations) { MigrationsScreen() }
         .navigationDestination(isPresented: $showingLogs) { LogScreen() }
         .navigationDestination(isPresented: $showingImpressions) { ImpressionsScreen() }

@@ -25,7 +25,8 @@ struct LibraryBackupManifestGroup: View {
                 }
             }
             .padding(dimensions.spacing.space16)
-            .glassEffect(.regular, in: .rect(cornerRadius: dimensions.radius.radius16, style: .continuous))
+            .glassEffect(
+                .regular, in: .rect(cornerRadius: dimensions.radius.radius16, style: .continuous))
         }
     }
 }

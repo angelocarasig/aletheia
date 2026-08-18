@@ -5,8 +5,8 @@
 //  Created by Angelo Carasig on 10/8/2026.
 //
 
-import SwiftUI
 import Charts
+import SwiftUI
 
 // the Screen Time shape: a scope toggle over bars, scrub one to read it out.
 //
@@ -103,7 +103,10 @@ struct ReadingChart: View {
         // the unselected bars dim rather than snap, which is what ties the bar
         // being picked to the list changing under it
         .animation(.settle, value: selected)
-        .onChange(of: scope) { selected = nil; anchor = asOf }
+        .onChange(of: scope) {
+            selected = nil
+            anchor = asOf
+        }
         .onChange(of: metric) { selected = nil }
         .sensoryFeedback(.selection, trigger: selectedBucket?.start)
     }
@@ -164,7 +167,9 @@ struct ReadingChart: View {
     }
 
     private func shift(by amount: Int) {
-        guard let moved = calendar.date(byAdding: component, value: amount, to: anchor) else { return }
+        guard let moved = calendar.date(byAdding: component, value: amount, to: anchor) else {
+            return
+        }
         selected = nil
         anchor = moved
     }
@@ -175,16 +180,16 @@ struct ReadingChart: View {
     // draws, and the next has to start no later than the one containing now
     private var canGoBack: Bool {
         guard let previous = calendar.date(byAdding: component, value: -1, to: anchor),
-              let target = calendar.dateInterval(of: component, for: previous)?.start,
-              let floor = calendar.dateInterval(of: component, for: earliest)?.start
+            let target = calendar.dateInterval(of: component, for: previous)?.start,
+            let floor = calendar.dateInterval(of: component, for: earliest)?.start
         else { return false }
         return target >= floor
     }
 
     private var canGoForward: Bool {
         guard let next = calendar.date(byAdding: component, value: 1, to: anchor),
-              let target = calendar.dateInterval(of: component, for: next)?.start,
-              let present = calendar.dateInterval(of: component, for: asOf)?.start
+            let target = calendar.dateInterval(of: component, for: next)?.start,
+            let present = calendar.dateInterval(of: component, for: asOf)?.start
         else { return false }
         return target <= present
     }
@@ -196,10 +201,15 @@ struct ReadingChart: View {
             if calendar.isDateInYesterday(anchor) { return "Yesterday" }
             return anchor.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated))
         case .week:
-            guard let interval = calendar.dateInterval(of: .weekOfYear, for: anchor) else { return "" }
-            if calendar.isDate(asOf, equalTo: anchor, toGranularity: .weekOfYear) { return "This Week" }
+            guard let interval = calendar.dateInterval(of: .weekOfYear, for: anchor) else {
+                return ""
+            }
+            if calendar.isDate(asOf, equalTo: anchor, toGranularity: .weekOfYear) {
+                return "This Week"
+            }
             let end = interval.end.addingTimeInterval(-1)
-            return "\(interval.start.formatted(.dateTime.day().month(.abbreviated))) - \(end.formatted(.dateTime.day().month(.abbreviated)))"
+            return
+                "\(interval.start.formatted(.dateTime.day().month(.abbreviated))) - \(end.formatted(.dateTime.day().month(.abbreviated)))"
         }
     }
 
@@ -324,7 +334,9 @@ struct ReadingChart: View {
         if periodAverage != nil || lifetimeAverage != nil {
             VStack(spacing: dimensions.spacing.space4) {
                 if periodAverage != nil {
-                    Key(colour: Palette.success, label: scope == .day ? "Daily Average" : "Weekly Average")
+                    Key(
+                        colour: Palette.success,
+                        label: scope == .day ? "Daily Average" : "Weekly Average")
                 }
 
                 if lifetimeAverage != nil {
@@ -375,7 +387,10 @@ struct ReadingChart: View {
                     )
                     .clipShape(.rect(cornerRadius: Layout.radius))
                     .foregroundStyle(Palette.brand)
-                    .opacity(selected == nil || selectedBucket?.id == bucket.id ? 1 : Layout.unselectedOpacity)
+                    .opacity(
+                        selected == nil || selectedBucket?.id == bucket.id
+                            ? 1 : Layout.unselectedOpacity
+                    )
                     .annotation(position: .top, overflowResolution: .init(x: .fit, y: .disabled)) {
                         if selectedBucket?.id == bucket.id {
                             VStack(spacing: 0) {
@@ -389,7 +404,9 @@ struct ReadingChart: View {
                             }
                             .padding(.horizontal, dimensions.spacing.space8)
                             .padding(.vertical, dimensions.spacing.space4)
-                            .background(.regularMaterial, in: .rect(cornerRadius: dimensions.radius.radius8))
+                            .background(
+                                .regularMaterial, in: .rect(cornerRadius: dimensions.radius.radius8)
+                            )
                         }
                     }
                 }
@@ -403,7 +420,9 @@ struct ReadingChart: View {
                 RuleMark(y: .value("Average", periodAverage))
                     .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [5, 3]))
                     .foregroundStyle(Palette.success)
-                    .annotation(position: .trailing, alignment: .center, spacing: dimensions.spacing.space4) {
+                    .annotation(
+                        position: .trailing, alignment: .center, spacing: dimensions.spacing.space4
+                    ) {
                         RuleValue(periodAverage, colour: Palette.success)
                     }
             }
@@ -412,7 +431,9 @@ struct ReadingChart: View {
                 RuleMark(y: .value("All-time average", lifetimeAverage))
                     .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [2, 3]))
                     .foregroundStyle(Palette.warning)
-                    .annotation(position: .trailing, alignment: .center, spacing: dimensions.spacing.space4) {
+                    .annotation(
+                        position: .trailing, alignment: .center, spacing: dimensions.spacing.space4
+                    ) {
                         RuleValue(lifetimeAverage, colour: Palette.warning)
                     }
             }
@@ -441,7 +462,8 @@ struct ReadingChart: View {
                     if let date = value.as(Date.self) {
                         Text(axisLabel(date))
                             .font(.caption2)
-                            .foregroundStyle(isToday(date) ? AnyShapeStyle(.secondary) : AnyShapeStyle(.muted))
+                            .foregroundStyle(
+                                isToday(date) ? AnyShapeStyle(.secondary) : AnyShapeStyle(.muted))
                     }
                 }
             }
@@ -479,7 +501,9 @@ struct ReadingChart: View {
             guard let day = calendar.date(byAdding: .day, value: -1, to: anchor) else { return [] }
             return ReadingBuckets.hourly(sessions, on: day, calendar: calendar)
         case .week:
-            guard let week = calendar.date(byAdding: .weekOfYear, value: -1, to: anchor) else { return [] }
+            guard let week = calendar.date(byAdding: .weekOfYear, value: -1, to: anchor) else {
+                return []
+            }
             return ReadingBuckets.daily(sessions, weekOf: week, calendar: calendar)
         }
     }
@@ -533,12 +557,14 @@ struct ReadingChart: View {
     // sitting on each other still says something, and a reference that vanishes
     // when the numbers agree is missing at the one moment that is worth noticing
     private var lifetimeAverage: Int? {
-        guard let average = ReadingBuckets.averageActive(
-            sessions,
-            of: scope == .day ? .hour : .day,
-            metric: metric,
-            calendar: calendar
-        ) else { return nil }
+        guard
+            let average = ReadingBuckets.averageActive(
+                sessions,
+                of: scope == .day ? .hour : .day,
+                metric: metric,
+                calendar: calendar
+            )
+        else { return nil }
 
         return average
     }
@@ -546,7 +572,8 @@ struct ReadingChart: View {
     // the peak rounded up to something readable, never below the floor
     private var ceiling: Int {
         let peak = buckets.map { $0.value(metric) }.max() ?? 0
-        let floor = metric == .pages
+        let floor =
+            metric == .pages
             ? (scope == .day ? Layout.dayFloor : Layout.weekFloor)
             : (scope == .day ? Layout.dayFloorChapters : Layout.weekFloorChapters)
         // the reference lines are part of what the axis has to contain. left
@@ -602,85 +629,87 @@ struct ReadingChart: View {
 // MARK: - Previews
 
 #if DEBUG
-private enum Sample {
-    static func sessions(days: Int, perDay: Int, pages: Int = 24) -> [ReadingSessionEntry] {
-        var rows: [ReadingSessionEntry] = []
-        let calendar = Calendar.current
+    private enum Sample {
+        static func sessions(days: Int, perDay: Int, pages: Int = 24) -> [ReadingSessionEntry] {
+            var rows: [ReadingSessionEntry] = []
+            let calendar = Calendar.current
 
-        for day in 0..<days {
-            for slot in 0..<perDay {
-                let hour = [8, 13, 19, 22, 23][slot % 5]
-                guard let base = calendar.date(byAdding: .day, value: -day, to: .now),
-                      let start = calendar.date(bySettingHour: hour, minute: 10, second: 0, of: base)
-                else { continue }
+            for day in 0..<days {
+                for slot in 0..<perDay {
+                    let hour = [8, 13, 19, 22, 23][slot % 5]
+                    guard let base = calendar.date(byAdding: .day, value: -day, to: .now),
+                        let start = calendar.date(
+                            bySettingHour: hour, minute: 10, second: 0, of: base)
+                    else { continue }
 
-                rows.append(
-                    ReadingSessionEntry(
-                        id: Int64(day * 10 + slot),
-                        seriesId: 1,
-                        seriesTitle: "Berserk",
-                        pagesRead: pages + slot * 9 - day * 2,
-                        chaptersRead: 1 + slot % 2,
-                        startedDate: start,
-                        endedDate: start.addingTimeInterval(TimeInterval(600 + slot * 900)),
-                        localDayKey: start.localDayKey,
-                        alive: true,
-                    cover: nil,
-                    path: nil
+                    rows.append(
+                        ReadingSessionEntry(
+                            id: Int64(day * 10 + slot),
+                            seriesId: 1,
+                            seriesTitle: "Berserk",
+                            pagesRead: pages + slot * 9 - day * 2,
+                            chaptersRead: 1 + slot % 2,
+                            startedDate: start,
+                            endedDate: start.addingTimeInterval(TimeInterval(600 + slot * 900)),
+                            localDayKey: start.localDayKey,
+                            alive: true,
+                            cover: nil,
+                            path: nil
+                        )
                     )
-                )
+                }
             }
+            return rows
         }
-        return rows
     }
-}
 
-private struct ChartPreview: View {
-    var sessions: [ReadingSessionEntry]
-    var scope: ReadingChart.Scope = .week
-    var metric: ReadingMetric = .pages
+    private struct ChartPreview: View {
+        var sessions: [ReadingSessionEntry]
+        var scope: ReadingChart.Scope = .week
+        var metric: ReadingMetric = .pages
 
-    @State private var liveScope: ReadingChart.Scope?
-    @State private var liveMetric: ReadingMetric?
-    @State private var anchor: Date = .now
-    @State private var selected: Date?
+        @State private var liveScope: ReadingChart.Scope?
+        @State private var liveMetric: ReadingMetric?
+        @State private var anchor: Date = .now
+        @State private var selected: Date?
 
-    var body: some View {
-        ReadingChart(
-            sessions: sessions,
-            scope: Binding(get: { liveScope ?? scope }, set: { liveScope = $0 }),
-            metric: Binding(get: { liveMetric ?? metric }, set: { liveMetric = $0 }),
-            anchor: $anchor,
-            asOf: .now,
-            earliest: Calendar.current.date(byAdding: .weekOfYear, value: -15, to: .now) ?? .now,
-            selected: $selected
-        )
-        .padding(16)
-        .background(.canvas)
+        var body: some View {
+            ReadingChart(
+                sessions: sessions,
+                scope: Binding(get: { liveScope ?? scope }, set: { liveScope = $0 }),
+                metric: Binding(get: { liveMetric ?? metric }, set: { liveMetric = $0 }),
+                anchor: $anchor,
+                asOf: .now,
+                earliest: Calendar.current.date(byAdding: .weekOfYear, value: -15, to: .now)
+                    ?? .now,
+                selected: $selected
+            )
+            .padding(16)
+            .background(.canvas)
+        }
     }
-}
 
-#Preview("Week") {
-    ChartPreview(sessions: Sample.sessions(days: 13, perDay: 3))
-}
+    #Preview("Week") {
+        ChartPreview(sessions: Sample.sessions(days: 13, perDay: 3))
+    }
 
-#Preview("Day") {
-    ChartPreview(sessions: Sample.sessions(days: 13, perDay: 4), scope: .day)
-}
+    #Preview("Day") {
+        ChartPreview(sessions: Sample.sessions(days: 13, perDay: 4), scope: .day)
+    }
 
-// the same fortnight measured the other way - chapters are an order of magnitude
-// smaller, which is why the axis floor differs by metric
-#Preview("Chapters") {
-    ChartPreview(sessions: Sample.sessions(days: 13, perDay: 3), metric: .chapters)
-}
+    // the same fortnight measured the other way - chapters are an order of magnitude
+    // smaller, which is why the axis floor differs by metric
+    #Preview("Chapters") {
+        ChartPreview(sessions: Sample.sessions(days: 13, perDay: 3), metric: .chapters)
+    }
 
-// one sitting in a fortnight - the chrome has to stay so the toggle does not
-// jump, and the overlay says which kind of empty this is
-#Preview("Sparse") {
-    ChartPreview(sessions: Sample.sessions(days: 1, perDay: 1))
-}
+    // one sitting in a fortnight - the chrome has to stay so the toggle does not
+    // jump, and the overlay says which kind of empty this is
+    #Preview("Sparse") {
+        ChartPreview(sessions: Sample.sessions(days: 1, perDay: 1))
+    }
 
-#Preview("Empty") {
-    ChartPreview(sessions: [])
-}
+    #Preview("Empty") {
+        ChartPreview(sessions: [])
+    }
 #endif

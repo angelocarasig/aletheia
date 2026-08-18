@@ -47,14 +47,14 @@ extension SourceService {
     var requestHeaders: [String: String] {
         var headers = [
             "Referer": descriptor.referer.absoluteString,
-            "User-Agent": Constants.Network.userAgent
+            "User-Agent": Constants.Network.userAgent,
         ]
 
         guard let source = self as? any AuthenticatingSource,
-              let credential = try? Keychain.sources.load(
-                  SourceCredential.self,
-                  account: source.descriptor.slug
-              )
+            let credential = try? Keychain.sources.load(
+                SourceCredential.self,
+                account: source.descriptor.slug
+            )
         else { return headers }
 
         headers["User-Agent"] = credential.userAgent
@@ -101,9 +101,9 @@ extension SourceService {
         // counts. text and number filters carry no options and never qualify
         let chosen = query.filters.flatMap { selection -> [(filter: String, option: String)] in
             switch selection {
-            case let .select(id, optionID):
+            case .select(let id, let optionID):
                 return [(id, optionID)]
-            case let .multiSelect(id, included, _):
+            case .multiSelect(let id, let included, _):
                 return included.map { (id, $0) }
             case .text, .number:
                 return []
@@ -113,10 +113,11 @@ extension SourceService {
         return chosen.contains { pair in
             descriptor.supportedFilters.contains { filter in
                 switch filter {
-                case let .select(id, _, options), let .multiSelect(id, _, options, _):
-                    id == pair.filter && options.contains {
-                        $0.id == pair.option && $0.sensitivity == .adult
-                    }
+                case .select(let id, _, let options), .multiSelect(let id, _, let options, _):
+                    id == pair.filter
+                        && options.contains {
+                            $0.id == pair.option && $0.sensitivity == .adult
+                        }
                 case .text, .number:
                     false
                 }

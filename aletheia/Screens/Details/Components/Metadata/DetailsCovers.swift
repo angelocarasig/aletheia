@@ -5,8 +5,8 @@
 //  Created by Angelo Carasig on 6/8/2026.
 //
 
-import SwiftUI
 import Kingfisher
+import SwiftUI
 
 struct DetailsCovers: View {
     let covers: [Cover]
@@ -70,7 +70,9 @@ struct DetailsCovers: View {
                 // action row out wider than the screen
                 .background { Backdrop }
                 .navigationTitle("Covers")
-                .navigationSubtitle("^[\(covers.count) cover](inflect: true) · ^[\(sourceCount) source](inflect: true)")
+                .navigationSubtitle(
+                    "^[\(covers.count) cover](inflect: true) · ^[\(sourceCount) source](inflect: true)"
+                )
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .topBarLeading) {
@@ -137,7 +139,8 @@ struct DetailsCovers: View {
             // would push the neighbours clean out of the viewport - no peek.
             // width follows the typical cover ratio at the current height,
             // capped at the wide-detent fraction
-            let artworkWidth = proxy.size.height * Layout.pageHeightFactor / Layout.coverRatio
+            let artworkWidth =
+                proxy.size.height * Layout.pageHeightFactor / Layout.coverRatio
                 + dimensions.spacing.space8 * 2
             let pageWidth = min(proxy.size.width * Layout.pageWidthFactor, artworkWidth)
             let margin = (proxy.size.width - pageWidth) / 2
@@ -180,7 +183,11 @@ struct DetailsCovers: View {
     private var Grid: some View {
         ScrollView {
             LazyVGrid(
-                columns: [GridItem(.adaptive(minimum: Layout.gridMinWidth), spacing: dimensions.spacing.space12)],
+                columns: [
+                    GridItem(
+                        .adaptive(minimum: Layout.gridMinWidth), spacing: dimensions.spacing.space12
+                    )
+                ],
                 spacing: dimensions.spacing.space12
             ) {
                 ForEach(covers) { cover in
@@ -326,7 +333,9 @@ struct DetailsCovers: View {
         .buttonStyle(.plain)
         .glassEffect(.regular.interactive(), in: .capsule)
         .disabled(isSaving)
-        .accessibilityLabel(cover.isPreferred ? "Remove as preferred cover" : "Set as preferred cover")
+        .accessibilityLabel(
+            cover.isPreferred ? "Remove as preferred cover" : "Set as preferred cover"
+        )
         .accessibilityAddTraits(cover.isPreferred ? .isSelected : [])
     }
 
@@ -356,7 +365,6 @@ struct DetailsCovers: View {
         .glassEffect(.regular.interactive(), in: .circle)
         .accessibilityLabel("More actions")
     }
-
 
     @ViewBuilder
     private func SourceIcon(_ cover: Cover) -> some View {

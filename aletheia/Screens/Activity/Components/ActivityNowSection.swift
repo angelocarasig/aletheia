@@ -81,11 +81,11 @@ struct ActivityNowSection: View {
 
 // MARK: - Rows
 
-private extension ActivityNowSection {
+extension ActivityNowSection {
     @ViewBuilder
-    var RefreshRow: some View {
+    fileprivate var RefreshRow: some View {
         switch model.refresh {
-        case let .idle(lastChecked):
+        case .idle(let lastChecked):
             Card {
                 Image(systemName: "arrow.triangle.2.circlepath")
                     .font(.caption)
@@ -123,7 +123,7 @@ private extension ActivityNowSection {
             .tappable { onOpenUpdates() }
             .accessibilityLabel("Library updates")
 
-        case let .running(scope, seriesTitle, completed, total):
+        case .running(let scope, let seriesTitle, let completed, let total):
             VStack(alignment: .leading, spacing: dimensions.spacing.space8) {
                 HStack(spacing: dimensions.spacing.space12) {
                     VStack(alignment: .leading, spacing: dimensions.spacing.space2) {
@@ -160,14 +160,16 @@ private extension ActivityNowSection {
                     .tint(.brand)
             }
             .padding(dimensions.spacing.space12)
-            .background(.primary.opacity(Layout.fillOpacity), in: .rect(cornerRadius: dimensions.radius.radius12))
+            .background(
+                .primary.opacity(Layout.fillOpacity),
+                in: .rect(cornerRadius: dimensions.radius.radius12))
         }
     }
 
     @ViewBuilder
-    var DownloadsRow: some View {
+    fileprivate var DownloadsRow: some View {
         switch model.downloads {
-        case let .idle(stored):
+        case .idle(let stored):
             Card {
                 Image(systemName: "arrow.down.circle")
                     .font(.caption)
@@ -198,7 +200,7 @@ private extension ActivityNowSection {
             .tappable { onOpenDownloads() }
             .accessibilityLabel("Downloads")
 
-        case let .active(chapters, progress):
+        case .active(let chapters, let progress):
             HStack(spacing: dimensions.spacing.space12) {
                 VStack(alignment: .leading, spacing: dimensions.spacing.space4) {
                     Text("Downloading · ^[\(chapters) chapter](inflect: true)")
@@ -215,16 +217,20 @@ private extension ActivityNowSection {
                     .foregroundStyle(.tertiary)
             }
             .padding(dimensions.spacing.space12)
-            .background(.primary.opacity(Layout.fillOpacity), in: .rect(cornerRadius: dimensions.radius.radius12))
+            .background(
+                .primary.opacity(Layout.fillOpacity),
+                in: .rect(cornerRadius: dimensions.radius.radius12)
+            )
             .contentShape(.rect)
             .tappable { onOpenDownloads() }
-            .accessibilityLabel("^[\(chapters) chapter](inflect: true) downloading. Opens the queue.")
+            .accessibilityLabel(
+                "^[\(chapters) chapter](inflect: true) downloading. Opens the queue.")
         }
     }
 
     // one row for however many are broken, opening the list. it leaves on its
     // own when the sources answer again - there is nothing here to dismiss
-    var FailingRow: some View {
+    fileprivate var FailingRow: some View {
         HStack(spacing: dimensions.spacing.space12) {
             Image(systemName: "exclamationmark.triangle.fill")
                 .font(.caption)
@@ -248,7 +254,10 @@ private extension ActivityNowSection {
                 .foregroundStyle(.tertiary)
         }
         .padding(dimensions.spacing.space12)
-        .background(.primary.opacity(Layout.fillOpacity), in: .rect(cornerRadius: dimensions.radius.radius12))
+        .background(
+            .primary.opacity(Layout.fillOpacity),
+            in: .rect(cornerRadius: dimensions.radius.radius12)
+        )
         .contentShape(.rect)
         .tappable { onOpenFailures() }
     }
@@ -257,7 +266,7 @@ private extension ActivityNowSection {
     // cannot fix itself: a push that failed will retry, an account that has run
     // out will not. named rather than counted - "1 account" is a number where the
     // service's own name is the whole instruction
-    func SignedOutRow(_ tracker: Tracker) -> some View {
+    fileprivate func SignedOutRow(_ tracker: Tracker) -> some View {
         HStack(spacing: dimensions.spacing.space12) {
             Image(tracker.icon)
                 .resizable()
@@ -287,15 +296,20 @@ private extension ActivityNowSection {
                 .foregroundStyle(.tertiary)
         }
         .padding(dimensions.spacing.space12)
-        .background(.primary.opacity(Layout.fillOpacity), in: .rect(cornerRadius: dimensions.radius.radius12))
+        .background(
+            .primary.opacity(Layout.fillOpacity),
+            in: .rect(cornerRadius: dimensions.radius.radius12)
+        )
         .contentShape(.rect)
         .tappable { onOpenTracking() }
     }
 
-    func Card(@ViewBuilder content: () -> some View) -> some View {
+    fileprivate func Card(@ViewBuilder content: () -> some View) -> some View {
         HStack(spacing: dimensions.spacing.space12, content: content)
             .padding(dimensions.spacing.space12)
-            .background(.primary.opacity(Layout.fillOpacity), in: .rect(cornerRadius: dimensions.radius.radius12))
+            .background(
+                .primary.opacity(Layout.fillOpacity),
+                in: .rect(cornerRadius: dimensions.radius.radius12))
     }
 }
 
@@ -352,7 +366,8 @@ private extension ActivityNowSection {
 #Preview("Refresh Running") {
     ActivityNowSection(
         model: .init(
-            refresh: .running(scope: nil, seriesTitle: "Heavenly Solo Defender", completed: 12, total: 87),
+            refresh: .running(
+                scope: nil, seriesTitle: "Heavenly Solo Defender", completed: 12, total: 87),
             downloads: .idle(stored: 12)
         )
     )
@@ -400,7 +415,10 @@ private extension ActivityNowSection {
     .padding()
     .task {
         try? await Task.sleep(for: .seconds(1))
-        let titles = ["Heavenly Solo Defender", "Motae Solo", "Solo Martial Arts", "This Duck Wants to Fly Solo"]
+        let titles = [
+            "Heavenly Solo Defender", "Motae Solo", "Solo Martial Arts",
+            "This Duck Wants to Fly Solo",
+        ]
         for step in 0...40 {
             try? await Task.sleep(for: .milliseconds(300))
             model.refresh = .running(

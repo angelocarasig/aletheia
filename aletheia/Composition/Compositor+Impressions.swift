@@ -38,14 +38,16 @@ extension Compositor {
         // holds twenty and about three are on screen, so logging the array would
         // put "never seen" and "seen and passed over" back into one bucket, which
         // is the entire reason this table exists
-        func shown(_ recommendation: Recommendation,
-                   rank: Int,
-                   batchId: String,
-                   seed: SeriesRecord.ID,
-                   seedCatalogId: CatalogID?,
-                   modelVersion: String,
-                   alreadyInLibrary: Bool,
-                   surface: RecommendationImpressionRecord.Surface = .detailsRail) {
+        func shown(
+            _ recommendation: Recommendation,
+            rank: Int,
+            batchId: String,
+            seed: SeriesRecord.ID,
+            seedCatalogId: CatalogID?,
+            modelVersion: String,
+            alreadyInLibrary: Bool,
+            surface: RecommendationImpressionRecord.Surface = .detailsRail
+        ) {
             let record = RecommendationImpressionRecord(
                 catalogId: Int64(recommendation.catalogId.rawValue),
                 catalogTitle: recommendation.title,
@@ -91,19 +93,22 @@ extension Compositor {
         func owned() async -> Set<CatalogID> {
             do {
                 return try await database.reader.read { db in
-                    let ids = try Int64.fetchAll(db, sql: """
-                        SELECT \(SeriesRecord.Columns.catalogId.name)
-                        FROM \(SeriesRecord.databaseTableName)
-                        WHERE \(SeriesRecord.Columns.inLibrary.name) = 1
-                          AND \(SeriesRecord.Columns.catalogId.name) IS NOT NULL
-                        """)
+                    let ids = try Int64.fetchAll(
+                        db,
+                        sql: """
+                            SELECT \(SeriesRecord.Columns.catalogId.name)
+                            FROM \(SeriesRecord.databaseTableName)
+                            WHERE \(SeriesRecord.Columns.inLibrary.name) = 1
+                              AND \(SeriesRecord.Columns.catalogId.name) IS NOT NULL
+                            """)
                     return Set(ids.map { CatalogID(rawValue: Int32($0)) })
                 }
             } catch {
                 // an empty set understates ownership rather than inventing it,
                 // and the column is a snapshot either way
-                AppLog.shared.log("owned set unavailable - \(error)",
-                                  level: .error, category: "impressions")
+                AppLog.shared.log(
+                    "owned set unavailable - \(error)",
+                    level: .error, category: "impressions")
                 return []
             }
         }
@@ -112,7 +117,7 @@ extension Compositor {
 
 // MARK: - Writer
 
-private extension Compositor.Impressions {
+extension Compositor.Impressions {
     // cards cross the visibility threshold in bursts - a flick through a rail is
     // a dozen in under a second - and one transaction each would be a dozen
     // writer-queue entries competing with whatever else is running. buffered and
@@ -121,7 +126,7 @@ private extension Compositor.Impressions {
     // the dedupe is per batch, not global: the same card scrolled off and back on
     // is one impression for that render, and a genuinely new render gets a new
     // batch id and is allowed to record it again
-    actor Writer {
+    fileprivate actor Writer {
         private let database: DatabaseClient
         private var pending: [RecommendationImpressionRecord] = []
         private var written: Set<String> = []
@@ -175,8 +180,9 @@ private extension Compositor.Impressions {
                 // an impression is evidence, not state - losing one costs a row in
                 // an analysis nobody is running yet, and retrying would put a
                 // failing write in front of everything the reader IS waiting for
-                AppLog.shared.log("dropped \(batch.count) impression(s) - \(error)",
-                                  level: .error, category: "impressions")
+                AppLog.shared.log(
+                    "dropped \(batch.count) impression(s) - \(error)",
+                    level: .error, category: "impressions")
             }
         }
 
@@ -186,42 +192,47 @@ private extension Compositor.Impressions {
             await drain()
             do {
                 try await database.writer.write { db in
-                    try db.execute(sql: """
-                        UPDATE \(RecommendationImpressionRecord.databaseTableName)
-                        SET \(RecommendationImpressionRecord.Columns.tappedDate.name) = ?
-                        WHERE \(RecommendationImpressionRecord.Columns.batchId.name) = ?
-                          AND \(RecommendationImpressionRecord.Columns.catalogId.name) = ?
-                          AND \(RecommendationImpressionRecord.Columns.tappedDate.name) IS NULL
-                        """, arguments: [Date.now, batchId, catalogId])
+                    try db.execute(
+                        sql: """
+                            UPDATE \(RecommendationImpressionRecord.databaseTableName)
+                            SET \(RecommendationImpressionRecord.Columns.tappedDate.name) = ?
+                            WHERE \(RecommendationImpressionRecord.Columns.batchId.name) = ?
+                              AND \(RecommendationImpressionRecord.Columns.catalogId.name) = ?
+                              AND \(RecommendationImpressionRecord.Columns.tappedDate.name) IS NULL
+                            """, arguments: [Date.now, batchId, catalogId])
                     AppLog.shared.log(
                         "tapped \(catalogId) - \(db.changesCount) row(s) updated",
                         category: "impressions")
                 }
             } catch {
-                AppLog.shared.log("tap not recorded - \(error)",
-                                  level: .error, category: "impressions")
+                AppLog.shared.log(
+                    "tap not recorded - \(error)",
+                    level: .error, category: "impressions")
             }
         }
 
         func stamp(catalogId: Int64, for series: SeriesRecord.ID) async {
             do {
                 try await database.writer.write { db in
-                    try db.execute(sql: """
-                        UPDATE \(SeriesRecord.databaseTableName)
-                        SET \(SeriesRecord.Columns.catalogId.name) = ?
-                        WHERE \(SeriesRecord.Columns.id.name) = ?
-                          AND (\(SeriesRecord.Columns.catalogId.name) IS NULL
-                               OR \(SeriesRecord.Columns.catalogId.name) <> ?)
-                        """, arguments: [catalogId, series.rawValue, catalogId])
+                    try db.execute(
+                        sql: """
+                            UPDATE \(SeriesRecord.databaseTableName)
+                            SET \(SeriesRecord.Columns.catalogId.name) = ?
+                            WHERE \(SeriesRecord.Columns.id.name) = ?
+                              AND (\(SeriesRecord.Columns.catalogId.name) IS NULL
+                                   OR \(SeriesRecord.Columns.catalogId.name) <> ?)
+                            """, arguments: [catalogId, series.rawValue, catalogId])
                     // 0 changed is the ordinary case - it is already stamped
                     if db.changesCount > 0 {
-                        AppLog.shared.log("stamped series \(series.rawValue) as catalog \(catalogId)",
-                                          category: "impressions")
+                        AppLog.shared.log(
+                            "stamped series \(series.rawValue) as catalog \(catalogId)",
+                            category: "impressions")
                     }
                 }
             } catch {
-                AppLog.shared.log("catalogId not stamped - \(error)",
-                                  level: .error, category: "impressions")
+                AppLog.shared.log(
+                    "catalogId not stamped - \(error)",
+                    level: .error, category: "impressions")
             }
         }
     }

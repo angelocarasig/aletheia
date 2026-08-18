@@ -7,8 +7,8 @@
 
 import Foundation
 import GRDB
-import Tagged
 import Observation
+import Tagged
 
 @MainActor
 @Observable
@@ -42,12 +42,14 @@ final class StatsViewModel {
     func observe() {
         guard stream == nil else { return }
         let asOf = Date.now
-        let heatKey = Calendar.current.date(
-            byAdding: .weekOfYear, value: -(Rule.heatWeeks - 1), to: asOf
-        )?.localDayKey ?? 0
+        let heatKey =
+            Calendar.current.date(
+                byAdding: .weekOfYear, value: -(Rule.heatWeeks - 1), to: asOf
+            )?.localDayKey ?? 0
 
         stream = Task { [weak self, database] in
-            let observation = ValueObservation
+            let observation =
+                ValueObservation
                 .tracking { db in
                     try Self.stored(asOf: asOf, heatKey: heatKey, in: db)
                 }
@@ -62,7 +64,8 @@ final class StatsViewModel {
             } catch {
                 guard let self else { return }
                 self.failure = Failure(error, fallback: "Couldn't Load Reading Activity")
-                AppLog.shared.log("stats observation failed - \(error)", level: .error, category: "home")
+                AppLog.shared.log(
+                    "stats observation failed - \(error)", level: .error, category: "home")
             }
         }
     }
@@ -84,28 +87,30 @@ final class StatsViewModel {
         heatKey: Int,
         in db: Database
     ) throws -> Snapshot {
-        let chapters = try Int.fetchOne(
-            db,
-            sql: """
-                SELECT COUNT(*)
-                FROM \(ReadingEventRecord.databaseTableName)
-                WHERE \(ReadingEventRecord.Columns.kind.name) = ?
-                """,
-            arguments: [ReadingEventRecord.Kind.chapterCompleted.rawValue]
-        ) ?? 0
+        let chapters =
+            try Int.fetchOne(
+                db,
+                sql: """
+                    SELECT COUNT(*)
+                    FROM \(ReadingEventRecord.databaseTableName)
+                    WHERE \(ReadingEventRecord.Columns.kind.name) = ?
+                    """,
+                arguments: [ReadingEventRecord.Kind.chapterCompleted.rawValue]
+            ) ?? 0
 
-        let (seconds, pages) = try Row.fetchOne(
-            db,
-            sql: """
-                SELECT
-                    IFNULL(SUM(
-                        strftime('%s', \(ReadingSessionRecord.Columns.endedDate.name))
-                        - strftime('%s', \(ReadingSessionRecord.Columns.startedDate.name))
-                    ), 0) AS seconds,
-                    IFNULL(SUM(\(ReadingSessionRecord.Columns.pagesRead.name)), 0) AS pages
-                FROM \(ReadingSessionRecord.databaseTableName)
-                """
-        ).map { ($0["seconds"] as Int? ?? 0, $0["pages"] as Int? ?? 0) } ?? (0, 0)
+        let (seconds, pages) =
+            try Row.fetchOne(
+                db,
+                sql: """
+                    SELECT
+                        IFNULL(SUM(
+                            strftime('%s', \(ReadingSessionRecord.Columns.endedDate.name))
+                            - strftime('%s', \(ReadingSessionRecord.Columns.startedDate.name))
+                        ), 0) AS seconds,
+                        IFNULL(SUM(\(ReadingSessionRecord.Columns.pagesRead.name)), 0) AS pages
+                    FROM \(ReadingSessionRecord.databaseTableName)
+                    """
+            ).map { ($0["seconds"] as Int? ?? 0, $0["pages"] as Int? ?? 0) } ?? (0, 0)
 
         let days = try Int.fetchAll(
             db,
@@ -138,10 +143,14 @@ final class StatsViewModel {
             arguments: [heatKey]
         )
         let heat = Dictionary(
-            uniqueKeysWithValues: heatRows.map { ($0["day"] as Int? ?? 0, $0["pages"] as Int? ?? 0) }
+            uniqueKeysWithValues: heatRows.map {
+                ($0["day"] as Int? ?? 0, $0["pages"] as Int? ?? 0)
+            }
         )
         let heatChapters = Dictionary(
-            uniqueKeysWithValues: heatRows.map { ($0["day"] as Int? ?? 0, $0["chapters"] as Int? ?? 0) }
+            uniqueKeysWithValues: heatRows.map {
+                ($0["day"] as Int? ?? 0, $0["chapters"] as Int? ?? 0)
+            }
         )
 
         let sessions = try ReadingSessionEntry.fetch(
@@ -151,9 +160,10 @@ final class StatsViewModel {
             in: db
         )
 
-        let chartKey = Calendar.current.date(
-            byAdding: .day, value: -(Rule.chartDays - 1), to: asOf
-        )?.localDayKey ?? 0
+        let chartKey =
+            Calendar.current.date(
+                byAdding: .day, value: -(Rule.chartDays - 1), to: asOf
+            )?.localDayKey ?? 0
 
         // fetched whole rather than aggregated in SQL: the chart buckets by
         // interval intersection, which needs both timestamps per sitting and
@@ -213,16 +223,16 @@ extension StatsViewModel {
 // MARK: - Previews
 
 #if DEBUG
-extension StatsViewModel {
-    // the same shape HomeViewModel uses: the pieces directly rather than a whole
-    // Compositor, which would construct every source for a canvas that has no
-    // use for one
-    static func preview(snapshot: Snapshot? = nil, failure: Failure? = nil) -> StatsViewModel {
-        let database = DatabaseClient.preview
-        let model = StatsViewModel(database: database)
-        model.snapshot = snapshot
-        model.failure = failure
-        return model
+    extension StatsViewModel {
+        // the same shape HomeViewModel uses: the pieces directly rather than a whole
+        // Compositor, which would construct every source for a canvas that has no
+        // use for one
+        static func preview(snapshot: Snapshot? = nil, failure: Failure? = nil) -> StatsViewModel {
+            let database = DatabaseClient.preview
+            let model = StatsViewModel(database: database)
+            model.snapshot = snapshot
+            model.failure = failure
+            return model
+        }
     }
-}
 #endif

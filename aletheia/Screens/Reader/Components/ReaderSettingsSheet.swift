@@ -52,8 +52,8 @@ struct ReaderSettingsSheet: View {
 
 // MARK: - Content
 
-private extension ReaderSettingsSheet {
-    var Content: some View {
+extension ReaderSettingsSheet {
+    fileprivate var Content: some View {
         // read before any branch so the readouts stay body dependencies
         let configuration = engine.configuration
         return ScrollView {
@@ -68,7 +68,7 @@ private extension ReaderSettingsSheet {
         .scrollContentBackground(.hidden)
     }
 
-    func PaddingRow(_ configuration: ReaderConfiguration) -> some View {
+    fileprivate func PaddingRow(_ configuration: ReaderConfiguration) -> some View {
         let padding = configuration.horizontalPadding
         let active = configuration.mode.isContinuous
         return Card {
@@ -99,7 +99,7 @@ private extension ReaderSettingsSheet {
         .opacity(active ? 1 : Layout.disabledOpacity)
     }
 
-    func TintRow(_ tint: Double) -> some View {
+    fileprivate func TintRow(_ tint: Double) -> some View {
         Card {
             SliderHeader(
                 "Menu Darkness",
@@ -121,7 +121,7 @@ private extension ReaderSettingsSheet {
         }
     }
 
-    func Card(@ViewBuilder content: () -> some View) -> some View {
+    fileprivate func Card(@ViewBuilder content: () -> some View) -> some View {
         VStack(alignment: .leading, spacing: dimensions.spacing.space12) {
             content()
         }
@@ -132,13 +132,13 @@ private extension ReaderSettingsSheet {
         }
     }
 
-    func Bound(_ symbol: String) -> some View {
+    fileprivate func Bound(_ symbol: String) -> some View {
         Image(systemName: symbol)
             .font(.caption)
             .foregroundStyle(.secondary)
     }
 
-    func SliderHeader(_ title: String, _ summary: String, value: String) -> some View {
+    fileprivate func SliderHeader(_ title: String, _ summary: String, value: String) -> some View {
         HStack(alignment: .firstTextBaseline) {
             VStack(alignment: .leading, spacing: dimensions.spacing.space2) {
                 Text(title)

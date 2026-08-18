@@ -6,6 +6,7 @@
 //
 
 import Foundation
+
 import struct SwiftUI.ImageResource
 
 struct SourceDescriptor: Sendable, Hashable {
@@ -47,7 +48,7 @@ extension SourceDescriptor {
             languages.map(\.rawValue).sorted().joined(separator: ","),
             supportedFilters.map(\.fingerprint).joined(separator: "|"),
             supportedSort.fingerprint,
-            adultOnly ? "adult" : "mixed"
+            adultOnly ? "adult" : "mixed",
         ]
 
         return Checksum.hex(parts.joined(separator: "\u{1F}"))

@@ -24,8 +24,9 @@ struct AliasIndex: Sendable {
         hashes = try bundle.array("aliases.bin", "hash", of: UInt64.self)
         rows = try bundle.array("aliases.bin", "row", of: UInt32.self)
         guard hashes.count == rows.count else {
-            throw RecommenderError.malformed(file: "aliases.bin",
-                                             reason: "hash and row arrays disagree")
+            throw RecommenderError.malformed(
+                file: "aliases.bin",
+                reason: "hash and row arrays disagree")
         }
     }
 

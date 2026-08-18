@@ -7,8 +7,9 @@
 
 import Foundation
 import GRDB
-import Tagged
 import Observation
+import Tagged
+
 import struct SwiftUI.ImageResource
 
 extension DetailsComposer {
@@ -103,7 +104,8 @@ extension DetailsComposer {
             // the stored row, so it outlives the source being uninstalled
             referer = stored.origins.first?.sourceReferer
 
-            let primary = stored.origins.first { $0.installed && !$0.disconnected && !$0.disabled }
+            let primary =
+                stored.origins.first { $0.installed && !$0.disconnected && !$0.disabled }
                 ?? stored.origins.first
             metadataFetchedDate = primary?.metadataFetchedDate
             chaptersFetchedDate = primary?.chaptersFetchedDate
@@ -237,7 +239,8 @@ extension DetailsComposer {
 
             do {
                 try await database.writer.write { db in
-                    _ = try SeriesRecord
+                    _ =
+                        try SeriesRecord
                         .filter(key: seriesId.rawValue)
                         .updateAll(db, preference.column.set(to: preference.id))
                 }
@@ -335,7 +338,8 @@ extension DetailsComposer.Series {
         var id: Int64? {
             switch self {
             case .cover(let id), .title(let id), .synopsis(let id),
-                 .classification(let id), .publication(let id): id
+                .classification(let id), .publication(let id):
+                id
             }
         }
 

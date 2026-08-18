@@ -5,8 +5,8 @@
 //  Created by Angelo Carasig on 5/8/2026.
 //
 
-import SwiftUI
 import Kingfisher
+import SwiftUI
 
 struct SourceCard: View {
     var stub: SeriesStub?
@@ -50,7 +50,9 @@ struct SourceCard: View {
             // and a fractional point mints a fresh decode every layout pass
             .onGeometryChange(for: CGSize.self) { proxy in
                 CGSize(width: proxy.size.width.rounded(), height: proxy.size.height.rounded())
-            } action: { slot = $0 }
+            } action: {
+                slot = $0
+            }
             .overlay {
                 if let cover = stub?.cover {
                     // zero until the first layout pass, and a downsampler built on

@@ -38,7 +38,8 @@ extension SourceService {
         // which is the honest answer anyway: until then we cannot reach it
         var request = URLRequest(url: pingURL)
         if let authenticating = self as? any AuthenticatingSource,
-           let credential = await authenticating.requester.peek(slug: descriptor.slug) {
+            let credential = await authenticating.requester.peek(slug: descriptor.slug)
+        {
             credential.apply(to: &request)
         }
 

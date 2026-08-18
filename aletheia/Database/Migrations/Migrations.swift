@@ -91,23 +91,25 @@ enum Migrations {
     private static func registerV1_0_2(
         with migrator: inout DatabaseMigrator
     ) {
-        let name = DatabaseVersion(1, 0, 2).createMigrationName(description: "backfill_series_updatedDate")
+        let name = DatabaseVersion(1, 0, 2).createMigrationName(
+            description: "backfill_series_updatedDate")
         migrator.registerMigration(name) { db in
-            try db.execute(sql: """
-                UPDATE series
-                SET updatedDate = (
-                    SELECT MAX(c.publishedDate)
-                    FROM chapter c
-                    JOIN origin o ON o.id = c.originId
-                    WHERE o.seriesId = series.id
-                )
-                WHERE EXISTS (
-                    SELECT 1
-                    FROM chapter c
-                    JOIN origin o ON o.id = c.originId
-                    WHERE o.seriesId = series.id
-                )
-                """)
+            try db.execute(
+                sql: """
+                    UPDATE series
+                    SET updatedDate = (
+                        SELECT MAX(c.publishedDate)
+                        FROM chapter c
+                        JOIN origin o ON o.id = c.originId
+                        WHERE o.seriesId = series.id
+                    )
+                    WHERE EXISTS (
+                        SELECT 1
+                        FROM chapter c
+                        JOIN origin o ON o.id = c.originId
+                        WHERE o.seriesId = series.id
+                    )
+                    """)
         }
     }
 }

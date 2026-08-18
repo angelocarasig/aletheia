@@ -79,9 +79,10 @@ actor CoverDownloader {
     }
 
     func enqueue(_ series: SeriesRecord.ID) async {
-        let pending = (try? await database.reader.read { db in
-            try Self.pending(for: series, in: db)
-        }) ?? []
+        let pending =
+            (try? await database.reader.read { db in
+                try Self.pending(for: series, in: db)
+            }) ?? []
 
         await download(pending)
     }
@@ -102,7 +103,9 @@ actor CoverDownloader {
                 try await database.writer.write { db in
                     try CoverRecord.forget(Array(missing), in: db)
                 }
-                log.log("cleared \(missing.count) cover path(s) with no file", level: .warning, category: "assets")
+                log.log(
+                    "cleared \(missing.count) cover path(s) with no file", level: .warning,
+                    category: "assets")
             }
         } catch {
             // a failed read must never be mistaken for an empty keep set - that
@@ -149,25 +152,30 @@ actor CoverDownloader {
         do {
             let promoted: Int64? = try await database.writer.write { db in
                 guard let current = try SeriesRecord.fetchOne(db, key: series),
-                      current.preferredCoverId?.rawValue == dead
+                    current.preferredCoverId?.rawValue == dead
                 else { return nil }
 
                 // ordered the way the pool was built, which is quality
                 // descending - so the first survivor is the best one left. a
                 // cover already on disk wins outright over one still to try
-                let alternates = try CoverRecord
+                let alternates =
+                    try CoverRecord
                     .filter(CoverRecord.Columns.seriesId == series)
                     .filter(CoverRecord.Columns.id != dead)
                     .order(CoverRecord.Columns.id)
                     .fetchAll(db)
 
-                let next = alternates.first { $0.path != nil }
-                    ?? alternates.first { ($0.id?.rawValue).map { !exhausted.keys.contains($0) } ?? false }
+                let next =
+                    alternates.first { $0.path != nil }
+                    ?? alternates.first {
+                        ($0.id?.rawValue).map { !exhausted.keys.contains($0) } ?? false
+                    }
                     ?? alternates.first
 
                 guard let next, let id = next.id else { return nil }
 
-                _ = try SeriesRecord
+                _ =
+                    try SeriesRecord
                     .filter(key: series)
                     .updateAll(db, SeriesRecord.Columns.preferredCoverId.set(to: id.rawValue))
 
@@ -179,13 +187,17 @@ actor CoverDownloader {
                 return
             }
 
-            log.log("cover \(dead) is gone - series \(series) promoted to \(promoted)", category: "assets")
+            log.log(
+                "cover \(dead) is gone - series \(series) promoted to \(promoted)",
+                category: "assets")
 
             // the promoted one may have no file yet, and nothing else will come
             // back for it: this pass has already filtered its queue
             await enqueue(SeriesRecord.ID(rawValue: series))
         } catch {
-            log.log("could not promote past cover \(dead) - \(error)", level: .error, category: "assets")
+            log.log(
+                "could not promote past cover \(dead) - \(error)", level: .error, category: "assets"
+            )
         }
     }
 
@@ -204,7 +216,8 @@ actor CoverDownloader {
             // a disconnected origin has no source to speak for it, so the request
             // goes out with the pinned agent alone - the same bare request it
             // made before headers were a source's business
-            let headers = row.sourceSlug
+            let headers =
+                row.sourceSlug
                 .flatMap { registry.source(slug: $0) }?
                 .requestHeaders
                 ?? ["User-Agent": Constants.Network.userAgent]
@@ -245,13 +258,16 @@ actor CoverDownloader {
         do {
             try await database.writer.write { db in
                 for (id, path) in paths {
-                    _ = try CoverRecord
+                    _ =
+                        try CoverRecord
                         .filter(key: id)
                         .updateAll(db, CoverRecord.Columns.path.set(to: path))
                 }
             }
         } catch {
-            log.log("could not record \(written.count) cover path(s) - \(error)", level: .error, category: "assets")
+            log.log(
+                "could not record \(written.count) cover path(s) - \(error)", level: .error,
+                category: "assets")
         }
     }
 }
@@ -262,7 +278,7 @@ extension CoverDownloader {
     // NetworkError.isRetryable cannot tell them apart because it is true for
     // every status code
     fileprivate static func isGone(_ error: Error) -> Bool {
-        guard case let NetworkError.badResponse(status, _) = error else { return false }
+        guard case NetworkError.badResponse(let status, _) = error else { return false }
         return status == 404 || status == 410
     }
 
@@ -276,7 +292,9 @@ extension CoverDownloader {
     // every join is LEFT: metadataId, originId and sourceId are each ON DELETE
     // SET NULL, so a cover whose supplier is gone yields no referer and is
     // downloaded without one
-    fileprivate static func pending(for series: SeriesRecord.ID, in db: Database) throws -> [Pending] {
+    fileprivate static func pending(for series: SeriesRecord.ID, in db: Database) throws
+        -> [Pending]
+    {
         let sql = """
             SELECT
                 c.id AS id,

@@ -45,10 +45,12 @@ struct OriginMigrationScreen<Entry: MigrationEntry>: View {
                 }
             }
             .id(composer.filter)
-            .transition(.asymmetric(
-                insertion: .move(edge: .trailing).combined(with: .opacity),
-                removal: .move(edge: .leading).combined(with: .opacity)
-            ))
+            .transition(
+                .asymmetric(
+                    insertion: .move(edge: .trailing).combined(with: .opacity),
+                    removal: .move(edge: .leading).combined(with: .opacity)
+                )
+            )
             .animation(.settle, value: composer.filter)
             .padding(.horizontal, dimensions.screenMargin)
             .padding(.vertical, dimensions.spacing.space12)

@@ -57,10 +57,12 @@ struct TrackerRestoreScreen: View {
                 }
             }
             .id(composer.filter)
-            .transition(.asymmetric(
-                insertion: .move(edge: .trailing).combined(with: .opacity),
-                removal: .move(edge: .leading).combined(with: .opacity)
-            ))
+            .transition(
+                .asymmetric(
+                    insertion: .move(edge: .trailing).combined(with: .opacity),
+                    removal: .move(edge: .leading).combined(with: .opacity)
+                )
+            )
             .animation(.settle, value: composer.filter)
             .padding(.horizontal, dimensions.screenMargin)
             .padding(.vertical, dimensions.spacing.space12)
@@ -187,7 +189,8 @@ struct TrackerRestoreScreen: View {
         .padding(.top, dimensions.spacing.space8)
     }
 
-    private func FilterPill(_ filter: MigrationComposer<TrackerImportEntry>.RowFilter) -> some View {
+    private func FilterPill(_ filter: MigrationComposer<TrackerImportEntry>.RowFilter) -> some View
+    {
         let active = composer.filter == filter
         let count = composer.count(for: filter)
 

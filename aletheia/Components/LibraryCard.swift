@@ -5,8 +5,8 @@
 //  Created by Angelo Carasig on 6/8/2026.
 //
 
-import SwiftUI
 import Kingfisher
+import SwiftUI
 
 // the library counterpart to SourceCard. a series here is already owned, so it
 // carries nothing about where it came from and no match state - what matters is
@@ -68,7 +68,9 @@ struct LibraryCard: View {
             // and a fractional point mints a fresh decode every layout pass
             .onGeometryChange(for: CGSize.self) { proxy in
                 CGSize(width: proxy.size.width.rounded(), height: proxy.size.height.rounded())
-            } action: { slot = $0 }
+            } action: {
+                slot = $0
+            }
             .overlay {
                 if let cover {
                     // zero until the first layout pass, and a downsampler built on
@@ -128,7 +130,8 @@ struct LibraryCard: View {
                         // which reads as stuttering on a long-running check.
                         // the scrim already says the card is busy, so with
                         // reduce motion on the symbol simply holds still
-                        .symbolEffect(.rotate, options: .repeat(.continuous), isActive: !reduceMotion)
+                        .symbolEffect(
+                            .rotate, options: .repeat(.continuous), isActive: !reduceMotion)
                 }
                 .transition(.opacity)
 

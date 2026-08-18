@@ -40,10 +40,10 @@ struct ReaderSkeleton: View {
     }
 }
 
-private extension ReaderSkeleton {
+extension ReaderSkeleton {
     // one page-shaped block rather than a strip: the real first page lands
     // before a second one would ever be visible
-    var Page: some View {
+    fileprivate var Page: some View {
         GeometryReader { proxy in
             Block(cornerRadius: 0)
                 .frame(
@@ -55,7 +55,7 @@ private extension ReaderSkeleton {
         .ignoresSafeArea()
     }
 
-    var Header: some View {
+    fileprivate var Header: some View {
         HStack(spacing: dimensions.spacing.space8) {
             Block(cornerRadius: Layout.control / 2)
                 .frame(width: Layout.control, height: Layout.control)
@@ -73,12 +73,12 @@ private extension ReaderSkeleton {
         }
     }
 
-    var Card: some View {
+    fileprivate var Card: some View {
         Block(cornerRadius: dimensions.radius.radius28)
             .frame(height: Layout.card)
     }
 
-    func Block(cornerRadius: CGFloat) -> some View {
+    fileprivate func Block(cornerRadius: CGFloat) -> some View {
         RoundedRectangle(cornerRadius: cornerRadius)
             .fill(.white.opacity(Layout.fill))
     }

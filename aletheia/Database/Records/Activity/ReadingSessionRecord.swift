@@ -25,7 +25,10 @@ struct ReadingSessionRecord: Codable, DatabaseRecord {
     var endedDate: Date
     var localDayKey: Int
 
-    init(seriesId: SeriesRecord.ID, seriesTitle: String, pagesRead: Int, chaptersRead: Int, startedDate: Date, endedDate: Date) {
+    init(
+        seriesId: SeriesRecord.ID, seriesTitle: String, pagesRead: Int, chaptersRead: Int,
+        startedDate: Date, endedDate: Date
+    ) {
         self.seriesId = seriesId
         self.seriesTitle = seriesTitle
         self.pagesRead = pagesRead

@@ -59,7 +59,8 @@ final class Correlator {
         return AsyncStream { continuation in
             // match skips the origin query entirely until the source row exists,
             // so the tracked region varies - trackingConstantRegion would be wrong
-            let observation = ValueObservation
+            let observation =
+                ValueObservation
                 .tracking { db in
                     let matched = try SeriesRecord.match(stubs, from: sourceSlug, in: db)
                     return Dictionary(

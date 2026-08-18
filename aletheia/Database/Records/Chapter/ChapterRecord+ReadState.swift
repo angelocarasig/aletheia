@@ -32,7 +32,8 @@ extension ChapterRecord {
         if let readDate { assignments.append(Columns.lastReadDate.set(to: readDate)) }
         guard !assignments.isEmpty else { return }
 
-        let origins = try OriginRecord
+        let origins =
+            try OriginRecord
             .filter(OriginRecord.Columns.seriesId == seriesId.rawValue)
             .select(OriginRecord.Columns.id, as: OriginRecord.ID.self)
             .fetchAll(db)
@@ -40,7 +41,8 @@ extension ChapterRecord {
 
         // numbers compare as stored doubles. two sources spelling the same chapter
         // "52.5" parse to the same value, so equality holds without rounding
-        var request = ChapterRecord
+        var request =
+            ChapterRecord
             .filter(origins.contains(Columns.originId))
             .filter(numbers.contains(Columns.number))
 

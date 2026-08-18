@@ -28,7 +28,7 @@ struct MyAnimeListService: TrackerService, BulkListingTracker {
         "id", "title", "main_picture", "num_chapters", "status", "start_date",
         "nsfw", "synopsis", "media_type", "authors{first_name,last_name}",
         "alternative_titles", "genres",
-        "my_list_status{status,score,num_chapters_read,start_date}"
+        "my_list_status{status,score,num_chapters_read,start_date}",
     ].joined(separator: ",")
 
     // MARK: Viewer
@@ -62,7 +62,7 @@ struct MyAnimeListService: TrackerService, BulkListingTracker {
                 // search is the only place nsfw is a content decision. anywhere
                 // that reads the reader's own list it must be true unconditionally,
                 // or entries drop out of their own list
-                "nsfw": adult ? "true" : "false"
+                "nsfw": adult ? "true" : "false",
             ]
         )
 
@@ -108,7 +108,7 @@ struct MyAnimeListService: TrackerService, BulkListingTracker {
                 // reader's own list - not a content decision here, unlike on
                 // search. see docs/features/trackers.md §5.2
                 "nsfw": "true",
-                "limit": "1000"
+                "limit": "1000",
             ]
         )
         request.httpMethod = "GET"
@@ -120,17 +120,18 @@ struct MyAnimeListService: TrackerService, BulkListingTracker {
         // url, so each hop is just a fresh request rather than a rebuilt one
         while true {
             let page: ListPage = try await decode(request)
-            entries.append(contentsOf: page.data.map { item in
-                TrackerListEntry(
-                    remoteId: item.node.id,
-                    title: item.node.title,
-                    cover: item.node.main_picture?.large.flatMap(URL.init(string:)),
-                    totalChapters: item.node.chapters,
-                    progress: item.list_status?.num_chapters_read ?? 0,
-                    status: item.list_status?.status,
-                    adult: item.node.nsfw == "black"
-                )
-            })
+            entries.append(
+                contentsOf: page.data.map { item in
+                    TrackerListEntry(
+                        remoteId: item.node.id,
+                        title: item.node.title,
+                        cover: item.node.main_picture?.large.flatMap(URL.init(string:)),
+                        totalChapters: item.node.chapters,
+                        progress: item.list_status?.num_chapters_read ?? 0,
+                        status: item.list_status?.status,
+                        adult: item.node.nsfw == "black"
+                    )
+                })
 
             guard let next = page.paging?.next, let url = URL(string: next) else { break }
             request = URLRequest(url: url)
@@ -155,7 +156,9 @@ struct MyAnimeListService: TrackerService, BulkListingTracker {
 
         // omitted fields are genuinely preserved here, and unknown ones hard-400,
         // so a sparse patch is both correct and the only safe shape
-        guard !fields.isEmpty else { return try await entry(remoteId: update.remoteId, token: token) }
+        guard !fields.isEmpty else {
+            return try await entry(remoteId: update.remoteId, token: token)
+        }
 
         let status: ListStatus = try await patch(
             "/manga/\(update.remoteId)/my_list_status",
@@ -207,11 +210,15 @@ struct MyAnimeListService: TrackerService, BulkListingTracker {
         return try await decode(request)
     }
 
-    private func make(_ path: String, token: String, query: [String: String] = [:]) throws -> URLRequest {
-        guard var components = URLComponents(
-            url: Constants.Trackers.malAPI.appending(path: path),
-            resolvingAgainstBaseURL: false
-        ) else { throw TrackerError.unavailable }
+    private func make(_ path: String, token: String, query: [String: String] = [:]) throws
+        -> URLRequest
+    {
+        guard
+            var components = URLComponents(
+                url: Constants.Trackers.malAPI.appending(path: path),
+                resolvingAgainstBaseURL: false
+            )
+        else { throw TrackerError.unavailable }
 
         if !query.isEmpty {
             components.queryItems = query.map { URLQueryItem(name: $0.key, value: $0.value) }
@@ -259,7 +266,8 @@ struct MyAnimeListService: TrackerService, BulkListingTracker {
 
         do {
             let (data, response) = try await network.send(request)
-            TrackerLog.received(tracker, method, path, status: response.statusCode, bytes: data.count)
+            TrackerLog.received(
+                tracker, method, path, status: response.statusCode, bytes: data.count)
             return (data, response)
         } catch is CancellationError {
             throw TrackerError.cancelled
@@ -286,7 +294,8 @@ struct MyAnimeListService: TrackerService, BulkListingTracker {
         case 404: .rejected("This title is no longer on MyAnimeList.")
         case 400:
             body.flatMap { String(data: $0, encoding: .utf8) }?.contains("invalid_content") == true
-                ? .rejected("This title is still pending approval on MyAnimeList and cannot be added.")
+                ? .rejected(
+                    "This title is still pending approval on MyAnimeList and cannot be added.")
                 : .rejected("MyAnimeList refused the change.")
         default: .unavailable
         }
@@ -296,7 +305,8 @@ struct MyAnimeListService: TrackerService, BulkListingTracker {
         var allowed = CharacterSet.alphanumerics
         allowed.insert(charactersIn: "-._~")
 
-        return fields
+        return
+            fields
             .map { key, value in
                 "\(key)=\(value.addingPercentEncoding(withAllowedCharacters: allowed) ?? value)"
             }
@@ -432,14 +442,17 @@ private struct Manga: Decodable {
     // else abstains rather than asserting Safe
     var rating: Classification {
         let names = Set((genres ?? []).map(\.name))
-        if nsfw == "black" || names.contains("Hentai") || names.contains("Erotica") { return .Explicit }
+        if nsfw == "black" || names.contains("Hentai") || names.contains("Erotica") {
+            return .Explicit
+        }
         if nsfw == "gray" || names.contains("Ecchi") { return .Suggestive }
         return .Unknown
     }
 
     var pool: [String] {
         var seen = Set<String>()
-        let all = [title, alternative_titles?.en, alternative_titles?.ja]
+        let all =
+            [title, alternative_titles?.en, alternative_titles?.ja]
             .compactMap { $0 } + (alternative_titles?.synonyms ?? [])
         return all.filter { !$0.isEmpty && seen.insert($0).inserted }
     }
@@ -495,8 +508,8 @@ extension Status {
     }
 }
 
-private extension Status {
-    var mal: String {
+extension Status {
+    fileprivate var mal: String {
         switch self {
         case .reading: "reading"
         case .planning: "plan_to_read"

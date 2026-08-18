@@ -195,7 +195,9 @@ struct CollectionRow: View {
         .padding(dimensions.spacing.space12)
         // flat tinted fill, not glass - rows are content, glass is chrome
         .background(
-            joined ? AnyShapeStyle(Palette.brandSubtle) : AnyShapeStyle(.primary.opacity(Layout.fillOpacity)),
+            joined
+                ? AnyShapeStyle(Palette.brandSubtle)
+                : AnyShapeStyle(.primary.opacity(Layout.fillOpacity)),
             in: .rect(cornerRadius: dimensions.radius.radius12)
         )
         .contentShape(.rect)
@@ -211,7 +213,7 @@ private enum Sample {
         .init(id: 2, name: "Isekai", count: 48, contains: false),
         .init(id: 3, name: "Finished", count: 106, contains: false),
         .init(id: 4, name: "On Hold", count: 3, contains: true),
-        .init(id: 5, name: "Recommended by Ren", count: 1, contains: false)
+        .init(id: 5, name: "Recommended by Ren", count: 1, contains: false),
     ]
 }
 
@@ -229,7 +231,9 @@ private enum Sample {
 #Preview("None joined") {
     Color.clear.sheet(isPresented: .constant(true)) {
         CollectionPicker(
-            collections: Sample.many.map { .init(id: $0.id, name: $0.name, count: $0.count, contains: false) },
+            collections: Sample.many.map {
+                .init(id: $0.id, name: $0.name, count: $0.count, contains: false)
+            },
             isSaving: false,
             onToggle: { _ in },
             onCreate: { _, _ in }

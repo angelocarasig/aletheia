@@ -5,8 +5,8 @@
 //  Created by Angelo Carasig on 7/8/2026.
 //
 
-import UIKit
 import Kingfisher
+import UIKit
 
 final class PageCell: UICollectionViewCell {
     static let reuseIdentifier = "PageCell"
@@ -105,10 +105,10 @@ final class PageCell: UICollectionViewCell {
             self.progress.end()
 
             switch result {
-            case let .success(value):
+            case .success(let value):
                 self.setFailure(nil)
                 self.onSized?(page, value.image.size)
-            case let .failure(error):
+            case .failure(let error):
                 // a reused cell cancelling its own load is not a failure the
                 // reader should ever see
                 guard !error.isTaskCancelled else { return }
@@ -163,7 +163,7 @@ final class PageCell: UICollectionViewCell {
             failure.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
             failure.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
             failure.topAnchor.constraint(equalTo: contentView.topAnchor),
-            failure.bottomAnchor.constraint(equalTo: contentView.bottomAnchor)
+            failure.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
         ])
     }
 
@@ -237,7 +237,9 @@ extension PageCell: UIScrollViewDelegate {
     // zooming all the way out has to put the page back where it started.
     // UIScrollView leaves the offset wherever the gesture ended, so without this
     // the image settles off-centre and stays there
-    func scrollViewDidEndZooming(_ scrollView: UIScrollView, with view: UIView?, atScale scale: CGFloat) {
+    func scrollViewDidEndZooming(
+        _ scrollView: UIScrollView, with view: UIView?, atScale scale: CGFloat
+    ) {
         guard scale <= Layout.minimumZoom else { return }
         resetZoom()
     }
@@ -260,12 +262,14 @@ extension PageCell: UIContextMenuInteractionDelegate {
                 UIAction(title: "Copy", image: UIImage(systemName: "doc.on.doc")) { _ in
                     UIPasteboard.general.image = image
                 },
-                UIAction(title: "Save to Photos", image: UIImage(systemName: "square.and.arrow.down")) { _ in
+                UIAction(
+                    title: "Save to Photos", image: UIImage(systemName: "square.and.arrow.down")
+                ) { _ in
                     self?.onSave?(image)
                 },
                 UIAction(title: "Share", image: UIImage(systemName: "square.and.arrow.up")) { _ in
                     self?.onShare?(image, page)
-                }
+                },
             ])
         }
     }
@@ -296,7 +300,9 @@ extension PageCell: UIContextMenuInteractionDelegate {
 
     private var drawn: CGRect {
         let bounds = imageView.bounds
-        guard let size = imageView.image?.size, size.width > 0, size.height > 0 else { return bounds }
+        guard let size = imageView.image?.size, size.width > 0, size.height > 0 else {
+            return bounds
+        }
 
         let scale = min(bounds.width / size.width, bounds.height / size.height)
         let fitted = CGSize(width: size.width * scale, height: size.height * scale)

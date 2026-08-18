@@ -7,8 +7,8 @@
 
 import Foundation
 import GRDB
-import Tagged
 import Observation
+import Tagged
 
 extension Compositor {
     // what screens hold. accounts, coarse counters, and which series are talking
@@ -70,7 +70,8 @@ extension Compositor {
         ) {
             self.database = database
             self.authority = authority
-            self.worker = TrackerSyncer(database: database, authority: authority, services: services, log: log)
+            self.worker = TrackerSyncer(
+                database: database, authority: authority, services: services, log: log)
             self.log = log
         }
 
@@ -84,7 +85,9 @@ extension Compositor {
             try authority.authorization(for: tracker)
         }
 
-        func complete(_ callback: URL, with authorization: TrackerAuthority.Authorization) async throws {
+        func complete(_ callback: URL, with authorization: TrackerAuthority.Authorization)
+            async throws
+        {
             let credential = try await authority.complete(callback, with: authorization)
             accounts[authorization.tracker] = credential
             deadAccounts.remove(authorization.tracker)
@@ -122,8 +125,10 @@ extension Compositor {
             watch = Task { [weak self, database] in
                 let observation = ValueObservation.tracking { db in
                     try SeriesTrackerRecord
-                        .filter(SeriesTrackerRecord.Columns.pendingProgress != nil
-                                || SeriesTrackerRecord.Columns.pendingStatus != nil)
+                        .filter(
+                            SeriesTrackerRecord.Columns.pendingProgress != nil
+                                || SeriesTrackerRecord.Columns.pendingStatus != nil
+                        )
                         .fetchCount(db)
                 }
 
@@ -134,7 +139,9 @@ extension Compositor {
                         if count > 0 { self.schedule() }
                     }
                 } catch {
-                    self?.log.log("tracker queue observation FAILED - \(error)", level: .error, category: "trackers")
+                    self?.log.log(
+                        "tracker queue observation FAILED - \(error)", level: .error,
+                        category: "trackers")
                 }
             }
 
@@ -189,11 +196,15 @@ extension Compositor {
                         try SeriesTrackerRecord.dirty(for: tracker, in: $0)
                     }
                 } catch {
-                    log.log("[\(tracker.rawValue)] drain FAILED to read queue - \(error)", level: .error, category: "trackers")
+                    log.log(
+                        "[\(tracker.rawValue)] drain FAILED to read queue - \(error)",
+                        level: .error, category: "trackers")
                     return
                 }
 
-                let links = pending.filter { $0.id.map { !processed.contains($0.rawValue) } ?? false }
+                let links = pending.filter {
+                    $0.id.map { !processed.contains($0.rawValue) } ?? false
+                }
                 guard !links.isEmpty else { return }
 
                 guard let credential = accounts[tracker] else { return }
@@ -205,12 +216,15 @@ extension Compositor {
                 // it is
                 guard !credential.needsReauthentication else {
                     if deadAccounts.insert(tracker).inserted {
-                        log.log("[\(tracker.rawValue)] needs reauthentication - lane halted", level: .warning, category: "trackers")
+                        log.log(
+                            "[\(tracker.rawValue)] needs reauthentication - lane halted",
+                            level: .warning, category: "trackers")
                     }
                     return
                 }
 
-                log.log("[\(tracker.rawValue)] draining \(links.count) push(es)", category: "trackers")
+                log.log(
+                    "[\(tracker.rawValue)] draining \(links.count) push(es)", category: "trackers")
 
                 for link in links {
                     guard let id = link.id?.rawValue else { continue }
@@ -236,7 +250,9 @@ extension Compositor {
                         // full. this lane only: the other service's token is
                         // fine and its rows are owed their pushes. every pending
                         // column survives for when they sign back in
-                        log.log("[\(tracker.rawValue)] lane halted - \(error.localizedDescription)", category: "trackers")
+                        log.log(
+                            "[\(tracker.rawValue)] lane halted - \(error.localizedDescription)",
+                            category: "trackers")
                         deadAccounts.insert(tracker)
                         // the keychain has just learned this token is dead. the
                         // in-memory copy every tracker row in the app reads has
@@ -263,11 +279,13 @@ extension Compositor {
         // than necessity - it has no rate-limit headers either, so there is
         // nothing to steer by and open-loop is all any of the three get
         private func pace(_ tracker: Tracker, since last: Date) async {
-            let spacing: Duration = switch tracker {
-            case .anilist: .milliseconds(60_000 / Constants.Trackers.anilistRequestsPerMinute)
-            case .myAnimeList: Constants.Trackers.malRequestSpacing
-            case .mangaBaka: .milliseconds(60_000 / Constants.Trackers.mangaBakaRequestsPerMinute)
-            }
+            let spacing: Duration =
+                switch tracker {
+                case .anilist: .milliseconds(60_000 / Constants.Trackers.anilistRequestsPerMinute)
+                case .myAnimeList: Constants.Trackers.malRequestSpacing
+                case .mangaBaka:
+                    .milliseconds(60_000 / Constants.Trackers.mangaBakaRequestsPerMinute)
+                }
 
             // the push that just ran counts toward the gap. a two-request push
             // takes most of a second on its own, and sleeping the full spacing
@@ -282,11 +300,15 @@ extension Compositor {
             Task { [weak self, database] in
                 let counts = try? await database.reader.read { db in
                     (
-                        pending: try SeriesTrackerRecord
-                            .filter(SeriesTrackerRecord.Columns.pendingProgress != nil
-                                    || SeriesTrackerRecord.Columns.pendingStatus != nil)
+                        pending:
+                            try SeriesTrackerRecord
+                            .filter(
+                                SeriesTrackerRecord.Columns.pendingProgress != nil
+                                    || SeriesTrackerRecord.Columns.pendingStatus != nil
+                            )
                             .fetchCount(db),
-                        failing: try SeriesTrackerRecord
+                        failing:
+                            try SeriesTrackerRecord
                             .filter(SeriesTrackerRecord.Columns.syncError != nil)
                             .fetchCount(db)
                     )
@@ -299,7 +321,9 @@ extension Compositor {
 
         // MARK: One series
 
-        func search(_ tracker: Tracker, query: String, adult: Bool) async throws -> [TrackerCandidate] {
+        func search(_ tracker: Tracker, query: String, adult: Bool) async throws
+            -> [TrackerCandidate]
+        {
             try await worker.search(tracker, query: query, adult: adult)
         }
 
@@ -425,7 +449,9 @@ actor TrackerSyncer {
 
     func search(_ tracker: Tracker, query: String, adult: Bool) async throws -> [TrackerCandidate] {
         let service = try service(for: tracker)
-        return try await attempt(tracker) { try await service.search(query, adult: adult, token: $0) }
+        return try await attempt(tracker) {
+            try await service.search(query, adult: adult, token: $0)
+        }
     }
 
     func remote(_ tracker: Tracker, remoteId: Int64) async throws -> TrackerEntry {
@@ -470,7 +496,8 @@ actor TrackerSyncer {
             )
         }
 
-        let progress = Self.clamp(update?.progress ?? max(remote.progress, local), to: remote.totalChapters)
+        let progress = Self.clamp(
+            update?.progress ?? max(remote.progress, local), to: remote.totalChapters)
         let seeded = try await write(
             TrackerUpdate(
                 remoteId: candidate.id,
@@ -508,7 +535,9 @@ actor TrackerSyncer {
             try Self.absorb(remote, tracker: tracker, series: series, link: inserted.id, in: db)
         }
 
-        log.log("[\(tracker.rawValue)] linked \(record.remoteTitle) at \(record.remoteProgress)", category: "trackers")
+        log.log(
+            "[\(tracker.rawValue)] linked \(record.remoteTitle) at \(record.remoteProgress)",
+            category: "trackers")
     }
 
     // a linked service is a supplier like any source: one metadata row, plus
@@ -573,7 +602,8 @@ actor TrackerSyncer {
         do {
             let entry = try await remote(link.tracker, remoteId: link.remoteId)
             let changed = try await database.writer.write { db in
-                try Self.absorb(entry, tracker: link.tracker, series: link.seriesId, link: link.id, in: db)
+                try Self.absorb(
+                    entry, tracker: link.tracker, series: link.seriesId, link: link.id, in: db)
             }
             return changed ? .updated : .unchanged
         } catch is CancellationError {
@@ -611,7 +641,9 @@ actor TrackerSyncer {
         // history this app never owned
         guard removeRemote else { return }
 
-        guard let service = services[link.tracker], let token = try? await authority.token(for: link.tracker) else {
+        guard let service = services[link.tracker],
+            let token = try? await authority.token(for: link.tracker)
+        else {
             return
         }
 
@@ -639,7 +671,8 @@ actor TrackerSyncer {
         )
 
         do {
-            let result = try await write(update, service: service, tracker: link.tracker, existing: existing)
+            let result = try await write(
+                update, service: service, tracker: link.tracker, existing: existing)
             try await store(result, on: link, clearingQueue: true)
         } catch {
             try await record(failure: error, on: link)
@@ -705,7 +738,8 @@ actor TrackerSyncer {
 
             if target > remote.progress {
                 result = try await write(
-                    TrackerUpdate(remoteId: link.remoteId, entryId: remote.entryId, progress: target),
+                    TrackerUpdate(
+                        remoteId: link.remoteId, entryId: remote.entryId, progress: target),
                     service: service,
                     tracker: link.tracker,
                     existing: remote
@@ -742,7 +776,10 @@ actor TrackerSyncer {
         tracker: Tracker,
         existing: TrackerEntry
     ) async throws -> TrackerEntry {
-        guard update.progress != nil || update.status != nil || update.score != nil || update.startDate != nil else {
+        guard
+            update.progress != nil || update.status != nil || update.score != nil
+                || update.startDate != nil
+        else {
             return existing
         }
 
@@ -804,7 +841,8 @@ actor TrackerSyncer {
     private func record(failure: Error, on link: SeriesTrackerRecord) async throws {
         guard let id = link.id else { return }
 
-        let reason = (failure as? TrackerError)?.errorDescription
+        let reason =
+            (failure as? TrackerError)?.errorDescription
             ?? (failure as? LocalizedError)?.errorDescription
             ?? "Sync failed"
 
@@ -820,12 +858,15 @@ actor TrackerSyncer {
         let blames = (failure as? TrackerError)?.isTerminal != true
 
         try await database.writer.write { db in
-            _ = try SeriesTrackerRecord
+            _ =
+                try SeriesTrackerRecord
                 .filter(key: id.rawValue)
-                .updateAll(db, [
-                    SeriesTrackerRecord.Columns.attemptedDate.set(to: Date.now),
-                    SeriesTrackerRecord.Columns.syncError.set(to: blames ? reason : nil)
-                ])
+                .updateAll(
+                    db,
+                    [
+                        SeriesTrackerRecord.Columns.attemptedDate.set(to: Date.now),
+                        SeriesTrackerRecord.Columns.syncError.set(to: blames ? reason : nil),
+                    ])
         }
     }
 
@@ -862,11 +903,14 @@ actor TrackerSyncer {
     // when the reader actually started. addedDate is the fallback, and nothing
     // ever back-dates a finish date - we cannot know it
     private static func startDate(for series: SeriesRecord.ID, in db: Database) throws -> Date? {
-        if let earliest = try Date.fetchOne(db, sql: """
-            SELECT MIN(\(ReadingEventRecord.Columns.occurredDate.name))
-            FROM \(ReadingEventRecord.databaseTableName)
-            WHERE \(ReadingEventRecord.Columns.seriesId.name) = ?
-            """, arguments: [series.rawValue]) {
+        if let earliest = try Date.fetchOne(
+            db,
+            sql: """
+                SELECT MIN(\(ReadingEventRecord.Columns.occurredDate.name))
+                FROM \(ReadingEventRecord.databaseTableName)
+                WHERE \(ReadingEventRecord.Columns.seriesId.name) = ?
+                """, arguments: [series.rawValue])
+        {
             return earliest
         }
 
@@ -874,4 +918,3 @@ actor TrackerSyncer {
         return added == .distantPast ? nil : added
     }
 }
-

@@ -56,7 +56,8 @@ struct SourcePresetRow: View {
                 vm?.resume()
                 return
             }
-            let model = SourcePresetViewModel(source: source, preset: preset, database: compositor.database)
+            let model = SourcePresetViewModel(
+                source: source, preset: preset, database: compositor.database)
             vm = model
             await model.load()
         }
@@ -172,13 +173,15 @@ struct SourcePresetRow: View {
         ScrollView(.horizontal, showsIndicators: false) {
             LazyHStack(spacing: dimensions.spacing.space12) {
                 ForEach(items, id: \.slug) { stub in
-                    SourceCard(stub: stub, referer: source.descriptor.referer, match: vm?.match(for: stub))
-                        .containerRelativeFrame(
-                            .horizontal,
-                            count: Layout.carouselVisible,
-                            spacing: dimensions.spacing.space12
-                        )
-                        .tappable { onOpenSeries(stub) }
+                    SourceCard(
+                        stub: stub, referer: source.descriptor.referer, match: vm?.match(for: stub)
+                    )
+                    .containerRelativeFrame(
+                        .horizontal,
+                        count: Layout.carouselVisible,
+                        spacing: dimensions.spacing.space12
+                    )
+                    .tappable { onOpenSeries(stub) }
                 }
             }
             .scrollTargetLayout()
@@ -204,81 +207,87 @@ struct SourcePresetRow: View {
 // crossfade BETWEEN the branches: they are one animation keyed to one value, and
 // four static previews show the states while hiding the only part that can break
 #if DEBUG
-private struct PresetPreview: View {
-    private static let stubs: [SeriesStub] = [
-        .init(slug: "a", title: "Witch Hat Atelier", cover: nil),
-        .init(slug: "b", title: "The Knight Only Lives Today", cover: nil),
-        .init(slug: "c", title: "The Greatest Estate Developer", cover: nil),
-        .init(slug: "d", title: "Pick Me Up", cover: nil)
-    ]
+    private struct PresetPreview: View {
+        private static let stubs: [SeriesStub] = [
+            .init(slug: "a", title: "Witch Hat Atelier", cover: nil),
+            .init(slug: "b", title: "The Knight Only Lives Today", cover: nil),
+            .init(slug: "c", title: "The Greatest Estate Developer", cover: nil),
+            .init(slug: "d", title: "Pick Me Up", cover: nil),
+        ]
 
-    private static let steps: [(name: String, phase: SourcePresetViewModel.Phase)] = [
-        ("Loading", .loading),
-        ("Content", .loaded(stubs)),
-        ("Empty", .loaded([])),
-        ("Failed", .failed(Failure(NetworkError.offline, fallback: "Couldn't Load"))),
-        // the other half of the failed branch: a reason that states a title and
-        // nothing under it, and one that does not earn a retry
-        ("Failed, terminal", .failed(.init(title: "Couldn't Load", message: "", isRetryable: false)))
-    ]
+        private static let steps: [(name: String, phase: SourcePresetViewModel.Phase)] = [
+            ("Loading", .loading),
+            ("Content", .loaded(stubs)),
+            ("Empty", .loaded([])),
+            ("Failed", .failed(Failure(NetworkError.offline, fallback: "Couldn't Load"))),
+            // the other half of the failed branch: a reason that states a title and
+            // nothing under it, and one that does not earn a retry
+            (
+                "Failed, terminal",
+                .failed(.init(title: "Couldn't Load", message: "", isRetryable: false))
+            ),
+        ]
 
-    private let source = AtsumaruSource(network: NetworkService())
-    private let preset = SourcePreset(
-        id: "updated",
-        name: "Recently Updated",
-        subtitle: "Freshly released chapters",
-        order: 0,
-        route: "recentlyUpdated"
-    )
+        private let source = AtsumaruSource(network: NetworkService())
+        private let preset = SourcePreset(
+            id: "updated",
+            name: "Recently Updated",
+            subtitle: "Freshly released chapters",
+            order: 0,
+            route: "recentlyUpdated"
+        )
 
-    @State private var step = 0
-    @State private var vm: SourcePresetViewModel?
+        @State private var step = 0
+        @State private var vm: SourcePresetViewModel?
 
-    var body: some View {
-        VStack(spacing: 16) {
-            if let vm {
-                SourcePresetRow(
+        var body: some View {
+            VStack(spacing: 16) {
+                if let vm {
+                    SourcePresetRow(
+                        source: source,
+                        preset: preset,
+                        vm: vm,
+                        onOpen: {},
+                        onOpenSeries: { _ in }
+                    )
+                    // the row keeps its identity across the change, or SwiftUI
+                    // replaces the whole thing and the branch transition never runs
+                    .id("row")
+                }
+
+                Button {
+                    step = (step + 1) % Self.steps.count
+                    vm?.preview(phase: Self.steps[step].phase)
+                } label: {
+                    Label(
+                        "Next: \(Self.steps[(step + 1) % Self.steps.count].name)",
+                        systemImage: "arrow.right"
+                    )
+                    .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.glassProminent)
+
+                Text("Showing \(Self.steps[step].name)")
+                    .font(.caption)
+                    .foregroundStyle(.muted)
+            }
+            .padding()
+            .frame(maxHeight: .infinity)
+            .background(.canvas)
+            .task {
+                guard vm == nil else { return }
+                let model = SourcePresetViewModel(
                     source: source,
                     preset: preset,
-                    vm: vm,
-                    onOpen: {},
-                    onOpenSeries: { _ in }
+                    database: .preview
                 )
-                // the row keeps its identity across the change, or SwiftUI
-                // replaces the whole thing and the branch transition never runs
-                .id("row")
+                model.preview(phase: Self.steps[step].phase)
+                vm = model
             }
-
-            Button {
-                step = (step + 1) % Self.steps.count
-                vm?.preview(phase: Self.steps[step].phase)
-            } label: {
-                Label("Next: \(Self.steps[(step + 1) % Self.steps.count].name)", systemImage: "arrow.right")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.glassProminent)
-
-            Text("Showing \(Self.steps[step].name)")
-                .font(.caption)
-                .foregroundStyle(.muted)
-        }
-        .padding()
-        .frame(maxHeight: .infinity)
-        .background(.canvas)
-        .task {
-            guard vm == nil else { return }
-            let model = SourcePresetViewModel(
-                source: source,
-                preset: preset,
-                database: .preview
-            )
-            model.preview(phase: Self.steps[step].phase)
-            vm = model
         }
     }
-}
 
-#Preview("Preset row") {
-    PresetPreview()
-}
+    #Preview("Preset row") {
+        PresetPreview()
+    }
 #endif

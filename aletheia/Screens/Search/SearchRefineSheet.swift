@@ -62,17 +62,19 @@ struct SearchFilterPanel: View {
 
 }
 
-fileprivate extension SourceFilter {
-    var key: String {
+extension SourceFilter {
+    fileprivate var key: String {
         switch self {
-        case let .text(id, _), let .number(id, _), let .select(id, _, _), let .multiSelect(id, _, _, _):
+        case .text(let id, _), .number(let id, _), .select(let id, _, _),
+            .multiSelect(let id, _, _, _):
             return id
         }
     }
 
-    var displayName: String {
+    fileprivate var displayName: String {
         switch self {
-        case let .text(_, name), let .number(_, name), let .select(_, name, _), let .multiSelect(_, name, _, _):
+        case .text(_, let name), .number(_, let name), .select(_, let name, _),
+            .multiSelect(_, let name, _, _):
             return name
         }
     }
@@ -100,15 +102,15 @@ private struct FilterControl: View {
 
     var body: some View {
         switch filter {
-        case let .number(id, _):
+        case .number(let id, _):
             NumberField(vm: vm, id: id)
-        case let .select(id, _, options):
+        case .select(let id, _, let options):
             if options.count <= Layout.segmentedMax {
                 SegmentedSelect(vm: vm, id: id, options: options)
             } else {
                 SingleSelectChips(vm: vm, id: id, options: options)
             }
-        case let .multiSelect(id, _, options, canExclude):
+        case .multiSelect(let id, _, let options, let canExclude):
             MultiSelectGroup(vm: vm, id: id, options: options, canExclude: canExclude)
         case .text:
             EmptyView()
@@ -149,7 +151,7 @@ private struct NumberField: View {
     }
 
     private func sync() {
-        guard case let .number(_, value) = vm.selection(for: id) else {
+        guard case .number(_, let value) = vm.selection(for: id) else {
             if !text.isEmpty { text = "" }
             return
         }
@@ -184,7 +186,7 @@ private struct SegmentedSelect: View {
     private var binding: Binding<String> {
         Binding(
             get: {
-                if case let .select(_, optionID) = vm.selection(for: id) { return optionID }
+                if case .select(_, let optionID) = vm.selection(for: id) { return optionID }
                 return Self.unset
             },
             set: { optionID in
@@ -220,7 +222,7 @@ private struct SingleSelectChips: View {
     }
 
     private var current: String? {
-        if case let .select(_, optionID) = vm.selection(for: id) { return optionID }
+        if case .select(_, let optionID) = vm.selection(for: id) { return optionID }
         return nil
     }
 }
@@ -338,7 +340,7 @@ private struct MultiSelectGroup: View {
     }
 
     private var selection: (included: [String], excluded: [String]) {
-        if case let .multiSelect(_, included, excluded) = vm.selection(for: id) {
+        if case .multiSelect(_, let included, let excluded) = vm.selection(for: id) {
             return (included, excluded)
         }
         return ([], [])
@@ -385,7 +387,8 @@ private struct MultiSelectGroup: View {
         }
 
         let empty = included.isEmpty && excluded.isEmpty
-        vm.setSelection(empty ? nil : .multiSelect(id: id, included: included, excluded: excluded), for: id)
+        vm.setSelection(
+            empty ? nil : .multiSelect(id: id, included: included, excluded: excluded), for: id)
     }
 }
 

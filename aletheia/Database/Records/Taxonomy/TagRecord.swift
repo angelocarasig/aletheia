@@ -61,10 +61,14 @@ extension TagRecord {
 
     static func createIndexes(db: Database) throws {
         // filtering out canonical tags
-        try db.create(index: "idx_tag_canonicalId", on: databaseTableName, columns: [Columns.canonicalId.name], ifNotExists: true)
+        try db.create(
+            index: "idx_tag_canonicalId", on: databaseTableName,
+            columns: [Columns.canonicalId.name], ifNotExists: true)
 
         // sorting tags by display name
-        try db.create(index: "idx_tag_displayName", on: databaseTableName, columns: [Columns.displayName.name], ifNotExists: true)
+        try db.create(
+            index: "idx_tag_displayName", on: databaseTableName,
+            columns: [Columns.displayName.name], ifNotExists: true)
     }
 
     mutating func didInsert(_ inserted: InsertionSuccess) {
@@ -106,14 +110,19 @@ extension TagRecord {
     var series: QueryInterfaceRequest<SeriesRecord> {
         let resolvedId = canonicalId ?? id!
 
-        let tagIds = TagRecord
-            .filter(TagRecord.Columns.id == resolvedId ||
-                    TagRecord.Columns.canonicalId == resolvedId)
+        let tagIds =
+            TagRecord
+            .filter(
+                TagRecord.Columns.id == resolvedId || TagRecord.Columns.canonicalId == resolvedId
+            )
             .select(TagRecord.Columns.id)
 
-        return SeriesRecord
-            .joining(required: SeriesRecord.seriesTags
-                .filter(tagIds.contains(SeriesTagRecord.Columns.tagId)))
+        return
+            SeriesRecord
+            .joining(
+                required: SeriesRecord.seriesTags
+                    .filter(tagIds.contains(SeriesTagRecord.Columns.tagId))
+            )
             .distinct()
     }
 }
@@ -147,9 +156,12 @@ extension TagRecord {
     // tags are supplier-agnostic facts about a series, so every writer joins
     // through here and none of them records where the tag came from
     @discardableResult
-    static func attach(_ name: String, to series: SeriesRecord.ID, in db: Database) throws -> TagRecord.ID? {
+    static func attach(_ name: String, to series: SeriesRecord.ID, in db: Database) throws
+        -> TagRecord.ID?
+    {
         let tag = try findOrCreate(
-            TagRecord(id: nil, normalizedName: normalised(name), displayName: name, canonicalId: nil),
+            TagRecord(
+                id: nil, normalizedName: normalised(name), displayName: name, canonicalId: nil),
             in: db
         )
         guard let tagId = tag.id else { return nil }

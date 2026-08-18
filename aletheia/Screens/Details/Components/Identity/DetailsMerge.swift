@@ -5,8 +5,8 @@
 //  Created by Angelo Carasig on 9/8/2026.
 //
 
-import SwiftUI
 import Kingfisher
+import SwiftUI
 
 struct DetailsMerge: View {
     let source: Side
@@ -33,7 +33,9 @@ struct DetailsMerge: View {
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .topBarLeading) {
-                        Button { dismiss() } label: {
+                        Button {
+                            dismiss()
+                        } label: {
                             Image(systemName: "xmark")
                                 .fontWeight(.semibold)
                         }
@@ -74,9 +76,7 @@ extension DetailsMerge {
     }
 
     private var phase: LoadPhase {
-        if !candidates.isEmpty { .content }
-        else if isLoading { .pending }
-        else { .empty }
+        if !candidates.isEmpty { .content } else if isLoading { .pending } else { .empty }
     }
 
     @ViewBuilder
@@ -156,7 +156,9 @@ extension DetailsMerge {
                 .foregroundStyle(Palette.muted.opacity(Layout.chevronOpacity))
         }
         .padding(dimensions.spacing.space12)
-        .background(.surface, in: .rect(cornerRadius: dimensions.radius.radius16, style: .continuous))
+        .background(
+            .surface, in: .rect(cornerRadius: dimensions.radius.radius16, style: .continuous)
+        )
         .contentShape(.rect)
     }
 }
@@ -274,7 +276,9 @@ private struct MergeComparison: View {
             VStack(spacing: dimensions.spacing.space2) {
                 Group {
                     if total > 0 {
-                        Text("^[\(origins) source](inflect: true) · ^[\(total) chapter](inflect: true)")
+                        Text(
+                            "^[\(origins) source](inflect: true) · ^[\(total) chapter](inflect: true)"
+                        )
                     } else {
                         Text("^[\(origins) source](inflect: true) · No chapters")
                     }
@@ -304,7 +308,8 @@ private struct MergeComparison: View {
             Difference("Title", from: source.title, into: target.title)
             Difference("Authors", from: source.authors, into: target.authors)
             Difference("Status", from: source.status.label, into: target.status.label)
-            Difference("Publication", from: source.publication?.label, into: target.publication.label)
+            Difference(
+                "Publication", from: source.publication?.label, into: target.publication.label)
             Difference("Synopsis", from: source.synopsis, into: target.synopsis)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -329,7 +334,9 @@ private struct MergeComparison: View {
             .padding(dimensions.spacing.space12)
             // standard material, not glass - content-layer chrome is barred from
             // liquid glass, and the material gives the same read legally
-            .background(.ultraThinMaterial, in: .rect(cornerRadius: dimensions.radius.radius16, style: .continuous))
+            .background(
+                .ultraThinMaterial,
+                in: .rect(cornerRadius: dimensions.radius.radius16, style: .continuous))
         }
     }
 
@@ -337,7 +344,8 @@ private struct MergeComparison: View {
     // text on the 11-step so the colour is readable rather than decorative.
     // the glyph is the second channel beside the colour
     @ViewBuilder
-    private func Value(_ text: String, glyph: String, tone: Palette.Tone, role: String) -> some View {
+    private func Value(_ text: String, glyph: String, tone: Palette.Tone, role: String) -> some View
+    {
         HStack(alignment: .firstTextBaseline, spacing: dimensions.spacing.space8) {
             Image(systemName: glyph)
                 .font(.caption2)
@@ -354,7 +362,10 @@ private struct MergeComparison: View {
         .padding(.vertical, dimensions.spacing.space4)
         // the 3-step is a filled surface; at quarter strength it reads as a wash
         // under the text instead of a filled chip fighting it
-        .background(tone.subtle.opacity(Layout.hunkOpacity), in: .rect(cornerRadius: dimensions.radius.radius8, style: .continuous))
+        .background(
+            tone.subtle.opacity(Layout.hunkOpacity),
+            in: .rect(cornerRadius: dimensions.radius.radius8, style: .continuous)
+        )
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(role): \(text.isEmpty ? "nothing" : text)")
     }
@@ -500,7 +511,8 @@ private struct MergeConfirm: View {
             Outcome(
                 icon: "bookmark",
                 label: "Reading progress",
-                value: source.read > 0 ? Text("^[\(source.read) chapter](inflect: true) kept") : Text("None yet")
+                value: source.read > 0
+                    ? Text("^[\(source.read) chapter](inflect: true) kept") : Text("None yet")
             )
 
             Separator
@@ -512,7 +524,9 @@ private struct MergeConfirm: View {
             )
         }
         .padding(.horizontal, dimensions.spacing.space12)
-        .background(.ultraThinMaterial, in: .rect(cornerRadius: dimensions.radius.radius16, style: .continuous))
+        .background(
+            .ultraThinMaterial,
+            in: .rect(cornerRadius: dimensions.radius.radius16, style: .continuous))
     }
 
     private var Separator: some View {
@@ -565,7 +579,9 @@ private struct MergeConfirm: View {
     }
 
     private var Commit: some View {
-        Button { confirming = true } label: {
+        Button {
+            confirming = true
+        } label: {
             Label("Merge", systemImage: "arrow.triangle.merge")
                 .fontWeight(.medium)
                 .frame(maxWidth: .infinity)
@@ -601,7 +617,9 @@ private struct MergeCover: View {
                 KFImage(url)
                     .requestModifier(AnyModifier.referer(referer))
                     .resizable()
-                    .placeholder { Rectangle().fill(.primary.opacity(Layout.fillOpacity)).shimmer() }
+                    .placeholder {
+                        Rectangle().fill(.primary.opacity(Layout.fillOpacity)).shimmer()
+                    }
                     .fade(duration: Layout.fade)
                     .scaledToFill()
             }
@@ -677,7 +695,7 @@ extension DetailsMerge {
                     read: 12,
                     total: 120,
                     score: 0.61
-                )
+                ),
             ],
             isLoading: false,
             onSearch: { _ in },

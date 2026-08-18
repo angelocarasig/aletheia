@@ -77,15 +77,13 @@ struct ScanlatorOrder: View {
 
 // MARK: - Content
 
-private extension ScanlatorOrder {
-    var phase: LoadPhase {
-        if !working.isEmpty { .content }
-        else if isLoading { .pending }
-        else { .empty }
+extension ScanlatorOrder {
+    fileprivate var phase: LoadPhase {
+        if !working.isEmpty { .content } else if isLoading { .pending } else { .empty }
     }
 
     @ViewBuilder
-    var Content: some View {
+    fileprivate var Content: some View {
         if working.isEmpty, isLoading {
             SheetSkeleton(rows: 6)
                 .transition(.opacity)
@@ -119,7 +117,7 @@ private extension ScanlatorOrder {
         }
     }
 
-    func Header(_ group: Origin) -> some View {
+    fileprivate func Header(_ group: Origin) -> some View {
         HStack(spacing: dimensions.spacing.space8) {
             Icon(group.icon)
 
@@ -127,7 +125,7 @@ private extension ScanlatorOrder {
         }
     }
 
-    func Row(_ scanlator: Scanlator) -> some View {
+    fileprivate func Row(_ scanlator: Scanlator) -> some View {
         HStack(spacing: dimensions.spacing.space12) {
             VStack(alignment: .leading, spacing: dimensions.spacing.space2) {
                 Text(scanlator.name)
@@ -144,7 +142,7 @@ private extension ScanlatorOrder {
     }
 
     @ViewBuilder
-    func Icon(_ icon: ImageResource?) -> some View {
+    fileprivate func Icon(_ icon: ImageResource?) -> some View {
         Group {
             if let icon {
                 Image(icon)
