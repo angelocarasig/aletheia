@@ -111,6 +111,10 @@ enum Preferences {
         // what tells the sweep a half-finished directory is work rather than an
         // orphan, since path is only stamped on completion
         static let downloadQueue = "downloads.queue"
+
+        // stamped by BackupExportScreen once a backup is actually handed to
+        // the file exporter - not when the reader merely opens the screen
+        static let libraryBackupExportedDate = "backup.lastExport"
     }
 
     enum Default {

@@ -6,74 +6,72 @@
 //
 
 import SwiftUI
-import UniformTypeIdentifiers
 
-// one action, one screen: build the whole library into a LibraryBackup
-// message (LibraryBackupBuilder), encode it (LibraryBackupCodec), hand the
-// file to the system's own document-export picker. nothing here writes to
-// the database - export is read-only by nature
-//
-// .fileExporter rather than ShareLink: ShareLink's own "Save to Files" is a
-// known, widely-reported platform bug with Transferable items (both
-// DataRepresentation and FileRepresentation - filed against multiple iOS
-// versions on Apple's developer forums), not something fixable from this
-// side. .fileExporter is Apple's own API for "save this to a location I
-// pick" and does not go through that path at all
+// .fileExporter rather than ShareLink - ShareLink's own "Save to Files" is
+// a widely-reported platform bug with Transferable items, not fixable here
 struct BackupExportScreen: View {
     @Environment(\.compositor) private var compositor
     @Environment(\.dimensions) private var dimensions
 
-    @State private var phase: Phase = .idle
+    @State private var phase: Phase
+    @State private var summary: LibraryBackupSummary?
+    @State private var lastBackupDate: Date?
     @State private var showingExporter = false
+    @Namespace private var glass
 
-    private enum Phase: Equatable {
+    enum Phase: Equatable {
         case idle
         case exporting
         case ready(LibraryBackupDocument, filename: String)
         case failed(String)
     }
 
+    init(phase: Phase = .idle, summary: LibraryBackupSummary? = nil, lastBackupDate: Date? = nil) {
+        _phase = State(initialValue: phase)
+        _summary = State(initialValue: summary)
+        _lastBackupDate = State(initialValue: lastBackupDate)
+    }
+
+    private var isReady: Bool {
+        if case .ready = phase { true } else { false }
+    }
+
     var body: some View {
-        VStack(spacing: dimensions.spacing.space24) {
-            Spacer()
-
-            VStack(spacing: dimensions.spacing.space12) {
-                Image(systemName: "shippingbox")
-                    .font(.system(size: 48))
-                    .foregroundStyle(Palette.brand)
-                    .symbolEffect(.bounce, value: phase == .exporting)
-
-                Text("Every series, its progress, and its tracker links go into one file you can restore from later.")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, dimensions.screenMargin)
-            }
-
+        ZStack {
             if case let .failed(reason) = phase {
-                Text(reason)
-                    .font(.caption)
-                    .foregroundStyle(.dangerText)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, dimensions.screenMargin)
+                Failed(reason)
+                    .transition(.opacity)
+            } else {
+                Content
+                    .transition(.opacity)
             }
-
-            Spacer()
-
-            Action
-                .padding(.horizontal, dimensions.screenMargin)
-                .padding(.bottom, dimensions.spacing.space24)
         }
+        .animation(.settle, value: phase)
         .navigationTitle("Backup Your Library")
         .navigationBarTitleDisplayMode(.inline)
-        .animation(.settle, value: phase)
+        .sensoryFeedback(.success, trigger: isReady) { _, ready in ready }
+        .task {
+            guard summary == nil else { return }
+            summary = try? await LibraryBackupBuilder.summary(database: compositor.database)
+        }
+        .task {
+            lastBackupDate = UserDefaults.standard.object(
+                forKey: Preferences.Key.libraryBackupExportedDate
+            ) as? Date
+        }
         .fileExporter(
             isPresented: $showingExporter,
             document: exportedDocument,
             contentType: .aletheiaBackup,
             defaultFilename: exportedFilename
         ) { result in
-            if case let .failure(error) = result {
+            switch result {
+            case .success:
+                // stamped on a confirmed save, not when the file is built
+                let now = Date.now
+                UserDefaults.standard.set(now, forKey: Preferences.Key.libraryBackupExportedDate)
+                lastBackupDate = now
+            case let .failure(error):
                 phase = .failed(Failure(error, fallback: "Couldn't save the backup").sentence)
             }
         }
@@ -87,33 +85,170 @@ struct BackupExportScreen: View {
         if case let .ready(_, filename) = phase { filename } else { nil }
     }
 
+    private var Content: some View {
+        ScrollView {
+            VStack(spacing: dimensions.spacing.space24) {
+                GlassEffectContainer(spacing: dimensions.spacing.space16) {
+                    HStack(spacing: dimensions.spacing.space16) {
+                        BackupPhaseIcon(
+                            systemImage: iconName,
+                            tint: iconTint,
+                            tintOpacity: isReady ? 0.18 : 0.15,
+                            isSpinning: phase == .exporting,
+                            bounceTrigger: isReady,
+                            namespace: glass
+                        )
+
+                        VStack(alignment: .leading, spacing: dimensions.spacing.space4) {
+                            Text(title)
+                                .font(.headline)
+                            Text(description)
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Spacer(minLength: 0)
+                    }
+                    .padding(dimensions.spacing.space16)
+                    .glassEffect(.regular, in: .rect(cornerRadius: dimensions.radius.radius16, style: .continuous))
+                }
+
+                LastBackupRow
+
+                LibraryBackupManifestGroup(
+                    title: "Library",
+                    rows: [
+                        ("book.closed", "Series", summary?.seriesCount),
+                        ("square.stack", "Chapters", summary?.chapterCount)
+                    ]
+                )
+
+                LibraryBackupManifestGroup(
+                    title: "Vocabulary",
+                    rows: [
+                        ("tag", "Tags", summary?.tagCount),
+                        ("person", "Authors", summary?.authorCount),
+                        ("folder", "Collections", summary?.collectionCount),
+                        ("link", "Tracker Links", summary?.trackerLinkCount)
+                    ]
+                )
+
+                Text("Cover images and downloaded chapters stay on this device - a restore rebuilds them from your sources.")
+                    .font(.caption)
+                    .foregroundStyle(.muted)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, dimensions.spacing.space8)
+            }
+            .padding(.horizontal, dimensions.screenMargin)
+            .padding(.top, dimensions.spacing.space16)
+        }
+        .scrollEdgeEffectStyle(.soft, for: .bottom)
+        .safeAreaInset(edge: .bottom) {
+            Action
+                .padding(.horizontal, dimensions.screenMargin)
+                .padding(.bottom, dimensions.spacing.space8)
+        }
+    }
+
+    private var iconName: String? {
+        switch phase {
+        case .idle: "shippingbox"
+        case .exporting: "progress.indicator"
+        case .ready: "checkmark.circle.fill"
+        case .failed: nil
+        }
+    }
+
+    private var iconTint: Color {
+        switch phase {
+        case .idle, .exporting: .brand
+        case .ready: .success
+        case .failed: .secondary
+        }
+    }
+
+    private var title: String {
+        switch phase {
+        case .idle: "Backup Your Library"
+        case .exporting: "Exporting"
+        case .ready: "Backup Ready"
+        case .failed: ""
+        }
+    }
+
+    private var description: String {
+        switch phase {
+        case .idle:
+            "Everything below goes into one file you can restore from later."
+        case .exporting:
+            "Reading your library."
+        case let .ready(document, _):
+            "\(byteCount(document.data.count)) - save it somewhere safe, like iCloud Drive or Files."
+        case .failed:
+            ""
+        }
+    }
+
+    private func byteCount(_ count: Int) -> String {
+        ByteCountFormatter.string(fromByteCount: Int64(count), countStyle: .file)
+    }
+
+    private var LastBackupRow: some View {
+        HStack(spacing: dimensions.spacing.space8) {
+            Image(systemName: "clock")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            Group {
+                if let lastBackupDate {
+                    HStack(spacing: dimensions.spacing.space4) {
+                        Text("Last backed up")
+                        LiveRelativeText(date: lastBackupDate)
+                    }
+                } else {
+                    Text("You haven't backed up before")
+                }
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+
+            Spacer(minLength: 0)
+        }
+    }
+
     @ViewBuilder
     private var Action: some View {
         switch phase {
-        case .idle, .failed:
-            Button("Export Library") { Task { await export() } }
-                .buttonStyle(.glassProminent)
-                .frame(maxWidth: .infinity)
-                .frame(minHeight: dimensions.touchTarget)
+        case .idle:
+            BackupActionSlab(icon: "square.and.arrow.up.on.square", label: "Export Library") {
+                Task { await export() }
+            }
+            .transition(.opacity)
 
         case .exporting:
-            HStack(spacing: dimensions.spacing.space8) {
-                ProgressView()
-                Text("Exporting")
-            }
-            .frame(maxWidth: .infinity)
-            .frame(minHeight: dimensions.touchTarget)
+            BackupActionSlab(icon: nil, label: "Exporting", tinted: false, isLoading: true) {}
+                .transition(.opacity)
 
         case .ready:
-            Button { showingExporter = true } label: {
-                HStack(spacing: dimensions.spacing.space8) {
-                    Image(systemName: "square.and.arrow.down")
-                    Text("Save Backup")
-                }
+            BackupActionSlab(icon: "square.and.arrow.down", label: "Save Backup") {
+                showingExporter = true
             }
-            .buttonStyle(.glassProminent)
-            .frame(maxWidth: .infinity)
-            .frame(minHeight: dimensions.touchTarget)
+            .transition(.opacity)
+
+        case .failed:
+            EmptyView()
+        }
+    }
+
+    private func Failed(_ reason: String) -> some View {
+        ContentUnavailableView {
+            Label("Couldn't Export", systemImage: "exclamationmark.triangle")
+        } description: {
+            Text(reason)
+        } actions: {
+            Button("Try Again") { Task { await export() } }
+                .buttonStyle(.glassProminent)
+                .tint(.brand)
         }
     }
 
@@ -134,8 +269,48 @@ struct BackupExportScreen: View {
 
 // MARK: - Previews
 
-#Preview {
-    NavigationStack {
-        BackupExportScreen()
+#if DEBUG
+private struct ExportPreview: View {
+    @State private var index = 0
+
+    private static let summary = LibraryBackupSummary(
+        seriesCount: 142,
+        chapterCount: 12480,
+        tagCount: 58,
+        authorCount: 96,
+        collectionCount: 6,
+        trackerLinkCount: 37
+    )
+
+    private static let states: [(name: String, phase: BackupExportScreen.Phase)] = [
+        ("Idle", .idle),
+        ("Exporting", .exporting),
+        ("Ready", .ready(LibraryBackupDocument(data: Data("preview".utf8)), filename: "aletheia-backup-2026-08-18")),
+        ("Failed", .failed("The database could not be read."))
+    ]
+
+    var body: some View {
+        NavigationStack {
+            BackupExportScreen(
+                phase: Self.states[index].phase,
+                summary: Self.summary,
+                lastBackupDate: .now.addingTimeInterval(-2 * 24 * 60 * 60)
+            )
+                // @State only reads init's value once, so a fresh .id per
+                // tap is what makes cycling the index actually redraw
+                .id(index)
+                .toolbar {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button(Self.states[index].name) {
+                            index = (index + 1) % Self.states.count
+                        }
+                    }
+                }
+        }
     }
 }
+
+#Preview("Export phases") {
+    ExportPreview()
+}
+#endif

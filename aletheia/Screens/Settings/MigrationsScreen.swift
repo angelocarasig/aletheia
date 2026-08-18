@@ -8,11 +8,11 @@
 import SwiftUI
 
 // one settings destination for moving a library around - between sources,
-// in from a tracker, or (eventually) out to a file - rather than a single
+// in from a tracker, or out to a file - rather than a single
 // "Restore from Tracker" card sitting in Reading with nothing to group it
 // under. Migrate has its two scaffolded entries today and no logic behind
-// either; Import has the one real flow; Export is where a future CBZ/backup-
-// file export would land - see aletheia/CLAUDE.md's zlib note
+// either; Import has the one real flow; Export has the one real flow
+// (backup) plus two scaffolded entries (Recent Backups, Auto Backup)
 struct MigrationsScreen: View {
     @Environment(\.compositor) private var compositor
     @Environment(\.dimensions) private var dimensions
@@ -21,9 +21,10 @@ struct MigrationsScreen: View {
     @State private var showingSourceMigration = false
     @State private var showingDisconnectedMigration = false
     @State private var showingOtherReaderImport = false
-    @State private var showingAletheiaBackupImport = false
+    @State private var showingBackupImport = false
     @State private var showingBackupExport = false
-    @State private var showingCBZExport = false
+    @State private var showingRecentBackups = false
+    @State private var showingAutoBackup = false
 
     // the same query DisconnectedSourceMigrationScreen's own composer
     // pulls from, reused rather than a second existence-only version of it -
@@ -38,7 +39,7 @@ struct MigrationsScreen: View {
                     SectionHeader("Migrate")
 
                     Card(
-                        "Between Sources",
+                        "Move Between Sources",
                         systemImage: "arrow.left.arrow.right",
                         detail: "Move a series from one installed source to another"
                     ) { showingSourceMigration = true }
@@ -49,7 +50,7 @@ struct MigrationsScreen: View {
                     // origin whose sourceId no longer resolves to an installed
                     // source at all, code-removed rather than merely disabled
                     Card(
-                        "Disconnected Sources",
+                        "Manage Disconnected Sources",
                         systemImage: "cable.connector.slash",
                         detail: hasDisconnectedSources
                             ? "Move a series off a source that's no longer installed"
@@ -78,26 +79,32 @@ struct MigrationsScreen: View {
                     ) { showingOtherReaderImport = true }
 
                     Card(
-                        "From an Aletheia Backup",
+                        "From Backup",
                         systemImage: "shippingbox",
                         detail: "Restore your library from your own exported backup"
-                    ) { showingAletheiaBackupImport = true }
+                    ) { showingBackupImport = true }
                 }
 
                 VStack(alignment: .leading, spacing: dimensions.spacing.space12) {
                     SectionHeader("Export")
 
                     Card(
-                        "To a Backup",
-                        systemImage: "shippingbox",
+                        "Create Backup",
+                        systemImage: "square.and.arrow.up",
                         detail: "Save your library to a file you can restore later"
                     ) { showingBackupExport = true }
 
                     Card(
-                        "To CBZ Archives",
-                        systemImage: "doc.zipper",
-                        detail: "Save chapters as CBZ archives"
-                    ) { showingCBZExport = true }
+                        "Recent Backups",
+                        systemImage: "clock.arrow.circlepath",
+                        detail: "Download a backup you made before"
+                    ) { showingRecentBackups = true }
+
+                    Card(
+                        "Auto Backup",
+                        systemImage: "arrow.triangle.2.circlepath",
+                        detail: "Back up your library on a schedule"
+                    ) { showingAutoBackup = true }
                 }
             }
             .padding(.horizontal, dimensions.screenMargin)
@@ -121,17 +128,20 @@ struct MigrationsScreen: View {
         .navigationDestination(isPresented: $showingBackupExport) {
             BackupExportScreen()
         }
-        .navigationDestination(isPresented: $showingCBZExport) {
-            CBZExportScreen()
+        .navigationDestination(isPresented: $showingRecentBackups) {
+            RecentBackupsScreen()
+        }
+        .navigationDestination(isPresented: $showingAutoBackup) {
+            AutoBackupScreen()
         }
         // sheets rather than pushes, for the same reason across all four:
         // each is a self-contained process with its own setup step and
         // queue, not a place inside Settings - closing from the queue two
         // levels deep just ends the sheet rather than popping back through
         // setup first
-        .sheet(isPresented: $showingAletheiaBackupImport) {
+        .sheet(isPresented: $showingBackupImport) {
             NavigationStack {
-                AletheiaBackupImportScreen(onFinish: { showingAletheiaBackupImport = false })
+                BackupImportScreen(onFinish: { showingBackupImport = false })
             }
             .interactiveDismissDisabled(true)
         }

@@ -1,29 +1,18 @@
-// LibraryBackup.proto
-// aletheia
+// v1 payload behind the magic+version header (LibraryBackupEnvelope.swift).
+// docs/features/library-backup.md
 //
-// Schema for the library backup payload (docs/features/library-backup.md).
-// The compressed body that sits behind the magic+version header
-// (LibraryBackupEnvelope.swift) - this is version 1.
+// field numbers are permanent - never reuse, never retype, only add.
+// reserve a dropped field instead of letting its number get reassigned.
+// that's what lets an old backup decode against a newer build with no
+// version bump - the envelope version is only for changes this can't
+// absorb (§4).
 //
-// Field numbers are permanent identity, not position: never reuse one,
-// never change a field's type, only ever add new fields, and `reserve` a
-// dropped field's number/name rather than let it be reassigned. This is
-// what lets an old backup keep decoding correctly against a newer build
-// with no version bump at all - the explicit envelope version is reserved
-// for changes this discipline cannot absorb (docs/features/library-backup.md §4).
+// everything nests inside LibraryBackup - SeriesEntry/ChapterEntry both
+// collide with existing app types otherwise.
 //
-// Every message below nests inside LibraryBackup rather than sitting at the
-// top level - SeriesEntry and ChapterEntry both collide with existing app
-// types (Models/SeriesEntry.swift, the source framework's own ChapterEntry
-// DTO). Nesting makes SwiftProtobuf generate LibraryBackup.SeriesEntry etc,
-// which sidesteps the collision instead of renaming around it.
-//
-// Regenerate with:
-//   protoc --swift_out=. LibraryBackup.proto
-// from this directory, after `brew install swift-protobuf` (adds
-// protoc-gen-swift to PATH). Commit the regenerated LibraryBackup.pb.swift
-// alongside any .proto change - there is no build-time codegen plugin wired
-// into this project, the generated file is checked in like any other source.
+// regenerate: protoc --swift_out=. LibraryBackup.proto
+// (brew install swift-protobuf for protoc-gen-swift). commit the
+// generated .pb.swift too - no build-time codegen plugin wired up.
 
 syntax = "proto3";
 

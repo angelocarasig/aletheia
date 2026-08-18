@@ -8,21 +8,11 @@
 import Foundation
 import zlib
 
-// the uncompressed header in front of the compressed protobuf payload
-// (docs/features/library-backup.md §2) - readable without first committing
-// to decompressing and parsing a payload that might be a version this
-// build has never seen.
-//
 //   [4 bytes] magic:         "ALTH"
 //   [2 bytes] version:       UInt16, big-endian
-//   [4 bytes] originalSize:  UInt32, big-endian - zlib's uncompress needs
-//                            the output size up front, this avoids a
-//                            guess-and-retry buffer loop
+//   [4 bytes] originalSize:  UInt32, big-endian (zlib's uncompress needs
+//                            the output size up front)
 //   [N bytes] zlib-deflated LibraryBackup protobuf message
-//
-// zlib rather than a real gzip container: "ALTH" + this header already
-// wraps the stream, so gzip's own magic/CRC/filename fields would be
-// redundant - CLAUDE.md's zlib note is what makes this dependency-free
 enum LibraryBackupEnvelope {
     static let currentVersion: UInt16 = 1
 

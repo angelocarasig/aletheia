@@ -1,0 +1,381 @@
+//
+//  LibraryBackupRestorer.swift
+//  aletheia
+//
+//  Created by Angelo Carasig on 18/8/26.
+//
+
+import Foundation
+import GRDB
+import Tagged
+
+// a full restore, not a per-row queue: the library ends up matching the
+// backup exactly. anything currently in the library but absent from the
+// backup is removed from it; every backup series is attached (its source
+// still installed) or reattached as disconnected (it isn't) - the same
+// disconnected state Library's own filter and DetailsSources' badge
+// already know how to render and that Disconnected Migration already
+// knows how to fix. chapters seed straight from the backup in both cases,
+// never a live fetch - the payload already has them
+enum LibraryBackupRestorer {
+    struct Summary: Equatable {
+        var restoredCount = 0
+        var disconnectedCount = 0
+        var removedCount = 0
+        var failures: [Failure] = []
+
+        struct Failure: Equatable {
+            let title: String
+            let reason: String
+        }
+    }
+
+    static func restore(
+        _ backup: LibraryBackup,
+        database: DatabaseClient,
+        registry: Compositor.Registry,
+        log: AppLog = .shared
+    ) async -> Summary {
+        var summary = Summary()
+
+        await removeStaleLibraryMembers(backup, database: database, summary: &summary, log: log)
+
+        for entry in backup.series {
+            guard let primary = entry.origins.min(by: { $0.priority < $1.priority }) else { continue }
+
+            if let source = registry.source(slug: primary.sourceSlug) {
+                await attach(entry, primary, source: source, database: database, summary: &summary, log: log)
+            } else {
+                await attachDisconnected(entry, primary, database: database, summary: &summary, log: log)
+            }
+        }
+
+        return summary
+    }
+
+    // MARK: - Wipe
+
+    private static func removeStaleLibraryMembers(
+        _ backup: LibraryBackup,
+        database: DatabaseClient,
+        summary: inout Summary,
+        log: AppLog
+    ) async {
+        let backupKeys = Set(backup.series.flatMap { entry in
+            entry.origins.map { "\($0.sourceSlug)::\($0.seriesSlug)" }
+        })
+
+        do {
+            let removed = try await database.writer.write { db -> Int in
+                let sourceSlugsById = Dictionary(
+                    uniqueKeysWithValues: try SourceRecord.fetchAll(db).compactMap { source in
+                        source.id.map { ($0, source.slug) }
+                    }
+                )
+
+                let librarySeries = try SeriesRecord
+                    .filter(SeriesRecord.Columns.inLibrary == true)
+                    .fetchAll(db)
+
+                var removed = 0
+                for series in librarySeries {
+                    guard let seriesId = series.id else { continue }
+                    let origins = try OriginRecord
+                        .filter(OriginRecord.Columns.seriesId == seriesId)
+                        .fetchAll(db)
+
+                    let matchesBackup = origins.contains { origin in
+                        guard let sourceId = origin.sourceId, let slug = sourceSlugsById[sourceId] else { return false }
+                        return backupKeys.contains("\(slug)::\(origin.slug)")
+                    }
+
+                    guard !matchesBackup else { continue }
+
+                    _ = try SeriesRecord
+                        .filter(key: seriesId.rawValue)
+                        .updateAll(
+                            db,
+                            SeriesRecord.Columns.inLibrary.set(to: false),
+                            SeriesRecord.Columns.addedDate.set(to: Date.distantPast)
+                        )
+                    removed += 1
+                }
+                return removed
+            }
+            summary.removedCount = removed
+        } catch {
+            log.log("backup restore couldn't clear stale library members - \(error)", level: .error, category: "backup")
+        }
+    }
+
+    // MARK: - Source still installed
+
+    private static func attach(
+        _ entry: LibraryBackup.SeriesEntry,
+        _ primary: LibraryBackup.SeriesEntry.OriginEntry,
+        source: Source,
+        database: DatabaseClient,
+        summary: inout Summary,
+        log: AppLog
+    ) async {
+        do {
+            let detail = try await source.details(seriesSlug: primary.seriesSlug)
+
+            let (seriesId, originId) = try await database.writer.write { db -> (SeriesRecord.ID, OriginRecord.ID) in
+                guard let sourceId = try SourceRecord
+                    .select(SourceRecord.Columns.id, as: SourceRecord.ID.self)
+                    .filter(SourceRecord.Columns.slug == primary.sourceSlug)
+                    .fetchOne(db)
+                else { throw RecordError.missingIdentifier }
+
+                let known = try OriginRecord
+                    .filter(OriginRecord.Columns.sourceId == sourceId)
+                    .filter([detail.slug, primary.seriesSlug].contains(OriginRecord.Columns.slug))
+                    .fetchOne(db)
+
+                let ids: (SeriesRecord.ID, OriginRecord.ID)
+                if let known, let originId = known.id {
+                    ids = (known.seriesId, originId)
+                } else {
+                    ids = try DetailsComposer.write(detail, sourceId: sourceId, matching: nil, into: nil, in: db)
+                }
+
+                try writeSeriesState(entry, for: ids.0, in: db)
+                return ids
+            }
+
+            try await database.writer.write { db in
+                try seedChapters(primary.chapters, for: originId, in: db)
+                try attachTags(entry.tags, to: seriesId, in: db)
+                try attachAuthors(entry.authors, to: seriesId, in: db)
+                try attachCollections(entry.collections, to: seriesId, in: db)
+                try writeTrackerLinks(entry.trackerLinks, to: seriesId, in: db)
+                try touchUpdatedDate(for: seriesId, in: db)
+            }
+
+            summary.restoredCount += 1
+        } catch {
+            log.log("backup restore failed for '\(entry.preferredTitle)' - \(error)", level: .error, category: "backup")
+            summary.failures.append(Summary.Failure(title: entry.preferredTitle, reason: Failure(error, fallback: "Couldn't restore this series").sentence))
+        }
+    }
+
+    // MARK: - Source not installed
+
+    private static func attachDisconnected(
+        _ entry: LibraryBackup.SeriesEntry,
+        _ primary: LibraryBackup.SeriesEntry.OriginEntry,
+        database: DatabaseClient,
+        summary: inout Summary,
+        log: AppLog
+    ) async {
+        do {
+            try await database.writer.write { db in
+                let known = try OriginRecord
+                    .filter(OriginRecord.Columns.sourceId == nil)
+                    .filter(OriginRecord.Columns.slug == primary.seriesSlug)
+                    .fetchOne(db)
+
+                let seriesId: SeriesRecord.ID
+                let originId: OriginRecord.ID
+
+                if let known, let knownOriginId = known.id {
+                    (seriesId, originId) = (known.seriesId, knownOriginId)
+                } else {
+                    var series = SeriesRecord()
+                    try series.insert(db)
+                    guard let newSeriesId = series.id else { throw RecordError.missingIdentifier }
+                    try SeriesLanguagePriorityRecord.seedDefaults(for: newSeriesId, in: db)
+
+                    var origin = OriginRecord(
+                        seriesId: newSeriesId,
+                        sourceId: nil,
+                        slug: primary.seriesSlug,
+                        url: "",
+                        priority: 0
+                    )
+                    try origin.insert(db)
+                    guard let newOriginId = origin.id else { throw RecordError.missingIdentifier }
+
+                    let title = try TitleRecord.findOrCreate(
+                        TitleRecord(id: nil, seriesId: newSeriesId, metadataId: nil, value: entry.preferredTitle),
+                        in: db
+                    )
+                    _ = try SeriesRecord
+                        .filter(key: newSeriesId.rawValue)
+                        .updateAll(db, SeriesRecord.Columns.preferredTitleId.set(to: title.id?.rawValue))
+
+                    (seriesId, originId) = (newSeriesId, newOriginId)
+                }
+
+                try writeSeriesState(entry, for: seriesId, in: db)
+                try seedChapters(primary.chapters, for: originId, in: db)
+                try attachTags(entry.tags, to: seriesId, in: db)
+                try attachAuthors(entry.authors, to: seriesId, in: db)
+                try attachCollections(entry.collections, to: seriesId, in: db)
+                try writeTrackerLinks(entry.trackerLinks, to: seriesId, in: db)
+                try touchUpdatedDate(for: seriesId, in: db)
+            }
+
+            summary.disconnectedCount += 1
+        } catch {
+            log.log("backup restore (disconnected) failed for '\(entry.preferredTitle)' - \(error)", level: .error, category: "backup")
+            summary.failures.append(Summary.Failure(title: entry.preferredTitle, reason: Failure(error, fallback: "Couldn't restore this series").sentence))
+        }
+    }
+
+    // MARK: - Shared writes
+
+    private static func writeSeriesState(
+        _ entry: LibraryBackup.SeriesEntry,
+        for seriesId: SeriesRecord.ID,
+        in db: Database
+    ) throws {
+        _ = try SeriesRecord
+            .filter(key: seriesId.rawValue)
+            .updateAll(
+                db,
+                SeriesRecord.Columns.inLibrary.set(to: true),
+                SeriesRecord.Columns.addedDate.set(to: Date(timeIntervalSince1970: TimeInterval(entry.addedDate))),
+                SeriesRecord.Columns.lastReadDate.set(to: Date(timeIntervalSince1970: TimeInterval(entry.lastReadDate))),
+                SeriesRecord.Columns.status.set(to: (Status(rawValue: entry.status) ?? .planning).rawValue),
+                SeriesRecord.Columns.orientation.set(to: (Orientation(rawValue: entry.orientation) ?? .unknown).rawValue),
+                SeriesRecord.Columns.showAllChapters.set(to: entry.showAllChapters),
+                SeriesRecord.Columns.showHalfChapters.set(to: entry.showHalfChapters)
+            )
+    }
+
+    private static func touchUpdatedDate(for seriesId: SeriesRecord.ID, in db: Database) throws {
+        let latest = try Date.fetchOne(
+            db,
+            sql: """
+                SELECT MAX(c.\(ChapterRecord.Columns.publishedDate.name))
+                FROM \(ChapterRecord.databaseTableName) c
+                JOIN \(OriginRecord.databaseTableName) o ON o.id = c.\(ChapterRecord.Columns.originId.name)
+                WHERE o.\(OriginRecord.Columns.seriesId.name) = ?
+                """,
+            arguments: [seriesId.rawValue]
+        )
+        guard let latest else { return }
+        _ = try SeriesRecord
+            .filter(key: seriesId.rawValue)
+            .updateAll(db, SeriesRecord.Columns.updatedDate.set(to: latest))
+    }
+
+    private static func seedChapters(
+        _ chapters: [LibraryBackup.SeriesEntry.ChapterEntry],
+        for originId: OriginRecord.ID,
+        in db: Database
+    ) throws {
+        guard !chapters.isEmpty else { return }
+
+        let existing = try ChapterRecord
+            .filter(ChapterRecord.Columns.originId == originId)
+            .fetchAll(db)
+        let existingSlugs = Set(existing.map(\.slug))
+
+        var scanlators: [String: ScanlatorRecord.ID] = [:]
+        for chapterEntry in chapters where scanlators[chapterEntry.scanlator] == nil {
+            let scanlator = try ScanlatorRecord.findOrCreate(
+                ScanlatorRecord(id: nil, name: chapterEntry.scanlator),
+                in: db
+            )
+            if let scanlatorId = scanlator.id {
+                scanlators[chapterEntry.scanlator] = scanlatorId
+            }
+        }
+
+        for chapterEntry in chapters {
+            guard !existingSlugs.contains(chapterEntry.slug),
+                  let scanlatorId = scanlators[chapterEntry.scanlator],
+                  let language = LanguageCode(rawValue: chapterEntry.language),
+                  let url = URL(string: chapterEntry.url)
+            else { continue }
+
+            var chapter = ChapterRecord(
+                id: nil,
+                originId: originId,
+                scanlatorId: scanlatorId,
+                slug: chapterEntry.slug,
+                title: chapterEntry.title,
+                number: chapterEntry.number,
+                publishedDate: Date(timeIntervalSince1970: TimeInterval(chapterEntry.publishedDate)),
+                language: language,
+                progress: chapterEntry.progress,
+                lastReadDate: chapterEntry.hasLastReadDate
+                    ? Date(timeIntervalSince1970: TimeInterval(chapterEntry.lastReadDate))
+                    : nil,
+                url: url,
+                path: nil
+            )
+            try chapter.insert(db)
+        }
+    }
+
+    private static func attachTags(_ names: [String], to seriesId: SeriesRecord.ID, in db: Database) throws {
+        for name in names {
+            _ = try TagRecord.attach(name, to: seriesId, in: db)
+        }
+    }
+
+    private static func attachAuthors(_ names: [String], to seriesId: SeriesRecord.ID, in db: Database) throws {
+        for name in names {
+            let author = try AuthorRecord.findOrCreate(AuthorRecord(id: nil, name: name), in: db)
+            guard let authorId = author.id else { continue }
+            var join = SeriesAuthorRecord(seriesId: seriesId, authorId: authorId)
+            try join.insert(db, onConflict: .ignore)
+        }
+    }
+
+    private static func attachCollections(_ names: [String], to seriesId: SeriesRecord.ID, in db: Database) throws {
+        guard !names.isEmpty else { return }
+
+        var byLowercasedName = Dictionary(
+            uniqueKeysWithValues: try CollectionRecord.fetchAll(db).compactMap { collection in
+                collection.id.map { (collection.name.lowercased(), $0) }
+            }
+        )
+
+        for name in names {
+            let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { continue }
+
+            let collectionId: CollectionRecord.ID
+            if let existing = byLowercasedName[trimmed.lowercased()] {
+                collectionId = existing
+            } else {
+                var collection = CollectionRecord(id: nil, name: trimmed)
+                try collection.insert(db)
+                guard let id = collection.id else { continue }
+                collectionId = id
+                byLowercasedName[trimmed.lowercased()] = id
+            }
+
+            var join = SeriesCollectionRecord(seriesId: seriesId, collectionId: collectionId)
+            try join.insert(db, onConflict: .ignore)
+        }
+    }
+
+    private static func writeTrackerLinks(
+        _ links: [LibraryBackup.SeriesEntry.TrackerLink],
+        to seriesId: SeriesRecord.ID,
+        in db: Database
+    ) throws {
+        for link in links {
+            guard let tracker = Tracker(rawValue: link.tracker) else { continue }
+
+            var record = SeriesTrackerRecord(
+                seriesId: seriesId,
+                tracker: tracker,
+                remoteId: link.remoteID,
+                remoteEntryId: link.hasRemoteEntryID ? link.remoteEntryID : nil,
+                remoteTitle: link.remoteTitle,
+                remoteStatus: link.hasRemoteStatus ? Status(rawValue: link.remoteStatus) : nil,
+                remoteProgress: Int(link.remoteProgress),
+                remoteScore: link.hasRemoteScore ? Int(link.remoteScore) : nil,
+                totalChapters: link.hasTotalChapters ? Int(link.totalChapters) : nil
+            )
+            try record.insert(db, onConflict: .replace)
+        }
+    }
+}
