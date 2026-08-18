@@ -60,12 +60,10 @@ extension TagRecord {
     }
 
     static func createIndexes(db: Database) throws {
-        // filtering out canonical tags
         try db.create(
             index: "idx_tag_canonicalId", on: databaseTableName,
             columns: [Columns.canonicalId.name], ifNotExists: true)
 
-        // sorting tags by display name
         try db.create(
             index: "idx_tag_displayName", on: databaseTableName,
             columns: [Columns.displayName.name], ifNotExists: true)
@@ -103,10 +101,9 @@ extension TagRecord {
         using: SeriesTagRecord.series
     )
 
-    /// When you call tag.series on ANY of these:
-    /// 1. Resolves to canonical ID (1)
-    /// 2. Finds all tags where id=1 OR canonicalId=1 → [1,2,3]
-    /// 3. Returns series tagged with any of those IDs
+    /// calling this on an alias or its canonical tag returns the same result -
+    /// it resolves to the canonical id, then returns series tagged with either
+    /// the canonical tag or any of its aliases
     var series: QueryInterfaceRequest<SeriesRecord> {
         let resolvedId = canonicalId ?? id!
 
@@ -153,8 +150,7 @@ extension TagRecord {
         name.lowercased().replacingOccurrences(of: " ", with: "")
     }
 
-    // tags are supplier-agnostic facts about a series, so every writer joins
-    // through here and none of them records where the tag came from
+    // every writer joins through here, so none of them records where the tag came from
     @discardableResult
     static func attach(_ name: String, to series: SeriesRecord.ID, in db: Database) throws
         -> TagRecord.ID?

@@ -7,9 +7,6 @@
 
 import SwiftUI
 
-// what the app has said about itself, this launch and the one before it. the
-// point is the launch before: a crash takes its own explanation with it unless
-// something wrote to disk on the way past, and this is where that file is read
 struct LogScreen: View {
     @State private var entries: [Row] = []
     @Environment(\.dimensions) private var dimensions
@@ -20,9 +17,6 @@ struct LogScreen: View {
     @State private var clearing = false
     @State private var loaded = false
 
-    // history arrives as text and live arrives as entries, so both are flattened
-    // to the one shape the list draws. the id is positional because a replayed
-    // line from the file has no identity of its own to carry
     private struct Row: Identifiable {
         let id: Int
         let text: String
@@ -36,9 +30,7 @@ struct LogScreen: View {
             self.category = category
         }
 
-        // a replayed line is text, and its level and category are the two
-        // fields the filters need back out of it. the format is ours and fixed,
-        // so this reads the two bracketed fields rather than matching the line
+        // parses AppLog's fixed "[level] [category]" line format
         init(text: String, at index: Int) {
             let fields = text.split(separator: "[").dropFirst().prefix(2).map {
                 $0.prefix { $0 != "]" }.trimmingCharacters(in: .whitespaces)
@@ -93,9 +85,6 @@ struct LogScreen: View {
             }
         }
         .safeAreaInset(edge: .top, spacing: 0) {
-            // filters live on the screen they filter. behind a toolbar menu they
-            // were two taps deep and gave no sign of what was available - a log
-            // is read by narrowing it, so the narrowing is the primary control
             if !entries.isEmpty { Filters }
         }
         .animation(.settle, value: visible.count)
@@ -116,9 +105,7 @@ struct LogScreen: View {
             Text(
                 "Removes every line on disk, including the previous launch. This cannot be undone.")
         }
-        // history first, then live, and the gap between them is accepted: a line
-        // logged in that window is missed. it is a debug tool, and closing the
-        // gap costs a de-dupe pass on every entry forever
+        // a line logged between history() and live() starting is missed; accepted, not a bug
         .task {
             let history = await AppLog.shared.history()
             entries = history.suffix(Layout.tail).enumerated().map { index, text in
@@ -160,8 +147,6 @@ struct LogScreen: View {
                     .id(row.id)
             }
             .listStyle(.plain)
-            // a log reads newest-last, so a new line arriving off the bottom is
-            // the one thing worth following
             .onChange(of: visible.last?.id) { _, last in
                 guard let last else { return }
                 withAnimation { proxy.scrollTo(last, anchor: .bottom) }
@@ -177,9 +162,7 @@ struct LogScreen: View {
     private var Toolbar: some ToolbarContent {
         ToolbarItem(placement: .topBarTrailing) {
             Menu {
-                // both files, not one: sharing only the live half hands over
-                // everything EXCEPT the rotated part, which after a crash is
-                // the half worth reading
+                // includes the rotated file - the half worth reading after a crash
                 ShareLink(items: AppLog.shared.files()) {
                     Label("Export", systemImage: "square.and.arrow.up")
                 }
@@ -197,17 +180,12 @@ struct LogScreen: View {
 
     private var Filters: some View {
         VStack(spacing: dimensions.spacing.space8) {
-            // both rows scroll. levels fit on a phone at default text size and
-            // stop fitting at larger ones, and a row that silently clips its last
-            // chip is worse than one that always scrolls
             Rail {
                 Chip("All", count: entries.count, active: level == nil, tint: .brand) {
                     level = nil
                 }
                 ForEach(AppLog.Level.allCases, id: \.self) { value in
                     let n = counts.levels[value] ?? 0
-                    // an empty level is drawn and disabled rather than hidden:
-                    // the row keeps its shape, and "no errors" is worth seeing
                     Chip(
                         value.rawValue.capitalized, count: n,
                         active: level == value, tint: tint(value)
@@ -240,9 +218,8 @@ struct LogScreen: View {
         .background(.bar)
     }
 
-    // the negative outer padding puts the inset INSIDE the scroll view, so the
-    // first chip starts at the screen margin and the last one can still be
-    // scrolled clear of the edge
+    // negative outer padding puts the inset inside the scroll view, so the first
+    // chip starts at the screen margin but the last can still scroll clear of it
     private func Rail<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
         ScrollView(.horizontal) {
             HStack(spacing: dimensions.spacing.space8) {
@@ -326,8 +303,6 @@ struct LogScreen: View {
         }
     }
 
-    // error and warning earn a colour; the rest stay monochrome, or a screen
-    // that is entirely coloured text says nothing by colouring any of it
     private func tint(_ level: AppLog.Level?) -> Color {
         switch level {
         case .error: .dangerText

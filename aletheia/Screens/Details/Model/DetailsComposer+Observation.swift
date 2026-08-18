@@ -32,9 +32,8 @@ extension DetailsComposer.Stored {
         let priority: Int
         let chapterCount: Int
         let chaptersFetchedDate: Date
-        // an origin whose metadata row was deleted has nothing to answer with.
-        // the row's own content lives on Stored.Supplier - this is only how
-        // recently the source last described the series
+        // just a timestamp mirror - the metadata row's own content lives on
+        // Stored.Supplier, this is nil once that row is gone
         let metadataFetchedDate: Date?
         let fetchAttemptedDate: Date
         let fetchError: String?
@@ -47,10 +46,9 @@ extension DetailsComposer.Stored {
         let installed: Bool
     }
 
-    // one row per metadata row, which is what the synopsis, rating and status
-    // pickers choose between. deliberately not derived from origins: a linked
-    // tracker owns a metadata row and no origin at all, so enumerating origins
-    // makes every tracker invisible to the very pickers it exists to feed
+    // queries MetadataRecord directly rather than deriving from origins - a
+    // linked tracker owns a metadata row with no origin at all, so deriving
+    // from origins would make every tracker invisible to these pickers
     struct Supplier: Decodable, FetchableRecord, Sendable {
         let id: Int64
         let synopsis: String
@@ -72,9 +70,9 @@ extension DetailsComposer.Stored {
         let contains: Bool
     }
 
-    // a pool row's provenance is its metadata row, and that row is owned by an
-    // origin or a tracker - so both have to be walked or a linked service's
-    // contributions render unlabelled, which is what a dead source looks like
+    // both the origin and tracker paths must be walked to resolve provenance,
+    // or a tracker's contribution renders unlabelled - indistinguishable from
+    // a dead source
     struct Title: Decodable, FetchableRecord, Sendable {
         let id: Int64
         let value: String
@@ -96,16 +94,13 @@ extension DetailsComposer.Stored {
 }
 
 extension DetailsComposer {
-    // watcher for the whole screen... cancels whatever it replaces, so
-    // resolving to a different row after disambiguation leaves nothing behind
-    // reading the old one
     func observe(_ id: SeriesRecord.ID) {
         seriesId = id
         failure = nil
         stream?.cancel()
 
         // weak, so the screen going away releases the composer rather than the
-        // observation holding it open. the loop then ends on its next emission
+        // observation holding it open - the loop ends on its next emission
         stream = Task { [weak self, database, registry] in
             let observation = ValueObservation.tracking { db -> Stored? in
                 guard
@@ -119,11 +114,8 @@ extension DetailsComposer {
                 return Stored(
                     series: series,
                     entry: entry,
-                    // mapped here rather than on the other side: this closure
-                    // runs on the dbpool, and a series with four
-                    // hundred chapters was rebuilding every row on the main
-                    // actor on every emission - measured at ~700ms after a
-                    // bulk insert
+                    // mapped inside this dbpool closure, not in apply() on the
+                    // main actor - measured ~700ms for 400 chapters otherwise
                     chapters: Chapters.display(
                         try Chapters.rows(for: id, in: db), registry: registry),
                     origins: try Self.origins(for: id, in: db),
@@ -147,18 +139,14 @@ extension DetailsComposer {
                     self.apply(stored)
                 }
             } catch {
-                // a background load. the screen keeps what it has rather than nagging about it
+                // keeps what it has rather than surfacing a failure for a
+                // background load
                 AppLog.shared.log(
                     "observation failed - \(error)", level: .error, category: "details")
             }
         }
     }
 
-    // fan-out... fills in what the root itself draws, hands every child its
-    // own slice, and marks the first bundle as arrived so the skeleton can go.
-    //
-    // not the DetailsApplying conformance - this is the caller of it. every
-    // child implements that protocol, and this is where they are called from
     func apply(_ stored: Stored) {
         series.apply(stored)
         library.apply(stored)
@@ -175,10 +163,6 @@ extension DetailsComposer {
         refresh.prime()
     }
 
-    // which series this screen is for. runs entirely against the database and
-    // entirely before the network: a slug hit on this source, then a title hit
-    // in the library, so a series you already own under another source is
-    // never missed and never duplicated
     func resolve() async {
         guard let opener, let stub else {
             failure = Failure(
@@ -200,8 +184,6 @@ extension DetailsComposer {
             observe(id)
 
         case .candidates(let ids):
-            // failing to build the prompt is the same answer as finding no
-            // candidates - carry on rather than stranding the screen
             if await !identity.load(ids) { await settle() }
 
         case .unmatched, nil:
@@ -209,8 +191,6 @@ extension DetailsComposer {
         }
     }
 
-    // where the flow lands when nothing in the library claims it - reuse the
-    // row we already have, or write a new one
     func settle() async {
         if let held {
             observe(held)
@@ -219,12 +199,8 @@ extension DetailsComposer {
         }
     }
 
-    // opening a search result writes the whole row set with inLibrary = 0, so
-    // it reads offline and a second visit refetches nothing. passing an
-    // existing id writes into that row instead of minting one
     func store(into existing: SeriesRecord.ID?) async {
         guard let opener, let stub else {
-            // a library entry always carries its row id, so it never arrives here
             failure = Failure(
                 title: "Source Unavailable",
                 message: "No installed source can open this series.",
@@ -247,9 +223,9 @@ extension DetailsComposer {
                         .fetchOne(db)
                 else { throw RecordError.missingIdentifier }
 
-                // the details response carries the canonical slug, and the stub
-                // may have been opened under an older one - both have to be
-                // checked or a series already stored is created a second time
+                // both the canonical slug (from the details response) and the
+                // stub's must be checked, or an older-slug reopen creates a
+                // duplicate series
                 let known =
                     try OriginRecord
                     .filter(OriginRecord.Columns.sourceId == sourceId)
@@ -272,10 +248,6 @@ extension DetailsComposer {
             observe(ids.0)
             assets.enqueue(series: ids.0)
 
-            // attaching to an existing series happens behind a screen already
-            // showing chapters from other origins, so the fetch gets the
-            // refresh pill - badged with the new source's icon - rather than
-            // passing silently. a fresh open keeps the skeleton as its indicator
             if existing != nil {
                 let origin = Refresh.Origin(
                     id: ids.1.rawValue,
@@ -375,8 +347,6 @@ extension DetailsComposer {
         return try Stored.Supplier.fetchAll(db, sql: sql, arguments: [id])
     }
 
-    // every collection, not just this series' - the picker lists all of them,
-    // so a row has to know both its size and whether this series is in it
     nonisolated static func collections(
         for id: SeriesRecord.ID,
         in db: Database
@@ -450,9 +420,6 @@ extension DetailsComposer {
         return try Stored.Cover.fetchAll(db, sql: sql, arguments: [id])
     }
 
-    // the whole row set for a series this source has just described. an
-    // existing id attaches a new origin to a series already on screen instead
-    // of minting one
     nonisolated static func write(
         _ detail: SeriesDetail,
         sourceId: SourceRecord.ID,
@@ -495,8 +462,6 @@ extension DetailsComposer {
         try origin.insert(db)
         guard let originId = origin.id else { throw RecordError.missingIdentifier }
 
-        // what this source says the series is. the origin owns chapters and the
-        // fetch; this row owns the description, and a tracker can own a sibling
         let source = try SourceRecord.fetchOne(db, key: sourceId.rawValue)
         var metadata = MetadataRecord(
             seriesId: seriesId,
@@ -506,14 +471,11 @@ extension DetailsComposer {
             synopsis: detail.synopsis,
             classification: detail.classification,
             publication: detail.publication,
-
-            // this row exists because a details response just arrived
             fetchedDate: .now
         )
         try metadata.insert(db)
         guard let metadataId = metadata.id else { throw RecordError.missingIdentifier }
 
-        // the source's own title goes in first, and becomes the preferred one
         var preferredTitleId: TitleRecord.ID?
         for value in [detail.title] + detail.altTitles {
             let title = try TitleRecord.findOrCreate(
@@ -523,20 +485,12 @@ extension DetailsComposer {
             if preferredTitleId == nil { preferredTitleId = title.id }
         }
 
-        // the search result's own cover joins the pool, LAST. it used to be
-        // passed in for matching and then discarded, which meant the one url in
-        // this whole transaction known to work - it had just rendered on the
-        // card the reader tapped - was the only one not kept. a series whose
-        // details response gave a dead url therefore had a pool of exactly one
-        // dead url, nothing to fall back to, and no way to ever recover.
-        //
-        // last rather than first, so a source whose details artwork is better
-        // than its search thumbnail still wins on quality: the preference is
-        // still chosen from detail.covers, and this is the rung underneath.
-        //
-        // it also makes cover()'s first tier reachable for the first time -
-        // that tier matches against the stub url, in a set that until now could
-        // never contain it
+        // stub cover joins the pool LAST, not first. it used to be used only for
+        // matching then discarded, so a details response with a dead cover url
+        // left a pool of exactly one dead url with nothing to fall back to.
+        // last, not first, so a source whose details artwork beats its search
+        // thumbnail still wins on quality - and it makes cover()'s first tier
+        // (which matches against the stub url) reachable at all
         let pool = detail.covers + (stubCover.map { detail.covers.contains($0) ? [] : [$0] } ?? [])
 
         let primary = cover(among: detail.covers, matching: stubCover) ?? stubCover
@@ -576,8 +530,6 @@ extension DetailsComposer {
         return (seriesId, originId)
     }
 
-    // exact url, else the same filename ignoring extension, else the first
-    // listed
     nonisolated static func cover(
         among covers: [URL],
         matching stub: URL?

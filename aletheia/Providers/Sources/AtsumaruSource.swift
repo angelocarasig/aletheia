@@ -7,9 +7,6 @@
 
 import Foundation
 
-// two backends behind one host. search goes to a typesense collection proxied
-// unauthenticated at /collections, everything else to a hono rpc api at /api.
-// no credential, no renderer, no signing - see docs/sources/atsumaru.md
 struct AtsumaruSource: SourceService {
     let network: NetworkConfiguration
 
@@ -19,8 +16,6 @@ struct AtsumaruSource: SourceService {
     private static let shelfWindow = 40
     private static let shelfTypes = "Manga,Manwha,Manhua,OEL"
 
-    // the one medium this source cannot render. named once because both the
-    // search index and the shelf carry it, and the two are filtered separately
     static let novelMedium = "Novel"
 
     // the field set the site's own search sends, weights included. queried
@@ -93,8 +88,6 @@ struct AtsumaruSource: SourceService {
                 ],
                 canExclude: false
             ),
-            // 2408 of them, so they ship as a bundled resource rather than as
-            // literals here. see the Vocabulary extension below
             .multiSelect(
                 id: "tagIds",
                 name: "Tags",
@@ -135,8 +128,6 @@ struct AtsumaruSource: SourceService {
             .init(
                 id: "new", name: "Recently Added", subtitle: "Newest to the catalogue", order: 0,
                 sort: .init(optionID: "dateAdded:desc")),
-            // ranked by newest chapter, which no typesense field carries - served
-            // by a home shelf endpoint instead, hence the route
             .init(
                 id: "updated", name: "Recently Updated", subtitle: "Freshly released chapters",
                 order: 1,
@@ -157,14 +148,9 @@ struct AtsumaruSource: SourceService {
 // MARK: - Vocabulary
 
 extension AtsumaruSource {
-    // a filter vocabulary too large to write out: 2408 tags, ~230kb of json.
-    // bundled rather than fetched, which trades freshness for costing nothing at
-    // runtime - and means the taxonomy only moves when we ship, so it can take
-    // part in the descriptor's fingerprint honestly.
-    //
-    // the file is named for the source it belongs to; a second vocabulary would
-    // be `atsumaru-<name>.json`. ordered by how many series carry each tag, so
-    // the picker's default order is useful before Option carries a count
+    // bundled rather than fetched: trades freshness for costing nothing at
+    // runtime, and lets the taxonomy take part in the descriptor's fingerprint
+    // honestly since it only moves when we ship
     static let tags: [SourceFilter.Option] = load("atsumaru-tags")
 
     // an unreadable vocabulary is an empty filter, never a crash: the rest of
@@ -188,15 +174,9 @@ extension AtsumaruSource {
         }
     }
 
-    // group and count are carried in the file but dropped here - Option has
-    // nowhere to put them yet, and the file should not have to be regenerated
-    // when it does
     private struct Entry: Decodable {
         let id: String
         let name: String
-        // the key is the file's, the property is ours. renaming 2408 entries to
-        // match would buy nothing - the mapping is one line and stops the word
-        // travelling any further
         let sensitive: Bool
 
         enum CodingKeys: String, CodingKey {
@@ -332,8 +312,6 @@ extension AtsumaruSource {
         )
     }
 
-    // mbContentRating comes from mangabaka and is the richer signal; isAdult is
-    // the fallback for a series that has never been rated
     private static func classification(_ document: Detail) -> Classification {
         switch document.mbContentRating {
         case "Safe": .Safe
@@ -422,8 +400,6 @@ extension AtsumaruSource {
             return PageURL(
                 index: page.number,
                 url: url,
-                // stated by the api for every page, so a chapter here never
-                // estimates a height - see features/page-dimensions.md
                 size: page.width.flatMap { width in
                     page.height.map { PageSize(width: width, height: $0, exactness: .exact) }
                 }
@@ -460,10 +436,8 @@ extension AtsumaruSource {
     fileprivate static let stubFields =
         "id,title,poster,posterSmall,posterMedium,mbContentRating,isAdult"
     fileprivate static let pornographic = "Pornographic"
-    // posterMedium is requested here for the same reason search asks for it: the
-    // full-size poster is the variant that goes missing from their CDN, and it
-    // was the only one details returned - so a series browsed with a working
-    // cover was added to the library with a dead one
+    // requested for the same reason search does: full-size is the variant
+    // that goes missing from their cdn
     fileprivate static let detailFields =
         "id,title,otherNames,synopsis,poster,posterMedium,status,isAdult,mbContentRating,tags,authors"
 
@@ -558,8 +532,6 @@ extension AtsumaruSource {
         "`\(value.replacingOccurrences(of: "`", with: ""))`"
     }
 
-    // every image path is site-relative and 301s to the cdn. resolving it here
-    // spares each one a redirect
     // the two backends spell one file two ways. typesense answers
     // "/static/posters/x-medium.avif" and the shelf routes answer
     // "posters/x-medium.avif" for the same bytes - so resolving either against

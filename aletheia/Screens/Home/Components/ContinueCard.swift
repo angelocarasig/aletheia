@@ -9,16 +9,12 @@ import Kingfisher
 import SwiftUI
 import Tagged
 
-// a continue-reading entry: cover, title, and what tapping it opens. the
-// subtitle names the outcome - resuming a partway chapter and starting the
-// next unread one are different intents and the card says which
 struct ContinueCard: View {
     let title: String
     let cover: URL?
     let unreadCount: Int
     let target: ContinueTarget
-    // resolved by the caller from the preference and the reveal together, so the
-    // card never reads either and a rail cannot disagree with itself
+    // resolved by the caller, not read here - keeps every card in a rail agreeing
     var obscured: Bool = false
 
     @Environment(\.dimensions) private var dimensions
@@ -39,10 +35,6 @@ struct ContinueCard: View {
                     .lineLimit(3)
                     .multilineTextAlignment(.leading)
 
-                // the one line that says this opens a chapter rather than a
-                // screen about one - a reader could not tell which, and on a
-                // resume rail that is the card's whole job. accented because
-                // resume and start are different acts, not decoration
                 HStack(spacing: dimensions.spacing.space4) {
                     Image(systemName: glyph)
                         .font(.caption)
@@ -68,8 +60,6 @@ struct ContinueCard: View {
         )
     }
 
-    // resuming and starting are different acts and get different marks: one
-    // picks a book back up, the other opens it
     private var glyph: String {
         switch target {
         case .resume: "book.pages"

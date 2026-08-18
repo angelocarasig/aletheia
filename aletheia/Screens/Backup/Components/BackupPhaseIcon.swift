@@ -10,7 +10,6 @@ import SwiftUI
 // pass the same Namespace.ID across every phase of one screen so
 // glassEffectID actually morphs between them; a fresh namespace per screen
 struct BackupPhaseIcon: View {
-    // nil for a phase with nothing to draw
     let systemImage: String?
     let tint: Color
     var tintOpacity: Double = 0.15

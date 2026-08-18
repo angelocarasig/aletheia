@@ -8,10 +8,6 @@
 import SwiftUI
 import Tagged
 
-// titles like this one, from the on-device content model. the rail carries cover
-// and title only - a recommendation is a series the reader does not own, so
-// everything else about it belongs in the sheet a tap opens rather than crowding
-// twenty cards with metadata nobody reads at this size
 struct DetailsRecommendations: View {
     let phase: LoadPhase
     let results: [Recommendation]
@@ -24,9 +20,9 @@ struct DetailsRecommendations: View {
     private enum Layout {
         static let skeletonCount = 6
         static let carouselVisible = 3
-        // half the card. a sliver at the screen edge is not something a reader
-        // took in, and counting it would put "never seen" back beside "seen and
-        // passed over" - which is the one distinction this exists to make
+        // half the card, not a sliver - a "shown" impression must mean the
+        // reader actually took it in, or "never seen" and "seen and passed
+        // over" become indistinguishable in the impression data
         static let seenFraction: Double = 0.5
     }
 
@@ -76,9 +72,6 @@ struct DetailsRecommendations: View {
                     }
                     .transition(.opacity)
                 case .empty, .failed:
-                    // no action, deliberately. there is nothing a reader can do
-                    // about a title the catalogue does not carry, and a retry
-                    // that cannot change the answer is worse than no button
                     Text("Nothing similar found for this title.")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
@@ -90,11 +83,9 @@ struct DetailsRecommendations: View {
         }
     }
 
-    // SourceCard plus the two numbers only a recommendation has. the confidence
-    // takes the corner mark the library and source cards spend on state, since
-    // that is the fact about the artwork a reader is scanning for; the score is
-    // not on the artwork at all - it is a z-score against this one seed, so it
-    // cannot be compared with the card beside it and must not read as a rank
+    // the score is deliberately not on the artwork with the confidence badge -
+    // it is a z-score against this one seed, not comparable across cards, and
+    // placing it like a badge would read as a rank
     private func Card(result: Recommendation) -> some View {
         VStack(alignment: .leading, spacing: dimensions.spacing.space4) {
             SourceCard(stub: result.stub)
@@ -117,8 +108,6 @@ struct DetailsRecommendations: View {
         }
     }
 
-    // one card per slot, sized off the rail rather than a literal, so a
-    // recommendation card and a preset card are the same width on the same screen
     private func Slot<Content: View>(@ViewBuilder content: () -> Content) -> some View {
         content()
             .containerRelativeFrame(
@@ -130,9 +119,8 @@ struct DetailsRecommendations: View {
 }
 
 extension Recommendation {
-    // SourceCard draws a stub, and a recommendation is one in everything the card
-    // reads. the slug is the catalogue id because nothing here routes by slug -
-    // the tap hands back the Recommendation itself
+    // slug is the catalogue id, not a real routing slug - nothing here routes
+    // by it, the tap hands back the Recommendation itself
     fileprivate var stub: SeriesStub {
         SeriesStub(slug: String(catalogId.rawValue), title: title, cover: cover)
     }

@@ -10,10 +10,6 @@ import GRDB
 import Observation
 import Tagged
 
-// what is failing right now, straight off origin.fetchError. observed rather
-// than fetched once: the column is cleared the moment a source answers, so a
-// successful retry has to take its own row off this screen without being told.
-// see docs/features/background-activity.md 5.1
 @MainActor
 @Observable
 final class FailuresViewModel {
@@ -23,10 +19,6 @@ final class FailuresViewModel {
     private let trackers: Compositor.Trackers
 
     private(set) var entries: [Entry]?
-    // the other half of the same question. kept apart from `entries` rather than
-    // folded in: a source failure is a series on a source, a tracker failure is a
-    // series on a service, and the grouping control below only makes sense for
-    // the first pair
     private(set) var links: [TrackerEntry]?
     private(set) var failure: Failure?
     private(set) var retrying: Set<Int64> = []
@@ -53,8 +45,7 @@ final class FailuresViewModel {
         guard stream == nil else { return }
 
         stream = Task { [weak self, database] in
-            // one observation over both tables: two would each re-render the
-            // screen on the other's writes, and the screen has one empty state
+            // one observation over both tables - two would each re-render the screen on the other's writes
             let observation =
                 ValueObservation
                 .tracking { db in
@@ -78,15 +69,12 @@ final class FailuresViewModel {
         }
     }
 
-    // the push is still queued - a failure leaves the pending columns where they
-    // are - so a retry is waking the drain rather than resending anything. the
-    // dead-account mark comes off first, or the lane halts again on the way in
+    // wakes the drain rather than resending - the dead-account mark must clear first or the lane halts again on the way in
     func retry(_ entry: TrackerEntry) {
         trackers.retry(entry.tracker)
     }
 
-    // one origin, through the same unit everything else uses - so a retry here
-    // joins a library run already checking this origin rather than racing it
+    // through the same fetch unit a library run uses, so this joins an already-running check rather than racing it
     func retry(_ entry: Entry) async {
         guard let source = registry.source(slug: entry.sourceSlug) else { return }
         guard !retrying.contains(entry.id) else { return }
@@ -101,10 +89,7 @@ final class FailuresViewModel {
         )
     }
 
-    // a section's whole blast radius in one tap rather than one row at a time.
-    // fanned out concurrently rather than awaited in sequence - each retry
-    // already goes through the same host-gated refresher a library run does,
-    // so the gate is what paces requests to a shared host, not this loop
+    // fanned out concurrently - HostGate paces requests to a shared host, not this loop
     func retryAll(_ entries: [Entry]) async {
         await withTaskGroup(of: Void.self) { group in
             for entry in entries where !retrying.contains(entry.id) {
@@ -166,10 +151,6 @@ final class FailuresViewModel {
 // MARK: - Grouping
 
 extension FailuresViewModel {
-    // the same failures read two ways. a source that died takes every series it
-    // carried with it, so grouping by source answers "what broke"; a series
-    // healthy on one source and dead on another is only visible grouped by
-    // series, which answers "what am I missing"
     enum Grouping: String, CaseIterable, Identifiable {
         case source
         case series
@@ -188,9 +169,6 @@ extension FailuresViewModel {
         let id: String
         let title: String
         let count: Int
-        // the source's own icon where the section is a source; a series section
-        // has no single icon to show, because its whole point is that several
-        // sources disagree about it
         let sourceSlug: String?
         let entries: [Entry]
     }
@@ -227,8 +205,6 @@ extension FailuresViewModel {
         }
     }
 
-    // widest blast radius first, then alphabetical - a source taking six series
-    // down is the thing to look at before one taking a single series
     private func group(
         _ entries: [Entry],
         by key: (Entry) -> String,
@@ -251,25 +227,17 @@ extension FailuresViewModel {
         let reason: String
         let attemptedDate: Date
         let title: String
-        // the remote URL and the downloaded file for the same cover - the local
-        // one wins where it exists, so a failing source does not also mean a
-        // missing thumbnail
         let cover: URL?
         let path: String?
         let sourceName: String
         let sourceSlug: String
     }
 
-    // no per-link retry state: a retry wakes the whole lane, so spinning one row
-    // while its siblings sat still would be drawing a distinction the engine does
-    // not make
+    // no per-link retry state - a retry wakes the whole lane, not just this row, so there is nothing per-row to spin
     struct TrackerEntry: Decodable, FetchableRecord, Identifiable, Equatable, Sendable {
         let id: Int64
         let seriesId: Int64
         let tracker: Tracker
-        // what the service calls it, which is not always what we call it - and on
-        // this screen the difference is worth seeing, since a wrong link is one
-        // reason a push keeps failing
         let remoteTitle: String
         let reason: String
         let attemptedDate: Date

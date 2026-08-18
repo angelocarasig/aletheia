@@ -49,11 +49,8 @@ final class SearchGridViewModel {
 
     // MARK: Adult content
 
-    // whether the current query is even capable of returning adult results.
-    // stored, not derived: the answer can only change where filters change -
-    // three mutators and init - while it is read on every header evaluation,
-    // so recomputing per read scales with redraws and vocabulary instead of
-    // with taps. same shape as the reader storing its settings
+    // stored rather than recomputed per read, since it's only invalidated by
+    // filter mutators but read on every header evaluation
     private(set) var gateOpen = false
 
     var supportedFilters: [SourceFilter] { source.descriptor.supportedFilters }
@@ -61,26 +58,17 @@ final class SearchGridViewModel {
     var sortOptions: [SourceFilter.Option] { supportedSort.options }
     var supportsRefine: Bool { !supportedFilters.isEmpty && route == nil }
 
-    // the shelf endpoint a preset may route to. carried for the whole life of
-    // the screen: a shelf is a listing, not a search, so there is no state it
-    // could be dropped on.
-    //
-    // it was not carried at all - `performSearch` rebuilt the query by hand and
-    // left it out - so a preset that had one silently fell through to a plain
-    // match-all search, and Atsumaru's Recently Updated carousel and the grid it
-    // pushed into showed different series under one title
+    // dropping this from performSearch once caused a preset with a route to
+    // fall back to a plain match-all search, showing different series than
+    // the shelf it was pushed from under one title
     var route: String? { preset?.route }
 
-    // a preset IS an ordering, so it never offers a second one: switching the
-    // sort inside "Popular" leaves a screen titled Popular showing something
-    // else. the way to a different ordering is back out to the preset that
-    // means it. paperback's extension for this same site reached the same rule
-    // from the other direction - its sort list is empty on a home section
+    // switching sort inside a preset would leave a screen titled "Popular"
+    // showing something else - the way to a different ordering is a different preset
     var supportsSort: Bool { preset == nil }
 
-    // a shelf answers one fixed question and ignores text and filters outright
-    // (probed: four spellings of a query parameter, and a filter, all change
-    // nothing), so neither control is rendered rather than rendered inert
+    // a shelf ignores text and filters outright (verified: no query param
+    // changes its results), so the controls are hidden rather than rendered inert
     var supportsSearch: Bool { route == nil }
 
     var selectedSortID: String? { sort?.optionID }
@@ -102,9 +90,8 @@ final class SearchGridViewModel {
             switch selection {
             case .text(_, let value): return total + (value.isEmpty ? 0 : 1)
             case .number: return total + 1
-            // counts, same as every other kind. it was excluded here while the
-            // inline panel counted it, so on a source with select filters the
-            // pill read "Refine" with no count and the sheet hid its Clear All
+            // omitting this once left the pill reading "Refine" with no count
+            // on a source with select filters
             case .select: return total + 1
             case .multiSelect(_, let included, let excluded):
                 return total + included.count + excluded.count
@@ -112,11 +99,8 @@ final class SearchGridViewModel {
         }
     }
 
-    // a preset IS a browse - "Popular" is a standing request with no text and
-    // often no filters - so it searches on open. a search screen asks for
-    // something first: with nothing entered there is no meaningful listing to
-    // show, only whatever the source returns for a match-all sorted by relevance
-    // against no query, and it would cost a request per visit to say so
+    // a preset searches on open regardless of this; only a bare search screen
+    // treats empty input as nothing to show rather than firing a match-all request
     var isIdle: Bool {
         guard preset == nil else { return false }
         return searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -126,9 +110,6 @@ final class SearchGridViewModel {
 
     // MARK: Applied filters
 
-    // one entry per chosen option rather than per filter category, because a
-    // count alone says a filter is on without saying which - and gives no way to
-    // take one back off without reopening the sheet
     struct Applied: Identifiable, Hashable, Sendable {
         let filterID: String
         let optionID: String
@@ -190,8 +171,6 @@ final class SearchGridViewModel {
         }
     }
 
-    // the display name for a chosen option id, falling back to the id itself so
-    // a vocabulary that has since changed still shows something removable
     private func label(_ filterID: String, _ optionID: String) -> String {
         for filter in supportedFilters {
             switch filter {
@@ -217,9 +196,6 @@ final class SearchGridViewModel {
         return filterID
     }
 
-    // nil returns to the source's own default, which is the only way back once a
-    // sort has been picked - selection-language calls this the Automatic row, and
-    // it must be reachable rather than implied by a clear button
     func selectSort(_ optionID: String?) {
         guard let optionID else {
             sort = nil
@@ -228,8 +204,8 @@ final class SearchGridViewModel {
         sort = SortSelection(optionID: optionID)
     }
 
-    // true once the reader has chosen anything, whether or not it matches the
-    // default - so the Automatic row can show a checkmark when nothing is set
+    // true while nothing has been explicitly chosen, so the Automatic row can
+    // show a checkmark
     var isDefaultSort: Bool { sort == nil }
 
     func selection(for id: String) -> FilterSelection? {
@@ -242,8 +218,8 @@ final class SearchGridViewModel {
         refreshGate()
     }
 
-    // sort goes with them. "Clear All" leaving a non-default sort applied, with
-    // nothing on screen saying so, is the same lie the count had
+    // Clear All leaving a non-default sort applied with nothing on screen
+    // saying so was the same bug the filter count had
     func clearFilters() {
         filters.removeAll()
         sort = nil
@@ -267,9 +243,8 @@ final class SearchGridViewModel {
         self.searchText = query
         self.filters = []
         self.sort = nil
-        // with no filters the gate used to be assumed shut, so these two inits
-        // skipped it - but an adultOnly source opens it with none ticked, and a
-        // gate left false hides the control that unblurs the grid
+        // an adultOnly source opens the gate even with no filters ticked - this
+        // must not be skipped just because filters are empty
         refreshGate()
     }
 
@@ -294,7 +269,6 @@ final class SearchGridViewModel {
 
     func startObserving() {
         observationTask?.cancel()
-        // restore the badge observation after a stop, without refetching
         correlator.observe(entries.map(\.stub))
         observationTask = Task { @MainActor in
             var previous = state
@@ -308,8 +282,6 @@ final class SearchGridViewModel {
                 guard current != previous else { continue }
                 previous = current
 
-                // emptying the field with nothing else applied returns the screen
-                // to its prompt rather than firing a match-all no one asked for
                 guard !isIdle else {
                     searchTask?.cancel()
                     resetPagination()

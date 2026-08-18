@@ -7,20 +7,6 @@
 
 import SwiftUI
 
-// the status zone above the activity feed: always present, never a mystery.
-// idle rows settle to facts (when the library was last checked, what is
-// stored); a running operation takes its row over with the fixed live
-// vocabulary - current item name, x of N, a determinate bar, cancel. live state
-// is in-memory only and never becomes feed rows.
-//
-// an idle row still opens, revised 2026-08-12. it used to be information only,
-// on the rule that a control exists only while it can operate - but the two
-// idle rows are the only route to two screens that are worth reaching precisely
-// when nothing is running: what arrived on the last walk, and what is already
-// on disk. the rule they were obeying is about a control that cannot ACT, and
-// navigation always can. only the destructive control keeps it: cancel is
-// rendered while a run is live and not otherwise.
-// see docs/features/background-activity.md
 struct ActivityNowSection: View {
     let model: Model
     var onCancelRefresh: () -> Void = {}
@@ -34,17 +20,7 @@ struct ActivityNowSection: View {
     struct Model: Equatable {
         var refresh: RefreshState = .idle(lastChecked: nil)
         var downloads: DownloadState = .idle(stored: 0)
-        // sources failing right now, read from origin.fetchError. not a list of
-        // entries to dismiss: the column is true until that source answers
-        // again, so an x would either hide a live fact or need a third column
-        // saying it had been acknowledged
         var failing: Int = 0
-        // services that have stopped syncing until the reader signs in again.
-        // deliberately NOT folded into `failing` above, whose copy is about
-        // sources and whose list is per origin - merging the two populations
-        // makes that sentence false for half of what it counts. one row per dead
-        // account rather than one per affected series: forty rows would all say
-        // the same thing and none of them would be fixable where they stood
         var signedOut: [Tracker] = []
 
         enum RefreshState: Equatable {
@@ -97,11 +73,6 @@ extension ActivityNowSection {
                         .fontWeight(.medium)
 
                     if let lastChecked {
-                        // live, because this row sits beside a refresh that can
-                        // start at any moment: a stamp formatted once says
-                        // "checked 1 minute ago" for the whole visit, which is
-                        // the one line on this card that would make a finished
-                        // run look like it never happened
                         LiveRelative(date: lastChecked) { relative in
                             Text("Checked \(relative)")
                         }
@@ -127,8 +98,6 @@ extension ActivityNowSection {
             VStack(alignment: .leading, spacing: dimensions.spacing.space8) {
                 HStack(spacing: dimensions.spacing.space12) {
                     VStack(alignment: .leading, spacing: dimensions.spacing.space2) {
-                        // the scope is named, so a collection refresh never reads
-                        // as though the whole library is being walked
                         Text(scope.map { "Updating \($0)" } ?? "Updating Library")
                             .font(.caption)
                             .foregroundStyle(.secondary)
@@ -228,8 +197,6 @@ extension ActivityNowSection {
         }
     }
 
-    // one row for however many are broken, opening the list. it leaves on its
-    // own when the sources answer again - there is nothing here to dismiss
     fileprivate var FailingRow: some View {
         HStack(spacing: dimensions.spacing.space12) {
             Image(systemName: "exclamationmark.triangle.fill")
@@ -262,10 +229,6 @@ extension ActivityNowSection {
         .tappable { onOpenFailures() }
     }
 
-    // the one tracker failure a reader has to act on, and the only one that
-    // cannot fix itself: a push that failed will retry, an account that has run
-    // out will not. named rather than counted - "1 account" is a number where the
-    // service's own name is the whole instruction
     fileprivate func SignedOutRow(_ tracker: Tracker) -> some View {
         HStack(spacing: dimensions.spacing.space12) {
             Image(tracker.icon)
@@ -280,10 +243,7 @@ extension ActivityNowSection {
                     .fontWeight(.medium)
                     .lineLimit(1)
 
-                // anilist expires yearly by design and myanimelist only when
-                // something went wrong. the reader does the same thing about
-                // either, so neither says which - and neither says "expired",
-                // which reads as a fault where one of the two is routine
+                // AniList expires yearly by design, MyAnimeList only on failure - copy stays generic since the fix is identical either way
                 Text("Your progress isn't syncing until you sign in again.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -325,9 +285,6 @@ extension ActivityNowSection {
     .padding()
 }
 
-// the row that cannot fix itself, so it is the one thing here worth interrupting
-// for. shown beside a healthy library on purpose: it has to read as one account's
-// problem rather than as the app being broken
 #Preview("Account signed out") {
     ActivityNowSection(
         model: .init(
@@ -339,8 +296,6 @@ extension ActivityNowSection {
     .padding()
 }
 
-// both at once - two rows rather than one summarising them, because the fix is
-// per account and a combined row could not name which
 #Preview("Both accounts signed out") {
     ActivityNowSection(
         model: .init(
@@ -429,7 +384,6 @@ extension ActivityNowSection {
             )
             model.downloads = .active(chapters: max(1, 4 - step / 12), progress: Double(step) / 40)
         }
-        // the run settles back to facts rather than vanishing
         model.refresh = .idle(lastChecked: .now)
         model.downloads = .idle(stored: 12)
     }

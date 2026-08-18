@@ -9,36 +9,25 @@ import Foundation
 import WebKit
 
 extension WebRenderer {
-    // every evaluation goes through here so the content world is decided in one
-    // place. `.page` is required, not stylistic: in an isolated world the site's
-    // own bundle sees pristine globals and never touches what we installed
+    // `.page` content world is required, not stylistic: in an isolated world the
+    // site's own bundle sees pristine globals and never touches what we installed
     @MainActor
     struct Bridge {
         let page: WebPage
 
-        // callJavaScript has no timeout of its own: a call into a content process
-        // the system has suspended never returns and never throws. every timeout
-        // above this is a poll loop that checks the clock *between* calls, so one
-        // call that does not come back stops the clock being read at all and the
-        // declared timeout is never evaluated. that is only reachable in the
-        // background - in the foreground the process stays alive and every call
-        // returns - which is why it took a screen-off run to find.
-        //
-        // so the bound lives here, where no caller can forget it, rather than at
-        // the one call site that remembered.
-        //
-        // deliberately longer than every poll budget above it and than any real
-        // call: this is a backstop against a process that is never going to
-        // answer, not a latency budget. sized with Constants.Network.timeout,
-        // since "this peer is gone" is the same judgement either way. a shorter
-        // one would start failing slow-but-alive scripts, which is a worse bug
-        // than the one it fixes
+        // callJavaScript has no timeout of its own - a call into a suspended content
+        // process never returns and never throws, which only surfaces in the
+        // background (the poll loops above check the clock between calls, so a call
+        // that never returns stops the clock ever being read). placed here rather
+        // than at a call site so no caller can forget it. deliberately longer than
+        // every poll budget above it, since a shorter one starts failing
+        // slow-but-alive scripts, which is worse than the bug it fixes
         static let deadline: Duration = .seconds(30)
 
-        // a javascript result is `Any?` and cannot ride inside a Sendable enum -
-        // but it never needs to cross an isolation boundary either, since both
-        // tasks and the caller are all on the main actor. so the stream carries
-        // which outcome won and the value is left here
+        // a javascript result is `Any?` and can't ride inside a Sendable enum, but
+        // never needs to cross an isolation boundary either (both tasks and the
+        // caller are on the main actor) - so the stream carries only which outcome
+        // won, and the value is left here
         @MainActor
         private final class Slot {
             var value: Any?

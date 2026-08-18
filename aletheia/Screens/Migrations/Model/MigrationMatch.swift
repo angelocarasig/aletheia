@@ -7,9 +7,8 @@
 
 import Foundation
 
-// one row's search outcome. `found` always carries every candidate search
-// turned up, even when one is pre-selected - the reader can still override a
-// confident guess without re-searching
+// found always carries every candidate, even when one is pre-selected, so
+// the reader can still override without re-searching
 enum MigrationMatch: Equatable, Sendable {
     case idle
     case searching

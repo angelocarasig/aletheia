@@ -7,10 +7,8 @@
 
 import Foundation
 
-// the raw values are persisted, so they are stable identifiers rather than
-// display strings - renaming a label must never reset someone's choice.
-// unlike LibrarySort this has no direction, just a cadence, because metadata
-// does not change often enough to justify anything finer than weeks
+// raw values are persisted, stable identifiers - renaming a case's raw
+// value must never reset someone's choice
 enum MetadataRefreshInterval: String, CaseIterable, Identifiable {
     case off
     case weekly
@@ -28,10 +26,8 @@ enum MetadataRefreshInterval: String, CaseIterable, Identifiable {
         }
     }
 
-    // nil for .off, matching the same "no floor" absence
-    // Constants.Refresh.automaticInterval's sibling would use. weekly and
-    // biweekly are exact; monthly is a 30-day approximation rather than
-    // calendar month math, which is close enough at this cadence
+    // monthly is a deliberate 30-day approximation, not calendar month math -
+    // close enough at this cadence
     var seconds: TimeInterval? {
         switch self {
         case .off: nil

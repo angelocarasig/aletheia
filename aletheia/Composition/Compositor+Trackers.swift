@@ -11,10 +11,8 @@ import Observation
 import Tagged
 
 extension Compositor {
-    // what screens hold. accounts, coarse counters, and which series are talking
-    // to a service right now. deliberately without the collection-vs-item split
-    // downloads has - a push is one request with no sub-progress.
-    // see docs/features/trackers.md §9
+    // deliberately without the collection-vs-item split Downloads has - a push
+    // is one request with no sub-progress. see docs/features/trackers.md §9
     @MainActor
     @Observable
     final class Trackers {
@@ -26,37 +24,33 @@ extension Compositor {
         private(set) var accounts: [Tracker: TrackerCredential] = [:]
         private(set) var pending = 0
         private(set) var failing = 0
-        // which SERIES ON WHICH SERVICE has a push in flight. keyed by the pair
-        // rather than the series: a series-only key made every tracker row on
-        // that series spin whenever any one of them was working, so linking
-        // anilist span myanimelist's row too
+        // keyed by the series/tracker pair, not just the series - a series-only
+        // key previously made every tracker row on a series spin whenever any
+        // one of them was working, so linking anilist span myanimelist's row too
         private(set) var active: Set<Sync> = []
 
         struct Sync: Hashable, Sendable {
             let series: Int64
             let tracker: Tracker
         }
-        // the one tracker failure a reader has to act on: an account has died and
-        // nothing will sync until they sign in again.
-        //
-        // an accelerant rather than the record - it flips the UI the moment a push
-        // proves the token is dead, where the credential's own
-        // needsReauthentication says the same thing durably and survives a
-        // relaunch. read `signedOut` rather than this set anywhere it matters
+
+        // an accelerant, not the record - flips the UI the moment a push proves
+        // the token is dead, where the credential's own needsReauthentication
+        // says the same thing durably. read `needingSignIn` below instead
+        // anywhere it matters, since this set does not survive a relaunch
         private(set) var deadAccounts: Set<Tracker> = []
 
-        // every connected service that cannot push until the reader signs in
-        // again, whichever way it got there: anilist's year running out and
-        // myanimelist's refresh token being refused now leave the same signature
+        // unifies two different failure signatures: anilist's year running out
+        // and myanimelist's refresh token being refused both end up here
         var needingSignIn: Set<Tracker> {
             let stranded = accounts.filter { $0.value.needsReauthentication }.keys
             return Set(stranded).union(deadAccounts.filter { accounts[$0] != nil })
         }
 
-        // one lane per service. a lane in flight is also the guard against the
-        // observation restarting it: the walk writes to the same table the
-        // observation watches, so every successful push wakes it, and a wake
-        // that cancelled the walk doing the work drained one row per debounce
+        // a lane in flight guards against the observation restarting it - the
+        // walk writes to the same table the observation watches, so every
+        // successful push wakes it, and without the guard that wake would
+        // cancel the walk doing the work and drain one row per debounce
         @ObservationIgnored private var drains: [Tracker: Task<Void, Never>] = [:]
         @ObservationIgnored private var watch: Task<Void, Never>?
 
@@ -91,15 +85,9 @@ extension Compositor {
             let credential = try await authority.complete(callback, with: authorization)
             accounts[authorization.tracker] = credential
             deadAccounts.remove(authorization.tracker)
-            // a reader who has just signed back in is owed the pushes that piled
-            // up while they were not
             schedule()
         }
 
-        // the same landing as complete(), reached without a browser. a service
-        // with no public oauth client registration signs in by paste, and the
-        // token is validated by the authority before it is stored - so arriving
-        // here at all means the account is real
         func signIn(token: String, for tracker: Tracker) async throws {
             let credential = try await authority.signIn(token: token, for: tracker)
             accounts[tracker] = credential
@@ -115,10 +103,9 @@ extension Compositor {
 
         // MARK: Draining
 
-        // one observation rather than a call at every site that records reading.
-        // the pending columns are the queue, so anything that writes them - the
-        // reader, a batch mark, an attach catch-up, an edit sheet - wakes this
-        // without having to know it exists
+        // one observation rather than a call at every site that records reading -
+        // anything that writes the pending columns wakes this without needing to
+        // know it exists
         func restore() {
             guard watch == nil else { return }
 
@@ -148,11 +135,10 @@ extension Compositor {
             refreshCounts()
         }
 
-        // no delay. a debounce was here to collapse a sitting of chapters into
-        // one push, and it collapsed nothing: the queue is only written when the
-        // furthest-read chapter moves, which is once per chapter finished, and those
-        // are minutes apart. what it did do was add its whole length to every
-        // sync, in front of a row that says "Syncing" for the duration
+        // a debounce used to sit here to collapse a run of chapters into one
+        // push, but the queue only writes once per chapter finished - minutes
+        // apart - so it collapsed nothing and only added its length to every
+        // sync's "Syncing" row
         func schedule() {
             guard isConnected else { return }
             for tracker in accounts.keys { start(tracker) }
@@ -162,11 +148,9 @@ extension Compositor {
             schedule()
         }
 
-        // a lane per service, run side by side. the rate limits are per service
-        // and nothing is shared between them - different hosts, different
-        // tokens, and one database writer that serialises regardless - so the
-        // only thing sequencing them together bought was a dead myanimelist
-        // stopping anilist from finishing
+        // lanes run side by side - rate limits are per service and nothing is
+        // shared between them, so sequencing them would only buy a dead
+        // myanimelist stopping anilist from finishing
         private func start(_ tracker: Tracker) {
             // a lane in flight re-reads the queue as it goes, so anything
             // dirtied under it is already picked up
@@ -181,12 +165,8 @@ extension Compositor {
         private func run(_ tracker: Tracker) async {
             defer { refreshCounts() }
 
-            // one row is attempted at most once per walk. re-reading the queue
-            // picks up anything dirtied while the walk was in flight, and the
-            // processed set is what stops a row that cannot clear from spinning
-            // the loop forever
+            // stops a row that cannot clear from spinning the loop forever
             var processed: Set<Int64> = []
-            // outside the loop, so the spacing survives a re-read of the queue
             var lastPush: Date?
 
             while !Task.isCancelled {
@@ -209,11 +189,10 @@ extension Compositor {
 
                 guard let credential = accounts[tracker] else { return }
 
-                // a stranded credential is still a credential, so it passes the
-                // check above - and spending a request to be told what the expiry
-                // already says is a wasted round trip and a wasted halt. marked
-                // and skipped here instead, with every pending column left where
-                // it is
+                // a stranded credential still passes the nil check above -
+                // spending a request to be told what the expiry already says
+                // would be a wasted round trip, so it's marked and skipped here
+                // instead, with every pending column left where it is
                 guard !credential.needsReauthentication else {
                     if deadAccounts.insert(tracker).inserted {
                         log.log(
@@ -234,9 +213,9 @@ extension Compositor {
                     active.insert(mark)
                     defer { active.remove(mark) }
 
-                    // charged to the request it protects rather than to the one
-                    // before it. paced after the last push, the lane sat awake
-                    // for the whole spacing with nothing left to space out
+                    // charged to the request it protects, not the one before it -
+                    // pacing after the last push instead left the lane awake for
+                    // the whole spacing with nothing left to space out
                     if let lastPush {
                         await pace(tracker, since: lastPush)
                     }
@@ -245,23 +224,19 @@ extension Compositor {
                         try await worker.push(link)
                         lastPush = .now
                     } catch let error as TrackerError where error.isTerminal {
-                        // one clear stop rather than forty identical failures,
-                        // the same rule the download queue uses when the disk is
-                        // full. this lane only: the other service's token is
-                        // fine and its rows are owed their pushes. every pending
-                        // column survives for when they sign back in
+                        // this lane only - the other service's token is fine and
+                        // its rows are owed their pushes. every pending column
+                        // survives for when they sign back in
                         log.log(
                             "[\(tracker.rawValue)] lane halted - \(error.localizedDescription)",
                             category: "trackers")
                         deadAccounts.insert(tracker)
-                        // the keychain has just learned this token is dead. the
-                        // in-memory copy every tracker row in the app reads has
-                        // not, and without this they keep drawing it as healthy
-                        // until the next launch
+                        // keychain has just learned this token is dead - without
+                        // this, every other tracker row's in-memory copy keeps
+                        // drawing it as healthy until the next launch
                         hydrate()
                         return
                     } catch {
-                        // recorded on the row by the worker; the walk keeps going.
                         // a failed attempt still spent a request, so it still
                         // spaces the next one
                         lastPush = .now
@@ -271,13 +246,13 @@ extension Compositor {
             }
         }
 
-        // a concurrency cap is not a rate limit: the host gate gives each service
-        // three slots and paces neither. anilist is live at thirty a minute
-        // against a documented ninety, and myanimelist answers a burst with a
-        // five to ten minute ban and never a 429. mangabaka publishes 180 a
-        // minute and this sits well under it, so the pacing here is habit rather
-        // than necessity - it has no rate-limit headers either, so there is
-        // nothing to steer by and open-loop is all any of the three get
+        // a concurrency cap is not a rate limit - the host gate gives each
+        // service three slots and paces neither. anilist runs at thirty a
+        // minute against a documented ninety; myanimelist answers a burst with
+        // a five-to-ten-minute ban and never a 429; mangabaka publishes 180 a
+        // minute and this sits well under it. none of the three expose
+        // rate-limit headers, so open-loop pacing against these constants is
+        // all any of them get
         private func pace(_ tracker: Tracker, since last: Date) async {
             let spacing: Duration =
                 switch tracker {
@@ -287,9 +262,8 @@ extension Compositor {
                     .milliseconds(60_000 / Constants.Trackers.mangaBakaRequestsPerMinute)
                 }
 
-            // the push that just ran counts toward the gap. a two-request push
-            // takes most of a second on its own, and sleeping the full spacing
-            // on top of that paces slower than the limit asks for
+            // the push that just ran counts toward the gap - sleeping the full
+            // spacing on top of it would pace slower than the limit asks for
             let elapsed = Duration.seconds(Date.now.timeIntervalSince(last))
             guard elapsed < spacing else { return }
 
@@ -327,20 +301,14 @@ extension Compositor {
             try await worker.search(tracker, query: query, adult: adult)
         }
 
-        // the media and the reader's own entry on it together, which is the same
-        // call a push makes before it writes
         func entry(_ tracker: Tracker, remoteId: Int64) async throws -> TrackerEntry {
             try await worker.remote(tracker, remoteId: remoteId)
         }
 
-        // Tracker Restore's own pull - the one caller that needs a reader's
-        // whole list rather than one media at a time
         func list(_ tracker: Tracker) async throws -> [TrackerListEntry] {
             try await worker.list(tracker)
         }
 
-        // the details-screen and library-wide entry point both call this - one
-        // series' worth from Details, one row at a time from the walk
         func refreshMetadata(_ link: SeriesTrackerRecord) async -> MetadataOutcome {
             await worker.refreshMetadata(link)
         }
@@ -371,15 +339,13 @@ extension Compositor {
             refreshCounts()
         }
 
-        // removing the entry from the reader's list is a separate, louder thing
-        // than stopping the sync, and only they can say which they meant
         func unlink(_ link: SeriesTrackerRecord, removeRemote: Bool = false) async throws {
             try await worker.unlink(link, removeRemote: removeRemote)
             refreshCounts()
         }
 
-        // an explicit edit is the one caller allowed to lower a number, and the
-        // only one that may write to an entry the service calls finished
+        // the one caller allowed to lower a number, and the only one that may
+        // write to an entry the service already calls finished
         func edit(_ link: SeriesTrackerRecord, update: TrackerUpdate) async throws {
             let mark = Sync(series: link.seriesId.rawValue, tracker: link.tracker)
             active.insert(mark)
@@ -394,10 +360,9 @@ extension Compositor {
             refreshCounts()
         }
 
-        // a dead token found anywhere other than the drain. the screen that hit
-        // it shows the error itself, but every other tracker row in the app
-        // reads the in-memory account copy - which is loaded at launch, and
-        // would go on drawing this account as healthy until the next one
+        // a dead token found anywhere other than the drain - every other
+        // tracker row in the app reads the in-memory account copy, which would
+        // otherwise go on drawing this account as healthy until the next launch
         private func strand(_ tracker: Tracker, on error: Error) {
             guard (error as? TrackerError)?.isTerminal == true else { return }
             deadAccounts.insert(tracker)
@@ -408,8 +373,8 @@ extension Compositor {
             retry(link.tracker)
         }
 
-        // the mark comes off before the lane starts, or it halts on the way in
-        // at the same guard that set it
+        // the mark must come off before the lane starts, or it halts on the way
+        // in at the same guard that set it
         func retry(_ tracker: Tracker) {
             deadAccounts.remove(tracker)
             flush()
@@ -427,8 +392,7 @@ extension Compositor {
 
 // MARK: - Worker
 
-// the unit of work is one link row - one series on one service - exactly as
-// refresh's unit is one origin. the only writer of series_tracker
+// the only writer of series_tracker
 actor TrackerSyncer {
     private let database: DatabaseClient
     private let authority: TrackerAuthority
@@ -461,9 +425,8 @@ actor TrackerSyncer {
         }
     }
 
-    // only a service that opts into BulkListingTracker can answer this - the
-    // caller (Tracker Restore) is expected to have checked before offering
-    // the tracker as a source at all
+    // the caller (Tracker Restore) is expected to have checked BulkListingTracker
+    // conformance before offering the tracker as a source at all
     func list(_ tracker: Tracker) async throws -> [TrackerListEntry] {
         guard let service = try service(for: tracker) as? BulkListingTracker else {
             throw TrackerError.unavailable
@@ -486,9 +449,8 @@ actor TrackerSyncer {
             try await service.entry(remoteId: candidate.id, token: $0)
         }
 
-        // seeding goes through the same max(remote, local) path an ordinary push
-        // does, so there is no separate first-write to keep correct - and an
-        // entry the reader already has at sixty is never dragged down to ours
+        // same max(remote, local) path an ordinary push uses - an entry the
+        // reader already has at sixty is never dragged down to ours
         let (local, started) = try await database.reader.read { db in
             (
                 try SeriesTrackerRecord.furthest(for: series, in: db),
@@ -530,8 +492,8 @@ actor TrackerSyncer {
         try await database.writer.write { db in
             var inserted = row
             try inserted.insert(db, onConflict: .replace)
-            // remote rather than seeded: the save mutation answers with a
-            // trimmed media, while the entry read carries the whole thing
+            // `remote`, not `seeded` - the save mutation answers with a trimmed
+            // media, while the entry read carries the whole thing
             try Self.absorb(remote, tracker: tracker, series: series, link: inserted.id, in: db)
         }
 
@@ -540,16 +502,8 @@ actor TrackerSyncer {
             category: "trackers")
     }
 
-    // a linked service is a supplier like any source: one metadata row, plus
-    // whatever it can add to the series' own pools. it can never win automatic
-    // resolution - that runs through origin priority and this has no origin - so
-    // everything here is only ever reachable by an explicit pin.
-    //
-    // tags are the exception and go straight onto the series, because a tag does
-    // not care where it came from.
-    //
-    // returns whether the core fields changed, so refreshMetadata can tell
-    // "updated" from "unchanged" the same way the origin side does
+    // tags are the exception and go straight onto the series - a tag does not
+    // care where it came from
     @discardableResult
     nonisolated static func absorb(
         _ entry: TrackerEntry,
@@ -595,9 +549,8 @@ actor TrackerSyncer {
         return changed
     }
 
-    // the tracker half of a metadata refresh - closes the gap tracker-metadata.md
-    // records: absorb previously ran only at link time and never again. reuses
-    // remote(_:remoteId:) rather than re-deriving the service+attempt dance
+    // closes the gap tracker-metadata.md records: absorb previously ran only at
+    // link time and never again
     func refreshMetadata(_ link: SeriesTrackerRecord) async -> MetadataOutcome {
         do {
             let entry = try await remote(link.tracker, remoteId: link.remoteId)
@@ -625,8 +578,8 @@ actor TrackerSyncer {
     func unlink(_ link: SeriesTrackerRecord, removeRemote: Bool) async throws {
         guard let id = link.id else { return }
 
-        // the local row goes whatever the service says: a link the reader has
-        // removed must not come back because a request timed out
+        // the local row goes regardless of what the service says - a link the
+        // reader has removed must not come back because a request timed out
         defer {
             Task { [database] in
                 try? await database.writer.write { db in
@@ -635,10 +588,9 @@ actor TrackerSyncer {
             }
         }
 
-        // the default stops the sync and leaves their list alone: a score, a
-        // status and a start date live on that entry, and none of them came from
-        // us. deleting it because a reader wanted to stop syncing would destroy
-        // history this app never owned
+        // the default stops the sync and leaves their remote entry alone - a
+        // score, status and start date live on it that never came from us, and
+        // deleting it would destroy history this app never owned
         guard removeRemote else { return }
 
         guard let service = services[link.tracker],
@@ -687,17 +639,16 @@ actor TrackerSyncer {
         var link = link
 
         do {
-            // the fix for the one bug that loses data. without it: read to forty
-            // here, to sixty on the website, then forty-one here, and an absolute
-            // write of forty-one lands on top of sixty. costs one request
+            // the fix for the one bug that loses data: without re-reading first,
+            // "read 40 here, 60 on the website, then 41 here" ends with an
+            // absolute write of 41 landing on top of 60. costs one request
             let remote = try await attempt(link.tracker) {
                 try await service.entry(remoteId: link.remoteId, token: $0)
             }
 
-            // a service that merges two entries answers under the successor's id,
-            // and the read above followed the hop. the writes below address
-            // link.remoteId, so without this the entry is read from one id and
-            // written to another - which is worse than not following at all
+            // a service that merges two entries answers under the successor's id;
+            // the writes below address link.remoteId, so without adopting the
+            // hop here the entry is read from one id and written to another
             if remote.remoteId != link.remoteId {
                 log.log(
                     "[\(link.tracker.rawValue)] \(link.remoteTitle) merged \(link.remoteId) -> \(remote.remoteId)",
@@ -707,21 +658,15 @@ actor TrackerSyncer {
                 try await adopt(remoteId: remote.remoteId, on: link)
             }
 
-            // the enqueue-side check reads a cached column, which is a guess at
-            // what the service holds. this is the live answer, and the only one
-            // that is right when the reader finished the series on the website.
-            // a queued .reading is the automatic promotion and defers to it; any
-            // other pending status was picked by hand and travels
+            // a queued .reading is the automatic promotion and defers to the
+            // live answer; any other pending status was picked by hand and travels
             let automatic = link.pendingStatus == nil || link.pendingStatus == .reading
 
-            // declining has to CLEAR the queue, not skip it. a pending column
-            // left in place is re-read, re-declined and left again on every
-            // drain, forever, at two requests a time
+            // must CLEAR the queue, not skip it - a pending column left in place
+            // is re-read, re-declined and left again on every drain, forever
             guard remote.status != .completed || !automatic else {
-                // the service already calls it finished, so there is nothing to
-                // say - and it will never accept these numbers, so the queue is
                 // dropped outright rather than compared against a progress that
-                // cannot move. comparing would leave a higher pending value in
+                // cannot move - comparing would leave a higher pending value in
                 // place and re-run this every drain, forever
                 var settled = remote
                 settled.status = .completed
@@ -746,9 +691,9 @@ actor TrackerSyncer {
                 )
             }
 
-            // status travels on its own, never in the same write as a progress
-            // value: anilist rewrites progress server-side on COMPLETED and
-            // zeroes it on REPEATING, so the two together do not both stick
+            // never combined with a progress write - anilist rewrites progress
+            // server-side on COMPLETED and zeroes it on REPEATING, so the two
+            // together do not both stick
             if let status = link.pendingStatus, status != result.status {
                 result = try await write(
                     TrackerUpdate(remoteId: link.remoteId, entryId: result.entryId, status: status),
@@ -767,7 +712,7 @@ actor TrackerSyncer {
 
     // MARK: Writing
 
-    // the response is the only proof of what landed. anilist rewrites fields
+    // the response is the only proof of what landed - anilist rewrites fields
     // server-side on a status change, and myanimelist answers 200 for a body it
     // ignored, so nothing here trusts what it sent
     private func write(
@@ -810,9 +755,9 @@ actor TrackerSyncer {
             row.syncError = nil
 
             if clearingQueue {
-                // only what this push answered for. a chapter finished while the
-                // request was in flight has already written a higher number, and
-                // clearing it blind would lose that read until the next one
+                // only clears what this push answered for - a chapter finished
+                // while the request was in flight already wrote a higher number,
+                // and clearing blind would lose that read until the next push
                 if force || (row.pendingProgress.map { $0 <= entry.progress } ?? false) {
                     row.pendingProgress = nil
                 }
@@ -825,9 +770,8 @@ actor TrackerSyncer {
         }
     }
 
-    // written on its own rather than folded into store(), because the writes that
-    // follow it depend on it having landed - and because a push that fails after
-    // the hop should still leave the repaired id behind for the next attempt
+    // written on its own, not folded into store() - a push that fails after the
+    // hop should still leave the repaired id behind for the next attempt
     private func adopt(remoteId: Int64, on link: SeriesTrackerRecord) async throws {
         guard let id = link.id else { return }
 
@@ -848,13 +792,10 @@ actor TrackerSyncer {
 
         log.log("[\(link.tracker.rawValue)] \(link.remoteTitle) - \(reason)", category: "trackers")
 
-        // a terminal error is a fact about the ACCOUNT, and writing it to a link
-        // row brands one series with it - whichever the walk happened to reach
-        // first, while the rest sit pending and silent. the only badge in the app
-        // would then point at a series that is not the problem. the attempt is
-        // still stamped, because it was attempted; the reason is not, because the
-        // reason does not belong to this series. an account says it once, where
-        // signing in again is possible
+        // a terminal error is a fact about the account, not this series - writing
+        // it to this row would brand whichever series the walk happened to reach
+        // first, and the app's only badge would point at a series that isn't the
+        // problem. the attempt is still stamped, since it was attempted, but not the reason
         let blames = (failure as? TrackerError)?.isTerminal != true
 
         try await database.writer.write { db in
@@ -877,8 +818,6 @@ actor TrackerSyncer {
         return service
     }
 
-    // one refresh and one retry, and only for a token the service says is dead.
-    // a second failure is the reader's to fix
     private func attempt<Value>(
         _ tracker: Tracker,
         _ work: (String) async throws -> Value
@@ -892,16 +831,13 @@ actor TrackerSyncer {
         }
     }
 
-    // a scraper's phantom chapter 999 must not complete a series, and a null
-    // total is an ongoing work rather than a zero
+    // a scraper's phantom chapter 999 must not complete a series - a null total
+    // means ongoing, not zero
     private static func clamp(_ progress: Int, to total: Int?) -> Int {
         guard let total, total > 0 else { return max(0, progress) }
         return min(max(0, progress), total)
     }
 
-    // back-dated from the earliest recorded read, which is the closest thing to
-    // when the reader actually started. addedDate is the fallback, and nothing
-    // ever back-dates a finish date - we cannot know it
     private static func startDate(for series: SeriesRecord.ID, in db: Database) throws -> Date? {
         if let earliest = try Date.fetchOne(
             db,

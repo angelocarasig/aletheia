@@ -13,17 +13,16 @@ struct SeriesRecord: Codable, Hashable, DatabaseRecord {
     typealias ID = Tagged<Self, Int64>
     private(set) var id: ID?
 
-    // user picks. nil falls back to the highest-priority connected origin.
-    // classification and publication get a pin each rather than sharing one:
-    // anilist is the best publication authority and the worst classification
-    // one, and a single pin would force both from the same supplier
+    // nil falls back to the highest-priority connected origin. classification
+    // and publication get a pin each rather than sharing one - anilist is the
+    // best publication authority and the worst classification one, and a
+    // single pin would force both from the same supplier
     var preferredTitleId: TitleRecord.ID?
     var preferredCoverId: CoverRecord.ID?
     var preferredSynopsisId: MetadataRecord.ID?
     var preferredClassificationId: MetadataRecord.ID?
     var preferredPublicationId: MetadataRecord.ID?
 
-    // config
     var inLibrary: Bool = false
     var status: Status = .planning
 
@@ -36,10 +35,6 @@ struct SeriesRecord: Codable, Hashable, DatabaseRecord {
     var showAllChapters: Bool = false
     var showHalfChapters: Bool = true
 
-    // which row of the frozen model bundle this series is, when it is one at all.
-    // the two id spaces are unrelated, so without it nothing can say that the
-    // recommendation shown last week is the series added today
-    //
     // null means "no answer yet", never "not in the catalogue" - a resolution is
     // a 25us alias lookup, so rechecking is free, and the catalogue is versioned:
     // a title absent from v01 may exist in the next bundle, and a permanent
@@ -116,7 +111,6 @@ extension SeriesRecord {
     }
 
     static func createIndexes(db: Database) throws {
-        // library query filter
         try db.create(
             index: "idx_series_catalogId", on: databaseTableName, columns: [Columns.catalogId.name],
             ifNotExists: true)
@@ -124,7 +118,6 @@ extension SeriesRecord {
             index: "idx_series_inLibrary", on: databaseTableName, columns: [Columns.inLibrary.name],
             ifNotExists: true)
 
-        // sorting with pagination
         try db.create(
             index: "idx_series_addedDate_id", on: databaseTableName,
             columns: [
@@ -155,14 +148,11 @@ extension SeriesRecord {
 // MARK: - Series Chapters Association using BestChapterView
 
 extension SeriesRecord {
-    /// returns deduplicated chapters based on series preferences using BestChapterView
     var chapters: QueryInterfaceRequest<ChapterRecord> {
         guard let seriesId = self.id else {
-            // return empty request if no id
             return ChapterRecord.none()
         }
 
-        // build the SQL that joins with BestChapterView
         let sql = """
             SELECT c.* FROM \(ChapterRecord.databaseTableName) c
             JOIN \(BestChapterView.databaseTableName) bc ON c.id = bc.chapterId
@@ -176,7 +166,6 @@ extension SeriesRecord {
             sql: sql, arguments: [seriesId.rawValue, showAllChapters ? 1 : 0])
     }
 
-    /// returns all chapters without deduplication (for showAllChapters mode)
     var allChapters: QueryInterfaceRequest<ChapterRecord> {
         guard let seriesId = self.id else {
             return ChapterRecord.none()

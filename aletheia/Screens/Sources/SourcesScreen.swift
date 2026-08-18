@@ -25,8 +25,6 @@ struct SourcesScreen: View {
         var id: String { slug }
     }
 
-    // the text itself is the identity: submitting the same term twice is the
-    // same destination, and the screen seeds from it
     private struct GlobalSearch: Identifiable, Hashable {
         let text: String
         var id: String { text }
@@ -84,8 +82,7 @@ struct SourcesScreen: View {
                         source: source, record: vm?.sources.first { $0.slug == route.slug })
                 }
             }
-            // embedded: this stack is the Sources tab's, so the pushed screen
-            // must not bring one of its own
+            // embedded: true - this stack already provides one; false would nest another
             .navigationDestination(item: $globalSearch) { search in
                 SearchScreen(query: search.text, embedded: true)
             }
@@ -99,10 +96,8 @@ struct SourcesScreen: View {
         }
     }
 
-    // containered because several glass views in one tree share a render pass -
-    // applying the effect outside a container is what degrades performance.
-    // spacing is small on purpose: a value larger than the stack's own spacing
-    // makes neighbouring rows blend into one capsule at rest
+    // container is required when several glass views share a render pass, or
+    // performance degrades. spacing kept below the stack's own spacing or rows blend into one capsule
     @ViewBuilder
     private func Rows(_ records: [SourceRecord]) -> some View {
         GlassEffectContainer(spacing: dimensions.spacing.space4) {
@@ -162,9 +157,6 @@ struct SourcesScreen: View {
     }
 }
 
-// MARK: - Row
-
-// a struct rather than a view builder: each row owns its own ping state and task
 private struct SourceRow: View {
     @Environment(\.dimensions) private var dimensions
     @Environment(\.compositor) private var compositor
@@ -176,10 +168,9 @@ private struct SourceRow: View {
     @State private var ping: PingResult?
 
     private enum Layout {
-        // the tint carries its own alpha rather than relying on the material to
-        // soften it. .regular resolves dark over a dark page and averages a
-        // full-strength colour toward that dark, so a bare .danger reads greyer
-        // than .danger at a third of it. same value CollectionPicker tints with
+        // .regular glass over a dark page averages a full-strength tint toward
+        // black, so a bare .danger reads greyer than .danger at reduced opacity -
+        // same value CollectionPicker uses
         static let adultTint: Double = 0.05
         static let adultBorder: Double = 0.15
     }
@@ -201,12 +192,9 @@ private struct SourceRow: View {
         }
         .padding(.horizontal, dimensions.spacing.space12)
         .padding(.vertical, dimensions.spacing.space12)
-        // applied after the padding that sizes it, per the glass contract - the
-        // effect takes the frame it is given
+        // glassEffect must follow the padding that sizes it - it takes the frame it's given
         .glassEffect(glass, in: .rect(cornerRadius: dimensions.radius.radius16))
-        // the material alone cannot hold a colour against black - the border is
-        // where the red actually reads, and it gives the state a shape channel
-        // rather than leaving it on hue alone
+        // material alone can't hold colour against black - border is where the red reads
         .overlay {
             if source?.descriptor.adultOnly == true {
                 RoundedRectangle(cornerRadius: dimensions.radius.radius16)
@@ -239,10 +227,6 @@ private struct SourceRow: View {
         .clipShape(shape)
     }
 
-    // a badge rather than a section of its own: the row already sorts and groups
-    // by pinned/disabled, and a fourth grouping would structure the screen around
-    // a property most sources do not have. nothing here shows content - only that
-    // opening this source will
     private var Info: some View {
         VStack(alignment: .leading, spacing: dimensions.spacing.space2) {
             HStack(spacing: dimensions.spacing.space4) {

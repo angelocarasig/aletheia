@@ -8,9 +8,6 @@
 import Kingfisher
 import SwiftUI
 
-// what arrived since the series became yours. one card per series rather than
-// per chapter - "3 new chapters" is the fact a reader acts on, and a chapter log
-// would put the same cover on screen three times
 struct UpdateCard: View {
     let title: String
     let cover: URL?
@@ -38,10 +35,6 @@ struct UpdateCard: View {
                     .lineLimit(Layout.titleLines)
                     .multilineTextAlignment(.leading)
 
-                // the count is the headline of the row and the only thing here
-                // that varies, so it takes the accent while the timestamp stays
-                // a caption. inflection has to reach Text unerased, so the
-                // literal lives at the call site
                 Text("^[\(count) new chapter](inflect: true)")
                     .font(.caption)
                     .fontWeight(.medium)

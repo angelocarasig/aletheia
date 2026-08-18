@@ -7,9 +7,6 @@
 
 import SwiftUI
 
-// the one thing you came here to do, floating over everything else. the chapter
-// list answers "what exists"; this answers "where was i", which is a different
-// question and should not require finding a row to answer
 struct DetailsContinue: View {
     let chapters: [DetailsChapters.Chapter]
     var onOpen: (DetailsChapters.Chapter) -> Void
@@ -20,9 +17,6 @@ struct DetailsContinue: View {
         static let tint: Double = 0.25
     }
 
-    // a chapter left part-read is where you were, and it outranks the lowest
-    // unread one - finishing it is the next thing you do. an unreadable chapter
-    // is skipped: its source is gone, so nothing can serve the pages
     private var next: DetailsChapters.Chapter? {
         let readable = chapters.filter(\.canRead)
 
@@ -75,8 +69,6 @@ extension DetailsContinue {
         }
         .padding(.horizontal, dimensions.spacing.space16)
         .padding(.vertical, dimensions.spacing.space12)
-        // tinted rather than plain: this is the screen's one primary action, and
-        // the glass contract rations tint to exactly that
         .glassEffect(
             .regular.tint(Palette.brand.opacity(Layout.tint)).interactive(),
             in: .capsule
@@ -85,7 +77,6 @@ extension DetailsContinue {
         .tappable { onOpen(chapter) }
     }
 
-    // same formatting the chapter rows use - 12.0 renders as 12, 12.5 stays 12.5
     fileprivate func Subtitle(_ chapter: DetailsChapters.Chapter) -> Text {
         let number = chapter.number.formatted(.number.precision(.fractionLength(0...2)))
 
@@ -110,8 +101,6 @@ extension DetailsContinue {
         .clipShape(shape)
     }
 
-    // untinted and not tappable: there is nothing to do, and a control that looks
-    // like the primary action but does nothing is worse than a statement
     fileprivate var Finished: some View {
         HStack(spacing: dimensions.spacing.space12) {
             Image(systemName: "checkmark")

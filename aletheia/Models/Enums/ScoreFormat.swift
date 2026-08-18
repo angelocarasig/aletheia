@@ -7,12 +7,10 @@
 
 import Foundation
 
-// how one account displays a score. anilist declares it per user and it changes
-// what the same number means on screen, so the stored value is always the
-// canonical 0...100 raw and the format only decides how it is drawn. that is
-// what makes switching scale a display change rather than a data migration.
-//
-// raw values are anilist's wire strings so a viewer decodes straight into this
+// the stored value is always canonical 0...100 raw; the format only decides
+// how it's drawn, which is what makes switching scale a display change
+// rather than a data migration. raw values are anilist's wire strings so a
+// viewer decodes straight into this
 enum ScoreFormat: String, Codable, Sendable, CaseIterable {
     case point100 = "POINT_100"
     case point10Decimal = "POINT_10_DECIMAL"
@@ -20,8 +18,8 @@ enum ScoreFormat: String, Codable, Sendable, CaseIterable {
     case point5 = "POINT_5"
     case point3 = "POINT_3"
 
-    // 0 is unscored on both services, so it is a value rather than an absence -
-    // clearing a score writes 0 rather than omitting the field
+    // 0 is unscored on both services - a value, not an absence - so clearing
+    // a score writes 0 rather than omitting the field
     var steps: [Int] {
         switch self {
         case .point100: Array(0...100)

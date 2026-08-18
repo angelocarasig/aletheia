@@ -9,20 +9,11 @@ import Foundation
 import GRDB
 import Tagged
 
-// the real Save chain: create, join the library, fetch chapters, mark
-// progress, link the tracker. one seam, not five - a row either finishes all
-// of it or it failed at a step, and nothing before that step is rolled back
-// separately. once the series exists and is in the library it stays that
-// way even if a later step fails - it is a real, if incomplete, library
-// entry the reader can retry chapters/tracking on later from Details itself
 struct LiveTrackerRestoreCommitter: MigrationCommitting {
     let database: DatabaseClient
     let registry: Compositor.Registry
     let refresher: Compositor.Refresh
     let trackers: Compositor.Trackers
-    // fixed for the whole session - a restore session pulls from exactly
-    // one tracker, so this is a construction-time fact rather than a
-    // parameter every commit call would otherwise have to repeat
     let tracker: Tracker
     let log: AppLog
 
@@ -65,13 +56,6 @@ struct LiveTrackerRestoreCommitter: MigrationCommitting {
                         .fetchOne(db)
                 else { throw RecordError.missingIdentifier }
 
-                // a restore row can resolve to a series already known locally
-                // - duplicated on the tracker's own list, or simply added by
-                // hand before restoring - and a second create for the same
-                // (sourceId, slug) trips origin's unique constraint. the same
-                // existence check DetailsComposer's own "add a source" flow
-                // uses (store(into:)) catches it here too, attaching to what
-                // is already there instead of failing the whole row
                 let known =
                     try OriginRecord
                     .filter(OriginRecord.Columns.sourceId == sourceId)
@@ -154,14 +138,7 @@ struct LiveTrackerRestoreCommitter: MigrationCommitting {
     }
 }
 
-// MARK: - Mapping
-
-// a restore session pulls from exactly one tracker, so every entry.remoteStatus
-// in it is that tracker's own raw vocabulary - this is the one place that
-// vocabulary is not already known statically, so the dispatch lives here
-// rather than on Status itself. internal rather than private: TrackerRestoreRowView
-// is a second caller, mapping the same raw string to show a saved row's status
-// in the app's own vocabulary rather than the tracker's
+// internal, not private - TrackerRestoreRowView also maps a raw status to Status for display
 extension Status {
     init?(raw: String, for tracker: Tracker) {
         switch tracker {

@@ -9,59 +9,40 @@ import Foundation
 import SwiftUI
 import UIKit
 
-// what a chapter boundary is made of. a stack of slots rather than one layout,
-// so the things that will live here later - tracker sync above all - arrive as
-// another section instead of a redesign.
-//
 // THE INVARIANT: which slots are PRESENT depends only on the boundary and the
-// chapter list. never on travel direction, never on load state. a separator
-// whose height changed when the reader turned round, or when a fetch landed,
-// would move every item below it. slots change what they SAY; they never
-// change whether they exist
+// chapter list, never on travel direction or load state - a separator whose
+// height changed on turnaround or on a fetch landing would move every item
+// below it. slots change what they SAY; they never change whether they exist
 struct ReaderSeparatorModel: Equatable, Sendable {
     let boundary: ReaderBoundary
     var direction: ReadingDirection
 
     // present for every .after boundary in both directions, absent only at the
-    // start of a series. reading it backward renders the chapter you are
-    // returning into rather than the one you finished
+    // series start - read backward it renders the chapter you're returning
+    // into, not the one you finished
     var terminal: Terminal?
     var continuity: Continuity?
     var gap: Gap?
     var destination: Destination
 
     // the reading-event write for the finished chapter, rendered beside the
-    // terminal number. content only, never height - nil renders nothing, which
-    // is every separator until the reader wires the insert
+    // terminal number. content only, never height - nil renders nothing
     var event: EventStatus?
 
-    // whether this boundary was crossed forward at some point in this sitting,
-    // which is what decides whether the indicators have anything to say. NOT the
-    // travel direction: what was recorded stays recorded, so turning round and
-    // coming back finds the same tick and the same tracker rows, still settling
-    // if they had not finished. content only, never height - the rows are
-    // counted whatever this says, so the band cannot move when it flips
+    // NOT the travel direction - what was recorded stays recorded, so turning
+    // round and coming back finds the same tick and the same tracker rows
     var crossed: Bool = false
 
-    // whether to offer marking the series completed. two conditions, both host
-    // facts: you have not already said completed, and an origin says the work
-    // itself is over.
-    //
-    // what it deliberately does NOT check is whether our copy is whole - a
+    // two host facts: not already marked completed, and an origin says the
+    // work is over. deliberately does NOT check whether our copy is whole - a
     // source can call a work complete while holding two thirds of it, and
-    // without a tracker (optional, and absent for most series) there is no total
-    // to check that claim against. gaps and truncation are therefore not
-    // conditions: the reader states only what it can verify - that you are level
-    // with what exists - and the offer lets the one party who actually knows say
-    // the rest. content only, and the action row is reserved either way, so this
-    // moves nothing
+    // without a tracker there is no total to check that claim against, so the
+    // reader states only that you're level with what exists
     var completable: Bool = false
 
-    // one row per linked tracker, non-optional and never rebuilt from load
-    // state: linkage is a series fact known before the first page renders, so
-    // the rows exist from the moment the separator is built and only their
-    // status glyph changes. a row that appeared when a push started would move
-    // every item below it mid-read
+    // linkage is a series fact known before the first page renders, so rows
+    // exist from the moment the separator is built and only their status glyph
+    // changes - a row appearing once a push started would move everything below it
     var trackers: [Tracker] = []
 
     struct Terminal: Equatable, Sendable {
@@ -72,26 +53,15 @@ struct ReaderSeparatorModel: Equatable, Sendable {
     struct Tracker: Equatable, Sendable, Identifiable {
         let id: String
         let name: String
-        // asset name for the service's tile, drawn in its own colours - a logo
-        // tinted to match its surroundings is no longer a logo. the monochrome
-        // *Mark variants exist alongside for surfaces that do want a template.
-        // nil falls back to the name alone
         var icon: String?
         var state: State
 
-        // five states, all glyph-distinct, so the colour is never the only
-        // channel. skipped is not a tick: it would claim an achievement the
-        // push explicitly declined to make.
-        //
-        // errored carries its own reason rather than a generic word, and it goes
-        // in the slot the word already occupies - a second line would make the
-        // row's height depend on whether something failed, which is the one thing
-        // this band is not allowed to do.
-        //
-        // signedOut is split OUT of skipped because the two have opposite
-        // answers: skipped resolves itself on the next chapter, and this one
-        // never resolves until the reader does something a reader cannot do from
-        // inside the reader
+        // skipped is not a tick - it would claim an achievement the push
+        // declined to make. errored carries its own reason in the slot the
+        // word already occupies, rather than a second line, since row height
+        // must not depend on whether something failed. signedOut is split out
+        // of skipped because the two resolve differently: skipped clears on
+        // the next chapter, signedOut never clears until the reader signs back in
         enum State: Equatable, Sendable {
             case loading
             case tracked
@@ -106,9 +76,8 @@ struct ReaderSeparatorModel: Equatable, Sendable {
         case recorded
     }
 
-    // consecutive chapters can come from different sources: best_chapter ranks
-    // per chapter number by origin priority, so the scanlator and the image
-    // quality can change under the reader without warning
+    // best_chapter ranks per chapter number by origin priority, so the
+    // scanlator and image quality can change between consecutive chapters
     struct Continuity: Equatable, Sendable {
         var source: String?
         var scanlator: String?
@@ -119,18 +88,12 @@ struct ReaderSeparatorModel: Equatable, Sendable {
         }
     }
 
-    // identified by its own range: there is one gap per boundary, and the range
-    // is what a sheet presented for it is about
     struct Gap: Equatable, Sendable, Identifiable {
         var id: String { "\(from)-\(to)" }
 
         let from: Double
         let to: Double
         let count: Int
-        // the sources that were asked and came back without these chapters.
-        // naming them is the difference between "something is missing" and
-        // "nothing you have installed carries this" - the second is actionable,
-        // the first sounds like a fault
         var sources: [String] = []
     }
 
@@ -138,9 +101,9 @@ struct ReaderSeparatorModel: Equatable, Sendable {
         case chapter(number: Double, title: String)
         case loading(number: Double?)
         case failed(ReaderError)
-        // one ending, deliberately. "finished" would be a claim about the work;
-        // caught up is a fact about our copy of it, and it stays true whether
-        // the series ended, is mid-translation, or is still running
+        // "finished" would be a claim about the work; caught up is a fact
+        // about our copy of it, true whether the series ended, is
+        // mid-translation, or is still running
         case caughtUp
         case startOfSeries
     }
@@ -161,42 +124,31 @@ struct ReaderSeparatorModel: Equatable, Sendable {
 
 // MARK: - Measurement
 
-// heights are declared, not measured. the layout needs an exact number before
-// anything renders, so each slot contributes a known constant and the total is
-// arithmetic.
-//
-// the destination box and the action row are FIXED and always counted, however
-// little they happen to be showing - that is what keeps the total independent
-// of state
+// heights are declared, not measured, so each slot contributes a known
+// constant and the total is arithmetic. the destination box and action row
+// are FIXED and always counted, however little they show, keeping the total
+// independent of state
 extension ReaderSeparatorModel {
     enum Metrics {
         static let padding: CGFloat = 12
         static let spacing: CGFloat = 16
-        // between members of one group, tighter than the gap between groups
         static let group: CGFloat = 6
         static let terminal: CGFloat = 52
         static let continuity: CGFloat = 20
-        // linkage is stable for the session, so a height that depends on how
-        // many services are linked is still a declared height
+        // linkage is stable for the session, so a height that depends on
+        // trackers.count is still a declared height
         static let trackerRow: CGFloat = 22
         static let trackerGap: CGFloat = 4
         static let rule: CGFloat = 24
-        // sized to the tallest destination it has to hold - a chapter card with
-        // caption, number and title is ~61. a centred block in an oversized box
-        // drifts, so the slack has to stay small
+        // sized to the tallest destination it has to hold (~61); a centred
+        // block in an oversized box drifts, so the slack has to stay small
         static let destination: CGFloat = 64
         static let action: CGFloat = 44
 
-        // the text-bearing slots are constants at the default size, not at every
-        // size: a 52pt box holding a headline overflows once that headline is
-        // scaled for AX5, and this layout cannot grow to meet it. scaling here
-        // keeps the height DECLARED - one constant per content-size category
-        // rather than one constant full stop - so it is still known before
-        // anything renders and still cannot move the scroll.
-        //
-        // the structural terms are deliberately left alone: padding, spacing and
-        // the rule are air and a hairline, and scaling those only inflates the
-        // band without making a word more legible
+        // only the text-bearing slots scale with content size - a 52pt box
+        // holding a headline overflows once scaled for AX5. structural terms
+        // (padding, spacing, rule) are left alone since they inflate the band
+        // without making anything more legible
         static func scaled(_ value: CGFloat, _ category: UIContentSizeCategory) -> CGFloat {
             UIFontMetrics.default.scaledValue(
                 for: value,
@@ -205,12 +157,6 @@ extension ReaderSeparatorModel {
         }
     }
 
-    // depends only on which slots the BOUNDARY has, never on direction or state.
-    //
-    // two groups, not a list: what is behind you (the chapter you finished and
-    // where it was recorded) and what is ahead (the chapter you are entering,
-    // plus anything that describes it). a slot belongs to one of them, and the
-    // group is what the reader sees rather than the slots
     var height: CGFloat { height(for: .large) }
 
     func height(for category: UIContentSizeCategory) -> CGFloat {
@@ -229,11 +175,10 @@ extension ReaderSeparatorModel {
         return Metrics.padding * 2 + content + gaps
     }
 
-    // internal, because the view frames the group to it: the space is reserved
-    // whatever is drawn inside, so a boundary nobody has crossed - which has no
-    // push to report and hides the rows - centres what it does have rather than
-    // leaving a hole under it. the cell is sized once, before any of that is
-    // known, so shrinking here would only move the hole rather than close it
+    // internal - the view frames the group to this reserved space, so a
+    // boundary with no rows to show centres what it has rather than leaving a
+    // hole; the cell is sized once, before that's known, so shrinking here
+    // would only move the hole rather than close it
     func behind(for category: UIContentSizeCategory) -> CGFloat {
         let terminalHeight = Metrics.scaled(Metrics.terminal, category)
         guard !trackers.isEmpty else { return terminalHeight }
@@ -244,10 +189,8 @@ extension ReaderSeparatorModel {
         return terminalHeight + Metrics.group + rows + gaps
     }
 
-    // the destination is always reserved - a spinner resolving to a chapter card,
-    // or growing an action, must not change the height. a gap is not here: it
-    // describes the crossing rather than the chapter, so it rides the rule and
-    // costs nothing
+    // a gap is not counted here - it describes the crossing rather than the
+    // chapter, so it rides the rule instead and costs nothing
     private func ahead(for category: UIContentSizeCategory) -> CGFloat {
         var height = Metrics.scaled(Metrics.destination, category)
         if continuity?.isEmpty == false {
@@ -257,9 +200,9 @@ extension ReaderSeparatorModel {
     }
 }
 
-// SwiftUI reports the reader's text size as DynamicTypeSize while the metrics
-// above are keyed to UIKit's category, because the collection view sizes cells
-// from its own trait collection. one mapping so both halves ask the same question
+// SwiftUI reports text size as DynamicTypeSize; the metrics above are keyed to
+// UIKit's category since the collection view sizes cells from its own trait
+// collection - one mapping so both halves ask the same question
 extension UIContentSizeCategory {
     init(_ size: DynamicTypeSize) {
         self =
@@ -283,9 +226,6 @@ extension UIContentSizeCategory {
 
 // MARK: - Static facts
 
-// what the host knows about a boundary and the engine cannot: gaps come from
-// the full chapter list, and source/scanlator changes come from the database.
-// computed once, then merged with whatever the engine knows at the time
 struct ReaderBoundaryInfo: Equatable, Sendable {
     var continuity: ReaderSeparatorModel.Continuity?
     var gap: ReaderSeparatorModel.Gap?
@@ -294,11 +234,9 @@ struct ReaderBoundaryInfo: Equatable, Sendable {
 }
 
 extension ReaderSeparatorModel.Gap {
-    // compares integer parts, which is what makes hidden half-chapters a
-    // non-issue without plumbing the setting through: the reader's list is
-    // already filtered by best_chapter's isVisible, so a fractional delta is a
-    // filtering artefact and only whole numbers can genuinely be missing.
-    // 1 -> 2 with 1.5 hidden reads as no gap, which is correct
+    // compares integer parts only: the reader's list is already filtered by
+    // best_chapter's isVisible, so a fractional delta is a filtering artefact,
+    // not a genuine gap - 1 -> 2 with 1.5 hidden reads as no gap, correctly
     static func between(_ previous: Double, _ next: Double) -> Self? {
         let low = previous.rounded(.down)
         let high = next.rounded(.down)

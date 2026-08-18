@@ -10,18 +10,14 @@ import Foundation
 import GRDB
 import Tagged
 
-// the seam between the reader and everything it must not know about. the engine
-// asks for pages by chapter id; resolving that into a download on disk or a
-// request to a source happens entirely here
 struct SeriesPageSource: ReaderPageSource {
     let database: DatabaseClient
     let registry: Compositor.Registry
     let fill: ChapterFill
 
     func pages(for chapter: ReaderChapter.ID) async throws -> [ReaderPage] {
-        // the token the engine holds and the row that answers for it are two
-        // different things the moment a source is swapped. every ReaderPage below
-        // still carries the token, so nothing downstream has to know
+        // the token the engine holds and the row that answers for it diverge once
+        // a source is swapped - every ReaderPage below carries the token, not id
         let id = await fill.row(for: chapter)
 
         guard
@@ -32,8 +28,8 @@ struct SeriesPageSource: ReaderPageSource {
             throw ReaderError.notFound(chapter)
         }
 
-        // a downloaded chapter reads off disk whatever happened to its source,
-        // so the local path is checked before the origin is judged unavailable
+        // checked before the source, so a downloaded chapter still reads even if
+        // its source is gone
         if let stored = Constants.Paths.resolve(row.path) {
             let files = try Self.files(in: stored)
             guard !files.isEmpty else { throw ReaderError.noPages(chapter) }
@@ -61,8 +57,7 @@ struct SeriesPageSource: ReaderPageSource {
                 index: page.index,
                 url: page.url,
                 headers: headers,
-                // ratio-grade hints are fine here - the reader only ever uses
-                // this to pick a height, never to decide a split
+                // ratio-grade precision is fine - only used to pick a height, never to decide a split
                 size: page.size.map { CGSize(width: $0.width, height: $0.height) }
             )
         }

@@ -14,8 +14,6 @@ struct HomeScreen: View {
 
     @AppStorage(Preferences.Key.blurAdultHome) private var blurAdult = Preferences.Default
         .blurAdultHome
-    // read only to notice it changing: the gate itself is resolved inside the
-    // observation, and the ten-tap that flips it happens on another tab
     @AppStorage(Preferences.Key.bypassAdultSources) private var bypassAdult = Preferences.Default
         .bypassAdultSources
 
@@ -27,8 +25,6 @@ struct HomeScreen: View {
     @State private var showingFailures = false
     @State private var showingSettings = false
 
-    // the model is built on appearance in the app; a preview hands one in
-    // already holding its snapshot, which is what keeps previews off a database
     init(vm: HomeViewModel? = nil) {
         _vm = State(initialValue: vm)
     }
@@ -43,19 +39,13 @@ struct HomeScreen: View {
         static let addedWidth: CGFloat = 116
         static let skeletonUpdates = 3
         static let heroSpan = 8
-
-        // quieter than the banner - an unearned section is a fact about where
-        // the reader is, not something asking to be looked at
         static let emptyFillOpacity = 0.05
     }
 
-    // home is what you already own, so there is no "did you ask for this" signal
-    // the way opening an adult source is one - unset covers
     private var obscured: Bool { blurAdult.blurs(adultSource: false) }
 
-    // absent unless a rail actually holds one - a reveal with nothing to reveal
-    // is a control with nothing to say. keyed on the entries rather than on
-    // whether they are currently blurred, or using it would remove it
+    // keyed on entries, not `obscured` - keying on the blur state would make
+    // the toggle disappear the moment it's used
     private var hasExplicit: Bool {
         guard let snapshot = vm?.snapshot else { return false }
         return snapshot.continueReading.contains(where: \.adult)
@@ -105,14 +95,6 @@ struct HomeScreen: View {
             .navigationTitle("Home")
             .toolbarTitleDisplayMode(.large)
             .toolbar {
-                // a person, not a gear. the app had four gearshapes meaning four
-                // different scopes - the whole app, one tab's refresh cadence,
-                // one source, one reading session - and a reader who taps one
-                // and gets a scope they did not expect stops trusting the glyph.
-                // this destination holds the tracker accounts, which is what
-                // makes a person the honest mark for it: gear now only ever
-                // means "this thing here", and the person means "you, and
-                // everything"
                 ToolbarItem(placement: .topBarTrailing) {
                     Image(systemName: "person.crop.circle")
                         .tappable { showingSettings = true }
@@ -155,8 +137,8 @@ struct HomeScreen: View {
                 vm = model
                 model.observe()
             }
-            // onChange rather than task(id:), which would also fire on every
-            // return to the tab and restart an observation that is already right
+            // task(id:) would also refire on every return to this tab, restarting
+            // an observation that's already correct
             .onChange(of: bypassAdult) { vm?.retry() }
         }
     }
@@ -168,37 +150,19 @@ extension HomeScreen {
     fileprivate func Content(_ vm: HomeViewModel) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: dimensions.spacing.space24) {
-                // its presence is the whole signal, so it costs nothing at rest
-                // and is unmissable when it fires. a permanent card reading
-                // "all sources healthy" would train the eye to skip the one
-                // place that matters
                 let failing = vm.failingSources
                 if failing > 0 {
                     FailingBanner(failing)
                 }
 
-                // its own banner rather than a combined count: the two are
-                // different units and different costs. a dead source loses you
-                // chapters, a stalled tracker loses you a number on someone
-                // else's website, and one sentence covering both would have to
-                // stop saying either
                 let unsynced = vm.failingTrackers
                 if unsynced > 0 {
                     StalledBanner(unsynced)
                 }
 
-                // once there is a library at all, an absent section is more
-                // confusing than an empty one: the reader who added three
-                // series and read none got a screen with a single rail on it
-                // and no way to tell whether the rest was broken or unearned.
-                // held to a compact row rather than a screen-sized empty, or
-                // two of them would push the only real content off the fold
                 let added = vm.recentlyAdded
                 let settled = !added.isEmpty
 
-                // resume before news: five of six readers went straight for
-                // this and stopped, and the one returning after a gap asked to
-                // be put back in the story rather than in front of a ledger
                 let continueReading = vm.continueReading
                 if !continueReading.isEmpty {
                     ContinueSection(vm, entries: continueReading)
@@ -206,8 +170,6 @@ extension HomeScreen {
                     ContinueEmpty
                 }
 
-                // the section the screen was missing, and the reason every
-                // comparable app lands on one: open, see what arrived, tap it
                 let updates = vm.updates
                 if !updates.isEmpty {
                     UpdatesSection(updates)
@@ -215,16 +177,10 @@ extension HomeScreen {
                     UpdatesEmpty
                 }
 
-                // demoted from a two-column grid to a rail: it is a log of your
-                // own actions, so it earns a shelf and not a screenful
                 if !added.isEmpty {
                     AddedSection(entries: added)
                 }
 
-                // the two shelves. they are a partition of everything that fell
-                // out of the rail's window, split by where the reader stopped:
-                // inside a chapter, or cleanly at the end of one. no series is on
-                // both, and neither is in the rail
                 let stalled = vm.stalled
                 if !stalled.isEmpty {
                     ShelfSection(
@@ -241,16 +197,12 @@ extension HomeScreen {
                         title: "Waiting For You",
                         entries: waiting,
                         detail: Self.next,
-                        // the pile is the whole point of this shelf, so it is the
-                        // one number that gets its own mark
                         accessory: { Text("\($0.unreadCount)") }
                     )
                 }
             }
             .padding(.vertical, dimensions.spacing.space16)
         }
-        // the rails inside already scroll and show their own edges, so the outer
-        // bar is a second scrollbar describing a different axis of the same view
         .scrollIndicators(.hidden)
     }
 
@@ -271,9 +223,6 @@ extension HomeScreen {
                             target: entry.target,
                             obscured: obscured && entry.adult
                         )
-                        // the card is the hero of the screen, so it takes the
-                        // width of the screen less the peek that says there is
-                        // another one behind it
                         .containerRelativeFrame(
                             .horizontal,
                             count: Layout.heroSpan,
@@ -307,9 +256,6 @@ extension HomeScreen {
         }
     }
 
-    // no action any more: Reading Activity moved into the Activity tab on
-    // 2026-08-11, and a Home shortcut to a tab is the one link this screen has
-    // always refused to carry
     fileprivate var ContinueEmpty: some View {
         Section(
             title: "Continue Reading",
@@ -324,11 +270,8 @@ extension HomeScreen {
         )
     }
 
-    // one row's worth, not a screen's worth: ContentUnavailableView sizes
-    // itself for an empty screen, and nothing here is empty except this shelf
-    // no action parameter any more: both destinations this screen used to offer
-    // are gone - Reading Activity moved into the Activity tab, and the updates
-    // list with it - so a section is a title and a sentence
+    // ContentUnavailableView sizes for a full screen; this is a row-sized
+    // empty state inside an otherwise populated screen
     fileprivate func Section(title: String, message: String) -> some View {
         VStack(alignment: .leading, spacing: dimensions.spacing.space12) {
             SectionHeader(title)
@@ -346,15 +289,10 @@ extension HomeScreen {
         .padding(.horizontal, dimensions.screenMargin)
     }
 
-    // tiles only - the numbers' rows live one tap deeper, and the whole strip
-    // is that tap. record-framed: a run is a fact, never a countdown. the window
-    // is named once, in the subtitle, rather than on every label
     fileprivate func UpdatesSection(_ updates: [HomeViewModel.UpdateEntry]) -> some View {
         VStack(alignment: .leading, spacing: dimensions.spacing.space12) {
             SectionHeader("New Chapters")
 
-            // grouped so the surfaces blend into each other rather than reading
-            // as four unrelated panes
             GlassEffectContainer(spacing: dimensions.spacing.space12) {
                 VStack(spacing: dimensions.spacing.space12) {
                     ForEach(updates) { entry in
@@ -366,18 +304,10 @@ extension HomeScreen {
                             obscured: obscured && entry.adult
                         )
                         .contentShape(.rect)
-                        // the series, not the chapter. Continue Reading is the
-                        // one shelf that resumes something already in progress,
-                        // and a tap there is a request to carry on reading. news
-                        // that a chapter exists is not that request - "three new
-                        // chapters" is most often read as a prompt to go and look
-                        // at the series, and dropping straight into the reader
-                        // takes the decision away
                         .tappable {
                             path.append(SeriesEntry.library(entry.id))
                         }
                         .contextMenu {
-                            // the fast path survives as the deliberate one
                             Button {
                                 reading = ReadingTarget(
                                     seriesId: entry.id, chapterId: entry.target.chapterId)
@@ -394,9 +324,6 @@ extension HomeScreen {
         .padding(.horizontal, dimensions.screenMargin)
     }
 
-    // "couldn't update" names what happened and to what. a bare status word
-    // carries no subject, and both a new reader and one returning after a gap
-    // read it as their own fault
     fileprivate func FailingBanner(_ count: Int) -> some View {
         Banner(
             "^[\(count) source](inflect: true) couldn't update",
@@ -405,14 +332,9 @@ extension HomeScreen {
             action: { showingFailures = true }
         )
         .padding(.horizontal, dimensions.screenMargin)
-        // the banner combines its own children, so the hint lands on the one
-        // element they became. the label it would otherwise get is the title
-        // and the message read in order, which is what a reader wants here
         .accessibilityHint("Opens the list of sources needing attention")
     }
 
-    // "isn't reaching" rather than "failed": nothing here is lost, the push is
-    // still queued, and the reader's own read state is untouched
     fileprivate func StalledBanner(_ count: Int) -> some View {
         Banner(
             "^[\(count) series](inflect: true) isn't syncing",
@@ -424,14 +346,6 @@ extension HomeScreen {
         .accessibilityHint("Opens the list of failures")
     }
 
-    // a glass circle, not a bare chevron. the arrow that used to carry this was
-    // a 13pt glyph parked at the far screen edge from the words it belonged to,
-    // with nothing behind it, and nobody found it - what makes this readable as
-    // a control is the surface, which is the same thing that makes the chart's
-    // stepper readable. the glyph says which of the two it is
-    // one builder for both shelves: they differ by their second line and whether
-    // they carry a count, and a second hand-written copy would drift the moment
-    // one of them is touched
     fileprivate func ShelfSection(
         title: String,
         entries: [HomeViewModel.ShelfEntry],
@@ -450,10 +364,6 @@ extension HomeScreen {
                         accessory: accessory(entry),
                         obscured: obscured && entry.adult
                     )
-                    // both shelves land on the series, same rule as New Chapters.
-                    // Pick Back Up is the closest of them to a resume, and it is
-                    // still a shelf about series rather than the one place a tap
-                    // means "carry on from where I was"
                     .tappable {
                         path.append(SeriesEntry.library(entry.id))
                     }
@@ -473,9 +383,6 @@ extension HomeScreen {
         .padding(.horizontal, dimensions.screenMargin)
     }
 
-    // where you are, not how long you have been away. a duration reads as
-    // neglect and a position reads as a place to stand, which is the difference
-    // between a shelf a reader uses and one they scroll past
     fileprivate nonisolated static func position(_ entry: HomeViewModel.ShelfEntry) -> String {
         guard case .resume(_, let number, let progress) = entry.target else {
             return "Partway through"
@@ -487,9 +394,6 @@ extension HomeScreen {
         "Next up: \(ReadingFormat.chapter(entry.target.number))"
     }
 
-    // a rail rather than the two-column grid it was: this is a log of what you
-    // added, which is the Library's default sort with a caption on it, and a
-    // grid of it was the largest block on the screen for the least news
     fileprivate func AddedSection(entries: [HomeViewModel.AddedEntry]) -> some View {
         VStack(alignment: .leading, spacing: dimensions.spacing.space12) {
             SectionHeader("Recently Added")
@@ -554,9 +458,8 @@ extension HomeScreen {
                 VStack(alignment: .leading, spacing: dimensions.spacing.space12) {
                     SectionHeader("Continue Reading")
 
-                    // the same horizontal scroll container the content path uses:
-                    // containerRelativeFrame has nothing to measure against
-                    // without one, and resolves to an infinite width
+                    // containerRelativeFrame needs a scroll container ancestor to
+                    // measure against, or it resolves to an infinite width
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: dimensions.spacing.space12) {
                             ForEach(0..<2, id: \.self) { _ in
@@ -617,8 +520,6 @@ extension HomeScreen {
             titles[index % titles.count]
         }
 
-        // even entries are partway through a chapter, odd ones are waiting on the
-        // next - both subtitles want to be visible in one preview
         static func target(_ index: Int) -> ContinueTarget {
             let id = ChapterRecord.ID(rawValue: Int64(index + 1))
             if index.isMultiple(of: 2) {
@@ -666,8 +567,6 @@ extension HomeScreen {
                     id: id,
                     title: title(index + 1),
                     cover: nil,
-                    // a spread rather than a constant: one new chapter and twelve
-                    // are different news, and the row has to hold both
                     count: [3, 1, 12, 2, 7][index % 5],
                     latest: .now.addingTimeInterval(TimeInterval(-index * 5_400)),
                     target: target(index),
@@ -676,8 +575,6 @@ extension HomeScreen {
             }
         }
 
-        // the two shelves, built from the same titles so a preview reads as one
-        // library rather than three unrelated ones
         static func shelf(_ count: Int, resuming: Bool) -> [HomeViewModel.ShelfEntry] {
             (0..<count).map { index in
                 let chapter = ChapterRecord.ID(rawValue: Int64(900 + index))
@@ -722,16 +619,10 @@ extension HomeScreen {
         HomeScreen(vm: .preview(snapshot: Mock.snapshot()))
     }
 
-    // nothing new anywhere: the updates block goes rather than rendering a header
-    // over an empty list, and Continue Reading carries the screen
     #Preview("Nothing Waiting") {
         HomeScreen(vm: .preview(snapshot: Mock.snapshot(updates: 0)))
     }
 
-    // absent entirely when nothing is failing, which is what lets it be loud when
-    // it is not: a notice that is always on screen is one nobody reads
-    // the two shelves alone, at their caps, which is where the page first has to
-    // justify scrolling past the rails
     #Preview("Shelves") {
         HomeScreen(
             vm: .preview(
@@ -739,8 +630,6 @@ extension HomeScreen {
             ))
     }
 
-    // neither shelf has anything: a caught-up library, where both sections are
-    // absent rather than empty
     #Preview("Caught Up") {
         HomeScreen(vm: .preview(snapshot: Mock.snapshot(stalled: 0, waiting: 0)))
     }

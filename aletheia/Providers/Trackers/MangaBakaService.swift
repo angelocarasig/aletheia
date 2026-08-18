@@ -287,9 +287,7 @@ struct MangaBakaService: TrackerService, BulkListingTracker {
             url: components?.url ?? Constants.Trackers.mangaBakaAPI.appending(path: path))
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue(Constants.Trackers.userAgent, forHTTPHeaderField: "User-Agent")
-        // absent on purpose for the public endpoints: they are edge-cached, only
-        // uncached requests count against the limit, and an authenticated request
-        // is a guaranteed miss
+        // absent on purpose for public endpoints - an authenticated request is a guaranteed cache miss
         if let token { request.setValue(token, forHTTPHeaderField: "x-api-key") }
         return request
     }
@@ -304,9 +302,7 @@ struct MangaBakaService: TrackerService, BulkListingTracker {
         do {
             return try JSONDecoder().decode(Response.self, from: data)
         } catch {
-            // the error the reader sees stays vague on purpose - a coding key is
-            // not something anyone can act on - so the field and the body go to
-            // the log instead of being thrown away with the error
+            // error stays vague to the reader on purpose - a coding key isn't actionable - so the field and body go to the log instead
             TrackerLog.undecodable(
                 tracker,
                 Self.path(of: request),
@@ -339,16 +335,13 @@ struct MangaBakaService: TrackerService, BulkListingTracker {
         }
     }
 
-    // path and query, never the host - the host is the same on every line and
-    // the query is where a wrong filter value hides
+    // path and query only, never the host - the query is where a wrong filter value hides
     private static func path(of request: URLRequest) -> String {
         guard let url = request.url else { return "?" }
         return url.path() + (url.query().map { "?\($0)" } ?? "")
     }
 
-    // the body's own message is written for readers rather than for developers,
-    // so it is quoted where there is one rather than replaced with our guess at
-    // what happened
+    // the body's own message is written for readers, so it's quoted where present rather than replaced with a guess
     private static func failure(status: Int, body: Data?) -> TrackerError {
         let message =
             body
@@ -390,8 +383,9 @@ private struct Envelope<Payload: Decodable>: Decodable {
     let data: Payload
 }
 
-// v2/my/library's own envelope - a page of {entry, series} pairs plus the
-// same next-url pagination v1 uses elsewhere in this file
+// v2/my/library's own envelope - a page of {entry, series} pairs. only
+// pagination.count is decoded; list() pages by incrementing its own counter
+// rather than following a next-url
 private struct ListPage: Decodable {
     let data: [ListItem]
     let pagination: Pagination
@@ -495,8 +489,6 @@ private struct Profile: Decodable {
     }
 }
 
-// what the reader's list says. every field is optional because a freshly created
-// entry carries almost none of them
 private struct Listing: Decodable {
     let id: Int64?
     let state: String?
@@ -573,7 +565,6 @@ private struct Series: Decodable {
     // be offered as something to link to
     var isLive: Bool { state == nil || state == "active" }
 
-    // a string on the wire, and a count everywhere we use it
     var chapters: Int? {
         guard let total_chapters, let value = Int(total_chapters), value > 0 else { return nil }
         return value
@@ -596,10 +587,7 @@ private struct Series: Decodable {
         return description
     }
 
-    // manga is the assumption a reader already brings, so it earns no pill.
-    // everything else is a genuine warning that this is not the thing they think -
-    // and this is the only service of the three that states it outright rather
-    // than leaving it to be guessed from a title
+    // manga is the assumption a reader already brings, so it earns no pill - everything else is a genuine warning that this isn't the thing they think
     var shape: String? {
         switch type {
         case "manga", nil: nil
@@ -620,8 +608,6 @@ private struct Series: Decodable {
         }
     }
 
-    // the same four-into-three collapse mangafire already uses, so the vocabulary
-    // is not this service's invention and the mapping is not a new opinion
     var classification: Classification {
         switch content_rating {
         case "safe": .Safe

@@ -7,21 +7,6 @@
 
 import Foundation
 
-// a signed json api behind a cloudflare challenge. mangafire rewrote itself in
-// july 2026 - the /browse html this source used to scrape is now an spa shell,
-// and every capability moved to /api/ behind a vrf signature. MangaFireSigner
-// carries that signature; nothing here runs javascript.
-//
-// the credential came back on 2026-08-15: the tenant was not challenging when
-// this was ported two days earlier (docs/sources/mangafire.md §5 recorded that
-// as their configuration rather than the protocol) and now answers every path,
-// robots.txt included, with `cf-mitigated: challenge`. so the signature and the
-// clearance are two separate walls and both have to be got past - but the
-// requests are still plain json over URLSession, and a webkit-minted clearance
-// carries across to it fine on this tenant.
-//
-// series are opaque string hids, chapters are integers. see
-// docs/sources/mangafire.md
 struct MangaFireSource: SourceService, AuthenticatingSource {
     let requester: AuthRequester
 
@@ -62,7 +47,6 @@ struct MangaFireSource: SourceService, AuthenticatingSource {
                 ],
                 canExclude: false
             ),
-            // new to the api lane - /browse had no status parameter at all
             .multiSelect(
                 id: "statuses",
                 name: "Status",
@@ -75,9 +59,6 @@ struct MangaFireSource: SourceService, AuthenticatingSource {
                 ],
                 canExclude: false
             ),
-            // the only filter that validates nothing: a bogus id is ignored and
-            // the unfiltered set comes back, where every other filter here 422s.
-            // measured 2026-08-13
             .multiSelect(
                 id: "demographics",
                 name: "Demographic",
@@ -209,8 +190,6 @@ struct MangaFireSource: SourceService, AuthenticatingSource {
                 ],
                 canExclude: false
             ),
-            // the four we can represent. mangafire also serves pt-br, fr, es and
-            // es-la, which chapters() drops rather than mislabel
             .multiSelect(
                 id: "languages",
                 name: "Language",
@@ -218,10 +197,6 @@ struct MangaFireSource: SourceService, AuthenticatingSource {
                 canExclude: false
             ),
         ],
-        // the api takes `order[key]=dir` as separate parameters, where /browse
-        // took `sort=key:dir`. the option id stays in the old shape because it
-        // is one token the ui can carry, and search() splits it - per-source
-        // encoding belongs in the source
         supportedSort: .init(
             options: [
                 .init(id: "relevance:desc", name: "Best match"),
@@ -264,9 +239,8 @@ struct MangaFireSource: SourceService, AuthenticatingSource {
         ]
     }
 
-    // the site root serves the same spa shell for every unknown path, so a 200
-    // from it says nothing about whether the api is answering. ping the api
-    // instead - the signature is deterministic, so this url is constant
+    // the site root always serves the spa shell, so a 200 from it says nothing
+    // about the api - ping /api/titles instead
     var pingURL: URL {
         Self.endpoint("/api/titles", [URLQueryItem(name: "limit", value: "1")])
     }
@@ -274,16 +248,8 @@ struct MangaFireSource: SourceService, AuthenticatingSource {
     var specification: AuthSpecification {
         AuthSpecification(
             requirements: [
-                // the clearance is the whole wall, so it is the one thing worth
-                // waiting for. if the tenant drops the challenge again it stops
-                // being minted at all and every capture polls to the timeout -
-                // the cost of pinning a source to a configuration that has
-                // already changed twice
                 .cookie(name: "cf_clearance"),
-                // mangafire's own, and taken only if the landing page happens to
-                // set one. the deprecated renderer lane required it, which was
-                // safe when a browse page minted it on first paint and is not
-                // now that the site is an spa
+                // optional: the spa doesn't reliably set this on first paint
                 .cookie(name: "session", optional: true),
             ],
             challengeURL: descriptor.baseURL,
@@ -293,10 +259,8 @@ struct MangaFireSource: SourceService, AuthenticatingSource {
         )
     }
 
-    // the api answers a bad signature with 403 and a json body, and the
-    // cloudflare default reads any 403 behind cloudflare as a challenge - so a
-    // rotated table would spend a capture and a retry to arrive at the same 403,
-    // throwing away the one body that names the real cause
+    // a bad signature also answers 403, which the default heuristic would read
+    // as a cloudflare challenge - check the body for the real cause first
     func isChallenge(response: HTTPURLResponse, body: Data) -> Bool {
         let text = String(decoding: body, as: UTF8.self)
         if text.contains("Missing token.") || text.contains("Invalid token.") { return false }
@@ -307,15 +271,9 @@ struct MangaFireSource: SourceService, AuthenticatingSource {
 // MARK: - Requests
 
 extension MangaFireSource {
-    // the signature covers a canonical string built from the path and the
-    // sorted, *decoded* query - not this url. MangaFireSigner owns that
-    // difference; everything here just hands it the items it is about to send.
-    //
-    // the wire needs no sorting of its own: the server re-derives the canonical
-    // form, so scrambling the order across keys still verifies (measured). what
-    // it cannot survive is reordering values *within* one repeated key, since
-    // the index in `key[0]`/`key[1]` binds to position - which is why the
-    // signer's sort is stable and this hands the items over untouched
+    // order across keys doesn't matter to the signature, but order *within* one
+    // repeated key does - the index in `key[0]`/`key[1]` binds to position, so
+    // these items are handed to the signer untouched rather than re-sorted here
     private static func endpoint(_ path: String, _ items: [URLQueryItem]) -> URL {
         var components = URLComponents(
             url: URL(string: "https://mangafire.to")!, resolvingAgainstBaseURL: false)!
@@ -324,20 +282,15 @@ extension MangaFireSource {
         return components.url!
     }
 
-    // through the requester rather than the network: it serves the cached
-    // clearance, notices a challenge that slipped past it anyway, single-flights
-    // the capture ten concurrent chapter pages would otherwise each start, and
-    // replays once. the status check is ours because requester.send hands back
-    // whatever came, and a challenge page decoded as json is a decoding error
-    // rather than a wall
+    // requester.send hands back whatever came without checking status, so the
+    // 200...299 check below is ours - otherwise a challenge page would just
+    // fail json decoding instead of being recognised as a wall
     private func fetch<Model: Decodable & Sendable>(_ path: String, _ items: [URLQueryItem] = [])
         async throws -> Model
     {
         var request = URLRequest(url: Self.endpoint(path, items))
-        // the shape mangafire's own spa sends. a request carrying a clearance and
-        // a safari user-agent, but none of the headers safari would have put on
-        // an xhr to this endpoint, is a bot signal on its own - cloudflare does
-        // not have to fingerprint the handshake to score it
+        // a clearance and safari user-agent without the headers safari would
+        // send on an xhr to this endpoint is a bot signal on its own
         request.setValue("application/json, text/plain, */*", forHTTPHeaderField: "Accept")
         request.setValue(descriptor.referer.absoluteString + "/", forHTTPHeaderField: "Referer")
         request.setValue("empty", forHTTPHeaderField: "Sec-Fetch-Dest")
@@ -364,13 +317,8 @@ extension MangaFireSource {
     func search(_ query: SearchQuery) async throws -> SearchPage<SeriesStub> {
         let response: TitlesResponse = try await fetch("/api/titles", items(for: query))
 
-        // rung 2: the list payload carries no rating - contentRating exists only
-        // on the details call - so the request answers for the whole result set.
-        //
-        // this is now load-bearing rather than lucky. the old renderer lane
-        // inherited mangafire's own localStorage default of safe+suggestive; the
-        // api has no default at all, and an omitted content_rating returns
-        // everything including the 2871 pornographic titles
+        // the list payload carries no per-item rating, so adult status is
+        // derived from the request itself rather than the response
         let adult = Self.stampsAdult(for: query, gateOpen: allowsAdult(for: query))
 
         let items = response.items.map { item in
@@ -386,9 +334,6 @@ extension MangaFireSource {
 
     private static let clean = ["safe", "suggestive", "erotica"]
 
-    // whatever the reader picked is what came back, so the answer is whether any
-    // of it is pornographic. with no pick at all the gate is shut and the
-    // request sent the clean whitelist
     private static func stampsAdult(for query: SearchQuery, gateOpen: Bool) -> Bool {
         guard gateOpen else { return false }
         guard
@@ -406,8 +351,8 @@ extension MangaFireSource {
             URLQueryItem(name: "limit", value: "50"),
         ]
 
-        // never omitted. an absent content_rating is not a neutral request here,
-        // it is every rating
+        // content_rating must never be omitted - an absent one returns every
+        // rating including pornographic
         if !query.filters.contains(where: { $0.id == "content_rating" }) {
             let allowed = allowsAdult(for: query) ? Self.clean + ["pornographic"] : Self.clean
             items += allowed.map { URLQueryItem(name: "content_rating[]", value: $0) }
@@ -533,8 +478,8 @@ extension MangaFireSource {
 
 extension MangaFireSource {
     // no language parameter: one request set returns every language and the
-    // reader's own priority ordering decides what wins. asking per language
-    // would be four times the requests for the same rows
+    // reader's own priority ordering decides what wins - filtering per
+    // language server-side would be four times the requests for the same rows
     func chapters(seriesSlug: String) async throws -> [ChapterEntry] {
         let first: ChaptersResponse = try await fetch(
             "/api/titles/\(seriesSlug)/chapters", Self.chapterItems(page: 1))
@@ -543,9 +488,6 @@ extension MangaFireSource {
         let lastPage = max(1, first.meta?.lastPage ?? 1)
 
         if lastPage > 1 {
-            // the gate caps this at three in flight per host, so the fan-out is
-            // a queue rather than a stampede. the old lane clicked a dom pager
-            // and waited up to eight seconds per page
             items += try await withThrowingTaskGroup(of: [ChaptersResponse.Item].self) { group in
                 for page in 2...lastPage {
                     group.addTask {
@@ -572,10 +514,9 @@ extension MangaFireSource {
         var entries: [ChapterEntry] = []
 
         for item in items where seen.insert(item.id).inserted {
-            // mangafire serves pt-br, fr, es and es-la alongside the four we
-            // model. the old lane mapped every one of them to english, so a
-            // portuguese chapter opened as an english one - dropping is the
-            // honest answer, since nothing downstream can display them
+            // mangafire serves languages we don't model (pt-br, fr, es, es-la) -
+            // drop rather than default, since mislabeling one as english would
+            // display it wrong instead of just omitting it
             guard let language = LanguageCode(rawValue: item.language) else { continue }
 
             entries.append(
@@ -604,9 +545,8 @@ extension MangaFireSource {
         ]
     }
 
-    // official and unofficial releases sit side by side at the same number, so
-    // one name for both left the reader two identical rows. the api has always
-    // carried the distinction; the old lane threw it away
+    // official and unofficial releases sit at the same chapter number - collapsing
+    // both to one scanlator name would show the reader two identical-looking rows
     private static func scanlator(for type: String?) -> String {
         switch (type ?? "").lowercased() {
         case "official": "Official"
@@ -643,9 +583,8 @@ extension MangaFireSource {
     func content(seriesSlug: String, chapterSlug: String) async throws -> [PageURL] {
         let response: ChapterContentResponse = try await fetch("/api/chapters/\(chapterSlug)")
 
-        // dimensions arrive with the page list, so the reader can size a chapter
-        // before a single image lands - tier 0 of the page-dimensions ladder, at
-        // no extra request
+        // dimensions arrive with the page list itself - tier 0 of the
+        // page-dimensions ladder, no extra request needed
         return response.data.pages.enumerated().compactMap { index, page in
             URL(string: page.url).map {
                 PageURL(

@@ -17,12 +17,11 @@ final class ReaderViewModel {
     private let startingChapter: ChapterRecord.ID
     private let database: DatabaseClient
     private let registry: Compositor.Registry
-    // only for whether a service can push at all. every number the separator
-    // draws comes from the link rows, so this is asked one question and no others
+    // only for whether a service can push at all - every number the separator
+    // draws comes from the link rows
     private let trackers: Compositor.Trackers
 
-    // which row serves each chapter, for this reading session only. reopening
-    // falls back to best_chapter's ranking
+    // scoped to this reading session - reopening falls back to best_chapter's ranking
     private let fill = ChapterFill()
 
     private(set) var engine: ReaderEngine?
@@ -32,8 +31,8 @@ final class ReaderViewModel {
     private(set) var slots: [ChapterSlot] = []
     private(set) var isLoadingSlots = false
 
-    // an observable mirror of what the fill actor holds, so the switcher can mark
-    // the active option without awaiting an actor mid-render
+    // mirrors the fill actor, so the switcher can mark the active option without
+    // awaiting an actor mid-render
     private(set) var fills: [ReaderChapter.ID: ChapterRecord.ID] = [:]
 
     var isOverlayVisible = true
@@ -46,33 +45,26 @@ final class ReaderViewModel {
     @ObservationIgnored private var saved: [ChapterRecord.ID: Int] = [:]
     @ObservationIgnored private var lastSave: Date?
     @ObservationIgnored private var stored: [ChapterRecord.ID: Double] = [:]
-    // observed, not ignored: a swap repoints a chapter at another source and the
-    // header button has to follow, so this read has to register as a dependency
+    // NOT ignored - a swap repoints a chapter at another source and the header
+    // button has to follow, so this read must register as a dependency
     private var icons: [ReaderChapter.ID: ImageResource] = [:]
-    // read state is written per chapter NUMBER, not per row, so every save needs
+    // read state is written per chapter NUMBER, not per row - every save needs
     // the number behind the row it was handed
     @ObservationIgnored private var numbers: [ChapterRecord.ID: Double] = [:]
 
-    // history rows carry a title snapshot because their seriesId is a soft
-    // reference - the row must stay readable after a purge or merge
+    // history rows snapshot the title because seriesId is a soft reference -
+    // the row must stay readable after a purge or merge
     @ObservationIgnored private var seriesTitle = ""
 
-    // set when the reader taps the range in a separator's rule. the sheet is
-    // presented by the screen, so this is the whole of the view model's part
     var explainingGap: ReaderSeparatorModel.Gap?
 
-    // saving a page changes nothing on screen - the page is still there and
-    // still looks the same - so the alert is the only evidence either way
     var pageSave: PageSave?
 
-    // every installed source with chapters for this series, in the order the
-    // ranking already put them. derived at load from the chapter rows, so it
-    // costs no query of its own
+    // derived at load from the chapter rows, so it costs no query of its own
     @ObservationIgnored private var sourceNames: [String] = []
 
-    // mirrored into the engine rather than read by it: the separator renders
-    // what it is handed, and this is the only thing that decides whether the
-    // end-of-list offer is there
+    // mirrored into the engine rather than read by it - the separator renders
+    // what it is handed
     @ObservationIgnored private var completable = false {
         didSet { engine?.setCompletable(completable) }
     }
@@ -85,14 +77,12 @@ final class ReaderViewModel {
     @ObservationIgnored private var entered: [ChapterRecord.ID: Int] = [:]
     @ObservationIgnored private var sessionChaptersRead = 0
 
-    // which services this series is linked to, read once at open. a link cannot
-    // be made from inside the reader, so the list is fixed for the session -
-    // which is what lets the separator declare its height before the first page
+    // a link cannot be made from inside the reader, so this list is fixed for
+    // the session - which is what lets the separator declare its height before
+    // the first page
     @ObservationIgnored private var trackerRows: [ReaderSeparatorModel.Tracker] = []
-    // chapters finished this sitting whose services have not all answered yet.
-    // a chapter leaves once every row has settled, and its state is then frozen:
-    // the queue clears for the SERIES, so a later push would otherwise drag an
-    // earlier boundary back to spinning
+    // chapters finished this sitting whose services have not all answered yet -
+    // once every row settles the chapter leaves and its state freezes
     @ObservationIgnored private var awaitingTrackers: Set<ReaderChapter.ID> = []
     @ObservationIgnored private var trackerWatch: Task<Void, Never>?
 
@@ -135,8 +125,7 @@ final class ReaderViewModel {
                 try Self.chapters(for: seriesId, in: db)
             }
             guard !loaded.isEmpty else {
-                // not an error anything threw - the query succeeded and the
-                // answer is empty, which is permanent until a source is added
+                // not an error anything threw - permanent until a source is added, hence not retryable
                 failure = Failure(
                     title: "Nothing to Read",
                     message: "No installed source has chapters for this series.",
@@ -184,8 +173,6 @@ final class ReaderViewModel {
                     id: link.tracker.rawValue,
                     name: link.tracker.name,
                     icon: link.tracker.icon,
-                    // every row starts as "nothing pushed for this chapter",
-                    // which is true of every boundary until one is crossed
                     state: .skipped
                 )
             }
@@ -203,8 +190,6 @@ final class ReaderViewModel {
             loaded.forEach { chapter in
                 stored[ChapterRecord.ID(rawValue: chapter.id)] = chapter.progress
                 numbers[ChapterRecord.ID(rawValue: chapter.id)] = chapter.number
-                // a series can carry origins from several sources, so the icon
-                // is per chapter rather than per series
                 icons[chapter.id] =
                     chapter.sourceSlug
                     .flatMap { registry.source(slug: $0) }?
@@ -234,11 +219,10 @@ final class ReaderViewModel {
             )
             bind(engine)
             self.engine = engine
-            // the gate is resolved above, before this exists, so the didSet that
-            // normally mirrors it had nothing to push to
+            // completable's didSet couldn't mirror this - the engine didn't exist yet
             engine.setCompletable(completable)
-            // before open(), deliberately: presence decides the band's height and
-            // every separator built after this has to agree about it
+            // before open(), deliberately - tracker presence decides the band's
+            // height, and every separator built after this has to agree about it
             engine.setTrackers(trackerRows)
             watchTrackers()
             isReady = true
@@ -289,35 +273,28 @@ final class ReaderViewModel {
         fills[chapter] ?? ChapterRecord.ID(rawValue: chapter)
     }
 
-    // the engine keeps asking for the same chapter it always asked for. all that
-    // changes is which row answers, and then the chapter is re-fetched in place
+    // row changes, chapter token doesn't - the chapter is re-fetched in place
     func swap(to option: ChapterSlot.Option, for chapter: ReaderChapter.ID) async {
         guard let engine, option.id != activeRow(for: chapter) else { return }
 
         await fill.set(option.id, for: chapter)
         fills[chapter] = option.id.rawValue == chapter ? nil : option.id
-        // the header button names the source you are reading from, so it moves
-        // with the fill. swapping back to the default restores the original
         icons[chapter] = option.sourceIcon
         await engine.reload(chapter)
     }
 
     // MARK: Chapter list
 
-    // read on demand rather than at open: a long series is thousands of rows once
-    // every origin is counted, and none of it is needed to show a page.
-    //
-    // reloaded on every present, and the previous slots stay on screen while it
-    // runs - progress moves as you read, so a cache held for the session would
-    // show the list you had when you first opened it
+    // read on demand, not at open - a long series is thousands of rows once
+    // every origin is counted, and none of it is needed to show a page. reloaded
+    // on every present rather than cached, since progress moves as you read
     func loadSlots() async {
         guard !isLoadingSlots else { return }
         isLoadingSlots = true
         defer { isLoadingSlots = false }
 
-        // progress saves are throttled, so what has been read can be newer here
-        // than in the table for a few seconds. draining first makes the read the
-        // source of truth rather than a snapshot that trails the reader
+        // progress saves are throttled, so what's been read can be newer here
+        // than in the table - draining first makes this read the source of truth
         await flush()
 
         do {
@@ -420,14 +397,13 @@ final class ReaderViewModel {
 
     // MARK: Tap zones
 
-    // stored, not read straight off UserDefaults on demand: observation only
+    // stored, not read straight off UserDefaults on demand - Observation only
     // tracks stored properties, and a computed one left the picker's tick mark
     // pinned to whatever was selected when the sheet opened
     private(set) var tapZone: ReaderTapZones.Layout = ReaderSettings.tapZone
     private var isTapZoneFlipped: Bool = ReaderSettings.tapZonesReversed
 
-    // what the zones do once the reading direction has had its say, which is
-    // what every caller wants - the raw toggle is only ever half the answer
+    // resolved, not raw - the manual toggle is only ever half the answer
     var tapZonesReversed: Bool {
         ReaderTapZones.reversed(
             for: engine?.configuration.mode ?? .leftToRight,
@@ -497,12 +473,10 @@ final class ReaderViewModel {
 
     // MARK: Private
 
-    // the tap carries a chapter row, but what the reader was asked for is a point
-    // on the series' number line. which row wins a number moves when a source is
-    // disabled or origins are reordered, so a row tapped off a list drawn a moment
-    // earlier may no longer be the one to open - resolve through the number rather
-    // than trusting the id. falls back to the tapped row so the engine still
-    // reports a real error when the number itself has gone
+    // which row wins a number moves when a source is disabled or origins are
+    // reordered, so a row tapped off a list drawn a moment earlier may no longer
+    // be the one to open - resolve through the number, not the id. falls back to
+    // the tapped row so the engine still reports a real error when the number itself has gone
     private func resolve(
         _ tapped: ChapterRecord.ID,
         among chapters: [StoredChapter]
@@ -525,9 +499,7 @@ final class ReaderViewModel {
         return chapters.first { $0.number == number }?.id ?? tapped.rawValue
     }
 
-    // what a boundary means before anything is loaded: what changed between the
-    // two chapters, and whether any are missing between them. static, so it is
-    // computed once rather than on every approach
+    // static - computed once rather than on every approach
     nonisolated private static func boundaries(
         across chapters: [StoredChapter]
     ) -> [ReaderChapter.ID: ReaderBoundaryInfo] {
@@ -560,9 +532,9 @@ final class ReaderViewModel {
             guard let self else { return }
             Task { await self.flush() }
 
-            // stubs for phases the port deliberately defers - a transition
-            // banner, a chapter-gap warning, session events and tracker sync
-            // all hang off this one callback
+            // a transition banner is the one phase still deferred here - the gap
+            // warning, session events and tracker sync moved to onChapterFinished
+            // / onExplainGap once they got their own hooks
             AppLog.shared.log(
                 "chapter changed to \(chapter.number.formatted()) (explicit: \(explicit))",
                 category: "reader"
@@ -607,9 +579,8 @@ final class ReaderViewModel {
         }
     }
 
-    // the engine reports taps in window space so a zone stays where the reader
-    // sees it rather than moving with the content. the screen keeps this in step
-    // with its own geometry, which is all that is needed to convert
+    // the engine reports taps in window space - the screen keeps this in step
+    // with its own geometry, which is all that's needed to convert
     @ObservationIgnored var surfaceFrame: CGRect = .zero
 
     private func track(chapter: ReaderChapter, page: Int, total: Int) {
@@ -621,11 +592,8 @@ final class ReaderViewModel {
         Task { await save(id, throttled: true) }
     }
 
-    // reaching the boundary is what finishes a chapter, not landing on its last
-    // page - a page can be the last one on screen without ever being read past.
-    //
-    // the engine's count is the fallback because a chapter crossed fast enough
-    // may have had no page reported at all, and keying the total off `reached`
+    // the engine's count is the fallback - a chapter crossed fast enough may
+    // have had no page reported at all, and keying the total off `reached`
     // alone dropped those chapters silently
     private func complete(_ chapter: ReaderChapter, pages: Int) async {
         let id = ChapterRecord.ID(rawValue: chapter.id)
@@ -637,18 +605,16 @@ final class ReaderViewModel {
         await record(chapter)
     }
 
-    // the reading event is independent of the progress save above: the save's
-    // monotonic guard skips a re-read of a finished chapter, but a re-read
-    // completion is still a reading act and today's tally counts acts. the
-    // engine's completed set already makes this once per chapter per sitting
+    // independent of the progress save above - save's monotonic guard skips a
+    // re-read of a finished chapter, but a re-read completion is still a
+    // reading act and today's tally counts acts
     private func record(_ chapter: ReaderChapter) async {
         engine?.setEvent(.recording, for: chapter.id)
 
         do {
-            // the links come back OUT of the same transaction that marked them,
-            // so what the rows are told is what the enqueue actually decided
-            // rather than what finishing a chapter usually means. read after the
-            // write and inside it: a drain cannot clear a column mid-transaction
+            // read after the write, inside the same transaction that wrote it -
+            // a drain cannot clear a column mid-transaction, so this is what the
+            // enqueue actually decided, not a stale read
             let links = try await database.writer.write {
                 [seriesId, seriesTitle] db -> [SeriesTrackerRecord] in
                 var event = ReadingEventRecord(
@@ -659,11 +625,10 @@ final class ReaderViewModel {
                 )
                 try event.insert(db)
 
-                // the other half of "a re-read is still a reading act": the
+                // the other half of "a re-read is still a reading act" - the
                 // save above cannot reach this, so a series read start to finish
                 // again would keep whatever status it was parked at and never
-                // refresh its read date. same transaction as the event, since
-                // both are the same completion
+                // refresh its read date
                 try SeriesRecord.markRead(seriesId, at: .now, db: db)
 
                 return
@@ -675,7 +640,6 @@ final class ReaderViewModel {
             engine?.setEvent(.recorded, for: chapter.id)
             mark(chapter, links: links)
         } catch {
-            // nothing landed, so the badge says nothing rather than lying
             engine?.setEvent(nil, for: chapter.id)
             AppLog.shared.log(
                 "failed to record reading event - \(error)", level: .error, category: "reader")
@@ -684,10 +648,8 @@ final class ReaderViewModel {
 
     // MARK: Trackers
 
-    // the link rows are the whole source of truth here. the pending columns ARE
-    // the queue, so "a push is owed" and "a push is in flight" are one state as
-    // far as a reader watching a boundary is concerned - and neither needs the
-    // sync engine to report anything to this screen
+    // the link rows are the whole source of truth here - the pending columns
+    // ARE the queue, so this needs nothing reported to it from the sync engine
     private func watchTrackers() {
         guard !trackerRows.isEmpty, trackerWatch == nil else { return }
 
@@ -711,10 +673,9 @@ final class ReaderViewModel {
         }
     }
 
-    // called for a chapter the reader has just finished, with the link rows as
-    // the write left them. only a row carrying a queued push waits: everything
-    // else has its answer already, and a chapter that joins the waiting set with
-    // nothing coming spins until the reader leaves - which is what a re-read did
+    // only a row carrying a queued push waits - a chapter that joined the
+    // waiting set with nothing coming would spin until the reader leaves, which
+    // is exactly what a re-read looks like
     private func mark(_ chapter: ReaderChapter, links: [SeriesTrackerRecord]) {
         guard !trackerRows.isEmpty else { return }
 
@@ -724,8 +685,6 @@ final class ReaderViewModel {
             let tracker = Tracker(rawValue: row.id)
             let link = tracker.flatMap { value in links.first { $0.tracker == value } }
 
-            // a service with no link row for this series has nothing to say
-            // about it, which is the same silence as a declined enqueue
             guard let link, let tracker else {
                 engine?.setTrackerState(.skipped, for: chapter.id, service: row.id)
                 continue
@@ -742,10 +701,8 @@ final class ReaderViewModel {
         if waiting { awaitingTrackers.insert(chapter.id) }
     }
 
-    // asks the walk to run now rather than at its next wake, and puts the row
-    // back to spinning so the tap has an answer. the chapter rejoins the waiting
-    // set, which is what lets the observation resolve it again - a retry that
-    // left the state frozen would spin forever
+    // the chapter must rejoin the waiting set, or the observation in settle()
+    // never revisits it and the retry stays frozen at .loading forever
     func retryTracker(_ service: String, on chapter: ReaderChapter.ID) {
         guard let tracker = Tracker(rawValue: service),
             trackerRows.contains(where: { $0.id == service })
@@ -768,10 +725,9 @@ final class ReaderViewModel {
         }
     }
 
-    // one pass per change to this series' links, over the chapters still waiting.
-    // a chapter is dropped the moment every row has an answer, and its glyphs are
-    // then frozen - the columns below clear for the series, so chapter 44 would
-    // otherwise start spinning again when chapter 45 was finished
+    // the pending columns clear for the whole series, not per chapter - without
+    // dropping a chapter once it settles, chapter 44 would start spinning again
+    // when chapter 45 was finished
     private func settle(_ links: [SeriesTrackerRecord]) {
         guard !awaitingTrackers.isEmpty else { return }
 
@@ -794,13 +750,10 @@ final class ReaderViewModel {
         }
     }
 
-    // what a row shows at the moment its chapter is finished, before anything
-    // has been asked of a service. the difference from state(of:) below is the
-    // clean case: there, clean means a push we waited for has landed; here it
-    // means the enqueue declined and no push is coming. the numbers are
-    // identical in both - a service already holding this chapter looks exactly
-    // like one that has just been told - so only having waited can tell them
-    // apart, and a tick that was never earned is the wrong half to guess
+    // differs from state(of:) below only in what a clean read means: there, it
+    // means a push we waited for landed; here, the enqueue declined and none is
+    // coming. the numbers are identical in both cases - only having waited can
+    // tell them apart
     nonisolated private static func initialState(
         of link: SeriesTrackerRecord,
         stalled: Bool
@@ -817,28 +770,17 @@ final class ReaderViewModel {
         forChapter number: Double,
         stalled: Bool
     ) -> ReaderSeparatorModel.Tracker.State {
-        // the reason travels with the state, because the row shows it in place
-        // of a generic word - "Failed" told the reader only what the glyph
-        // already had
         if let reason = link.syncError { return .errored(reason) }
-        // split out of skipped: this one never resolves on its own, and it is
-        // the only tracker state in the reader that needs the reader
+        // split out of skipped - the only tracker state here that needs the reader to resolve
         if stalled { return .signedOut }
-        // owed OR in flight. the two are the same thing to someone watching a
-        // boundary, and the debounce means most of this is the former
         if link.isDirty { return .loading }
-        // the service has heard at least this chapter. floor, because a service
-        // counts whole chapters and 44.5 is a side story
+        // floor, because a service counts whole chapters and 44.5 is a side story
         if Double(link.remoteProgress) >= number.rounded(.down) { return .tracked }
-        // clean, and still behind: the enqueue declined to write it. an entry
-        // the service already calls finished lands here, which is why this is a
-        // minus rather than a tick
         return .skipped
     }
 
-    // inserted complete or not at all: a sitting that read nothing writes no
-    // row, and a force-quit loses only the in-flight sitting - the same tail
-    // the 3-second throttle already accepts
+    // inserted complete or not at all - a force-quit loses only the in-flight
+    // sitting, the same tail the 3-second save throttle already accepts
     private func endSession() async {
         guard let start = sessionStart else { return }
         sessionStart = nil
@@ -875,23 +817,15 @@ final class ReaderViewModel {
 
     // MARK: Completion
 
-    // two conditions. you have not already said completed - a series that is,
-    // has nothing to offer - and an origin says the work itself is over.
-    //
-    // the origin half is an OR across the two that speak for the series: the
-    // metadata origin you picked, and the primary one it falls back to. either
-    // saying Completed is enough, because this opens an offer rather than making
-    // a claim, and a source that does not track publication state reports
-    // Ongoing forever - so requiring agreement would silence the prompt on every
-    // multi-source series with one lazy source in it
+    // two conditions: not already marked completed, and an origin says the work
+    // itself is over
     nonisolated private static func completable(_ series: SeriesRecord?, in db: Database) throws
         -> Bool
     {
         guard let series, series.status != .completed else { return false }
 
-        // the same order EntryView resolves a primary origin in: usable sources
-        // first, then priority. a dead source must not be the one answering for
-        // the series
+        // same order EntryView resolves a primary origin in - a dead source
+        // must not be the one answering for the series
         let primary =
             try OriginRecord
             .filter(OriginRecord.Columns.seriesId == series.id)
@@ -907,9 +841,8 @@ final class ReaderViewModel {
             .asRequest(of: OriginRecord.self)
             .fetchOne(db)
 
-        // the pinned publication supplier, or the primary origin's own row. an OR
-        // rather than agreement, because a source that does not track publication
-        // state reports Ongoing forever and would silence the prompt on every
+        // OR, not agreement - a source that doesn't track publication state
+        // reports Ongoing forever, which would silence the prompt on every
         // multi-source series carrying one lazy source
         let primaryMetadata = try primary?.id.flatMap { originId in
             try MetadataRecord
@@ -927,9 +860,8 @@ final class ReaderViewModel {
             .fetchCount(db) > 0
     }
 
-    // the offer is taken. the write is the same one the details screen makes, so
-    // a series marked here reads as marked everywhere - and markRead's own
-    // exemption means a later re-read cannot undo it
+    // same write the details screen makes, so a series marked here reads as
+    // marked everywhere
     func markCompleted() async {
         guard completable else { return }
         completable = false
@@ -942,8 +874,6 @@ final class ReaderViewModel {
                     .updateAll(db, SeriesRecord.Columns.status.set(to: Status.completed.rawValue))
             }
         } catch {
-            // the offer comes back rather than disappearing on a write that
-            // never landed
             completable = true
             AppLog.shared.log(
                 "failed to mark series completed - \(error)", level: .error, category: "reader")
@@ -964,9 +894,8 @@ final class ReaderViewModel {
 
         do {
             try await database.writer.write { [seriesId] db in
-                // written to every row carrying this number, not just the one being
-                // read - the fraction is what transfers between sources, and it is
-                // what (page + 1) / total already stores
+                // every row carrying this number, not just the one being read -
+                // the fraction is what transfers progress between sources
                 try ChapterRecord.apply(
                     progress: progress,
                     readDate: .now,
@@ -1026,9 +955,9 @@ final class ReaderViewModel {
         return try StoredChapter.fetchAll(db, sql: sql, arguments: [seriesId.rawValue])
     }
 
-    // every row rather than the winners, so a slot carries what else could fill
-    // it. rank stays out of the WHERE and goes into the ORDER BY instead, which
-    // is what lets group() build options in ranking order in a single pass
+    // every row, not just the winners - a slot needs to carry what else could
+    // fill it, so rank stays out of the WHERE and goes into the ORDER BY, which
+    // is what lets ChapterSlot.group() build options in ranking order in one pass
     nonisolated private static func slotRows(
         for seriesId: SeriesRecord.ID,
         in db: Database
@@ -1063,8 +992,6 @@ final class ReaderViewModel {
 // MARK: - Page save
 
 extension ReaderViewModel {
-    // the two answers a save has, in the shape the alert draws. the failure keeps
-    // a Failure rather than the error, so the screen still never sees one
     enum PageSave: Equatable {
         case saved
         case failed(Failure)
@@ -1076,9 +1003,6 @@ extension ReaderViewModel {
             }
         }
 
-        // the sentence a failure states about itself. success has none - the
-        // title says the whole thing, and an alert padded with a second line
-        // saying it again is how a confirmation becomes noise
         var message: String {
             switch self {
             case .saved: ""

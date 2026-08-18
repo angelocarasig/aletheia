@@ -22,15 +22,7 @@ final class StatsViewModel {
 
     private enum Rule {
         static let heatWeeks = 16
-        // the recent list is a sample, not an archive - it opens on five and
-        // expands to the rest, so fetching sixty was fifty-five rows nobody
-        // could reach without a screen that does not exist
         static let sessionLimit = 20
-        // enough to bucket the current day or week AND the one before it, which
-        // is what the chart's headline compares against. a fortnight of sittings
-        // is tens of rows, so the limit is a backstop rather than a window
-        // the chart can be stepped back through the same span the grid draws, so
-        // its sittings have to cover the grid rather than just the current week
         static let chartDays = 16 * 7
         static let chartLimit = 500
     }
@@ -79,9 +71,8 @@ final class StatsViewModel {
 
     // MARK: Query
 
-    // no adult gate here, unlike Home and Library: these are totals over what you
-    // actually read, and one that quietly omits part of it is not a smaller total,
-    // it is a wrong one - the streak and the heatmap would both lie
+    // deliberately no adult gate: these are totals over what was actually read,
+    // and filtering would make the streak and heatmap wrong, not just smaller
     nonisolated private static func stored(
         asOf: Date,
         heatKey: Int,
@@ -124,11 +115,6 @@ final class StatsViewModel {
         )
         let daySet = Set(days)
 
-        // pages, not chapters. the grid and the bar chart sit a screen apart in
-        // the same blue, and encoding different units in one palette is a system
-        // claiming a consistency it does not have. pages also bin better: a day
-        // is 1-20, 21-60 or 61+ rather than 1, 2-3, 4+, which is most of the
-        // resolution a reading day actually has
         let heatRows = try Row.fetchAll(
             db,
             sql: """
@@ -165,9 +151,7 @@ final class StatsViewModel {
                 byAdding: .day, value: -(Rule.chartDays - 1), to: asOf
             )?.localDayKey ?? 0
 
-        // fetched whole rather than aggregated in SQL: the chart buckets by
-        // interval intersection, which needs both timestamps per sitting and
-        // cannot be expressed as a GROUP BY over a stored day key
+        // fetched whole, not aggregated - chart buckets by interval intersection, needs both timestamps per sitting
         let recent = try ReadingSessionEntry.fetch(
             sinceKey: chartKey,
             excluded: [],
@@ -210,7 +194,6 @@ extension StatsViewModel {
             }
         }
         let sessions: [ReadingSessionEntry]
-        // the fortnight the Day/Week chart buckets, timestamps intact
         let recent: [ReadingSessionEntry]
 
         var isEmpty: Bool {
@@ -224,9 +207,6 @@ extension StatsViewModel {
 
 #if DEBUG
     extension StatsViewModel {
-        // the same shape HomeViewModel uses: the pieces directly rather than a whole
-        // Compositor, which would construct every source for a canvas that has no
-        // use for one
         static func preview(snapshot: Snapshot? = nil, failure: Failure? = nil) -> StatsViewModel {
             let database = DatabaseClient.preview
             let model = StatsViewModel(database: database)

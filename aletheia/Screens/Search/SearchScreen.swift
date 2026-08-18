@@ -11,14 +11,10 @@ struct SearchScreen: View {
     var reset: Int = 0
     var source: Source? = nil
     var query: String = ""
-    // a preset is a standing request - filters and a sort with no text - so the
-    // screen opens already searching rather than waiting for input
     var preset: SourcePreset? = nil
-    // a cross-tab request. only the tab root takes one - a pushed screen cannot
-    // be the thing a tab switch lands on
+    // only the tab root takes a cross-tab request - a pushed screen cannot be
+    // the thing a tab switch lands on
     var seed: Router.Search? = nil
-    // a pushed screen sits in the presenting tab's stack; only the tab root owns
-    // one. a seeded global search is always pushed, so it never owns one either
     var embedded: Bool = false
 
     @Environment(\.compositor) private var compositor
@@ -36,8 +32,8 @@ struct SearchScreen: View {
     @State private var gvm: SearchGridViewModel?
     @State private var observing = false
     @State private var showingRefine = false
-    // read rather than observed: the store is written from the view model while
-    // a search is running, and the list is only on screen when one is not
+    // snapshotted rather than observed - the store is written while a search
+    // is running, and the list is only on screen when one is not
     @State private var recents: [String] = []
 
     private enum Layout {
@@ -70,8 +66,6 @@ struct SearchScreen: View {
         }
     }
 
-    // the pushed variants live inside the presenting tab's navigation stack;
-    // only the tab-root global variant owns one
     @ViewBuilder
     private var Global: some View {
         if embedded {
@@ -83,9 +77,6 @@ struct SearchScreen: View {
             NavigationStack {
                 GlobalContent
                     .toolbarVisibility(vm.active ? .visible : .hidden, for: .navigationBar)
-                    // stated rather than inherited, so all five tab roots declare
-                    // the same thing. this root carries no title of its own - the
-                    // bar exists only to hold the search field once it is active
                     .toolbarTitleDisplayMode(.large)
             }
             .modifier(
@@ -93,17 +84,15 @@ struct SearchScreen: View {
                     vm: vm, seed: query, compositor: compositor,
                     request: seed
                 ) {
-                    // the request may land on a tab that currently has a series or a
-                    // grid pushed, which would seed a screen nobody can see. same pop
-                    // the re-tap does, for the same reason
+                    // a cross-tab request could land on a tab with a series or grid
+                    // pushed, seeding a screen nobody can see - pop first
                     seriesRoute = nil
                     gridRoute = nil
                 }
             )
             .onChange(of: reset) {
-                // two-stage, matching the system convention: a re-tap pops any
-                // pushed screen first; only a re-tap already at root clears the
-                // search. embedded has no tab to re-tap and no routes of its own
+                // two-stage, matching the system tab re-tap convention: pop any
+                // pushed screen first, only clear the search on a re-tap at root
                 if seriesRoute != nil || gridRoute != nil {
                     seriesRoute = nil
                     gridRoute = nil
@@ -117,11 +106,9 @@ struct SearchScreen: View {
     private var GlobalContent: some View {
         @Bindable var vm = vm
 
-        // the field lives in the header for both states rather than being swapped
-        // between two layouts - a structural swap on the first keystroke, which
-        // is exactly when `active` flips, would tear down the TextField and drop
-        // the keyboard mid-word. the hero sits above it in the same stack, so
-        // when it collapses only the field's siblings change, never its identity
+        // the field stays in the header for both states rather than being
+        // swapped between layouts - a structural swap exactly when `active`
+        // flips would tear down the TextField and drop the keyboard mid-word
         return CollapsingHeader {
             VStack(spacing: dimensions.spacing.space12) {
                 if !vm.active {
@@ -160,18 +147,10 @@ struct SearchScreen: View {
         .scrollDismissesKeyboard(.immediately)
         .background(.canvas)
         .toolbar {
-            // both adult decisions in one place: what is fetched, then what is
-            // shown. the reveal used to sit in a content row below the field,
-            // where it was one of two controls governing the same subject from
-            // different halves of the screen
+            // both adult decisions live here now - the reveal used to sit in a
+            // content row below the field as a second control on the same subject
             ToolbarItem(placement: .topBarTrailing) {
                 if vm.active {
-                    // present but inert when there is nothing to reveal, rather
-                    // than absent: a lone slashed eye beside an empty slot reads
-                    // as one unexplained control, where the pair reads as a
-                    // sentence - these sources are out, so nothing to uncover
-                    // writes the stored preference, not a per-search reveal: a
-                    // decision you made about covers is one you made once
                     BlurToggle(
                         isOn: !obscured,
                         label: "Adult content",
@@ -187,10 +166,6 @@ struct SearchScreen: View {
                 // absent entirely without the bypass: while adult sources do not
                 // exist, a toggle for them would be the hint that they do
                 if vm.active, bypassAdult {
-                    // retrieval: whether an adultOnly source is queried at all.
-                    // the two states are different things rather than one thing
-                    // struck through - a flame when they are in, a covered eye
-                    // when they are not
                     AdultToggle(
                         isOn: includeAdult,
                         on: "flame",
@@ -202,8 +177,6 @@ struct SearchScreen: View {
             }
         }
         .task(id: vm.active) { recents = RecentSearches.entries }
-        // @AppStorage owns the stored value; the view model mirrors it, so which
-        // sources are queried and when the search re-runs stay one decision
         .task(id: includeAdult) { vm.includeAdult = includeAdult }
         .task(id: bypassAdult) { vm.bypassAdult = bypassAdult }
         .navigationDestination(item: $seriesRoute) { route in
@@ -216,36 +189,27 @@ struct SearchScreen: View {
         }
     }
 
-    // shared by both global shapes so the seeding, the correlator lifecycle and
-    // the tab re-tap behave identically whether the screen owns its stack or was
-    // pushed into someone else's
     private struct GlobalLifecycle: ViewModifier {
         let vm: SearchViewModel
         let seed: String
         let compositor: Compositor
-        // a request from another tab. nil for the embedded shape, which has no
-        // tab to be switched to
         var request: Router.Search? = nil
         var onRequest: () -> Void = {}
 
         func body(content: Content) -> some View {
             content
                 .task {
+                    // must run after configure, or the search runs against no sources
                     vm.configure(
                         sources: compositor.registry.sources, database: compositor.database)
-                    // after configure, or the search runs against no sources.
-                    // only ever seeds the first time - retyping is the reader's
                     guard !seed.isEmpty, vm.query.isEmpty, vm.submitted.isEmpty else { return }
                     vm.query = seed
                 }
-                // keyed on the token, so asking a second time lands a second time.
-                // the unconditional seed above cannot serve this: it declines once
-                // vm.query is non-empty, which after one search it always is
-                //
-                // .task rather than .onChange because a tab's content is built on
-                // first selection - if Search had never been opened, this view did
-                // not exist when the request was made and there was nothing here
-                // to observe the change
+                // keyed on the token so asking a second time re-triggers - the
+                // unconditional seed above only fires once vm.query is empty.
+                // .task rather than .onChange because this view may not have
+                // existed yet when the request was made, so there was nothing to
+                // observe the change
                 .task(id: request?.token) {
                     guard let request else { return }
                     vm.configure(
@@ -264,30 +228,24 @@ struct SearchScreen: View {
 
     // MARK: Adult sources
 
-    // global search spans every source, so there is no single answer to "did you
-    // ask for this" - unset covers
+    // global search spans every source, so there is no single answer to "did
+    // you ask for this" - unset covers
     private var obscured: Bool { blurAdult.blurs(adultSource: false) }
 
-    // the toggle is inert until something on screen could be covered by it - a
-    // control that changes nothing visible is a control with nothing to say.
-    // keyed on the results, not on the preference, so flipping it does not make
-    // the button that flipped it disappear
+    // keyed on the results, not the preference, so flipping the toggle never
+    // makes the button that flipped it disappear
     private var hasAdultResults: Bool {
         vm.sections.contains { section in
             section.stubs.contains { $0.adult }
         }
     }
 
-    // both toggles live in the navbar now, so this row carries only the thing
-    // that is a statement rather than a control, and only while it has one
     @ViewBuilder
     private var AdultControls: some View {
         if vm.active, vm.hiddenAdultCount > 0 {
             HStack(spacing: dimensions.spacing.space8) {
                 Spacer()
 
-                // an excluded source is otherwise just absent, with nothing
-                // saying so - which reads as the search being broken
                 Text("^[\(vm.hiddenAdultCount) source](inflect: true) hidden")
                     .font(.caption)
                     .foregroundStyle(.muted)
@@ -296,10 +254,9 @@ struct SearchScreen: View {
         }
     }
 
-    // two different questions, so two different glyphs: a flame is whether adult
-    // sources are searched at all, an eye is whether what came back is covered.
-    // one symbol for both made "on" ambiguous - on meaning queried, or on meaning
-    // visible. filled when active, so the state has a weight channel too
+    // one symbol used for both queried and visible once made "on" ambiguous -
+    // now a flame is whether adult sources are searched, an eye is whether
+    // results are covered
     private struct AdultToggle: View {
         let isOn: Bool
         let on: String
@@ -340,23 +297,15 @@ struct SearchScreen: View {
         }
     }
 
-    // one shape, always: field, controls, what is applied, results. the screen
-    // used to swap between a seven-row settings form and a grid depending on
-    // whether anything had been typed, which meant the filters could be
-    // configured and then never run, and the results - the reason for the screen
-    // - only existed in one of the two states. see features/source-search.md
+    // one shape, always: this screen used to swap between a settings form and a
+    // grid depending on whether anything had been typed, which let filters be
+    // configured and never run. see features/source-search.md
     @ViewBuilder
     private func FocusedContent(source: Source, gvm: SearchGridViewModel) -> some View {
         @Bindable var gvm = gvm
 
         CollapsingHeader {
             VStack(spacing: dimensions.spacing.space12) {
-                // no tint for an adult source: the title names it and the blur
-                // control sits beside it, so colouring the field only says
-                // something already said twice.
-                //
-                // absent on a shelf preset: that endpoint discards text, so a
-                // field there would accept a query and return the same rows
                 if gvm.supportsSearch {
                     Searchbar(
                         searchText: $gvm.searchText,
@@ -364,8 +313,6 @@ struct SearchScreen: View {
                     )
                 }
 
-                // no applied-filter rail: the refine sheet lists what is on and is
-                // one tap away, and the dot on the pill says that something is
                 SearchGridControls(vm: gvm) { showingRefine = true }
             }
         } content: {
@@ -377,13 +324,11 @@ struct SearchScreen: View {
         }
         .scrollDismissesKeyboard(.immediately)
         .background(.canvas)
-        // the preset names itself; without one the source does
         .navigationTitle(preset?.name ?? source.descriptor.name)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                // shown whenever the query can return adult results, in either
-                // state - gating it on "currently blurred" removed the control
+                // gating this on "currently blurred" once removed the control
                 // that unblurs the moment it was used
                 if gvm.gateOpen {
                     let adult = source.descriptor.adultOnly
@@ -402,9 +347,8 @@ struct SearchScreen: View {
         .sheet(isPresented: $showingRefine) {
             SearchRefineSheet(vm: gvm)
         }
-        // observation runs for the whole life of the screen, empty query or not.
-        // it used to stop and reset the moment the field emptied, which is what
-        // made the filters unrunnable - every source already accepts a nil query
+        // observation used to stop and reset the moment the field emptied,
+        // which made the filters unrunnable - every source accepts a nil query
         // and returns its default listing for one
         .onAppear {
             guard !observing else { return }
@@ -440,9 +384,8 @@ struct SearchScreen: View {
 
     // MARK: Recents
 
-    // stacked cards rather than a List: this sits inside the screen's own
-    // scroll view, and a List there brings its own scrolling, its own insets
-    // and a separator language nothing else on this screen speaks
+    // stacked cards, not a List - this sits inside the screen's own scroll
+    // view, and a nested List brings its own scrolling and insets
     @ViewBuilder
     private var Recents: some View {
         if !recents.isEmpty {
@@ -479,8 +422,6 @@ struct SearchScreen: View {
 
             Spacer(minLength: 0)
 
-            // the field, not a destination: this is the glyph the system uses
-            // wherever a suggestion is loaded into the box rather than run
             Image(systemName: "arrow.up.left")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.muted)
@@ -494,8 +435,6 @@ struct SearchScreen: View {
         )
         .contentShape(.rect)
         .tappable { vm.query = entry }
-        // a second control on the row would be a 44pt target inside a 44pt
-        // target, and removing one entry is rare next to running it again
         .contextMenu {
             Button("Remove", systemImage: "trash", role: .destructive) {
                 RecentSearches.remove(entry)
@@ -504,8 +443,6 @@ struct SearchScreen: View {
         }
     }
 
-    // no glass of its own: as a toolbar item the navbar draws the surface, and
-    // icons drop to icon24 to sit inside the bar's height
     private var Sections: some View {
         VStack(spacing: dimensions.spacing.space16) {
             ForEach(vm.sections) { section in

@@ -14,9 +14,8 @@ struct CoverRecord: Codable, DatabaseRecord, UniqueRecord, StorableRecord {
     private(set) var id: ID?
 
     private(set) var seriesId: SeriesRecord.ID
-    // provenance, not ownership. null means the supplier's metadata row was
-    // deleted, and the cover stays in the pool unlabelled - the same thing
-    // originId meant before metadata existed
+    // provenance, not ownership - null means the supplier's metadata row was
+    // deleted, and the cover stays in the pool unlabelled rather than being removed
     private(set) var metadataId: MetadataRecord.ID?
 
     var url: URL

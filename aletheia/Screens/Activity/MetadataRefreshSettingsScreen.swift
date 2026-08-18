@@ -8,10 +8,6 @@
 import BackgroundTasks
 import SwiftUI
 
-// unlike RefreshSettingsScreen this is a real cadence choice, not an on/off
-// toggle - metadata does not change often enough to justify daily checking
-// the way chapters do, so the control offers the actual options rather than
-// hiding behind a switch. see docs/features/metadata-refresh.md
 struct MetadataRefreshSettingsScreen: View {
     @AppStorage(Preferences.Key.metadataRefreshInterval)
     private var interval: MetadataRefreshInterval = Preferences.Default.metadataRefreshInterval
@@ -31,10 +27,8 @@ struct MetadataRefreshSettingsScreen: View {
     #if DEBUG
         @State private var armed: Armed = .none
 
-        // a request with no earliest date is a third state, not a missing one: it is
-        // armed and carries no floor, which is the whole point of the toggle. it is
-        // also self-clearing - the run that takes it re-arms with a date, so the
-        // toggle falls back to off on its own rather than claiming a spent request
+        // no-earliest-date is a distinct armed state, not a missing one - self-clearing, since the run
+        // that consumes it re-arms with a date, so this never claims a spent request
         private enum Armed: Equatable {
             case none
             case soon
@@ -67,10 +61,8 @@ struct MetadataRefreshSettingsScreen: View {
             }
 
             #if DEBUG
-                // nothing can make ios launch the task now, so the offer is to drop
-                // the floor and let the next natural opportunity take it. the
-                // pending request is what this reads - anything derived from the
-                // setting would state a run four separate conditions can prevent
+                // reads the scheduler's pending request, not the setting - deriving a state from the setting
+                // alone would claim a run that four separate conditions can still prevent
                 Section {
                     Toggle("Run at the Next Opportunity", isOn: asap)
                         .disabled(interval == .off)
@@ -84,8 +76,6 @@ struct MetadataRefreshSettingsScreen: View {
         }
         #if DEBUG
             .task { armed = await pendingRun() }
-            // a finished run re-arms behind the floor again, so the toggle is stale
-            // the moment the walk ends and stale again on every return to the screen
             .onChange(of: compositor.metadata.isRunning) { _, running in
                 guard !running else { return }
                 Task { armed = await pendingRun() }
@@ -97,8 +87,7 @@ struct MetadataRefreshSettingsScreen: View {
         #endif
         .navigationTitle("Metadata Updates")
         .navigationBarTitleDisplayMode(.inline)
-        // the toggle writes a preference; the schedule has to be told
-        // explicitly, same as RefreshSettingsScreen does for its own toggle
+        // AppStorage does not reschedule the BGTask on its own - must be told explicitly
         .onChange(of: interval) { _, _ in
             compositor.metadata.schedule()
 
@@ -114,9 +103,6 @@ struct MetadataRefreshSettingsScreen: View {
             : "iOS chooses when this runs, usually while the device is idle and charging. Synopses, ratings and publication status don't change often, so this checks far less frequently than new chapters do."
     }
 
-    // one sentence per switch, same reasoning RefreshSettingsScreen.footer
-    // gives: "skip finished" reads obvious and is not, since the status only
-    // updates when the series is opened
     private var skipFooter: String {
         var lines: [String] = []
 
@@ -138,10 +124,7 @@ struct MetadataRefreshSettingsScreen: View {
     }
 
     #if DEBUG
-        // the toggle writes a request and reads the answer back, so what it shows is
-        // the scheduler's state rather than the tap's. turning it off restores the
-        // ordinary floor - there is no third position for "cancel everything", since
-        // that is what the picker above is for
+        // reads the scheduler's state back, not the tap - there is no "cancel everything" position, that's the picker's job
         private var asap: Binding<Bool> {
             Binding(
                 get: { armed == .soon },

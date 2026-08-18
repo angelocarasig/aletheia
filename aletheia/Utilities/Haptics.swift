@@ -7,8 +7,8 @@
 
 import CoreHaptics
 
-// the bypass toggle's celebration: "shave and a haircut, two bits". haptics are
-// optional hardware, so every failure path is a silent no-op
+// the beat offsets below play "shave and a haircut, two bits" - haptics are
+// optional hardware, so every failure path here is a silent no-op
 enum BypassHaptic {
     private static let engine: CHHapticEngine? = {
         guard CHHapticEngine.capabilitiesForHardware().supportsHaptics else { return nil }
@@ -49,36 +49,30 @@ enum BypassHaptic {
     }
 }
 
-// the ramp under a counter rolling up to its total: dense at the start, thinning
-// as it settles, so the fingertip feels the same deceleration the digits show.
+// one CHHapticPattern, not a loop of awaited sleeps - the offsets are the
+// effect itself, not a delay standing in for state, and handing the whole
+// schedule to core haptics keeps it that way: nothing here waits on anything.
 //
-// one CHHapticPattern rather than a loop of awaited sleeps. the offsets are the
-// effect itself rather than a delay standing in for state, and handing the whole
-// schedule to core haptics keeps it that way - nothing here waits on anything.
-//
-// it is also, deliberately, more impulses than design.md 11 allows per action.
-// that rule counts EVENTS, and a ramp is one event with texture; the carve-out
-// and its two conditions are written down beside the rule
+// deliberately more impulses than design.md's 11-per-action rule allows -
+// that rule counts EVENTS, and a ramp is one event with texture. the
+// carve-out and its two conditions are written down beside the rule
 enum CountUpHaptic {
     private static let engine: CHHapticEngine? = {
         guard CHHapticEngine.capabilitiesForHardware().supportsHaptics else { return nil }
         return try? CHHapticEngine()
     }()
 
-    // matched to the curve the digits use, so the last taps land as the numbers
-    // stop rather than after they have - then one firm pop on the beat the cards
-    // snap back to their resting size.
-    //
-    // the ramp fades INTO that pop deliberately. an even ramp ending at full
-    // strength has no shape, and a ramp that fades to nothing just stops; fading
-    // out and then landing one sharp tap is what makes the whole thing read as a
-    // single gesture with a release rather than as taps that ran out
+    // matched to the curve the digits use, so the last taps land as the
+    // numbers stop, then one firm pop as the cards snap back to resting size.
+    // the ramp fades INTO that pop deliberately - fading to nothing then
+    // landing a sharp tap reads as a gesture with a release, not taps that
+    // ran out
     static func play(duration: TimeInterval, steps: Int = 18) {
         guard let engine, steps > 1, duration > 0 else { return }
 
         var events = (0..<steps).map { step -> CHHapticEvent in
             let progress = Double(step) / Double(steps - 1)
-            // the inverse of easeOut: even progress through the VALUE means
+            // inverse of easeOut - even progress through the VALUE means
             // offsets that spread out over time, which is the thinning
             let eased = 1 - pow(1 - progress, 1.0 / 3.0)
             let intensity = Float(0.45 * (1 - progress) + 0.08)
@@ -93,8 +87,7 @@ enum CountUpHaptic {
             )
         }
 
-        // sharper as well as stronger: sharpness is what separates a tap from a
-        // thud, and this one has to be heard over the ramp it follows
+        // sharper as well as stronger - has to be heard over the ramp it follows
         events.append(
             CHHapticEvent(
                 eventType: .hapticTransient,

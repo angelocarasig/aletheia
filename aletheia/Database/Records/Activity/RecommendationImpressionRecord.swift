@@ -9,13 +9,7 @@ import Foundation
 import GRDB
 import Tagged
 
-// what the reader was actually shown, which nothing else in this database
-// records. a recommendation can only be acted on if it reached the screen, so
-// without this "shown and ignored" and "never shown" are the same absence - and
-// they are opposite diagnoses, one about the recommendation and one about where
-// it was placed
-//
-// the rest of the funnel is NOT here on purpose. added to library, chapters
+// the rest of the funnel is NOT here on purpose - added to library, chapters
 // read, completed, dropped and re-read are already answerable from series,
 // chapter and reading_event, and logging them twice would create a second
 // account of the same fact that can disagree with the first
@@ -23,42 +17,36 @@ struct RecommendationImpressionRecord: Codable, DatabaseRecord {
     typealias ID = Tagged<Self, Int64>
     private(set) var id: ID?
 
-    // no foreign key, on two counts. catalogId names a row in the frozen model
-    // bundle, which has no table here at all; and seedSeriesId follows
-    // reading_event, whose comment applies unchanged - history must outlive the
-    // launch purge and series merges
+    // no foreign key, on two counts - catalogId names a row in the frozen model
+    // bundle, which has no table here at all, and seedSeriesId follows
+    // reading_event's same survival rationale
     var catalogId: Int64
     var catalogTitle: String
     var seedSeriesId: SeriesRecord.ID
     // null on the projected path, where the seed resolved to no catalogue row
     var seedCatalogId: Int64?
 
-    // one render of the rail. without it, three rows are three unrelated events
-    // rather than a set the reader chose between, and the choice is the signal
     var batchId: String
     var rank: Int
     var surface: String
     var modelVersion: String
 
-    // what the model claimed at the time. the model will change, and a judgement
-    // re-scored with later weights is not evidence about the decision that was
-    // actually made - the two metrics that already failed here failed by being
-    // applied after the fact
+    // what the model claimed at the time - a judgement re-scored with later
+    // weights is not evidence about the decision actually made
     var score: Double
     var confidence: Double
     var blockTag: Double
     var blockEmbedding: Double
     var blockEra: Double
 
-    // membership moves, so this has to be the answer at show time. ignoring a
-    // recommendation for something already owned means something different from
-    // ignoring a new one, and a join would report today's answer instead
+    // membership moves, so this has to be the answer at show time - a join would
+    // report today's answer instead of what was true when it was shown
     var alreadyInLibrary: Bool
     // reserved for the position experiment: two otherwise equal recommendations
     // swapped, to separate rank from quality. nothing writes true yet
     var shuffled: Bool
 
-    // null means shown and not acted on, which is the whole point of the table
+    // null means shown and not acted on
     var tappedDate: Date?
     var occurredDate: Date
     var localDayKey: Int
@@ -104,8 +92,6 @@ struct RecommendationImpressionRecord: Codable, DatabaseRecord {
 // MARK: - Surface
 
 extension RecommendationImpressionRecord {
-    // stored as text rather than an int: a surface added later must not depend on
-    // the order this enum happens to be written in
     enum Surface: String, Codable {
         case detailsRail
     }
@@ -165,21 +151,18 @@ extension RecommendationImpressionRecord {
     }
 
     static func createIndexes(db: Database) throws {
-        // the tap is written by id, but every read is by what was shown
         try db.create(
             index: "idx_recommendation_impression_catalogId",
             on: databaseTableName,
             columns: [Columns.catalogId.name],
             ifNotExists: true
         )
-        // "what has this series already shown, and was any of it taken"
         try db.create(
             index: "idx_recommendation_impression_seed_occurredDate",
             on: databaseTableName,
             columns: [Columns.seedSeriesId.name, Columns.occurredDate.name],
             ifNotExists: true
         )
-        // one render, for the choice-set reads that ask what competed
         try db.create(
             index: "idx_recommendation_impression_batchId",
             on: databaseTableName,

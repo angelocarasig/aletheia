@@ -40,8 +40,8 @@ struct DetailsSources: View {
                 }
             }
         }
-        // the new order arrives through the observation, so the tap that caused it
-        // is long finished by the time the rows move
+        // the new order arrives through the observation, well after the tap
+        // that caused it - the animation has to be explicit here
         .animation(Layout.settle, value: origins)
         .sheet(isPresented: $ordering) {
             OriginOrder(origins: origins, onCommit: onReorder)
@@ -90,9 +90,6 @@ struct DetailsSources: View {
         }
     }
 
-    // classification and publication are series-level and already shown once in
-    // the metadata section - repeating them per origin says nothing new. what
-    // is per-origin is how much it contributes and how fresh that is
     private func Details(_ origin: Origin) -> some View {
         VStack(alignment: .leading, spacing: dimensions.spacing.space2) {
             HStack(alignment: .firstTextBaseline, spacing: dimensions.spacing.space8) {
@@ -112,15 +109,14 @@ struct DetailsSources: View {
         }
     }
 
-    // the attempt date, not a first-seen date: the row says how long ago the app
-    // last tried and got nothing, which is the fact it actually holds
+    // failedDate is the last-attempt date, not first-seen - the row says how
+    // long ago the app last tried and got nothing
     @ViewBuilder
     private func Trouble(_ origin: Origin) -> some View {
         if let reason = origin.failureReason {
             VStack(alignment: .leading, spacing: dimensions.spacing.space4) {
                 Group {
                     if let failedDate = origin.failedDate {
-                        // one Text, or the sentence stops wrapping
                         LiveRelative(date: failedDate) { relative in
                             Text("\(reason) Last tried \(relative).")
                         }
@@ -137,10 +133,6 @@ struct DetailsSources: View {
         }
     }
 
-    // half of the reasons above end with the words "try again", and until this
-    // shipped there was nothing on the row to try again with. the only other
-    // route was Refresh Chapters in the overflow, which checks every origin and
-    // never names the one that failed
     @ViewBuilder
     private func Retry(_ origin: Origin) -> some View {
         if retrying.contains(origin.id) {
@@ -171,8 +163,6 @@ struct DetailsSources: View {
         }
     }
 
-    // two origins from one source render the same name and icon, so the slug is
-    // surfaced exactly then - it is the only fact telling the listings apart
     private var duplicatedNames: Set<String> {
         Set(Dictionary(grouping: origins, by: \.name).filter { $1.count > 1 }.keys)
     }
@@ -193,9 +183,9 @@ struct DetailsSources: View {
         .lineLimit(1)
     }
 
-    // a marker, not the slug - mangadex slugs are uuids that would push the
-    // chapter count off the row, and eight characters is already past the first
-    // uuid group, which is where two listings stop looking alike
+    // eight characters, not the full slug - a uuid slug would push the chapter
+    // count off the row, and eight is already past the first uuid group,
+    // which is where two listings stop looking alike
     private func marker(for slug: String) -> String {
         slug.count <= Layout.slugLength ? slug : slug.prefix(Layout.slugLength) + "..."
     }
@@ -234,7 +224,6 @@ struct DetailsSources: View {
 
             Divider()
 
-            // a series must always keep at least one origin
             Button(role: .destructive) {
                 onRemove(origin.id)
             } label: {
@@ -257,10 +246,9 @@ extension DetailsSources {
 
 // MARK: - Previews
 
-// every sentence that can reach this row, stepped through one at a time. they
-// are written out rather than read from the error types because that is the
-// point: the column stores the text, so what a reader sees is whatever was
-// true when it failed, not what the enum says today
+// written out rather than read from the error types - failureReason is a
+// stored column, so what a reader sees is whatever text was true when it
+// failed, not what the enum says today
 private struct SourcesPreview: View {
     @State private var index = 0
     @State private var retrying: Set<Int64> = []
@@ -280,8 +268,6 @@ private struct SourcesPreview: View {
         ),
         ("Verification needed", "This source needs to verify your browser before it can be read."),
         ("Unknown", "Something unexpected went wrong. Please try again."),
-        // the longest sentence any of these can be, which is where the two-line
-        // clamp and the button below it have to still look deliberate
         (
             "Two lines",
             "The server responded but returned nothing to read. This usually means the listing moved."
@@ -313,8 +299,6 @@ private struct SourcesPreview: View {
                 onSetPrimary: { _ in },
                 onReorder: { _ in },
                 onRemove: { _ in },
-                // held long enough to see, since the spinner is the half of this
-                // control that only exists while a request is in flight
                 onRetry: { id in
                     retrying.insert(id)
                     Task {
@@ -378,8 +362,6 @@ private struct SourcesPreview: View {
         .environment(\.colorScheme, .dark)
 }
 
-// the three ways a source stops being usable, none of which are failures: the
-// row keeps its rank and dims, and none of them offer a retry
 #Preview("Unavailable") {
     ScrollView {
         DetailsSources(
@@ -396,8 +378,8 @@ private struct SourcesPreview: View {
                     id: 3, name: "Atsumaru", slug: "op", host: "atsu.moe", url: nil, icon: nil,
                     priority: 2, chapterCount: 0, fetchedDate: nil, availability: .missing,
                     failureReason: nil, failedDate: nil),
-                // a disabled source that was also failing shows no trouble line:
-                // it is not failing, it is switched off
+                // disabled overrides failing - Origin.failing requires
+                // availability == .available, so this row shows no trouble line
                 .init(
                     id: 4, name: "MangaDex", slug: "uuid", host: "mangadex.org", url: nil,
                     icon: nil, priority: 3, chapterCount: 900, fetchedDate: nil,

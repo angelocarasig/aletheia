@@ -15,10 +15,8 @@ enum RecentSearches {
         UserDefaults.standard.stringArray(forKey: Preferences.Key.recentSearches) ?? []
     }
 
-    // a search is filed once per debounced pause, so typing "solo" arrives here
-    // as "so", then "sol", then "solo". an entry the new query grew out of is
-    // dropped rather than kept beside it, which also covers the exact repeat -
-    // a string is a prefix of itself
+    // debounced typing files partial queries too - drop entries that are a prefix
+    // of the new one so "sol" doesn't linger beside "solo"
     static func record(_ query: String) {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.count >= minimum else { return }

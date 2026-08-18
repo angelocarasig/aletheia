@@ -42,20 +42,17 @@ internal struct SeriesFTS5View: ViewRecord {
 
 extension SeriesFTS5View {
     static func createView(db: Database) throws {
-        // create FTS5 table (populated and maintained via triggers)
         try db.create(virtualTable: databaseTableName, options: [.ifNotExists], using: FTS5()) {
             t in
-            // Unicode tokenizer with diacritic removal (for international titles)
+            // diacritic removal for international titles
             t.tokenizer = .unicode61(diacritics: .remove)
 
-            // indexed columns for full-text search
             t.column("titles")
             t.column("synopses")
             t.column("tags")
         }
 
-        // wrap trigger creation in savepoint for atomic rollback
-        // if any trigger fails, all triggers are rolled back
+        // savepoint so a failed trigger rolls all of them back, not a partial set
         try db.inSavepoint {
             try createTriggers(db: db)
             return .commit
@@ -91,7 +88,7 @@ extension SeriesFTS5View {
 
     private static func createTriggers(db: Database) throws {
         // series carries no indexed text of its own - the row is created empty and
-        // filled in by the title/origin/tag triggers. nothing on series can dirty
+        // filled in by the title/metadata/tag triggers. nothing on series can dirty
         // the index, so there is deliberately no AFTER UPDATE ON series trigger.
         try db.execute(
             sql: """
@@ -162,7 +159,6 @@ extension SeriesFTS5View {
                     """)
         }
 
-        // trigger for tag displayName updates
         try db.execute(
             sql: """
                 CREATE TRIGGER IF NOT EXISTS \(databaseTableName)_tag_au

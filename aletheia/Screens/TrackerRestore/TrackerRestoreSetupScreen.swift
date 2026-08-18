@@ -8,19 +8,11 @@
 import GRDB
 import SwiftUI
 
-// the press state of a Step card, published by its own button style so the
-// label can read it - the same shape DetailsSetup.swift uses for its own
-// Next/Finish cards. not reused directly: that type is private to its own
-// file, and this flow is two steps rather than three and has no reason to
-// share code with a screen it looks nothing else like
 extension EnvironmentValues {
     @Entry fileprivate var stepPressed = false
 }
 
 private struct StepButtonStyle: ButtonStyle {
-    // GRDB.Configuration also lives at module scope in this file (needed
-    // below for the raw tracker-link query), so the protocol's own
-    // Configuration typealias is spelled out rather than left bare
     func makeBody(configuration: ButtonStyleConfiguration) -> some View {
         configuration.label
             .environment(\.stepPressed, configuration.isPressed)
@@ -30,17 +22,6 @@ private struct StepButtonStyle: ButtonStyle {
     }
 }
 
-// two steps, pushed rather than shown together: which tracker, then which
-// sources. nothing here writes to the database - the first write anywhere in
-// this flow is a row's own Save, on the queue screen Start pushes to once
-// composer.start() (LiveTrackerImportSource, see MigrationSource) comes
-// back with rows
-//
-// which tracker is a plain local choice, not composer state - unlike the
-// old per-flow composer, MigrationComposer takes one already-resolved
-// source, so nothing about the pull can be decided until this step answers
-// it. the composer itself is only built once a tracker is chosen, right
-// before the Sources step needs one to search across
 struct TrackerRestoreSetupScreen: View {
     var onFinish: () -> Void
 
@@ -59,10 +40,6 @@ struct TrackerRestoreSetupScreen: View {
         static let overlineTracking: CGFloat = 1.2
     }
 
-    // which trackers actually have a service behind them that can answer a
-    // whole-list pull - a fact about which concrete service backs each case,
-    // fixed at compile time rather than something worth an actor round trip
-    // to ask for
     private static let bulkListable: Set<Tracker> = [.anilist, .myAnimeList, .mangaBaka]
 
     var body: some View {
@@ -71,11 +48,6 @@ struct TrackerRestoreSetupScreen: View {
                 guard selectedTracker == nil else { return }
                 selectedTracker = restorableTrackers.first
             }
-            // rebuilds whenever the chosen tracker changes - construction is
-            // pure (no I/O until Start), so there is nothing to preserve by
-            // patching an existing instance instead. any source selection
-            // already made resets with it, the same way switching trackers
-            // reset nothing else about the flow either
             .task(id: selectedTracker) {
                 guard let selectedTracker else {
                     composer = nil
@@ -102,28 +74,16 @@ struct TrackerRestoreSetupScreen: View {
             }
     }
 
-    // only a tracker this account is actually signed in to can ever be
-    // pulled from - listing the rest and explaining why they're disabled is
-    // a "not signed in" case Save would otherwise hit at the very end of a
-    // commit, which is the wrong place to discover it. order follows
-    // Tracker.allCases so a reader who has connected more than one sees a
-    // stable order
     private var signedInTrackers: [Tracker] {
         Tracker.allCases.filter { compositor.trackers.accounts[$0] != nil }
     }
 
-    // the ones actually offered as a pull source: signed in AND backed by a
-    // service that can answer a bulk pull
     private var restorableTrackers: [Tracker] {
         signedInTrackers.filter { Self.bulkListable.contains($0) }
     }
 
-    // a preventive check ahead of any search: a tracker's own list can carry
-    // an entry the reader already linked before this pull ran - by a
-    // previous restore, or by hand from Details - and creating a series for
-    // it a second time is exactly the origin-uniqueness crash this flow used
-    // to hit. those rows are marked rather than dropped, so they stay visible
-    // in their own pill instead of just vanishing from the count
+    // marks entries already linked elsewhere rather than dropping them - creating a
+    // series for one again is the origin-uniqueness crash this flow used to hit
     private static func alreadyLinkedRemoteIds(
         among remoteIds: [Int64],
         tracker: Tracker,
@@ -140,11 +100,6 @@ struct TrackerRestoreSetupScreen: View {
         return Set((rows ?? []).map(\.remoteId))
     }
 
-    // MARK: Step 1 - Tracker
-
-    // the first page because it decides everything the second one needs -
-    // which sources even apply is not tracker-specific today, but the pull
-    // itself is, and there is nothing to search for until it has run
     private var TrackerStep: some View {
         TrackerStepContent
             .modifier(
@@ -166,8 +121,6 @@ struct TrackerRestoreSetupScreen: View {
                 }
             )
             .navigationDestination(isPresented: $connecting) {
-                // pushed into this stack rather than opening Settings, so
-                // connecting does not cost the reader the flow they are in
                 TrackingScreen()
                     .containerBackground(.clear, for: .navigation)
             }
@@ -193,15 +146,10 @@ struct TrackerRestoreSetupScreen: View {
         }
     }
 
-    // the same "nothing to work with yet" shape DetailsSetup's own Trackers
-    // page uses when nothing is connected
     private var NoAccounts: some View {
         ContentUnavailableView {
             Label("No Accounts Connected", systemImage: "person.crop.circle.badge.plus")
         } description: {
-            // signed into something is a real, different state from signed
-            // into nothing - a reader connected only to mangaBaka should not
-            // be told to go connect an account they already have
             Text(
                 signedInTrackers.isEmpty
                     ? "Connect a tracker to restore your library from its list."
@@ -215,13 +163,6 @@ struct TrackerRestoreSetupScreen: View {
         }
     }
 
-    // the tracker pick is a chosen option, same shape DetailsEdit uses for
-    // its own preferred-supplier rows: tint + trailing checkmark on the
-    // pick, plain interactive glass on everything else. a tracker without a
-    // bulk-listing service behind it stays untappable and says so, the same
-    // "no working else" a source protocol opt-in would require. the signed-in
-    // username underneath is the same fact TrackingScreen's own card shows -
-    // this list is only ever signed-in trackers, so an account always exists
     private func TrackerRow(_ tracker: Tracker) -> some View {
         let restorable = Self.bulkListable.contains(tracker)
         let chosen = restorable && selectedTracker == tracker
@@ -273,8 +214,6 @@ struct TrackerRestoreSetupScreen: View {
         .accessibilityAddTraits(chosen ? .isSelected : [])
     }
 
-    // MARK: Step 2 - Sources
-
     private func SourcesStep(_ composer: MigrationComposer<TrackerImportEntry>) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: dimensions.spacing.space12) {
@@ -315,15 +254,6 @@ struct TrackerRestoreSetupScreen: View {
         }
     }
 
-    // membership, not a chosen option, but the same visual language: tint +
-    // trailing checkmark when picked, plain interactive glass otherwise.
-    // unlike TrackerRow this stays tappable while chosen - it toggles rather
-    // than picks, so retapping the current state must be able to undo it.
-    // base url + fingerprint underneath are the same identity SourceRecord.hash
-    // is built from (descriptor.fingerprint, CLAUDE.md §6) - useful here
-    // because this screen is exactly where a reader is choosing between
-    // sources that may look alike. deliberately not SourcePing - that answers
-    // "is it up right now", which is a different question from "what is this"
     private func SourceRow(_ composer: MigrationComposer<TrackerImportEntry>, _ source: Source)
         -> some View
     {
@@ -374,10 +304,6 @@ struct TrackerRestoreSetupScreen: View {
         .sensoryFeedback(.selection, trigger: selected)
     }
 
-    // the flow's own Finish: not a NavigationLink, since it has to run
-    // composer.start() and only push once real rows come back - the same
-    // "Button styled like the Step card it sits beside" DetailsSetup's own
-    // Finish() is, for the same reason (dismiss() there, an async gate here)
     private func StartButton(_ composer: MigrationComposer<TrackerImportEntry>) -> some View {
         let canStart = !composer.selectedSourceSlugs.isEmpty && !composer.loading
 
@@ -400,13 +326,6 @@ struct TrackerRestoreSetupScreen: View {
         .opacity(canStart || composer.loading ? 1 : 0.5)
     }
 
-    // MARK: Chrome
-
-    // progression as a row rather than a pinned full-width button, the same
-    // recipe DetailsSetup's own Step card uses: one colour, drawn as the
-    // foreground and again at low opacity behind it. an accent on an ACTION
-    // rather than on state, which is the case that colour is allowed to mean
-    // something every time
     private func Step(
         overline: String,
         title: String,
@@ -416,9 +335,6 @@ struct TrackerRestoreSetupScreen: View {
     ) -> some View {
         HStack(spacing: dimensions.spacing.space12) {
             VStack(alignment: .leading, spacing: dimensions.spacing.space4) {
-                // the word that does the work, ahead of the destination it
-                // names - "this says what the tap DOES before it says where
-                // it goes", DetailsSetup.swift's own words for the same card
                 Text(overline.uppercased())
                     .font(.caption2)
                     .fontWeight(.semibold)
@@ -456,11 +372,6 @@ struct TrackerRestoreSetupScreen: View {
         .animation(.settle, value: loading)
     }
 
-    // one frame for both steps, and one way out of the flow from either -
-    // trailing rather than leading, because step two's own back chevron
-    // already claims the leading slot once a NavigationLink push is in the
-    // stack. DetailsSetup's own Chrome makes the identical move for the
-    // identical reason: "back stays leading, where the system puts it"
     private struct Chrome<Footer: View>: ViewModifier {
         let title: String
         let subtitle: Text

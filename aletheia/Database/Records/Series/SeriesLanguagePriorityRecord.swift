@@ -9,20 +9,14 @@ import Foundation
 import GRDB
 import Tagged
 
-// which language wins when the same chapter exists in several. ranked above
-// origin in best_chapter on purpose: a source you trust is a preference, a
-// language you cannot read is a wall, and the preferred source's chinese copy is
-// worth nothing next to a lower source's english one.
-//
-// scoped to the series rather than the origin because it is consulted before
-// origin - the rows it compares come from different sources
+// ranked above origin in best_chapter on purpose - a source you trust is a
+// preference, a language you cannot read is a wall, and the preferred source's
+// chinese copy is worth nothing next to a lower source's english one
 struct SeriesLanguagePriorityRecord: Codable, DatabaseRecord {
     typealias ID = Tagged<Self, Int64>
     private(set) var id: ID?
 
     private(set) var seriesId: SeriesRecord.ID
-    // a column, not a foreign key - LanguageCode is an enum stored as text, and
-    // there is no language table for it to point at
     var language: LanguageCode
     var priority: Int
 
@@ -63,7 +57,6 @@ extension SeriesLanguagePriorityRecord {
     }
 
     static func createIndexes(db: Database) throws {
-        // foreign key index
         try db.create(
             index: "idx_series_language_priority_seriesId",
             on: databaseTableName,
@@ -92,10 +85,8 @@ extension SeriesLanguagePriorityRecord {
 // MARK: - Seeding
 
 extension SeriesLanguagePriorityRecord {
-    // every series carries all four rows in the default order from creation -
-    // ranking never depends on a row being absent. insert-or-ignore, so calling
-    // this again (chapter refresh healing a series that predates seeding) never
-    // touches an order the reader has since set
+    // insert-or-ignore, so calling this again (chapter refresh healing a series
+    // that predates seeding) never touches an order the reader has since set
     static func seedDefaults(for seriesId: SeriesRecord.ID, in db: Database) throws {
         for (index, language) in LanguageCode.defaultPriority.enumerated() {
             var row = SeriesLanguagePriorityRecord(

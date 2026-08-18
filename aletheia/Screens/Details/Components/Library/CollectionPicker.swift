@@ -7,8 +7,6 @@
 
 import SwiftUI
 
-// membership stages locally and commits on Done, matching the chapter
-// section's order sheets - Cancel discards the pending diff
 struct CollectionPicker: View {
     let collections: [CollectionPicker.Item]
     let isSaving: Bool
@@ -41,7 +39,6 @@ struct CollectionPicker: View {
         static let settle: Animation = .smooth(duration: 0.2)
     }
 
-    // only memberships that actually moved get written
     private var changed: [Int64] {
         collections.filter { working.contains($0.id) != $0.contains }.map(\.id)
     }
@@ -73,10 +70,9 @@ struct CollectionPicker: View {
             CollectionForm(isSaving: isSaving, onCreate: onCreate)
         }
         .sensoryFeedback(.selection, trigger: working)
-        // presented before the read lands, so the rows can arrive after init;
-        // reseed only while nothing has been staged. once staged, still fold in
-        // rows created from here (they arrive already joined) or Done would
-        // read the new membership as a pending removal
+        // once staged, fold in rows created from here instead of reseeding -
+        // they arrive already joined, and a reseed would read that as a
+        // pending removal
         .onChange(of: collections) { previous, latest in
             if touched {
                 let known = Set(previous.map(\.id))
@@ -112,8 +108,6 @@ struct CollectionPicker: View {
                 .padding(.bottom, dimensions.spacing.space24)
             }
             .opacity(isSaving ? Layout.savingOpacity : 1)
-            // on an ancestor of every row, so a tick leaving one and landing on
-            // another is a single transaction
             .animation(Layout.settle, value: working)
         }
     }
@@ -149,14 +143,9 @@ struct CollectionPicker: View {
 }
 
 extension CollectionPicker {
-    // the membership row as the details screen resolves it: every collection
-    // that exists, each saying whether this series is in it
     typealias Item = DetailsComposer.Library.Collection
 }
 
-// membership is non-exclusive, so the marker is a leading check-circle rather
-// than a trailing tick. shared by the staged picker and the instant one in the
-// setup flow - the two differ in when they write, never in how a row reads
 struct CollectionRow: View {
     let collection: CollectionPicker.Item
     let joined: Bool
@@ -193,7 +182,6 @@ struct CollectionRow: View {
             Spacer(minLength: 0)
         }
         .padding(dimensions.spacing.space12)
-        // flat tinted fill, not glass - rows are content, glass is chrome
         .background(
             joined
                 ? AnyShapeStyle(Palette.brandSubtle)

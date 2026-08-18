@@ -8,17 +8,8 @@
 import Kingfisher
 import SwiftUI
 
-// artwork with three states, not two. every call site in the app drew a
-// shimmering placeholder while loading and left it there when the load FAILED -
-// so a cover whose url is permanently gone shimmers forever, which says "still
-// working" about something that will never finish. it read as a stuck app
-// rather than a missing image, and it is the reason a 404 on one poster looked
-// like a bug in the reader.
-//
-// the failed state is deliberately quiet: a glyph on the same fill the
-// placeholder used. artwork that will not load is not an error the reader can
-// act on - the series is still theirs, still readable, and the row still names
-// it. what it must not do is imply work in progress
+// a dead url used to leave the loading shimmer up forever, reading as a stuck
+// app rather than a missing image - failed is tracked separately from loading
 struct CoverImage: View {
     let url: URL?
     var contentMode: SwiftUI.ContentMode = .fill
@@ -28,15 +19,12 @@ struct CoverImage: View {
 
     private enum Layout {
         static let fillOpacity = 0.1
-        // sized against the frame it is given rather than fixed: this draws in
-        // everything from a 36pt thumbnail to a full-bleed backdrop
         static let glyphScale: CGFloat = 0.28
         static let glyphCeiling: CGFloat = 28
     }
 
     var body: some View {
-        // the url is the identity: a recycled cell handed a new one must drop
-        // the previous failure or the second series inherits the first's blank
+        // reset on url change - a recycled cell must drop the previous failure
         Group {
             if let url, !failed {
                 KFImage(url)
@@ -82,7 +70,6 @@ struct CoverImage: View {
         }
 
         VStack(spacing: 8) {
-            // a host that does not resolve, so it fails rather than hanging
             CoverImage(url: URL(string: "https://example.invalid/missing.jpg"))
                 .frame(width: 100, height: 145)
                 .clipShape(.rect(cornerRadius: 8))

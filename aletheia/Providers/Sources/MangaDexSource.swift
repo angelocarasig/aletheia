@@ -7,8 +7,6 @@
 
 import Foundation
 
-// the only source with a documented public api, so it needs neither the renderer
-// nor a credential - every call here is plain json
 struct MangaDexSource: RevalidatingSource {
     let network: NetworkConfiguration
 
@@ -18,9 +16,6 @@ struct MangaDexSource: RevalidatingSource {
     private static let feedLimit = 500
     private static let feedCap = 20
 
-    // the api's own ceiling for one cover page, then what we keep of it. every
-    // kept cover becomes a row the downloader fetches to disk, so the second
-    // number is a storage decision rather than a display one
     private static let coverPageLimit = 100
     private static let coverLimit = 20
 
@@ -67,7 +62,6 @@ struct MangaDexSource: RevalidatingSource {
                 ],
                 canExclude: false
             ),
-            // the api takes originalLanguage as a repeated param, same as the rest
             .multiSelect(
                 id: "originalLanguage",
                 name: "Original Language",
@@ -80,8 +74,7 @@ struct MangaDexSource: RevalidatingSource {
                 canExclude: false
             ),
             .number(id: "year", name: "Year"),
-            // uuids from https://api.mangadex.org/manga/tag - the api takes them
-            // as includedTags[]/excludedTags[], so this one filter drives both
+            // uuids from https://api.mangadex.org/manga/tag
             .multiSelect(
                 id: "tags",
                 name: "Tags",
@@ -168,8 +161,6 @@ struct MangaDexSource: RevalidatingSource {
                 canExclude: true
             ),
         ],
-        // direction is baked into each option id, the same as the other sources -
-        // the api names its axes as order[key]=dir and this maps straight through
         supportedSort: .init(
             options: [
                 .init(id: "followedCount:desc", name: "Most followed"),
@@ -223,8 +214,7 @@ extension MangaDexSource {
         items += Self.parameters(for: query.filters)
         items += Self.ratings(for: query, gateOpen: allowsAdult(for: query))
 
-        // relevance only means anything alongside a title, and the api rejects it
-        // without one
+        // the api rejects sorting by relevance when there is no search text
         let sort = resolvedSort(for: query).optionID
         let usable =
             (sort == "relevance:desc" && (query.text ?? "").isEmpty) ? "followedCount:desc" : sort
@@ -237,9 +227,6 @@ extension MangaDexSource {
         return SearchPage(items: stubs, next: seen < response.total ? query.page + 1 : nil)
     }
 
-    // the api's own default when contentRating is omitted is safe + suggestive +
-    // erotica - close to ours but not ours, and decided by them. a rating the
-    // reader picked is left alone; the gate is already reflected in it
     private static func ratings(for query: SearchQuery, gateOpen: Bool) -> [URLQueryItem] {
         guard !query.filters.contains(where: { $0.id == "contentRating" }) else { return [] }
 
@@ -249,7 +236,6 @@ extension MangaDexSource {
 
     private static let clean = ["safe", "suggestive", "erotica"]
 
-    // rung 1: the item says so itself, so the request never enters into it
     private static func stub(from entry: Manga) -> SeriesStub? {
         SeriesStub(
             slug: entry.id,
@@ -270,9 +256,8 @@ extension MangaDexSource {
             .init(name: "includes[]", value: "artist"),
         ]
 
-        // the manga entity carries exactly one cover_art relationship no matter
-        // what is included, so the rest of the set needs its own request. it is
-        // independent of the entity, so it runs alongside rather than after
+        // the manga entity only ever returns one cover_art relationship regardless
+        // of includes - the full set needs its own request
         async let listing = coverListing(for: seriesSlug)
 
         let response: MangaEnvelope = try await network.get(
@@ -280,8 +265,6 @@ extension MangaDexSource {
         let entry = response.data
         let attributes = entry.attributes
 
-        // every title is a language map, and a series with no english entry still
-        // has to be called something
         let names = attributes.altTitles.flatMap { $0.values }
 
         return SeriesDetail(
@@ -316,8 +299,8 @@ extension MangaDexSource {
         return entries
     }
 
-    // the feed states its own total in the first response, so a matching count
-    // answers the whole question before the rest of the pages are asked for
+    // the feed's own stated total is trustworthy, so a matching count on the
+    // first page answers the whole question without walking the rest
     func chapters(seriesSlug: String, stored: Int) async throws -> ChapterRevalidation {
         try await walk(seriesSlug, stored: stored)
     }
@@ -357,7 +340,6 @@ extension MangaDexSource {
     private static func entry(from chapter: Chapter) -> ChapterEntry? {
         let attributes = chapter.attributes
 
-        // an external chapter lives on another site entirely and has no pages here
         guard attributes.externalUrl == nil else { return nil }
 
         let scanlator = chapter.relationships
@@ -368,8 +350,7 @@ extension MangaDexSource {
             slug: chapter.id,
             title: attributes.title ?? "",
             number: attributes.chapter.flatMap(Double.init) ?? 0,
-            // the feed is asked for our four, but a code outside them should
-            // downgrade rather than drop the chapter
+            // an unparseable language downgrades to english rather than dropping the chapter
             language: attributes.translatedLanguage.flatMap(LanguageCode.init) ?? .english,
             scanlator: scanlator ?? "Unknown",
             url: URL(string: "https://mangadex.org/chapter/\(chapter.id)")!,
@@ -407,8 +388,6 @@ extension MangaDexSource {
         return components.url!
     }
 
-    // sort ids are the request's own key:direction pair, so they map straight
-    // through and search() never has to translate
     private static func order(_ sort: String) -> [URLQueryItem] {
         let parts = sort.split(separator: ":")
         guard parts.count == 2 else { return [] }
@@ -418,8 +397,7 @@ extension MangaDexSource {
     private static func parameters(for filters: [FilterSelection]) -> [URLQueryItem] {
         filters.flatMap { filter -> [URLQueryItem] in
             switch filter {
-            // tags are the only excludable axis, and the api spells the two sides
-            // as separate parameters rather than one with a sign
+            // only tags support exclusion; other multiSelect filters ignore it
             case .multiSelect("tags", let included, let excluded):
                 return included.map { .init(name: "includedTags[]", value: $0) }
                     + excluded.map { .init(name: "excludedTags[]", value: $0) }
@@ -440,24 +418,20 @@ extension MangaDexSource {
 // MARK: - Mapping
 
 extension MangaDexSource {
-    // english when it exists, otherwise whatever the series was published as
     private static func text(from map: [String: String]?) -> String? {
         guard let map, !map.isEmpty else { return nil }
         return map["en"] ?? map.sorted { $0.key < $1.key }.first?.value
     }
 
-    // english, then romanised original, then the original script. mangadex keeps
-    // romanisations under a "-ro" locale, so a japanese series usually carries
-    // both "ja" and "ja-ro" and the romaji is the one worth showing
+    // mangadex files romanisations under a "-ro" locale suffix (e.g. "ja-ro")
     private static let titlePriority = ["en", "ja-ro", "ko-ro", "zh-ro", "ja", "ko", "zh"]
 
     private static func title(
         from primary: [String: String], falling alternates: [[String: String]]
     ) -> String {
-        // pooled rather than searched map by map: `title` holds the original
-        // language and the romanisation lives in altTitles, so going map by map
-        // returns the japanese before it ever reaches the romaji one entry later.
-        // first occurrence of a locale wins, and primary is walked first
+        // pooled rather than checked map by map - `title` holds the original
+        // language and the romanisation is in altTitles, so checking maps in
+        // priority order would return the japanese before ever reaching the romaji
         var pool: [String: String] = [:]
         for map in [primary] + alternates {
             for (locale, name) in map where pool[locale] == nil && !name.isEmpty {
@@ -469,8 +443,7 @@ extension MangaDexSource {
             if let name = pool[locale] { return name }
         }
 
-        // an unlisted locale: still prefer anything romanised over raw script.
-        // sorted so the pick is stable rather than whatever the dictionary yields
+        // sorted so the pick is stable rather than dictionary iteration order
         let keys = pool.keys.sorted()
         if let romanised = keys.first(where: { $0.hasSuffix("-ro") }) { return pool[romanised]! }
         return keys.first.flatMap { pool[$0] } ?? "Untitled"
@@ -493,8 +466,7 @@ extension MangaDexSource {
         return coverURL(entry.id, file)
     }
 
-    // a failed listing is not a failed details - the entity's own cover still
-    // stands, and a series with one cover is what every other source gives
+    // swallow failures here - the entity's own cover is still a usable fallback
     private func coverListing(for id: String) async -> [CoverArt] {
         let items: [URLQueryItem] = [
             .init(name: "manga[]", value: id),
@@ -506,19 +478,15 @@ extension MangaDexSource {
         return response?.data ?? []
     }
 
-    // covers are filed per volume per language, and a long-running series carries
-    // several editions of the same volume - 85 japanese files across 43 volumes is
-    // ordinary. the picker wants one of each volume in the language it was drawn
-    // in, not every reprint, and every row here is an image downloaded to disk
+    // one cover per volume (by whole number - alternate editions are filed as
+    // 1.1, 1.2 against the same volume), since every kept cover is an image
+    // the downloader fetches to disk
     private static func covers(from listing: [CoverArt], for entry: Manga, language: String?)
         -> [URL]
     {
         let native = listing.filter { $0.attributes.locale == language }
         let pool = native.isEmpty ? listing : native
 
-        // alternate editions are filed as 1.1, 1.2 against the same volume, so
-        // keying on the whole number spends the budget on twenty different
-        // volumes rather than seven of them three times over
         var volumes: Set<Substring> = []
         var urls: [URL] = []
         for art in pool {
@@ -527,8 +495,6 @@ extension MangaDexSource {
             urls.append(coverURL(entry.id, art.attributes.fileName))
         }
 
-        // the search result carries the entity's cover, and the preferred pick is
-        // resolved by matching against it - so it has to be present, and first
         if let primary = cover(for: entry) {
             urls.removeAll { $0 == primary }
             urls.insert(primary, at: 0)
@@ -556,8 +522,8 @@ extension MangaDexSource {
         }
     }
 
-    // parsed here rather than by the shared decoder, whose strategy is tuned for
-    // other sources and would fail the whole response on one odd timestamp
+    // parsed here rather than via the shared decoder - its strategy is tuned for
+    // other sources and would fail the whole response on one odd timestamp here
     private static func date(from value: String?) -> Date {
         guard let value else { return .distantPast }
         let formatter = ISO8601DateFormatter()
@@ -626,9 +592,6 @@ extension MangaDexSource {
         }
     }
 
-    // one shape covers every relationship kind - only the fields we read are
-    // declared, and all of them are optional because which arrive depends on
-    // what the request asked to include
     private struct Relationship: Decodable {
         let type: String
         let attributes: Attributes?

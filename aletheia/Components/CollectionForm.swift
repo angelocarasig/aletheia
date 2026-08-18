@@ -56,8 +56,6 @@ struct CollectionForm: View {
                 } header: {
                     Text("Name")
                 } footer: {
-                    // the reason replaces the counter rather than stacking under
-                    // it - one footer, one thing to fix
                     if isReserved {
                         Text("\"\(trimmed)\" is used by the library itself. Pick another name.")
                             .foregroundStyle(Palette.warning)
@@ -102,8 +100,6 @@ struct CollectionForm: View {
         .presentationDetents([.medium, .large])
     }
 
-    // silent until the limit is close, so it reads as a warning rather than a
-    // running commentary on typing
     @ViewBuilder
     private func Remaining(_ used: Int, of limit: Int) -> some View {
         let left = limit - used

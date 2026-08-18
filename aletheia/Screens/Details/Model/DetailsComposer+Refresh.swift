@@ -17,9 +17,9 @@ extension DetailsComposer {
     final class Refresh: DetailsApplying {
         private(set) var state: State = .idle
 
-        // every origin installed code can still reach. a refresh is the whole
-        // set or it is a lie - an origin nothing ever asks goes permanently
-        // stale while the reader is free to switch to it
+        // every origin installed code can still reach - a refresh that skips
+        // any of them leaves it permanently stale while the reader is free to
+        // switch to it
         private(set) var origins: [Origin] = []
 
         private(set) var retrying: Set<Int64> = []
@@ -37,19 +37,13 @@ extension DetailsComposer {
         // database change, so without the latch it would feed itself
         @ObservationIgnored private var primed = false
 
-        // a one-way latch on adopt(). same reason - it is called on every
-        // database change, and the latch holds it to a single join
+        // same reason as primed - adopt() is called on every database change too
         @ObservationIgnored private var adopted = false
 
-        // whichever origin heads the list stands for the series, so its date is
-        // what staleness is measured against
+        // staleness is measured against the head origin's date, not any others
         @ObservationIgnored private var checkedDate: Date = .distantPast
         @ObservationIgnored private var seriesId: SeriesRecord.ID?
 
-        // prime() only fires on the journey where freshness is the point: the
-        // reader is online, in a source's catalogue, and asked for this series
-        // by name. a library-route open stays local, which is what
-        // offline-first means
         private let entry: SeriesEntry
         private let refresher: Compositor.Refresh
         private let registry: Compositor.Registry
@@ -67,7 +61,6 @@ extension DetailsComposer {
             self.trackers = trackers
         }
 
-        // from DetailsApplying
         func apply(_ stored: Stored) {
             seriesId = stored.series.id
 
@@ -107,20 +100,14 @@ extension DetailsComposer {
             if case .running = metadataState { true } else { false }
         }
 
-        // eligible whenever either half has something to answer, unlike
-        // canStart which is chapters-only - a series can be metadata-refreshable
-        // through a tracker link with every source disabled
+        // unlike canStart, which is chapters-only - a series can be
+        // metadata-refreshable through a tracker link with every source disabled
         var canRefreshMetadata: Bool {
             (!origins.isEmpty || !trackerLinks.isEmpty) && !isMetadataRunning
         }
 
-        // every origin answers for itself: one dead source reports as one
-        // failed row and the rest still land. results arrive as each finishes
-        // rather than at the end, so the pill fills in.
-        //
-        // answers whether anything new arrived, because the language and
-        // scanlator lists are per-origin and either can gain entries from a
-        // single new chapter
+        // returns whether anything new arrived, for the caller to decide
+        // whether the language/scanlator lists need reloading
         @discardableResult
         func walk(metadata: Bool) async -> Bool {
             guard canStart else { return false }
@@ -130,10 +117,9 @@ extension DetailsComposer {
             fetching = true
             defer { fetching = false }
 
-            // if a library walk is holding this series in its queue, it is
-            // about to fetch exactly what this is fetching. tell it not to
-            // bother - pulling to refresh means check this one now, and the
-            // walk arriving later to repeat it is two requests for one answer
+            // a library walk holding this series in its queue is about to fetch
+            // the same thing - dequeue it, or the walk repeats this as a second
+            // request for the same answer
             if let seriesId { refresher.dequeue(series: seriesId.rawValue) }
 
             var outcomes = targets.map {
@@ -181,9 +167,6 @@ extension DetailsComposer {
             return outcomes.contains { if case .added = $0.result { true } else { false } }
         }
 
-        // every origin and every linked tracker, each answering for itself -
-        // no chapter fetch, unlike walk(metadata: true). independent state from
-        // the chapter pill, so the two refreshes never interfere
         func refreshMetadata() async {
             guard canRefreshMetadata else { return }
 
@@ -230,8 +213,6 @@ extension DetailsComposer {
             scheduleMetadataDismissal()
         }
 
-        // separate timer from the chapter pill's schedule() - the two pills
-        // dismiss independently
         private func scheduleMetadataDismissal() {
             metadataDismissal?.cancel()
             metadataDismissal = Task { [weak self] in
@@ -241,11 +222,10 @@ extension DetailsComposer {
             }
         }
 
-        // the same unit everything else calls, so a retry while a library run
-        // is already checking this origin joins that fetch instead of racing
-        // it. offered on every failure rather than only the retryable ones:
-        // which is which is known at the throw and not stored, and four of the
-        // reasons this row can print end with the words "try again"
+        // calls the same shared unit as everything else, so a retry while a
+        // library run is already checking this origin joins that fetch rather
+        // than racing it. offered on every failure, not just retryable ones -
+        // whether an error is retryable is known only at the throw, not stored
         func retry(_ originId: Int64) async {
             guard !retrying.contains(originId) else { return }
             guard let target = origins.first(where: { $0.id == originId }) else { return }
@@ -261,16 +241,15 @@ extension DetailsComposer {
             )
         }
 
-        // a series whose row exists but whose chapters never landed would
-        // otherwise never try again - matching short-circuits before the row is
-        // written, which is the only other caller. it answers two cases with
-        // one condition: never fetched, since distantPast is older than any
-        // threshold, and fetched long enough ago to be worth asking again.
+        // the only other path that can fetch chapters for a stub row - matching
+        // may short-circuit before one is written. distantPast conveniently
+        // satisfies the same staleness check as "fetched long enough ago", so
+        // "never fetched" needs no separate branch.
         //
-        // claims its latch and leaves, because this runs inside the observation
-        // loop - awaiting a fetch there holds the loop open for its whole
-        // length, and a cover finishing meanwhile would not reach the screen
-        // until the chapters did
+        // claims its latch and returns without awaiting the fetch: this runs
+        // inside the observation loop, and awaiting here would hold it open for
+        // the fetch's whole length, delaying unrelated updates like a cover
+        // finishing until the chapters did
         func prime() {
             guard !primed, !fetching else { return }
             guard case .source = entry else { return }
@@ -284,9 +263,6 @@ extension DetailsComposer {
             fetching = true
 
             Task { [weak self, refresher, registry] in
-                // every origin, not the head of the list. a stale origin and a
-                // fresh one render identically, so asking one leaves the rest
-                // permanently behind with nothing on screen able to say so
                 await withTaskGroup(of: Void.self) { group in
                     for target in targets {
                         guard let source = registry.source(slug: target.sourceSlug) else {
@@ -307,11 +283,10 @@ extension DetailsComposer {
             }
         }
 
-        // a fetch this screen started before it was closed is still running in
-        // the shared unit, and its answer is owed to whoever asks. joining
-        // takes that answer rather than issuing a second request - without it
-        // the rebuilt pill can only show that something is happening, then
-        // vanish when it stops
+        // joins a fetch this screen started before it was closed, still running
+        // in the shared unit, rather than issuing a second request - without
+        // this the rebuilt pill could only show that something is happening,
+        // then vanish when it stops
         func adopt() {
             guard !adopted, !isRunning else { return }
 
@@ -352,8 +327,6 @@ extension DetailsComposer {
             schedule()
         }
 
-        // the finished pill is a result, not a permanent row - it says what
-        // happened and then gets out of the way
         func schedule() {
             dismissal?.cancel()
             dismissal = Task { [weak self] in
@@ -363,9 +336,9 @@ extension DetailsComposer {
             }
         }
 
-        // one origin fetched outside the walk - attaching a source to a series
-        // already on screen. the pair exists because the fetch belongs to
-        // whoever attached it, while the pill it shows in belongs here
+        // manual pill state for a fetch outside walk() - attaching a source to
+        // a series already on screen. the fetch belongs to whoever attached it,
+        // the pill it shows in belongs here
         func began(_ origin: Origin) {
             state = .running([Outcome(id: origin.id, name: origin.name, icon: origin.icon)])
         }
@@ -379,9 +352,6 @@ extension DetailsComposer {
     }
 }
 
-// the two entry points, on the composer because a run that brings in chapters
-// changes what the ranking sheets can offer, and covers are add-only on a
-// metadata refresh - both belong to other parts of the screen
 extension DetailsComposer {
     func refresh() async {
         await run(metadata: true)
@@ -391,9 +361,8 @@ extension DetailsComposer {
         await run(metadata: false)
     }
 
-    // metadata only, no chapters - the explicit counterpart to the implicit
-    // metadata fetch pull-to-refresh already does. covers are add-only, so a
-    // metadata-only refresh can still turn up a better one worth downloading
+    // covers are add-only, so a metadata-only refresh can still turn up a
+    // better one worth downloading
     func refreshMetadata() async {
         await refresh.refreshMetadata()
         if let seriesId { assets.enqueue(series: seriesId) }
@@ -404,9 +373,8 @@ extension DetailsComposer {
 
         if metadata, let seriesId { assets.enqueue(series: seriesId) }
 
-        // both lists are per-origin and either can gain entries from a single
-        // new chapter, so they are re-read once for the whole run rather than
-        // per origin that happened to add something
+        // re-read once for the whole run, not per origin - both lists are
+        // per-origin and either can gain entries from a single new chapter
         guard added else { return }
 
         await sources.languages()
@@ -417,8 +385,6 @@ extension DetailsComposer {
 extension DetailsComposer.Refresh {
     static let linger: Duration = .seconds(3)
 
-    // one row per supplier eligible to answer for this series' metadata -
-    // every origin already tracked for chapters, plus every linked tracker.
     // a tracker's icon is a plain asset name where a source's is an
     // ImageResource, so the case itself carries the icon rather than forcing
     // one type to stand in for the other
@@ -433,10 +399,8 @@ extension DetailsComposer.Refresh {
         var result: MetadataOutcome?
     }
 
-    // deliberately its own enum, not a reuse of State - a metadata-only
-    // refresh and a chapter refresh must never share or clobber one pill's
-    // state, and MetadataOutcome has no count to fold into the chapter
-    // Outcome's vocabulary
+    // not a reuse of State - a metadata refresh and a chapter refresh must
+    // never share or clobber one pill's state
     enum MetadataState: Equatable {
         case idle
         case running([MetadataOutcomeRow])
@@ -458,10 +422,8 @@ extension DetailsComposer.Refresh {
         let icon: ImageResource?
     }
 
-    // one entry per origin the run is talking to, so a three-source series
-    // shows three answers rather than one summary that hides which is broken.
-    // running and finished carry the same list - the difference is only whether
-    // entries can still change
+    // running and finished carry the same list - the difference is only
+    // whether entries can still change
     enum State: Equatable {
         case idle
         case running([Outcome])
@@ -475,9 +437,8 @@ extension DetailsComposer.Refresh {
         }
     }
 
-    // nil is still checking - the unit answers with one of three things, and
-    // "has not answered yet" is a property of the row rather than a fourth
-    // answer the unit could ever return
+    // nil is still checking - "not answered yet" is a property of the row,
+    // not a fourth case the unit itself could return
     struct Outcome: Identifiable, Equatable {
         let id: Int64
         let name: String

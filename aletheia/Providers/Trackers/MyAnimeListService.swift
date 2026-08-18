@@ -396,8 +396,7 @@ private struct Manga: Decodable {
         return names.isEmpty ? nil : names.joined(separator: ", ")
     }
 
-    // manga is the assumption a reader already brings, so it earns no pill.
-    // everything else is a genuine warning that this is not the thing they think
+    // manga is the assumption a reader already brings, so it earns no pill - everything else is a genuine warning this isn't what they think
     var shape: String? {
         switch media_type {
         case "manga", nil: nil

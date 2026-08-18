@@ -25,10 +25,8 @@ struct LiveRelativeText: View {
     }
 }
 
-// the same clock, for a stamp that lives inside a sentence rather than beside
-// one. an HStack cannot be used there: the sentence has to stay a single Text
-// or it loses the ability to wrap, so the caller is handed the string and
-// builds its own line
+// hands the caller the formatted string rather than a Text, so it can be
+// embedded inside a larger sentence that still wraps as one Text
 struct LiveRelative<Content: View>: View {
     let date: Date
     @ViewBuilder let content: (String) -> Content

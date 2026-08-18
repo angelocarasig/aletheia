@@ -10,9 +10,6 @@ import GRDB
 import Observation
 import Tagged
 
-// the whole updates feed, where Home carries three rows of it. one query, the
-// same one, at a different limit - two feeds that could disagree about what
-// arrived would be worse than one that is sometimes long
 @MainActor
 @Observable
 final class UpdatesViewModel {
@@ -26,9 +23,6 @@ final class UpdatesViewModel {
     @ObservationIgnored private var stream: Task<Void, Never>?
 
     private enum Rule {
-        // a ceiling rather than a window: the feed is bounded by how many series
-        // you follow, and a reader with more than this waiting is not served by
-        // row two hundred
         static let limit = 200
     }
 

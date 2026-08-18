@@ -26,13 +26,10 @@ struct DetailsDisambiguation: View {
         static let authorLines = 2
         static let synopsisLines = 5
         static let metaLines = 1
-        // context rather than a deciding fact, so it sits below everything else
         static let synopsisOpacity: Double = 0.7
         static let settle: Animation = .smooth(duration: 0.2)
     }
 
-    // most read first, so whichever one the reader is invested in is never below
-    // the fold
     private var ranked: [Candidate] {
         candidates.sorted { ($0.read, $0.total) > ($1.read, $1.total) }
     }
@@ -48,16 +45,14 @@ struct DetailsDisambiguation: View {
         }
     }
 
-    // series reads the same singular and plural, so this needs no inflection and
-    // can stay a plain string for the subtitle
     private var subtitle: String {
         single
             ? "Adding it keeps your place and fills any gaps."
             : "\(candidates.count) series share this title."
     }
 
-    // nothing is preselected, a single candidate included - the merge is
-    // irreversible, so it should never happen without a deliberate tap
+    // nothing is preselected, a single candidate included - merging is
+    // irreversible and should never happen without a deliberate tap
     private var selection: Candidate? {
         ranked.first { $0.id == picked }
     }
@@ -102,8 +97,6 @@ extension DetailsDisambiguation {
                         .tappable { withAnimation(Layout.settle) { picked = candidate.id } }
                 }
 
-                // sits after the candidates rather than pinned, so it reads as the
-                // last option in the list instead of a peer of the merge
                 Separate
             }
             .padding(.horizontal, dimensions.screenMargin)
@@ -153,8 +146,6 @@ extension DetailsDisambiguation {
                         .multilineTextAlignment(.leading)
                 }
 
-                // pins the progress to the bottom of the row, so it lines up with
-                // the cover's edge whatever the text above it does
                 Spacer(minLength: dimensions.spacing.space4)
 
                 if candidate.started, candidate.total > 0 {
@@ -163,8 +154,6 @@ extension DetailsDisambiguation {
                 }
 
                 HStack(alignment: .firstTextBaseline, spacing: dimensions.spacing.space4) {
-                    // the inflected literal has to live at the Text site - building
-                    // the string first skips grammar agreement entirely
                     Group {
                         if candidate.started {
                             Text("\(candidate.read) of \(candidate.total)")
@@ -174,14 +163,11 @@ extension DetailsDisambiguation {
                             Text("No chapters")
                         }
                     }
-                    // step 11 is the text step - step 9 is a solid fill and cannot
-                    // hold contrast as small type
                     .fontWeight(.semibold)
                     .foregroundStyle(candidate.started ? Palette.brandText : Palette.muted)
 
                     Spacer(minLength: 0)
 
-                    // a deciding fact, so it outranks the synopsis above it
                     Text(candidate.meta)
                         .fontWeight(.medium)
                         .foregroundStyle(.textPrimary)

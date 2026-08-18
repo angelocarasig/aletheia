@@ -58,11 +58,6 @@ final class ActivityViewModel {
 
     // MARK: Query
 
-    // operational state only. the reading feed that used to live here was the
-    // weakest of three views of one dataset - Reading Activity charts it and
-    // lists its sessions, and Home shows the recent end of it - so this tab kept
-    // a tab slot by borrowing content. what it answers now is the one question
-    // nothing else does: is the app working
     nonisolated private static func stored(in db: Database) throws -> Snapshot {
         let lastChecked = try Date.fetchOne(
             db,
@@ -84,8 +79,7 @@ final class ActivityViewModel {
                     """
             ) ?? 0
 
-        // currently failing, not ever failed: the column is cleared the moment a
-        // source answers again, so this needs no acknowledgement state of its own
+        // fetchError clears the moment a source answers again, so this is currently-failing, not ever-failed
         let failingSources =
             try Int.fetchOne(
                 db,

@@ -14,13 +14,11 @@ struct ReaderConfiguration: Equatable, Sendable {
     var horizontalPadding: CGFloat = 0
     var grayscale: Bool = false
     var inverted: Bool = false
-    // -maxWarmth...maxWarmth. the name stays singular because the stored key is
-    // "reader.warmth" and renaming a defaults key silently resets it for every
-    // reader who already set one
+    // stored under the defaults key "reader.warmth" - renaming this property
+    // silently resets it for every reader who already set one
     var warmth: Double = 0
-    // not a render property, and here anyway: every other reader preference
-    // rides this struct from ReaderSettings to the view, and a second path for
-    // one bool would be the only one of its kind. the controller ignores it
+    // not a render property; the controller ignores it. rides this struct
+    // anyway since every other reader preference does
     var keepScreenOn: Bool = false
     var autoScrollSpeed: CGFloat = Defaults.autoScrollSpeed
     var autoAdvanceInterval: TimeInterval = Defaults.autoAdvanceInterval
@@ -29,9 +27,6 @@ struct ReaderConfiguration: Equatable, Sendable {
     var preloadThreshold: CGFloat = Defaults.preloadThreshold
 
     enum Defaults {
-        // clear glass is permanently transparent by design, so chrome over a
-        // busy page has nothing to separate it from the art. a tint on the glass
-        // is what Apple prescribes instead of a second scrim view
         static let chromeTint: Double = 0.4
         static let maxChromeTint: Double = 0.7
 
@@ -41,19 +36,15 @@ struct ReaderConfiguration: Equatable, Sendable {
 
         static let maxHorizontalPadding: CGFloat = 48
 
-        // warmth is signed: positive takes the blue out, negative takes the red
-        // out, zero tints nothing. the magnitude is what the bound applies to,
-        // and full strength has to leave the art readable rather than coloured
+        // signed: positive removes blue, negative removes red, zero tints
+        // nothing - the bound applies to magnitude
         static let maxWarmth: Double = 0.7
         static let warmthStep: Double = 0.05
         static let warmthTone = (red: 1.0, green: 0.76, blue: 0.47)
-        // the warm tone with its red and blue swapped, so the two ends pull the
-        // page by the same amount in opposite directions
         static let coolTone = (red: 0.47, green: 0.76, blue: 1.0)
 
-        // a paged mode dwells on a page and then slides, so its auto-scroll
-        // setting is a duration rather than a rate. different unit, different
-        // stored value - one number cannot mean both
+        // a paged mode dwells then slides, so its auto-scroll setting is a
+        // duration, not a rate - a different unit from autoScrollSpeed
         static let autoAdvanceInterval: TimeInterval = 5
         static let minAutoAdvanceInterval: TimeInterval = 1
         static let maxAutoAdvanceInterval: TimeInterval = 10
@@ -62,31 +53,25 @@ struct ReaderConfiguration: Equatable, Sendable {
         static let preloadThreshold: CGFloat = 500
         static let maxDim: Double = 0.6
 
-        // pages are laid out before their image lands, so the first pass uses a
-        // ratio rather than a measurement. corrected per page on load.
-        //
-        // height/width, not width/height - a webtoon slice is far taller than
-        // an ISO page and one constant for both is wrong for the mode that
-        // needs it most
+        // layout runs before the image lands, so the first pass uses this
+        // ratio; corrected per page once it loads. height/width, not
+        // width/height - a webtoon slice needs this direction, and one
+        // constant for both would be wrong for the mode that needs it most
         static let pagedPageRatio: CGFloat = 1414.0 / 1000.0
         static let stripPageRatio: CGFloat = 1.435
 
-        // how many real measurements a chapter needs before its own median
-        // replaces the static guess, and where sampling stops paying for itself
         static let ratioSampleMinimum = 4
         static let ratioSampleCap = 12
     }
 }
 
 extension Orientation {
-    // the engine is never handed .unknown - the host resolves it first - but
-    // treating it as a definite mode keeps every switch exhaustive without an
-    // unreachable default
+    // the engine never sees .unknown - the host resolves it first - but this
+    // keeps every switch exhaustive without an unreachable default
     var resolved: Orientation {
         self == .unknown ? .leftToRight : self
     }
 
-    // tags that mark a vertical-strip title (webtoon/manhwa/manhua), in the
     // sanitised form tags are stored in: lowercased, spaces stripped
     static let stripTags: Set<String> = [
         "webtoon", "manhwa", "manhua", "longstrip", "webcomic",
@@ -105,7 +90,6 @@ extension Orientation {
         !isVertical
     }
 
-    // continuous scroll, one long strip. everything else snaps page to page
     var isContinuous: Bool {
         resolved == .infinite
     }

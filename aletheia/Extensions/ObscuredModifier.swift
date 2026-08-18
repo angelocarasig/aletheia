@@ -13,15 +13,12 @@ extension View {
     }
 }
 
-// the one treatment for covered artwork, so a card cannot disagree with another
-// card about what covered looks like. applied to the artwork alone - our own
-// annotations (badges, activity marks) sit above it and stay readable
+// applies to artwork alone - callers layer their own badges/activity marks
+// on top, after this modifier, so those annotations stay readable
 struct ObscuredModifier: ViewModifier {
     let isObscured: Bool
 
     private enum Layout {
-        // the artwork must not be legible through it, and a blurred cover still
-        // has to read as a cover rather than as a failed load
         static let blurRadius: CGFloat = 24
         static let scrim: Double = 0.15
         static let duration: Double = 0.25

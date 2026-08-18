@@ -9,11 +9,9 @@ import Foundation
 
 extension Constants {
     enum Cadence {
-        // every source falls back to .distantPast when it cannot parse a date, so
-        // one unparsed chapter would otherwise inject a ~730,000 day gap and
-        // become the predicted interval. anything at or below this is a parse
-        // failure rather than a release - the oldest real scanlation predates
-        // 1970 nowhere
+        // sources fall back to .distantPast on an unparsed date, which would
+        // otherwise inject a ~730,000 day gap into the predicted interval -
+        // anything at or below this is treated as a parse failure, not a release
         static let epoch = Date(timeIntervalSince1970: 0)
     }
 }

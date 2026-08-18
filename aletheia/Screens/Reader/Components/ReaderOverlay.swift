@@ -7,8 +7,6 @@
 
 import SwiftUI
 
-// mirrors v2's reader chrome: a header that names where you are, and a control
-// card that moves you
 struct ReaderOverlay: View {
     let engine: ReaderEngine
     let sourceIcon: ImageResource?
@@ -42,9 +40,8 @@ struct ReaderOverlay: View {
         static let placeholderFill: Double = 0.12
     }
 
-    // clear glass has no adaptive behaviour, so it never flips to suit what is
-    // behind it. the tint is the legibility control - without it the chrome
-    // disappears into a busy page
+    // clear glass never adapts to what's behind it - the tint is the legibility
+    // control, and without it the chrome disappears into a busy page
     private var surface: Glass {
         .clear.tint(.black.opacity(engine.configuration.chromeTint)).interactive()
     }
@@ -74,8 +71,6 @@ extension ReaderOverlay {
     fileprivate var Header: some View {
         GlassEffectContainer(spacing: dimensions.spacing.space8) {
             HStack(spacing: dimensions.spacing.space8) {
-                // the source's own icon, so the button doubles as "which source
-                // am I reading from" rather than being a mystery glyph
                 SourceButton
 
                 Identity
@@ -86,8 +81,8 @@ extension ReaderOverlay {
 
                 Circular("xmark", action: onDismiss)
             }
-            // on the row rather than the button: a transition needs a transaction
-            // from an ancestor that outlives the view being replaced
+            // on the row, not the button - a transition needs a transaction from
+            // an ancestor that outlives the view being replaced
             .animation(Layout.identity, value: sourceIcon)
         }
     }
@@ -95,8 +90,6 @@ extension ReaderOverlay {
     @ViewBuilder
     fileprivate var SourceButton: some View {
         if let sourceIcon {
-            // the artwork fills the control, so there is no glass ring around
-            // it - the icon is the button
             Image(sourceIcon)
                 .resizable()
                 .scaledToFill()
@@ -104,14 +97,10 @@ extension ReaderOverlay {
                 .clipShape(.circle)
                 .contentShape(.circle)
                 .tappable(action: onSources)
-                // swapping sources replaces the artwork, and a hard cut on the
-                // one control that says where you are reading from reads as a
-                // glitch. keyed on the icon so the swap is what drives it
+                // id keys the transition to the icon changing specifically
                 .id(sourceIcon)
                 .transition(.opacity.combined(with: .scale))
         } else {
-            // a downloaded chapter whose source has since been removed. nothing
-            // to fill with, so this one keeps the glass
             Icon("book.closed")
                 .frame(width: dimensions.size.control, height: dimensions.size.control)
                 .glassEffect(surface, in: .circle)
@@ -122,24 +111,18 @@ extension ReaderOverlay {
 
     fileprivate var Identity: some View {
         VStack(alignment: .leading, spacing: dimensions.spacing.space2) {
-            // two views rather than one string: "Loading" and a chapter number
-            // are different kinds of thing, and numericText cannot morph a word
-            // into digits - it would snap. resolving is a replace, moving between
+            // two views, not one string - numericText cannot morph a word into
+            // digits, it would snap. resolving is a replace, moving between
             // chapters is a roll
             if let chapter = engine.current {
                 Text("Chapter \(chapter.number.formatted())")
                     .font(.subheadline)
                     .fontWeight(.semibold)
                     .lineLimit(1)
-                    // the number carries the direction on its own: forward rolls
-                    // the digits up, back rolls them down. nothing has to track
-                    // which way the chapter moved
+                    // numericText infers direction from the value on its own
                     .contentTransition(.numericText(value: chapter.number))
                     .transition(.replace(reduceMotion: reduceMotion))
             } else {
-                // the shape the chapter will take, not a word standing in for it.
-                // matches ReaderSkeleton's fill so the two placeholders read as
-                // the same surface resolving
                 Capsule()
                     .fill(.white.opacity(Layout.placeholderFill))
                     .frame(width: Layout.placeholderWidth, height: Layout.placeholderHeight)
@@ -151,26 +134,20 @@ extension ReaderOverlay {
                 Text(subtitle)
                     .font(.caption2)
                     .lineLimit(1)
-                    // arbitrary text, so it crossfades rather than rolls - keyed
-                    // on the string so a change swaps it, not only nil <-> value
+                    // keyed on the string, so a value-to-value change still swaps
+                    // rather than only nil <-> value
                     .id(subtitle)
                     .transition(.opacity)
             }
         }
         .padding(.horizontal, dimensions.spacing.space12)
-        // matched to the circular controls either side of it so the row reads
-        // as one band rather than a capsule floating between two buttons
         .frame(height: dimensions.size.control)
         .glassEffect(surface, in: .capsule)
         .contentShape(.rect)
         .tappable(action: onChapters)
-        // the capsule resizes to whatever the new chapter is called, so the
-        // transaction has to sit above the text rather than on it
         .animation(Layout.identity, value: engine.current?.id)
     }
 
-    // most sources title a chapter with its own number, which then reads as the
-    // same line twice
     fileprivate var subtitle: String? {
         guard let chapter = engine.current else { return nil }
         let title = chapter.title.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -245,16 +222,16 @@ extension ReaderOverlay {
 extension ReaderOverlay {
     @ViewBuilder
     fileprivate var Scrubber: some View {
-        // read here rather than inside the binding. a getter runs outside body
-        // evaluation, so a page read that only happens in there never registers
-        // as a dependency and the thumb stops following the reader
+        // read here, not inside the binding - a getter runs outside body
+        // evaluation, so a read that only happens there never registers as a
+        // dependency and the thumb stops following the reader
         let page = engine.page
         let count = engine.pageCount
 
         if count > 1 {
-            // no local copy of where the finger is: goToPage writes `page`
-            // synchronously before it scrolls, so the value read back is the one
-            // just set and the thumb tracks exactly
+            // no local copy of finger position - goToPage writes `page`
+            // synchronously before it scrolls, so the value read back is the
+            // one just set
             Slider(
                 value: Binding(
                     get: { Double(page) },
@@ -267,8 +244,6 @@ extension ReaderOverlay {
             .opacity(engine.isLoading ? Layout.disabledOpacity : 1)
             .sensoryFeedback(.selection, trigger: page)
         } else {
-            // a one-page chapter still needs the row to hold its height, or the
-            // card jumps between chapters
             Capsule()
                 .fill(.tertiary)
                 .frame(height: Layout.track)
@@ -289,8 +264,6 @@ extension ReaderOverlay {
         .opacity(engine.error != nil ? Layout.disabledOpacity : 1)
     }
 
-    // filled while anything is on, so the button reports the page's state rather
-    // than only offering to change it
     fileprivate var FiltersButton: some View {
         Action(
             filtering ? "circle.lefthalf.filled.inverse" : "circle.lefthalf.filled",
@@ -327,8 +300,7 @@ extension ReaderOverlay {
                     step: 5
                 )
             } else {
-                // no step: whole seconds no longer divide the range, and a dwell
-                // has no reason to quantise - nothing displays the number
+                // no step - a dwell has no reason to quantise, and nothing displays the value
                 Slider(
                     value: intervalBinding,
                     in: ReaderConfiguration.Defaults
@@ -375,8 +347,7 @@ extension ReaderOverlay {
     }
 
     // a dwell gets shorter as the reader gets faster, so the raw value would put
-    // the quick end under the tortoise. mirrored across the range instead, and
-    // hare keeps meaning sooner
+    // the quick end under the tortoise icon - mirrored across the range instead
     fileprivate var intervalBinding: Binding<TimeInterval> {
         let span =
             ReaderConfiguration.Defaults.minAutoAdvanceInterval
@@ -397,9 +368,8 @@ extension ReaderOverlay {
             .font(.system(size: dimensions.size.icon16, weight: .semibold))
     }
 
-    // nothing in this overlay sets a colour. glass resolves its own light or
-    // dark appearance from what it samples and vends a matching content colour -
-    // pinning a foreground fights that, and only ever matches by luck
+    // nothing here sets a colour - glass resolves its own light/dark appearance
+    // from what it samples; pinning a foreground fights that and only matches by luck
     fileprivate func Circular(
         _ name: String,
         size: CGFloat? = nil,

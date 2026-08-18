@@ -9,11 +9,9 @@ import Foundation
 import GRDB
 import Tagged
 
-// every library series carrying a disconnected origin - sourceId IS NULL,
-// the one and only meaning "disconnected" has in this codebase
-// (DetailsComposer+Sources.swift's own Availability enum, LibraryFilter's
-// detachedSource). "missing" (source row present, plugin not installed) is
-// a different state and deliberately out of scope here
+// sourceId IS NULL is what "disconnected" means here - not "missing"
+// (source row present, plugin not installed), which is a different state
+// and deliberately out of scope
 struct DisconnectedOriginMigrationSource: MigrationSource {
     let database: DatabaseClient
 

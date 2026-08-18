@@ -18,25 +18,21 @@ struct SearchResultsGrid: View {
         .blurAdultSearch
     @State private var currentPage = 1
 
-    // resolved once here rather than per card: the preference and the reveal are
-    // both grid-wide, and a section that computed its own could disagree with
-    // the switch that is meant to control it
     // an adultOnly source was opened on purpose, so unset shows rather than
-    // covers - the home screen for one already renders unblurred, and a grid that
-    // disagreed with it made the same source look like two different settings
+    // covers - the home screen for one already renders unblurred, and a grid
+    // that disagreed made the same source look like two different settings
     private var obscured: Bool { blurAdult.blurs(adultSource: vm.isAdultSource) }
 
     private enum Layout {
         static let skeletonCount = 12
         static let idleIcon: CGFloat = 72
-        // a page section spans several screens, so only a sliver of it is ever
-        // visible at once - the threshold has to sit well under that fraction
+        // a page section spans several screens, so the threshold must sit well
+        // under the fraction ever visible at once
         static let pageVisibility = 0.1
     }
 
-    // nil is idle: nothing asked for yet, which is neither pending nor empty.
-    // branch selector and animation key are one value - the old isLoading key
-    // left empty -> content and failure swaps as hard cuts
+    // the old isLoading-based key left empty -> content and failure swaps as
+    // hard cuts instead of animating
     private var phase: LoadPhase? {
         if vm.isIdle {
             nil
@@ -54,8 +50,6 @@ struct SearchResultsGrid: View {
     var body: some View {
         Group {
             switch phase {
-            // the prompt names both ways in rather than only the obvious one -
-            // the filters are a real entry point now, not decoration
             case nil:
                 Idle
                     .padding(.top, dimensions.spacing.space48)
@@ -75,9 +69,6 @@ struct SearchResultsGrid: View {
                 }
                 .padding(.top, dimensions.spacing.space48)
             case .empty:
-                // filters are the likeliest reason nothing came back, and an
-                // empty state that cannot undo the thing that emptied it is a
-                // dead end. the action only appears when there is one to undo
                 ContentUnavailableView {
                     Label("No Results", systemImage: "magnifyingglass")
                 } description: {
@@ -96,10 +87,6 @@ struct SearchResultsGrid: View {
         .animation(.settle, value: phase)
     }
 
-    // the source's own identity, not a generic magnifier. this is the one moment
-    // the screen has nothing to show, so it says where you are and what the two
-    // ways in are - the filters being a real entry point rather than a modifier
-    // on a query is the part that is not obvious
     private var Idle: some View {
         VStack(spacing: dimensions.spacing.space16) {
             Image(vm.sourceIcon)
@@ -140,8 +127,8 @@ struct SearchResultsGrid: View {
     }
 
     private var Grid: some View {
-        // grouped once per evaluation instead of one O(n) filter per section -
-        // this body re-runs on every currentPage write during a fling
+        // grouped once here instead of one O(n) filter per section, since this
+        // body re-runs on every currentPage write during a fling
         let grouped = Dictionary(grouping: vm.entries, by: \.page)
             .sorted { $0.key < $1.key }
 
@@ -161,9 +148,8 @@ struct SearchResultsGrid: View {
                 }
             }
 
-            // a persistent slot rather than an inserted-and-removed spinner: the
-            // tail growing and shrinking under a finger at max offset is exactly
-            // the append-jump this grid used to have
+            // a persistent slot, not an inserted/removed spinner - the latter
+            // caused an append-jump under a finger at max offset
             if vm.hasMore {
                 ProgressView()
                     .opacity(vm.isLoadingMore ? 1 : 0)
@@ -202,10 +188,8 @@ struct SearchResultsGrid: View {
     }
 }
 
-// its own view with an explicit equality so a mid-scroll state write in the
-// parent cannot re-diff every card of every loaded page - a section's body only
-// re-runs when its page's rows actually change (observation still invalidates
-// it directly for badge updates)
+// explicit Equatable so a mid-scroll state write in the parent cannot
+// re-diff every card of every loaded page
 private struct PageSection: View, Equatable {
     let page: Int
     let entries: [GridEntry]
@@ -249,8 +233,8 @@ private struct PageSection: View, Equatable {
         }
     }
 
-    // deliberately generous: the gap is the signal. a hairline alone reads as a
-    // row separator - the dead space around it is what says "new page starts here"
+    // the generous vertical padding is deliberate - a hairline alone reads as a
+    // row separator, not a new page
     private var PageDivider: some View {
         HStack(spacing: dimensions.spacing.space8) {
             Rectangle().fill(.border).frame(height: 1)
@@ -274,8 +258,6 @@ struct SearchGridControls: View {
         static let dotInset: CGFloat = 2
     }
 
-    // a shelf preset has neither control, and the row goes with them rather than
-    // leaving a band of empty glass above the grid
     var body: some View {
         if vm.supportsSort || vm.supportsRefine {
             HStack {
@@ -288,9 +270,6 @@ struct SearchGridControls: View {
 
     private var SortMenu: some View {
         Menu {
-            // a first-class row rather than a clear button. once a sort is picked
-            // there is otherwise no way back to whatever the source ranks by, and
-            // it names what automatic resolves to instead of leaving it a mystery
             Button {
                 vm.selectSort(nil)
             } label: {
@@ -323,8 +302,6 @@ struct SearchGridControls: View {
         .buttonBorderShape(.capsule)
     }
 
-    // the count moves to a dot on the corner: the label stops changing width as
-    // filters are added, and the sheet behind it already says how many and which
     @ViewBuilder
     private var RefinePill: some View {
         let active = vm.activeFilterCount > 0
@@ -344,8 +321,7 @@ struct SearchGridControls: View {
                 button.buttonStyle(.glass)
             }
         }
-        // outside the button so the glass does not sample it, and clear of the
-        // capsule's corner so it reads as attached rather than clipped
+        // outside the button so the glass effect does not sample it
         .overlay(alignment: .topTrailing) {
             if active {
                 Circle()

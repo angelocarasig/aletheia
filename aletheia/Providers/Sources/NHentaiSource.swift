@@ -7,16 +7,10 @@
 
 import Foundation
 
-// an adult-only source. one v2 JSON API serves search, detail and pages; the
-// everythingmoe archive is a fallback only for taken-down galleries the API 404s.
-// cloudflare fronts it with a silent managed challenge that mints cf_clearance on
-// any real browser load, so it conforms to AuthenticatingSource MangaFire-style,
-// with interactive:true to survive the under-attack toggle. see
-// docs/sources/nhentai.md
 struct NHentaiSource: AuthenticatingSource {
     let requester: AuthRequester
-    // only for the archive host, which is plain and must not carry nhentai's
-    // credential; every nhentai.net call goes through the requester via fetch(_:)
+    // network is for the archive host only - it is plain and must not carry
+    // nhentai's credential; every nhentai.net call goes through the requester
     let network: NetworkConfiguration
 
     private static let api = URL(string: "https://nhentai.net/api/v2")!
@@ -33,8 +27,6 @@ struct NHentaiSource: AuthenticatingSource {
         baseURL: URL(string: "https://nhentai.net")!,
         referer: URL(string: "https://nhentai.net")!,
         supportedFilters: Self.filters,
-        // the /api/v2/search sort enum, which composes with the query - so it maps
-        // straight to a sort axis, no preset gymnastics
         supportedSort: .init(
             options: [
                 .init(id: "popular", name: "Popular"),
@@ -88,13 +80,8 @@ struct NHentaiSource: AuthenticatingSource {
 // MARK: - Vocabulary
 
 extension NHentaiSource {
-    // five namespaces harvested from /api/v2/tags/{type} into one bundled dump,
-    // keyed by grammar scope and count-ordered within each. the filter id is the
-    // scope search() encodes with; the option id is the name itself, because the
-    // name is the request token - nhentai's grammar addresses tags by name. the
-    // file's numeric ids and counts wait for /galleries/tagged and Option
-    // gaining a frequency field; the full un-minified dump lives outside the
-    // repo (~Downloads/nhentai-tags-full.json)
+    // option id is the tag name itself, not a numeric id - nhentai's search
+    // grammar addresses tags by name
     static let filters: [SourceFilter] = {
         let vocabulary = load("nhentai-tags")
         let namespaces: [(scope: String, name: String)] = [
@@ -114,8 +101,6 @@ extension NHentaiSource {
         }
     }()
 
-    // an unreadable vocabulary is an empty filter, never a crash: the rest of
-    // the source is unaffected and search still works without it
     private static func load(_ resource: String) -> [String: [Entry]] {
         guard let url = Bundle.main.url(forResource: resource, withExtension: "json"),
             let data = try? Data(contentsOf: url),
@@ -137,27 +122,19 @@ extension NHentaiSource {
         }
     }
 
-    // nhentai stores every name lowercased, so its tags read as noise next to
-    // every other source's title case - and the tag pool keys on a
-    // case-insensitive normalised name, so whichever source writes a tag first
-    // owns its display string. capitalisation happens at this boundary, per word
-    // and per hyphen segment.
+    // nhentai stores every tag name lowercased, and the shared tag pool keys on
+    // a case-insensitive name - whichever source writes a tag first owns its
+    // display string, so capitalisation has to happen at this boundary
     //
-    // acronyms are recognised by shape, not by a hand-kept list: a short token
-    // carrying no vowel is not a word. measured against the whole bundled
-    // vocabulary, every match above a handful of uses is genuine (FFM, BBM, MMF,
-    // BBW, BDSM, CBT, MMM, TTF, FFF, FFT, MTF, TTM, SSBBW, TTT, MMT, CG, SSBBM)
-    // and the misfires are all one-off junk tags in the single digits. a list
-    // would have to be re-derived every time nhentai coins a tag; the rule
-    // covers the ones nobody has coined yet
+    // acronyms are recognised by shape (a short, vowel-less token), not a
+    // hand-kept list - a list would need re-deriving every time nhentai coins
+    // a new tag, where the shape rule covers those automatically
     private static let vowels = Set("aeiouy")
 
-    // the exceptions the shape rule cannot see: acronyms carrying a vowel, and
-    // ones mixing in a digit
+    // exceptions the shape rule gets wrong: acronyms with a vowel or a digit
     private static let acronyms: Set<String> = ["milf", "dilf", "3d", "3p"]
 
-    // and the inverse - vowel-less English the rule would shout at. these are the
-    // only two across all 80k names in the vocabulary
+    // and the inverse - vowel-less english words the rule would wrongly uppercase
     private static let words: Set<String> = ["mr", "vs"]
 
     static func titled(_ name: String) -> String {
@@ -191,11 +168,9 @@ extension NHentaiSource {
     func search(_ query: SearchQuery) async throws -> SearchPage<SeriesStub> {
         let raw = (query.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
 
-        // the magic number: an all-digits query is a gallery code, which the
-        // search index cannot match (query=671147 and id:671147 both return
-        // nothing) - so it resolves through the gallery endpoint instead, live
-        // first, then the takedown archive. a code that resolves nowhere falls
-        // through to text search unchanged
+        // an all-digits query is a gallery code, which the search index cannot
+        // match - resolve it through the gallery endpoint instead. one that
+        // resolves nowhere falls through to text search unchanged
         if query.page == 1, query.filters.isEmpty,
             (1...7).contains(raw.count), raw.allSatisfy({ $0.isASCII && $0.isNumber }),
             let match = await gallery(code: raw)
@@ -203,20 +178,15 @@ extension NHentaiSource {
             return SearchPage(items: [match], next: nil)
         }
 
-        // filters ride the query string - nhentai has no filter parameters, only
-        // its search grammar. the filter id is the grammar scope, the option id
-        // is the name the scope takes, exclusion is a leading minus
         var terms: [String] = raw.isEmpty ? [] : [raw]
         for case .multiSelect(let scope, let included, let excluded) in query.filters {
             terms.append(contentsOf: included.map { "\(scope):\"\(Self.quotable($0))\"" })
             terms.append(contentsOf: excluded.map { "-\(scope):\"\(Self.quotable($0))\"" })
         }
 
-        // /api/v2/search requires a query, but "*" is a match-all - which is what
-        // unlocks the windowed popularity sorts (popular-today/week/month) for a
-        // browse or a preset with no text. so one path serves search, idle browse
-        // and every preset; the sort does the rest. the sibling /galleries and
-        // /galleries/popular routes are unpaged or sort-blind and go unused
+        // /api/v2/search requires a query, but "*" is a match-all - so this one
+        // path also serves idle browse and every preset, since the sibling
+        // /galleries routes are unpaged or don't support these sorts
         let text = terms.isEmpty ? "*" : terms.joined(separator: " ")
 
         let response: SearchResponse = try await get(
@@ -239,7 +209,6 @@ extension NHentaiSource {
         name.replacingOccurrences(of: "\"", with: "")
     }
 
-    // adultOnly, so every stub is adult by construction - gate-exempt
     private static func stub(from item: SearchItem) -> SeriesStub {
         let composite = item.englishTitle ?? item.japaneseTitle
         let names = composite.map {
@@ -269,8 +238,7 @@ extension NHentaiSource {
             )
         }
 
-        // a taken-down code still resolves as browse-only metadata, the same
-        // fallback details() takes when opened
+        // same archive fallback details() takes when the gallery is opened
         guard let detail = try? await archived(code) else { return nil }
         return SeriesStub(
             slug: detail.slug, title: detail.title, cover: detail.covers.first, adult: true)
@@ -286,8 +254,6 @@ extension NHentaiSource {
         let request = URLRequest(url: url)
         let (data, response) = try await requester.send(request, for: self)
 
-        // a taken-down gallery 404s on the API but survives in the archive as
-        // metadata only - no pages, so it renders but cannot be read
         if response.statusCode == 404 {
             AppLog.shared.log(
                 "[nhentai] gallery \(seriesSlug) 404 on API - falling back to metadata archive (no pages, not readable)",
@@ -309,7 +275,6 @@ extension NHentaiSource {
             .appendingPathComponent(shard)
             .appendingPathComponent("\(seriesSlug).json")
 
-        // the archive host is plain - no gate, no credential
         let data: Data = try await network.get(url: url)
         let entry = try JSONDecoder().decode(Archived.self, from: data)
         return Self.detail(from: entry)
@@ -319,8 +284,6 @@ extension NHentaiSource {
 // MARK: - Chapters
 
 extension NHentaiSource {
-    // a gallery is one immutable book, not a chaptered series - one synthetic
-    // entry standing for the whole thing
     func chapters(seriesSlug: String) async throws -> [ChapterEntry] {
         let url = Self.url("galleries/\(seriesSlug)", [.init(name: "include", value: "tags")])
         let gallery: Gallery = try await get(url)
@@ -331,7 +294,6 @@ extension NHentaiSource {
                 title: "",
                 number: 1,
                 language: Self.language(from: gallery.tags),
-                // no scanlator concept on a gallery; the site itself stands in
                 scanlator: "NHentai",
                 url: URL(string: "https://nhentai.net/g/\(seriesSlug)/")!,
                 publishedDate: Date(timeIntervalSince1970: TimeInterval(gallery.uploadDate ?? 0))
@@ -344,8 +306,8 @@ extension NHentaiSource {
 
 extension NHentaiSource {
     func content(seriesSlug: String, chapterSlug: String) async throws -> [PageURL] {
-        // the chapter is synthetic, so its slug is the gallery id - pages come off
-        // the same detail payload
+        // chapterSlug is unused - the chapter is synthetic, so it's the same
+        // gallery id as seriesSlug and pages come off the same detail payload
         let url = Self.url("galleries/\(seriesSlug)", [.init(name: "include", value: "images")])
         let gallery: Gallery = try await get(url)
 
@@ -382,10 +344,7 @@ extension NHentaiSource {
 // MARK: - Mapping
 
 extension NHentaiSource {
-    // a gallery is finished the moment it is posted
     private static func detail(from gallery: Gallery) -> SeriesDetail {
-        // pretty is the bracket-stripped display title; the composite english
-        // string is a filename, not a name, so it pools as an alternate
         let names =
             gallery.title.pretty.map { titles($0, language: language(from: gallery.tags)) } ?? []
         let title = names.first ?? gallery.title.english ?? gallery.title.japanese ?? "Untitled"
@@ -417,8 +376,8 @@ extension NHentaiSource {
             + [entry.title.english, entry.title.japanese].compactMap { $0 })
             .filter { !$0.isEmpty && $0 != title }
 
-        // the archive carries no cover path - best-effort from media_id, webp being
-        // nhentai's dominant format. degraded on purpose: this gallery is gone
+        // the archive carries no cover path - guess it from media_id, webp
+        // being nhentai's dominant format, since this gallery is gone
         let covers =
             entry.mediaId.flatMap { media in
                 thumbs.appendingPathComponent("galleries/\(media)/cover.webp")
@@ -444,25 +403,19 @@ extension NHentaiSource {
         tags.filter { tagTypes.contains($0.type) }.map { titled($0.name) }
     }
 
-    // artists are authors; the circle stands in when there is no named artist
     private static func authors(from tags: [Tag]) -> [String] {
         let artists = tags.filter { $0.type == "artist" }.map { titled($0.name) }
         if !artists.isEmpty { return artists }
         return tags.filter { $0.type == "group" }.map { titled($0.name) }
     }
 
-    // the vertical bar is e-hentai's documented translated-title separator -
-    // "translated works may include the translated title after a vertical bar" -
-    // with the original romaji leading. measured across a 481k-gallery metadata
-    // corpus, 9.8% of titles carry exactly one, and the trailing half is in the
-    // language of the scan rather than english: a chinese release pipes a chinese
-    // title. so the half worth leading with is the one matching the gallery's own
-    // language, and the other pools as an alternate the user can switch to.
-    // spacing around the bar is not dependable - 7% omit the leading space.
+    // the vertical bar is e-hentai's documented translated-title separator,
+    // original romaji leading - but the trailing half is in the scan's own
+    // language rather than always english, so the half worth leading with is
+    // whichever matches the gallery's language; the other pools as an alternate
     //
-    // the same bar in the tag namespaces means alias, not translation, and its
-    // order is not a language rule ("my hero academia | boku no hero academia"
-    // against "kimetsu no yaiba | demon slayer") - those are left intact
+    // this is title-only: the same bar in tag namespaces means alias, not
+    // translation, and carries no language ordering - leave those intact
     private static func titles(_ pretty: String, language: LanguageCode) -> [String] {
         guard let bar = pretty.firstIndex(of: "|") else { return [pretty] }
 
@@ -473,14 +426,11 @@ extension NHentaiSource {
         return language == .japanese ? [original, translated] : [translated, original]
     }
 
-    // the composite title is a filename: bracket, paren and brace groups carry the
-    // event, circle, language and scanlator, and the name is what survives them.
-    // this is what nhentai's own pretty field means to be, and it is better at it -
-    // pretty also eats ~tilde~ and -hyphen- pairs, so "Mitsurin Yuusha Dorei-ka
-    // Keikaku Bitch of the Jungle - Enslaved" reaches it as "Mitsurin Yuusha
-    // DoreiEnslaved". measured over 25k galleries the two agree 89.1% of the time
-    // and every disagreement is pretty losing title text. a title left empty by
-    // stripping (13 in 25k, all unbalanced uploader typos) keeps its composite
+    // the composite title is a filename: bracket, paren and brace groups carry
+    // event/circle/language/scanlator, and the name is what survives stripping
+    // them. this exists rather than just using nhentai's own "pretty" field
+    // because pretty also eats ~tilde~ and -hyphen- pairs, sometimes losing
+    // title text (e.g. "Dorei-ka Keikaku - Enslaved" becomes "DoreiEnslaved")
     private static func stripped(_ composite: String) -> String {
         var text = composite
         for pattern in [#"\[[^\[\]]*\]"#, #"\([^()]*\)"#, #"\{[^{}]*\}"#] {
@@ -506,9 +456,8 @@ extension NHentaiSource {
         return .english
     }
 
-    // a search item names no tags, only their ids, so the language namespace is
-    // matched by id instead - the three the app models, taken from
-    // /api/v2/tags/language. precedence mirrors the name-keyed lookup above
+    // search results carry tag ids, not names, so language is matched by id
+    // here instead - mirrors the precedence of the name-keyed lookup above
     private enum Namespace {
         static let japanese = 6346
         static let chinese = 29963

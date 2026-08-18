@@ -7,16 +7,14 @@
 
 import SwiftUI
 
-// stands in for the whole screen until a series is resolved. nothing real is
-// shown first, because matching can land on a different series than the stub
-// that opened it - the title and cover would then visibly change under the user
+// nothing real is shown before the series resolves - matching can land on a
+// different series than the stub that opened it, and the stub's title/cover
+// would then visibly change under the reader
 struct DetailsSkeleton: View {
     @Environment(\.dimensions) private var dimensions
 
     private enum Layout {
-        // same landmark the real screen uses, so the two line up on the swap
         static let heroSpacer: CGFloat = DetailsBackdrop.heroHeight
-        // the last synopsis line stops short, the way wrapped text does
         static let lastLineInset: CGFloat = 200
         static let coverWidth: CGFloat = 140
         static let coverAspect: CGFloat = 11 / 16

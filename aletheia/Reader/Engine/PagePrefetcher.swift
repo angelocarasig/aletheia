@@ -8,8 +8,6 @@
 import Kingfisher
 import UIKit
 
-// warms a band of pages either side of what is on screen. symmetric on purpose
-// - scrolling back a page should be as instant as scrolling forward
 @MainActor
 final class PagePrefetcher {
     private var prefetcher: ImagePrefetcher?
@@ -41,8 +39,7 @@ final class PagePrefetcher {
         warmed = urls
         prefetcher?.stop()
 
-        // a page's headers are per-source, and one band can straddle a chapter
-        // boundary, so the band is grouped rather than warmed with one set
+        // one band can straddle a chapter boundary, where headers differ per source
         let resources = Dictionary(grouping: band, by: \.headers)
         let sources = resources.map { headers, pages in
             (headers: headers, urls: pages.map(\.url))

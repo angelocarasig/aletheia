@@ -7,13 +7,6 @@
 
 import SwiftUI
 
-// stands in for the reader while the first chapter resolves. the shapes match
-// where the real chrome lands, so the swap does not move anything the eye is
-// already tracking.
-//
-// deliberately not a copy of the overlay - v2 forked its whole control card
-// into a shimmering twin and paid 483 lines to keep two layouts in step. this
-// only draws the landmarks
 struct ReaderSkeleton: View {
     @Environment(\.dimensions) private var dimensions
 
@@ -41,8 +34,6 @@ struct ReaderSkeleton: View {
 }
 
 extension ReaderSkeleton {
-    // one page-shaped block rather than a strip: the real first page lands
-    // before a second one would ever be visible
     fileprivate var Page: some View {
         GeometryReader { proxy in
             Block(cornerRadius: 0)

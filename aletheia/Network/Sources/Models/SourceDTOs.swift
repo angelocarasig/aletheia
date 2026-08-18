@@ -8,19 +8,15 @@
 import CoreGraphics
 import Foundation
 
-/// lightweight search result.
 struct SeriesStub: Sendable, Hashable {
     let slug: String
     let title: String
     let cover: URL?
 
-    /// pornographic, as this source draws that line. never comparable between
-    /// sources - MangaDex means its `pornographic` tier, WeebCentral means its
-    /// own wider flag - so nothing may be built that assumes two sources agree.
-    ///
-    /// a claim, not a guess: `true` only when the source knows, `false` only when
-    /// it can guarantee. a source that can do neither shapes its request until it
-    /// can. see docs/features/adult-content.md
+    /// pornographic, as this source draws that line - never comparable across sources
+    /// (MangaDex's `pornographic` tier != WeebCentral's wider flag). a claim, not a
+    /// guess: `true` only when the source knows, `false` only when it can guarantee.
+    /// see docs/features/adult-content.md
     let adult: Bool
 
     init(slug: String, title: String, cover: URL?, adult: Bool = false) {
@@ -31,7 +27,6 @@ struct SeriesStub: Sendable, Hashable {
     }
 }
 
-/// full series metadata from a source.
 struct SeriesDetail: Sendable {
     let slug: String
     let title: String
@@ -45,7 +40,6 @@ struct SeriesDetail: Sendable {
     let authors: [String]
 }
 
-/// a chapter entry in a series' chapter list.
 struct ChapterEntry: Sendable {
     let slug: String
     let title: String
@@ -56,7 +50,6 @@ struct ChapterEntry: Sendable {
     let publishedDate: Date
 }
 
-/// a single page image within a chapter's content.
 struct PageURL: Sendable {
     let index: Int
     let url: URL
@@ -69,22 +62,17 @@ struct PageURL: Sendable {
     }
 }
 
-// a hint, never ground truth - only the bytes decide. it exists so a reader can
-// lay a page out before its image arrives, and no source is ever required to
-// make an extra request to fill it in.
-//
-// dimensions describe the file `url` serves, after any EXIF orientation. a
-// quality variant is a different file with different dimensions, so a hint
-// never transfers between them
+// a hint, never ground truth - only the bytes decide. describes the file `url`
+// serves after any EXIF orientation; a quality variant is a different file with
+// different dimensions, so a hint never transfers between them
 struct PageSize: Sendable, Equatable {
     let width: Int
     let height: Int
     let exactness: Exactness
 
-    // scraped attributes are routinely normalised for a site's own viewer -
-    // Webtoons stamps width="700" with a float height - so the ratio survives
-    // where the pixels do not. only `.exact` may drive splitting or texture
-    // decisions; `.ratio` is good for layout and nothing else
+    // scraped attributes are routinely normalised for a site's own viewer - Webtoons
+    // stamps width="700" with a float height - so the ratio survives where the pixels
+    // do not. only `.exact` may drive splitting or texture decisions
     enum Exactness: Sendable {
         case exact
         case ratio

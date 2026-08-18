@@ -8,25 +8,8 @@
 import Kingfisher
 import SwiftUI
 
-// one queue row. icon/message vocabulary mirrors DetailsMetadataRefreshPill's
-// for the same states, so a reader who has seen one recognises the other.
-// the row itself carries its own controls and navigates nowhere, so it keeps
-// .regular glass without .interactive() - see docs/design.md §2. everything
-// inside stays flat - glass cannot sample glass, so no inner state gets a
-// background of its own.
-//
-// idle and searching are each one big tappable centre, not a text link
-// beside a disabled button - there is exactly one thing to do in either
-// state. once results exist, up to Layout.previewCount show inline as
-// SourceCards, the same carousel SourcePresetRow uses; the chevron opens
-// MigrationCandidatePicker for the rest, and for editing the query
 struct TrackerRestoreRowView: View {
     let row: MigrationRow<TrackerImportEntry>
-    // which tracker this whole session is pulling from - needed only to map
-    // row.entry.remoteStatus (that tracker's own raw vocabulary) to Status
-    // for SavedSummary. every row in a session shares one tracker, so this
-    // is a session-level fact handed down rather than something the row
-    // itself carries
     let tracker: Tracker
     let sourcesBySlug: [String: Source]
     let onSelect: (MigrationCandidate) -> Void
@@ -57,11 +40,6 @@ struct TrackerRestoreRowView: View {
                 Spacer()
                 StatusIcon
 
-                // lives beside the title it belongs to, not a second row of
-                // its own - the carousel below has results, not a headline.
-                // gone once saved - the picked candidate is a fact by then,
-                // not a choice, and this chevron is what opens the picker a
-                // reader could use to change it
                 if case .found = row.match, row.outcome != .saved {
                     Image(systemName: "chevron.right")
                         .font(.caption.weight(.semibold))
@@ -71,10 +49,6 @@ struct TrackerRestoreRowView: View {
                 }
             }
 
-            // one phase swap, one animation key - docs/design.md §1: transition
-            // per branch, .settle on the surviving container, never a bare Group.
-            // precheckMatched short-circuits the match switch entirely - these
-            // rows were never searched, and match stays .idle for them
             VStack(alignment: .leading, spacing: 0) {
                 if row.precheckMatched {
                     AlreadyLinkedPrompt
@@ -90,13 +64,6 @@ struct TrackerRestoreRowView: View {
                             .transition(.opacity)
 
                     case .found(let candidates, let selected):
-                        // once saved this is a one-and-done operation: the
-                        // commit already created a series, fetched its
-                        // chapters and linked the tracker, so the carousel's
-                        // own onSelect tap - which would otherwise just swap
-                        // a preference - is what undoes real work here.
-                        // shown instead as the flat, non-interactive summary
-                        // AlreadyLinkedPrompt uses for the same reason
                         if row.outcome == .saved {
                             SavedSummary(selected)
                                 .transition(.opacity)
@@ -116,10 +83,6 @@ struct TrackerRestoreRowView: View {
                 }
             }
 
-            // a failed attempt states why before offering Skip - the reader
-            // decides whether it's worth a re-search or just moving on. a
-            // skipped row keeps stating the same reason, since it is the
-            // only record of why this one never made it in
             if let reason = row.outcome?.reason {
                 Text(reason)
                     .font(.caption2)
@@ -127,18 +90,8 @@ struct TrackerRestoreRowView: View {
                     .lineLimit(2)
             }
 
-            // one Skip, in one place, regardless of which dead end put the
-            // row here - a found-but-failed save, a search that came back
-            // with nothing, or a search that failed outright all land on
-            // the same bottom-trailing slot. the dead-end ContentUnavailableViews
-            // above offer only Retry, not their own Skip, so there is exactly
-            // one uniform way to give up on a row.
-            //
-            // row.saving is its own branch here rather than folded into
-            // canSave - canSave is deliberately false while saving (so a
-            // second tap can't fire mid-request), which used to mean this
-            // whole row disappeared the moment Save was tapped and nothing
-            // was left on screen to say a save was in flight at all
+            // row.saving is checked separately from canSave - canSave is false while
+            // saving, so folding it in made the row disappear mid-save with no indicator
             if row.saving || row.canSave || row.canSkip {
                 HStack {
                     Spacer()
@@ -152,11 +105,6 @@ struct TrackerRestoreRowView: View {
                 }
             }
         }
-        // one animation key per state this row tracks, on the one container
-        // that survives every phase swap - covers the header's icon/chevron,
-        // the phase content below, the failure-reason line, and the bottom
-        // action row all at once, rather than scattering the same three
-        // modifiers across each child that happens to read one of them
         .animation(.settle, value: row.match)
         .animation(.settle, value: row.outcome)
         .animation(.settle, value: row.saving)
@@ -177,9 +125,6 @@ struct TrackerRestoreRowView: View {
         }
     }
 
-    // the same tinted-capsule action StartButton and DetailsContinue use,
-    // scaled to a row rather than a whole screen - trailing-aligned, not a
-    // borderedProminent pill that belongs to no other surface in this app
     private var SaveButton: some View {
         HStack(spacing: dimensions.spacing.space8) {
             if row.saving {
@@ -206,10 +151,6 @@ struct TrackerRestoreRowView: View {
         .disabled(!row.canSave)
     }
 
-    // the same shape as Save, muted-tinted rather than brand or warning -
-    // skipping is a deliberate choice, not a failure, and per docs/design.md
-    // §18 an alarm colour belongs to an error state, not to the reader's own
-    // decision to move on from one
     private var SkipButton: some View {
         HStack(spacing: dimensions.spacing.space8) {
             Image(systemName: "arrow.uturn.forward")
@@ -226,10 +167,6 @@ struct TrackerRestoreRowView: View {
         .tappable(action: onSkip)
     }
 
-    // a symbol never crossfades - it draws. same rule DetailsMetadataRefreshPill's
-    // Icon follows: .symbolEffect(.drawOn) on entry, Reduce Motion falls back
-    // to opacity, and the busy state is progress.indicator + a continuous spin
-    // rather than a bare ProgressView with no stroke to draw out of
     @ViewBuilder
     private var StatusIcon: some View {
         if row.precheckMatched {
@@ -266,9 +203,6 @@ struct TrackerRestoreRowView: View {
         }
     }
 
-    // nothing to do here at all - this exact tracker entry is already linked
-    // to a series in the library, found before any search ran. no controls,
-    // matching the flat, non-interactive centre every other terminal state uses
     private var AlreadyLinkedPrompt: some View {
         HStack(spacing: dimensions.spacing.space8) {
             Image(systemName: "link.circle.fill")
@@ -281,17 +215,6 @@ struct TrackerRestoreRowView: View {
         .frame(height: Layout.promptHeight)
     }
 
-    // a mix of both halves of what a saved row knows, stated rather than
-    // offered - no tap target: the candidate's own cover (what the source
-    // showed for it - nothing here reads back the library's own final
-    // pooled cover, since the commit never hands its seriesId back), and the
-    // tracker's own progress/status, as a Badge pill (the same component
-    // DetailsSources' own DISCONNECTED tag uses) and a real progress bar
-    // (matching DetailsDisambiguation's own read/total ProgressView,
-    // .tint(.brand) included) rather than plain text. title is deliberately
-    // not repeated - the row's own header above already carries
-    // row.entry.title for every state, saved included, and restating it
-    // here is the redundancy CLAUDE.md's own rule warns against
     private func SavedSummary(_ selected: MigrationCandidate?) -> some View {
         let status = Status(raw: row.entry.remoteStatus, for: tracker) ?? .planning
 
@@ -318,10 +241,8 @@ struct TrackerRestoreRowView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    // two branches rather than one String built with `??` - a coalesce into
-    // plain String is what already broke inflection markup once on this
-    // screen (docs/findings.md), since LocalizedStringKey parsing only
-    // applies to a literal handed to Text(_:) directly
+    // separate branches, not `??` into a String - coalescing broke inflection
+    // markup here before (docs/findings.md)
     @ViewBuilder
     private var ProgressText: some View {
         if let total = row.entry.totalChapters, total > 0 {
@@ -331,9 +252,6 @@ struct TrackerRestoreRowView: View {
         }
     }
 
-    // bigger than a list-row thumbnail on purpose - this is the one piece of
-    // real artwork a saved row has left once the carousel is gone, so it
-    // carries more of the card's visual weight than an icon-scale image would
     private func SavedCover(_ url: URL?) -> some View {
         Color.clear
             .aspectRatio(Layout.savedCoverAspect, contentMode: .fit)
@@ -353,7 +271,6 @@ struct TrackerRestoreRowView: View {
             .clipped()
     }
 
-    // nothing has happened yet - the whole centre is the one thing to do
     private var SearchPrompt: some View {
         VStack(spacing: dimensions.spacing.space4) {
             Image(systemName: "magnifyingglass")
@@ -369,9 +286,6 @@ struct TrackerRestoreRowView: View {
         .tappable { onSearch(nil) }
     }
 
-    // skeleton cards rather than a spinner - the same SourcePresetRow.Skeleton
-    // shape, so a row mid-search previews what it is about to become instead
-    // of blocking on a bare ProgressView
     private var SearchingPrompt: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             LazyHStack(spacing: dimensions.spacing.space8) {
@@ -411,17 +325,10 @@ struct TrackerRestoreRowView: View {
         }
     }
 
-    // Retry is the only action a dead end offers inline - Skip lives in the
-    // one bottom-trailing slot every row shares, not duplicated per state
     private var DeadEndActions: some View {
         Button("Retry") { onSearch(nil) }
     }
 
-    // up to Layout.previewCount candidates, inline - the chevron beside the
-    // row's own title is the one way to see the rest, never a count
-    // truncated silently. the selected candidate's title is not repeated
-    // here - the row's own title above already says it - so this line names
-    // the source it came from instead, or how many matches there are
     private func ResultsCarousel(_ candidates: [MigrationCandidate], selected: MigrationCandidate?)
         -> some View
     {
@@ -481,13 +388,6 @@ struct TrackerRestoreRowView: View {
     }
 }
 
-// MARK: - Previews
-
-// stepped one at a time rather than all at once - the same shape
-// DetailsSources' own SourcesPreview uses, and for the same reason: these
-// states occupy the same row in practice, one after another, so a Previous/
-// Next pair over a single live row shows what a reader actually sees rather
-// than a static gallery of all of them side by side
 #if DEBUG
     private struct RowPreview: View {
         @State private var index = 0
@@ -507,9 +407,6 @@ struct TrackerRestoreRowView: View {
                 stub: SeriesStub(slug: slug, title: title, cover: nil))
         }
 
-        // genuinely ambiguous: none of these titles is an exact match for the
-        // entry, which is exactly what LiveTrackerRestoreSearcher needs to leave
-        // `selected` nil rather than auto-picking one
         private static let ambiguous = [
             candidate("a", "Solo Leveling: Ragnarok"), candidate("b", "Solo Leveling (Volume)"),
             candidate("c", "Only I Level Up"),
@@ -534,10 +431,6 @@ struct TrackerRestoreRowView: View {
                 MigrationRow<TrackerImportEntry>(
                     entry: entry(3, "Solo Leveling"), match: .found(ambiguous, selected: nil))
             ),
-            // one candidate is an exact title match among alternates -
-            // LiveTrackerRestoreSearcher auto-selects it, so the fixture does
-            // too rather than leaving the row inconsistent with real search
-            // behaviour
             (
                 "Found, exact match auto-selected",
                 MigrationRow<TrackerImportEntry>(
@@ -552,8 +445,6 @@ struct TrackerRestoreRowView: View {
             (
                 "Saved",
                 MigrationRow<TrackerImportEntry>(
-                    // a real total, unlike the other fixtures' - SavedSummary's
-                    // "N of total" branch has nothing else to preview it with
                     entry: TrackerImportEntry(
                         id: 6, title: "Chainsaw Man", cover: nil, progress: 97,
                         remoteStatus: "CURRENT", totalChapters: 156),

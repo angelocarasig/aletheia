@@ -7,10 +7,8 @@
 
 import SwiftUI
 
-// zones are fractions of the screen, so they hold at any size without a second
-// set of numbers per device. every layout tiles the whole screen rather than
-// declaring only its edges - a layout that leaves holes cannot be drawn, and
-// there would be no way to express a middle that is not the menu
+// layouts must declare the whole screen, including menu regions - the map view
+// only draws what's declared
 enum ReaderTapZones {
     enum Action {
         case previous
@@ -53,7 +51,6 @@ enum ReaderTapZones {
             }
         }
 
-        // nothing to swap when every region is the menu
         var isFlippable: Bool {
             regions.contains { $0.action != .menu }
         }
@@ -118,16 +115,12 @@ enum ReaderTapZones {
         }
     }
 
-    // right-to-left mirrors the pages, so it has to mirror the zones with them,
-    // and the reader's own toggle composes on top rather than overriding it.
-    // one function because the hit test, the flash and the picker previews must
-    // all answer this the same way, and they live in three different files
+    // one function - hit test, flash and picker previews must all agree, and
+    // they live in three separate files
     static func reversed(for mode: Orientation, manual: Bool) -> Bool {
         manual != mode.isRightToLeft
     }
 
-    // first match wins, and anything unclaimed opens the menu - the layouts tile,
-    // so that only catches a tap exactly on the far edge
     static func action(
         at point: CGPoint,
         in size: CGSize,
@@ -169,9 +162,8 @@ extension ReaderTapZones.Action {
     }
 }
 
-// one renderer at two scales: full screen for the flash, thumbnail for a picker
-// row. drawing the picker from anything else would let the two disagree about
-// what a layout means, which is the one thing a preview must never do
+// single renderer for both flash and picker - drawing the picker from anywhere
+// else risks disagreeing about what a layout means
 struct ReaderTapZoneMap: View {
     let layout: ReaderTapZones.Layout
     let reversed: Bool

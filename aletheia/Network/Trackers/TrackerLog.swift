@@ -7,17 +7,11 @@
 
 import Foundation
 
-// one format for every tracker request, so the log screen filtered to `trackers`
-// reads as a transcript rather than as three services' private habits.
-//
-// this exists because TrackerError.unavailable is a catch-all: a decode failure
-// and an unreachable host arrive at the reader as the same sentence, and neither
-// says which. the error stays deliberately vague on screen - a reader cannot act
-// on a coding key - and the detail goes here instead.
-//
-// levels do the filtering that a second category would otherwise do: the wire is
-// .debug, an unhappy status is .warning, and a body we could not read is .error.
-// so one category covers the whole feature and the noise is still separable
+// TrackerError.unavailable is a catch-all on screen - a decode failure and an
+// unreachable host read as the same sentence to the reader - so the detail
+// goes here instead. levels do the filtering a second category would
+// otherwise do: the wire is .debug, an unhappy status is .warning, and a body
+// we could not read is .error
 enum TrackerLog {
     static let category = "trackers"
 
@@ -41,8 +35,6 @@ enum TrackerLog {
         )
     }
 
-    // the transport could not reach the service at all, so there is no status to
-    // report and the url error is the whole story
     static func unreachable(_ tracker: Tracker, _ method: String, _ path: String, _ error: Error) {
         AppLog.shared.log(
             "[\(tracker.rawValue)] xx \(method) \(path) - \(error)",
@@ -51,10 +43,6 @@ enum TrackerLog {
         )
     }
 
-    // the one that earns this file. a decode failure is the only tracker error
-    // with no status code to explain it, and it is indistinguishable on screen
-    // from the service being down - so the field that went wrong and a slice of
-    // what actually arrived are recorded here
     static func undecodable(
         _ tracker: Tracker, _ path: String, expected: Any.Type, error: Error, body: Data
     ) {
@@ -92,8 +80,6 @@ enum TrackerLog {
         }
     }
 
-    // enough of the body to recognise, on one line. a log entry that wraps for
-    // forty lines is one nobody scrolls past
     private static func preview(_ body: Data, limit: Int = 300) -> String {
         guard let text = String(data: body, encoding: .utf8) else {
             return "<\(body.count) bytes, not utf8>"

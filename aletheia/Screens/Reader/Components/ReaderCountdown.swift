@@ -7,8 +7,7 @@
 
 import SwiftUI
 
-// how long until the page turns itself. lives outside the overlay on purpose -
-// the chrome is hidden exactly when this matters
+// lives outside the overlay on purpose - chrome is hidden exactly when this matters
 struct ReaderCountdown: View {
     let progress: Double
 
@@ -28,9 +27,7 @@ struct ReaderCountdown: View {
                     .frame(width: proxy.size.width * min(max(0, progress), 1))
             }
         }
-        // the engine quantises what it publishes, so the steps are already fine
-        // enough to read as motion. animating on top of that only adds lag, and
-        // a refill should snap rather than glide back
+        // engine already quantises what it publishes; animating on top only adds lag
         .frame(height: Layout.height)
         .frame(maxHeight: .infinity, alignment: .top)
         .allowsHitTesting(false)

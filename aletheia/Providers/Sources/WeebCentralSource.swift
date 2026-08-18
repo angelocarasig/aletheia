@@ -8,10 +8,7 @@
 import Foundation
 import SwiftSoup
 
-// htmx rather than json: the search page is a shell whose form carries
-// hx-trigger="load", so it immediately fetches /search/data and swaps the
-// fragment in. requesting that directly returns the results markup alone - 9kb
-// against the page's 72kb - with no credential and no renderer
+// htmx site: the search page's form immediately swaps in /search/data's fragment, so requesting that endpoint directly skips the shell
 struct WeebCentralSource: SourceService {
     let network: NetworkConfiguration
 
@@ -19,7 +16,6 @@ struct WeebCentralSource: SourceService {
     private static let window = 32
     private static let display = "Full Display"
 
-    // the layout the selectors below match
     private enum Selector {
         static let card = "article.bg-base-300"
         static let title = "a.line-clamp-1"
@@ -58,8 +54,7 @@ struct WeebCentralSource: SourceService {
                 ],
                 canExclude: false
             ),
-            // the site's own tag vocabulary. v2 declared these include-only, but
-            // excluded_tag demonstrably filters too - verified against live results
+            // v2 declared these include-only, but excluded_tag demonstrably filters too - verified against live results
             .multiSelect(
                 id: "included_tag",
                 name: "Tags",
@@ -123,11 +118,7 @@ struct WeebCentralSource: SourceService {
                     .init(id: "False", name: "Not adapted"),
                 ]
             ),
-            // binary on purpose. the api also takes Any, but Any returns a mixed
-            // set and the search fragment carries no per-result adult signal, so
-            // there would be no honest answer for the stubs it produced. dropping
-            // it leaves two one-sided states, which is what makes the stamp below
-            // exact rather than a guess
+            // binary on purpose - Any would return a mixed set with no per-result adult signal in the fragment, so dropping it keeps the stamp exact
             .select(
                 id: "adult",
                 name: "Adult Content",
@@ -137,10 +128,7 @@ struct WeebCentralSource: SourceService {
                 ]
             ),
         ],
-        // this api takes sort and order as two parameters, but to the app an
-        // option IS a direction - so the id carries both and the source splits
-        // it. same principle as MangaFire encoding its own include/exclude
-        // split: the quirk lives in the source, not in the shared model
+        // api takes sort and order as two params but an option id IS a direction here, so the id carries both and the source splits it
         supportedSort: .init(
             options: [
                 .init(id: "Best Match", name: "Best match"),
@@ -208,9 +196,6 @@ extension WeebCentralSource {
 
         let data = try await network.get(
             url: url, headers: ["Referer": descriptor.referer.absoluteString])
-        // rung 2: the result card is a title, a cover and a chapter count - no
-        // adult signal anywhere in the fragment. the request answers instead,
-        // and can only ever be one-sided because Any was dropped from the filter
         let stubs = try Self.stubs(
             from: String(decoding: data, as: UTF8.self),
             adult: allowsAdult(for: query))
@@ -240,8 +225,7 @@ extension WeebCentralSource {
         }
     }
 
-    // keyed by the ulid on a cdn, so there is no img element to select and
-    // nothing that breaks when the markup is restyled
+    // keyed by the ulid on a cdn - no img element to select, nothing breaks when markup is restyled
     private static func cover(for slug: String) -> URL? {
         URL(string: "https://temp.compsci88.com/cover/normal/\(slug).webp")
     }
@@ -254,8 +238,7 @@ extension WeebCentralSource {
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    // /series/{ULID}/{title-slug} - the trailing part is decorative, the ulid is
-    // what identifies the series
+    // /series/{ULID}/{title-slug} - the ulid identifies the series, the trailing slug is decorative
     private static func identifier(from href: String) -> String? {
         let parts = href.split(separator: "/")
         guard let index = parts.firstIndex(of: "series"), parts.index(after: index) < parts.endIndex
@@ -268,9 +251,7 @@ extension WeebCentralSource {
 
 // MARK: - Details
 
-// the only method without an endpoint behind it. the metadata is rendered into
-// the page rather than swapped in by htmx, so there is no fragment to ask for -
-// aidoku and manga-tui both parse this page for the same reason
+// the only method without an endpoint behind it - metadata is rendered into the page, not swapped in by htmx, so there is no fragment to ask for
 extension WeebCentralSource {
     func details(seriesSlug: String) async throws -> SeriesDetail {
         let url = descriptor.baseURL
@@ -281,9 +262,7 @@ extension WeebCentralSource {
             url: url, headers: ["Referer": descriptor.referer.absoluteString])
         let document = try SwiftSoup.parse(String(decoding: data, as: UTF8.self))
 
-        // two h1 elements carry the same title, one per breakpoint. og:title
-        // arrives branded - "Blue Lock | Weeb Central" - so whichever path wins,
-        // the site suffix comes off
+        // two h1s carry the same title, one per breakpoint; og:title arrives branded ("Blue Lock | Weeb Central") - either path needs the suffix stripped
         let heading = try document.select("h1").first()?.text() ?? ""
         let raw = try document.select("meta[property=og:title]").first()?.attr("content") ?? heading
         let title = Self.strippingSiteSuffix(raw)
@@ -305,9 +284,7 @@ extension WeebCentralSource {
         )
     }
 
-    // read from the href's query rather than the link text, so the displayed
-    // wording can change without breaking anything. these anchors are the site's
-    // own search vocabulary, which search() already depends on
+    // read from the href's query, not the link text, so display wording can change without breaking anything - same vocabulary search() depends on
     private static func values(in document: Document, for key: String) throws -> [String] {
         try document.select("a[href*=\(key)=]").compactMap { link in
             let href = try link.attr("href")
@@ -316,8 +293,7 @@ extension WeebCentralSource {
                 let value = components.queryItems?.first(where: { $0.name == key })?.value,
                 !value.isEmpty
             else { return nil }
-            // the site form-encodes spaces as "+", which URLComponents leaves
-            // literal - it only decodes percent escapes
+            // site form-encodes spaces as "+", which URLComponents leaves literal - it only decodes percent escapes
             return value.replacingOccurrences(of: "+", with: " ")
         }
     }
@@ -333,8 +309,7 @@ extension WeebCentralSource {
         .filter { !$0.isEmpty }
     }
 
-    // the site exposes a binary adult flag where others have four levels, so
-    // Suggestive is unreachable from here
+    // the site exposes a binary adult flag where others have four levels, so Suggestive is unreachable here
     private static func classification(_ adult: String?) -> Classification {
         switch adult {
         case "False": .Safe
@@ -369,20 +344,14 @@ extension WeebCentralSource {
 
         let rows = try document.select("a[href*=/chapters/]")
 
-        // deliberately no count shortcut. the response is already in hand, so
-        // the only thing skipping saves is an upsert that updateChanges makes a
-        // no-op anyway - and a matching count would have pinned every row that
-        // was parsed wrong to the wrong values permanently
+        // deliberately no count shortcut - the response is already in hand, and a matching count would pin any misparsed row to wrong values permanently
         return try rows.compactMap { row -> ChapterEntry? in
             let href = try row.attr("href")
             guard let slug = href.split(separator: "/").last.map(String.init), !slug.isEmpty else {
                 return nil
             }
 
-            // the row's first span holds the badge image, and the one after it
-            // only wraps more spans - the label sits nested inside. taking the
-            // first span that owns text rather than the first span at all is
-            // what stops every chapter parsing as "" and numbering itself 0
+            // first span holds the badge image; the label is nested in the next - taking the first span with text, not the first span, is what stops every chapter parsing as "" and numbering 0
             let label =
                 try row.select("span")
                 .map { $0.ownText() }
@@ -394,8 +363,7 @@ extension WeebCentralSource {
                 title: label.trimmingCharacters(in: .whitespacesAndNewlines),
                 number: Self.number(from: label),
                 language: .english,
-                // the fragment carries no group attribution, and this keys the
-                // scanlator priority rows, so it has to be stable across fetches
+                // fragment carries no group attribution - this keys scanlator priority so it must stay stable across fetches
                 scanlator: descriptor.name,
                 url: descriptor.baseURL.appendingPathComponent("chapters").appendingPathComponent(
                     slug),
@@ -410,8 +378,7 @@ extension WeebCentralSource {
         return Double(String(digits.reversed())) ?? 0
     }
 
-    // parsed here rather than by the shared decoder, whose strategy is tuned for
-    // other sources and would fail the whole response on one odd timestamp
+    // parsed here rather than by the shared decoder, whose strategy is tuned for other sources and would fail the whole response on one odd timestamp
     private static func date(from value: String?) -> Date {
         guard let value else { return .distantPast }
 
@@ -446,8 +413,7 @@ extension WeebCentralSource {
             url: url, headers: ["Referer": descriptor.referer.absoluteString])
         let document = try SwiftSoup.parse(String(decoding: data, as: UTF8.self))
 
-        // already absolute, on a separate host - the reader's referer modifier is
-        // what keeps them loading
+        // already absolute on a separate host - the reader's referer modifier is what keeps them loading
         return try document.select("img[src]").enumerated().compactMap { index, image in
             guard let source = URL(string: try image.attr("src")) else { return nil }
             return PageURL(index: index, url: source)
@@ -458,8 +424,7 @@ extension WeebCentralSource {
 // MARK: - Parameters
 
 extension WeebCentralSource {
-    // an option id is `field` or `field|Ascending`. descending is the default
-    // because it is what every option except the two alphabetical ones wants
+    // option id is `field` or `field|Ascending` - descending is default since every option but the two alphabetical ones wants it
     private static func split(_ optionID: String) -> (field: String, order: String) {
         let parts = optionID.components(separatedBy: "|")
         guard parts.count == 2 else { return (optionID, "Descending") }
@@ -469,8 +434,7 @@ extension WeebCentralSource {
     private static func parameters(for filters: [FilterSelection]) -> [URLQueryItem] {
         filters.flatMap { filter -> [URLQueryItem] in
             switch filter {
-            // the ids are already the request's own parameter names, so the
-            // excluded side is the same name with the prefix swapped
+            // ids are already the request's own parameter names - excluded side is the same name with the prefix swapped
             case .multiSelect(let id, let included, let excluded) where !excluded.isEmpty:
                 let opposite = id.replacingOccurrences(of: "included_", with: "excluded_")
                 return included.map { .init(name: id, value: $0) }
@@ -488,22 +452,16 @@ extension WeebCentralSource {
         }
     }
 
-    // the three tri-state filters have to be present even when untouched - the
-    // form always submits them, and omitting them narrows the results
+    // the three tri-state filters must be present even when untouched - the form always submits them, omitting them narrows results
     private static func defaults(missing filters: [FilterSelection]) -> [URLQueryItem] {
         let chosen = Set(filters.map(\.id))
-        // adult is absent here: Any is what the other two mean by "unset", but on
-        // this axis it means "return both kinds", and the gate has to exclude
-        // rather than stay quiet. addressed by adultDefault below
+        // adult excluded here: Any means "unset" for the other two, but on this axis it means "return both kinds" - the gate must exclude, not stay quiet (see adultDefault)
         return ["official", "anime"]
             .filter { !chosen.contains($0) }
             .map { .init(name: $0, value: "Any") }
     }
 
-    // the flag is theirs, not ours: it is drawn wide enough to cover Berserk, so
-    // Exclude hides mature seinen this app would not call adult. accepted for the
-    // simpler binary - excluded_tag=Hentai was measured as the narrower lever and
-    // deliberately passed over
+    // the flag is theirs, not ours - drawn wide enough to cover Berserk, so Exclude hides mature seinen this app wouldn't call adult; accepted for the simpler binary over excluded_tag=Hentai, which was measured narrower
     private static func adultDefault(missing filters: [FilterSelection]) -> [URLQueryItem] {
         guard !filters.contains(where: { $0.id == "adult" }) else { return [] }
         return [.init(name: "adult", value: "False")]

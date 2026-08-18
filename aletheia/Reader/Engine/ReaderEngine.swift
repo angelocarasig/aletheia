@@ -8,15 +8,13 @@
 import Foundation
 import Observation
 
-// owns what is on screen and decides what to load next. the controller owns
-// UIKit and reports; nothing calls back the other way except through here
 @MainActor
 @Observable
 final class ReaderEngine {
     private let window: ChapterWindow
     private let chapters: [ReaderChapter]
-    // only ever the share sheet's header. the engine is deliberately ignorant of
-    // the series otherwise - it reads a list of chapters and nothing above them
+    // only ever the share sheet's header - the engine is deliberately ignorant
+    // of the series otherwise
     private let series: String
     private let boundaries: [ReaderChapter.ID: ReaderBoundaryInfo]
     private var loading: Set<ReaderChapter.ID> = []
@@ -28,31 +26,18 @@ final class ReaderEngine {
     // what spliced the chapter *before* the one being opened above it
     private var navigating = 0
 
-    // what the destination slot reads. resident mirrors the controller's loaded
-    // set; failures makes a preload error visible instead of only logged
     private var resident: Set<ReaderChapter.ID> = []
     private var failures: [ReaderChapter.ID: ReaderError] = [:]
 
-    // one-way, per chapter, per session. scrolling backward across a boundary
+    // one-way, per chapter, per session: scrolling backward across a boundary
     // is a re-read, and an explicit jump clears the collection view rather than
     // scrolling across anything, so neither can mark a chapter finished
     private var completed: Set<ReaderChapter.ID> = []
 
-    // what the host reports about its reading-event write per finished chapter,
-    // rendered beside the terminal number. content only - the separator's
-    // height never depends on it
     private var events: [ReaderChapter.ID: ReaderSeparatorModel.EventStatus] = [:]
 
-    // whether the end of the list should offer to mark the series completed. a
-    // host fact the engine cannot derive - it depends on the series' own status
-    // and on what an origin says about the work - so it is pushed in and simply
-    // rendered, exactly like events above
     private var completable = false
 
-    // WHICH services this series is linked to, set once before the first page
-    // renders. presence is a fact of the series, never of load state, because the
-    // band's height is computed from it - a row that appeared when a push started
-    // would move every item below it mid-read
     private var trackers: [ReaderSeparatorModel.Tracker] = []
 
     // and what each of them did about ONE finished chapter, keyed by chapter and
@@ -80,20 +65,17 @@ final class ReaderEngine {
     // the reader jumped deliberately or simply scrolled into it
     var onChapterChanged: ((ReaderChapter, Bool) -> Void)?
     var onPageChanged: ((ReaderChapter, Int, Int) -> Void)?
-    // fired once per chapter, forward only. where tracker sync will hang.
-    // carries the chapter's page count because a chapter can be crossed without
-    // any of its pages ever being reported visible, and the host would then have
-    // no total to write progress against
+    // fired once per chapter, forward only. carries the chapter's page count
+    // because a chapter can be crossed without any of its pages ever being
+    // reported visible, leaving the host no total to write progress against
     var onChapterFinished: ((ReaderChapter, Int) -> Void)?
     var onSingleTap: ((CGPoint) -> Void)?
     // the reader offered the end-of-list mark and it was taken. the host owns
     // the write and pushes the new answer back through setCompletable
     var onMarkCompleted: (() -> Void)?
-    // the reader asked what happened to the chapters that are not there
     var onExplainGap: ((ReaderSeparatorModel.Gap) -> Void)?
-    // a page was written to the photo library, or was not. the image never comes
-    // through here - the controller owns UIKit, so it does the write and this
-    // carries only the answer
+    // the image never comes through here - the controller owns UIKit, so it
+    // does the write and this carries only the answer
     var onPageSaved: ((Result<Void, Error>) -> Void)?
     var onRetryTracker: ((ReaderChapter.ID, String) -> Void)?
 
@@ -188,8 +170,6 @@ final class ReaderEngine {
             guard case .after(let chapter) = boundary else { return }
             Task { await self?.retryNext(after: chapter) }
         }
-        // the engine knows which chapter the boundary belongs to; the host knows
-        // what a service is. so this only resolves the first and hands over
         controller.onSeparatorRetryTracker = { [weak self] boundary, service in
             guard case .after(let chapter) = boundary else { return }
             self?.onRetryTracker?(chapter, service)
@@ -273,14 +253,10 @@ final class ReaderEngine {
         preload(.start)
     }
 
-    // re-fetch one chapter in place, keeping every other chapter loaded and the
-    // reader on the page it was on. the pages themselves may come from somewhere
-    // entirely different - that is the host's business, not the engine's.
-    //
-    // the scroll at the end is not a nicety. remove() deliberately declines to
+    // the scroll at the end is not a nicety: remove() deliberately declines to
     // compensate the offset when the item under the reader is inside the chapter
     // being removed, which is exactly this case, so apply() then prepends against
-    // an offset nobody corrected. landing correctly has to be stated
+    // an offset nobody corrected
     func reload(_ chapter: ReaderChapter.ID) async {
         guard chapters.contains(where: { $0.id == chapter }) else { return }
 
@@ -399,8 +375,6 @@ final class ReaderEngine {
         let hadChapter = current != nil
         current = chapter
 
-        // the chapter being read is the one worth keeping when the window has
-        // to evict something
         Task { await window.touch(chapter.id) }
 
         if hadChapter {
@@ -410,10 +384,6 @@ final class ReaderEngine {
 
     // MARK: Boundaries
 
-    // assembled entirely from what the engine already knows plus the static
-    // facts the host computed once. slot PRESENCE never varies with direction
-    // or load state - only what the slots say does - because the controller
-    // sizes the band off this
     private func separator(
         for boundary: ReaderBoundary,
         direction: ReadingDirection
@@ -448,8 +418,6 @@ final class ReaderEngine {
         }
     }
 
-    // content only, never height - the action row is reserved whether or not it
-    // holds anything, so the offer can appear and go without moving a page
     func setCompletable(_ value: Bool) {
         guard completable != value else { return }
         completable = value
@@ -462,17 +430,15 @@ final class ReaderEngine {
         controller?.reloadSeparators()
     }
 
-    // presence, and only presence. called once while the reader is opening, before
-    // anything has been laid out - a separator built before this lands would be
-    // the wrong height for the rest of the session
+    // called once while the reader is opening, before anything has been laid
+    // out - a separator built before this lands would be the wrong height for
+    // the rest of the session
     func setTrackers(_ value: [ReaderSeparatorModel.Tracker]) {
         guard trackers != value else { return }
         trackers = value
         controller?.reloadSeparators()
     }
 
-    // content only, exactly like setEvent: the row already exists and this
-    // changes what its glyph says
     func setTrackerState(
         _ state: ReaderSeparatorModel.Tracker.State,
         for chapter: ReaderChapter.ID,
@@ -483,9 +449,8 @@ final class ReaderEngine {
         controller?.reloadSeparators()
     }
 
-    // the default is skipped rather than loading: a boundary the reader has not
-    // crossed pushed nothing, which is what skipped means. a spinner there would
-    // be claiming work that has not been asked for
+    // default is skipped, not loading - a spinner would claim work that was
+    // never asked for on a boundary the reader hasn't crossed yet
     private func trackerRows(for chapter: ReaderChapter.ID) -> [ReaderSeparatorModel.Tracker] {
         guard !trackers.isEmpty else { return [] }
 
@@ -519,8 +484,8 @@ final class ReaderEngine {
             completed.insert(id).inserted,
             let chapter = chapters.first(where: { $0.id == id })
         {
-            // the crossing is itself content: it is what turns the indicators on,
-            // and the writes that follow may take a moment to report
+            // the crossing itself turns the indicators on, and the writes that
+            // follow may take a moment to report
             controller?.reloadSeparators()
             onChapterFinished?(chapter, controller?.pageCount(for: id) ?? 0)
         }

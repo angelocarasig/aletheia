@@ -13,22 +13,17 @@ enum ViewError: Error {
 }
 
 protocol ViewRecord: Codable, FetchableRecord, TableRecord {
-    /// the database view name
     static var databaseTableName: String { get }
 
-    /// the SQL request that defines the view
     static var viewDefinition: SQLRequest<Self> { get }
 
-    /// tables this view depends on - used to determine when to rebuild
     static var dependsOn: [any DatabaseRecord.Type] { get }
 
-    /// views this view depends on - used to validate dependencies before rebuild
     static var dependsOnViews: [any ViewRecord.Type] { get }
 
     /// creates the view in the database (v1.0.0)
     static func createView(db: Database) throws
 
-    /// rebuilds the view (drop + recreate) when dependencies change
     static func rebuild(db: Database) throws
 
     /// creates index optimizations for view queries (v1.0.1)
@@ -65,9 +60,7 @@ extension ViewRecord {
         try db.create(view: databaseTableName, as: viewDefinition)
     }
 
-    static func createIndexes(db: Database) throws {
-        // override in views that need supporting indexes
-    }
+    static func createIndexes(db: Database) throws {}
 }
 
 // MARK: - View Management Extensions

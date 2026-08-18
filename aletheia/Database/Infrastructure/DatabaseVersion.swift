@@ -7,7 +7,6 @@
 
 import Foundation
 
-/// semantic version for the database, used for naming conventions in migrations
 struct DatabaseVersion: Comparable, Sendable {
     let major: Int
     let minor: Int

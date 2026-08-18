@@ -8,8 +8,6 @@
 import Foundation
 import GRDB
 
-/// enriched view for displaying series entries with authors, synopsis, and tags.
-/// uses GROUP_CONCAT for efficient aggregation in a single query.
 internal struct RichfulEntryView: ViewRecord {
     let seriesId: Int64
     let sourceId: Int64?
@@ -21,7 +19,6 @@ internal struct RichfulEntryView: ViewRecord {
     let inLibrary: Bool
     let unreadCount: Int
 
-    // aggregated fields
     let authors: String?
     let synopsis: String?
     let tags: String?
@@ -30,13 +27,11 @@ internal struct RichfulEntryView: ViewRecord {
     let classification: Classification?
     let publication: Publication?
 
-    // date fields
     let addedDate: Date
     let updatedDate: Date
     let lastReadDate: Date
     let lastFetchedDate: Date
 
-    // chapter progress fields
     let lastReadChapterNumber: Double?
     let totalChapterCount: Int
     let readChapterCount: Int
@@ -133,7 +128,6 @@ extension RichfulEntryView {
                         ), 0
                     ) as unreadCount,
 
-                    -- aggregated authors
                     (SELECT GROUP_CONCAT(a.name, ', ')
                      FROM \(SeriesAuthorRecord.databaseTableName) ma
                      JOIN \(AuthorRecord.databaseTableName) a ON a.id = ma.authorId
@@ -149,7 +143,7 @@ extension RichfulEntryView {
                         pm.\(MetadataRecord.Columns.synopsis.name)
                     ) as synopsis,
 
-                    -- aggregated tags (canonical only)
+                    -- canonical only - an alias tag is subsumed under its canonical tag
                     (SELECT GROUP_CONCAT(t.displayName, ', ')
                      FROM \(SeriesTagRecord.databaseTableName) mt
                      JOIN \(TagRecord.databaseTableName) t ON t.id = mt.tagId
@@ -158,8 +152,7 @@ extension RichfulEntryView {
                      ORDER BY t.displayName
                     ) as tags,
 
-                    -- one pick each, not one pick for both: the best publication
-                    -- authority is often the worst classification one
+                    -- one pick each - see SeriesRecord.preferredClassificationId/preferredPublicationId
                     COALESCE(
                         (SELECT x.\(MetadataRecord.Columns.classification.name)
                          FROM \(MetadataRecord.databaseTableName) x
@@ -174,13 +167,12 @@ extension RichfulEntryView {
                         pm.\(MetadataRecord.Columns.publication.name)
                     ) as publication,
 
-                    -- date fields
                     m.addedDate,
                     m.updatedDate,
                     m.lastReadDate,
                     m.lastFetchedDate,
 
-                    -- chapter progress: last read chapter number (max read chapter with rank 1)
+                    -- furthest chapter NUMBER read, not most recently opened by date
                     (SELECT MAX(bc.number)
                      FROM \(BestChapterView.databaseTableName) bc
                      WHERE bc.seriesId = m.id
@@ -188,7 +180,6 @@ extension RichfulEntryView {
                        AND bc.progress >= 1.0
                     ) as lastReadChapterNumber,
 
-                    -- chapter progress: total chapter count (best chapters only)
                     COALESCE(
                         (SELECT COUNT(*)
                          FROM \(BestChapterView.databaseTableName) bc
@@ -198,7 +189,6 @@ extension RichfulEntryView {
                         ), 0
                     ) as totalChapterCount,
 
-                    -- chapter progress: read chapter count (best chapters with progress >= 1.0)
                     COALESCE(
                         (SELECT COUNT(*)
                          FROM \(BestChapterView.databaseTableName) bc
@@ -228,8 +218,8 @@ extension RichfulEntryView {
                         LIMIT 1
                     )
 
-                -- the primary origin's own metadata row, standing in for "what the
-                -- primary origin says" everywhere this view used po.id directly
+                -- the primary origin's own metadata row - at most one, since
+                -- metadata is unique per supplier
                 LEFT JOIN \(MetadataRecord.databaseTableName) pm
                     ON pm.\(MetadataRecord.Columns.originId.name) = po.id
 

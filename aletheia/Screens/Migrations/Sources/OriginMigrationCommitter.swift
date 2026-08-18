@@ -9,12 +9,6 @@ import Foundation
 import GRDB
 import Tagged
 
-// shared by source migration and disconnected migration - both ever attach
-// a new origin to a series that is already in the library, never mint one,
-// so this is the one commit chain both flows need. differs from tracker
-// restore's own committer in exactly that respect: no create-series branch,
-// no tracker link, and progress is copied from a real local origin rather
-// than applied from a bare remote number
 struct OriginMigrationCommitter: MigrationCommitting {
     let database: DatabaseClient
     let registry: Compositor.Registry
@@ -57,10 +51,8 @@ struct OriginMigrationCommitter: MigrationCommitting {
                         .fetchOne(db)
                 else { throw RecordError.missingIdentifier }
 
-                // the same existence guard every commit chain in this
-                // feature family uses - this exact source may already be
-                // attached to the series (a prior migration run, or added
-                // by hand from Details)
+                // existence guard: this source may already be attached (a
+                // prior migration run, or added by hand from Details)
                 let known =
                     try OriginRecord
                     .filter(OriginRecord.Columns.sourceId == sourceId)
@@ -69,8 +61,6 @@ struct OriginMigrationCommitter: MigrationCommitting {
 
                 if let known, let id = known.id { return id }
 
-                // existingSeriesId is always known for this entry type - an
-                // attach, never a create
                 let (_, originId) = try DetailsComposer.write(
                     detail,
                     sourceId: sourceId,
@@ -89,8 +79,8 @@ struct OriginMigrationCommitter: MigrationCommitting {
             return .failed(Failure(error, fallback: "Couldn't attach the new source").sentence)
         }
 
-        // the new origin is real and attached from here on - a failure past
-        // this point is reported, not rolled back
+        // the origin is committed already - a failure from here on is
+        // reported, not rolled back
         do {
             let outcome = await refresher.chapters(
                 source: source, seriesSlug: candidate.stub.slug, originId: newOriginId)
@@ -120,10 +110,6 @@ struct OriginMigrationCommitter: MigrationCommitting {
         }
     }
 
-    // matched by chapter number, same key tracker restore's own progress
-    // apply uses - the old origin already carries real local read history,
-    // unlike a tracker's bare integer, so this copies each chapter's own
-    // progress and lastReadDate rather than marking a contiguous run read
     private static func copyProgress(
         from oldOriginId: OriginRecord.ID,
         to newOriginId: OriginRecord.ID,
@@ -151,11 +137,6 @@ struct OriginMigrationCommitter: MigrationCommitting {
         }
     }
 
-    // the new origin always becomes top priority - that is the point of
-    // running a migration at all, whether or not the old one survives it.
-    // .migrate then removes the old one and closes the hole it leaves,
-    // the same delete-then-renumber DetailsComposer.Sources.remove(_:) does
-    // for a reader removing a source by hand
     private static func reorder(
         _ newOriginId: OriginRecord.ID,
         oldOriginId: OriginRecord.ID,

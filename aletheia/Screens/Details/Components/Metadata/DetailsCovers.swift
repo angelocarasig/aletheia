@@ -23,8 +23,6 @@ struct DetailsCovers: View {
     @Namespace private var glass
 
     private enum Layout {
-        // fraction of the sheet width a page occupies - the remainder is what
-        // lets the neighbouring covers peek in from the edges
         static let pageWidthFactor: CGFloat = 0.7
         static let peekScale: CGFloat = 0.75
         static let peekOpacity: Double = 0.45
@@ -40,8 +38,6 @@ struct DetailsCovers: View {
         static let badgePadding: CGFloat = 10
         static let settle: Animation = .smooth(duration: 0.25)
         static let pageHeightFactor: CGFloat = 0.92
-        // height/width of an ISO comic cover - used to predict how wide a
-        // height-bound page lands so the slot can hug it
         static let coverRatio: CGFloat = 1414.0 / 1000.0
         static let gridMinWidth: CGFloat = 104
         static let gridRatio: CGFloat = 0.7
@@ -65,9 +61,9 @@ struct DetailsCovers: View {
     var body: some View {
         NavigationStack {
             Content
-                // a background cannot change its host's layout size, unlike a
-                // ZStack sibling that ignores the safe area - which was laying the
-                // action row out wider than the screen
+                // .background here, not a ZStack sibling - a ZStack sibling
+                // ignoring the safe area laid the action row out wider than
+                // the screen; .background cannot change its host's layout size
                 .background { Backdrop }
                 .navigationTitle("Covers")
                 .navigationSubtitle(
@@ -84,8 +80,6 @@ struct DetailsCovers: View {
                     }
 
                     ToolbarItem(placement: .topBarTrailing) {
-                        // picks apply instantly, so there is nothing to "do" -
-                        // this button only closes
                         Button("Close", systemImage: "xmark") { dismiss() }
                             .labelStyle(.iconOnly)
                     }
@@ -94,7 +88,6 @@ struct DetailsCovers: View {
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
         .sensoryFeedback(.selection, trigger: selected)
-        // the commit, not just the browsing - setting or clearing the pick
         .sensoryFeedback(.selection, trigger: preferredId)
         .fullScreenCover(item: $previewing) { cover in
             CoverPreview(cover: cover, referer: referer)
@@ -106,8 +99,8 @@ struct DetailsCovers: View {
         if covers.isEmpty {
             EmptyState
         } else {
-            // stacked rather than inset - safeAreaInset let the bar escape the
-            // sheet's bounds and clip against the screen edge
+            // stacked, not safeAreaInset - safeAreaInset let the bar escape
+            // the sheet's bounds and clip against the screen edge
             VStack(spacing: 0) {
                 if showingGrid {
                     Grid
@@ -121,27 +114,20 @@ struct DetailsCovers: View {
         }
     }
 
-    // pages span a fraction of the container, so with more than one cover the
-    // neighbours visibly poke in from the edges - the swipeability is shown, not
-    // told. viewAligned snaps the fractional pages where .paging (which strides
-    // by container width) cannot
-    // a GeometryReader rather than onGeometryChange: the margins must be right
-    // on the very first layout pass, or the initial scroll lands against stale
+    // GeometryReader, not onGeometryChange - the margins must be right on the
+    // very first layout pass, or the initial scroll lands against stale
     // margins and the opening cover sits off-centre
     private var Pager: some View {
-        // page width and margins both derive from the SAME measured width -
-        // containerRelativeFrame is not used because inside a margined scroll
-        // view it measures an ambiguous container, and the mismatch between
-        // its width and the margin math is what kept skewing the centring
         GeometryReader { proxy in
-            // the slot hugs the artwork: at a short detent a height-bound cover
-            // is far narrower than 70% of the sheet, and a fixed-width slot
-            // would push the neighbours clean out of the viewport - no peek.
-            // width follows the typical cover ratio at the current height,
-            // capped at the wide-detent fraction
+            // width follows the cover ratio at the current height, capped at
+            // the wide-detent fraction, so a height-bound cover at a short
+            // detent still leaves room for neighbours to peek
             let artworkWidth =
                 proxy.size.height * Layout.pageHeightFactor / Layout.coverRatio
                 + dimensions.spacing.space8 * 2
+            // containerRelativeFrame is not used here - inside a margined
+            // scroll view it measures an ambiguous container, which kept
+            // skewing the centring
             let pageWidth = min(proxy.size.width * Layout.pageWidthFactor, artworkWidth)
             let margin = (proxy.size.width - pageWidth) / 2
 
@@ -154,8 +140,6 @@ struct DetailsCovers: View {
                         Page(cover, maxHeight: proxy.size.height * Layout.pageHeightFactor)
                             .padding(.horizontal, dimensions.spacing.space8)
                             .frame(width: pageWidth, height: proxy.size.height)
-                            // the focused page at full presence, its neighbours
-                            // firmly receded - the size gap is what says "active"
                             .scrollTransition(.interactive, axis: .horizontal) { content, phase in
                                 content
                                     .scaleEffect(phase.isIdentity ? 1 : Layout.peekScale)
@@ -171,15 +155,11 @@ struct DetailsCovers: View {
             .contentMargins(.horizontal, margin, for: .scrollContent)
             .scrollTargetBehavior(.viewAligned)
             .scrollPosition(id: $selected, anchor: .center)
-            // the badge appearing or leaving a page rides the same settle as
-            // the bar, instead of popping
             .animation(Layout.settle, value: preferredId)
         }
         .onAppear { selected = focused?.id }
     }
 
-    // every cover at once. tapping picks which one the pager focuses - viewing,
-    // not preferring
     private var Grid: some View {
         ScrollView {
             LazyVGrid(
@@ -230,10 +210,10 @@ struct DetailsCovers: View {
             .accessibilityAddTraits(cover.isPreferred ? .isSelected : [])
     }
 
-    // the height bound is applied OUTSIDE the clip and overlays: a max frame
+    // the height bound is applied OUTSIDE the clip and overlays - a max frame
     // expands to its proposal rather than hugging its child, so putting it
-    // between the image and the badges letterboxes the view and the badges pin
-    // to empty space instead of the artwork corners
+    // between the image and the badges letterboxes the view and the badges
+    // pin to empty space instead of the artwork corners
     private func Page(_ cover: Cover, maxHeight: CGFloat) -> some View {
         KFImage(cover.artwork)
             .requestModifier(AnyModifier.referer(referer))
@@ -242,9 +222,6 @@ struct DetailsCovers: View {
             .fade(duration: 0.25)
             .scaledToFit()
             .clipShape(.rect(cornerRadius: dimensions.radius.radius16, style: .continuous))
-            // the pin marked on the artwork itself, so the preferred cover is
-            // identifiable without scrolling it under the bar. content layer,
-            // so a plain badge rather than glass
             .overlay(alignment: .topTrailing) {
                 if cover.isPreferred {
                     Image(systemName: "checkmark.circle.fill")
@@ -254,26 +231,21 @@ struct DetailsCovers: View {
                         .transition(.scale.combined(with: .opacity))
                 }
             }
-            // attribution rides the artwork too, freeing the bar for the action
             .overlay(alignment: .topLeading) {
                 SourceIcon(cover)
                     .padding(Layout.badgePadding)
             }
             .shadow(color: .black.opacity(0.5), radius: Layout.shadow, y: dimensions.spacing.space8)
-            // proposes the detent-driven bound to the image (which aspect-fits
-            // inside it and hugs the result), then centres in the page
             .frame(maxHeight: max(maxHeight, 1))
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .accessibilityLabel(cover.sourceName.map { "Cover from \($0)" } ?? "Cover")
             .accessibilityAddTraits(cover.isPreferred ? .isSelected : [])
     }
 
-    // the selected cover blurred back over itself. content, not chrome, so it is
-    // deliberately not glass
+    // the animation lives on this stable Color.clear base, not on the image -
+    // .id(focused.id) replaces the KFImage as the pager swipes, so an
+    // animation on the image itself is torn down with it and cuts instantly
     @ViewBuilder
-    // the animation lives on this stable Color.clear base, not on the image:
-    // .id(focused.id) replaces the KFImage as the pager swipes, so an animation
-    // on the image itself is torn down with it and the backdrop cuts instantly
     private var Backdrop: some View {
         Color.clear
             .overlay {
@@ -304,15 +276,11 @@ struct DetailsCovers: View {
             }
             .padding(.horizontal, dimensions.screenMargin)
             .padding(.vertical, dimensions.spacing.space12)
-            // the bar rewrites itself when the focused cover or the pick moves -
-            // without an explicit animation both reads as a hard flash
             .animation(Layout.settle, value: focused.id)
             .animation(Layout.settle, value: preferredId)
         }
     }
 
-    // a labeled action rather than a star: the label names the outcome, and
-    // clearing back to automatic is stated instead of implied by a toggle
     private func PreferredToggle(_ cover: Cover) -> some View {
         Button {
             onSetPreferred(cover.isPreferred ? nil : cover.id)
@@ -368,8 +336,6 @@ struct DetailsCovers: View {
 
     @ViewBuilder
     private func SourceIcon(_ cover: Cover) -> some View {
-        // grid cells are a third the size of a page, so the badge steps down
-        // with them - animated so toggling the grid scales rather than snaps
         let size = showingGrid ? Layout.gridIconSize : Layout.iconSize
         Group {
             if let icon = cover.sourceIcon {
@@ -395,8 +361,6 @@ struct DetailsCovers: View {
         )
     }
 
-    // already in kingfisher's cache from rendering the page, so this resolves
-    // without a second download in the common case
     private func save(_ cover: Cover) {
         let options: KingfisherOptionsInfo = [.requestModifier(AnyModifier.referer(referer))]
 
@@ -442,7 +406,6 @@ private struct CoverPreview: View {
         .overlay(alignment: .topTrailing) { Close }
     }
 
-    // clear glass over full-bleed media - the variant meant for exactly this
     private var Close: some View {
         Button {
             dismiss()
@@ -478,7 +441,6 @@ private struct CoverPreview: View {
         }
     }
 
-    // snap back when zoomed out, so the image can never be left off-centre
     private func settle() {
         guard scale <= Layout.minScale else { return }
         withAnimation(Layout.settle) {

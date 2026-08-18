@@ -7,12 +7,6 @@
 
 import SwiftUI
 
-// what the page looks like, as opposed to how it moves. the split is the same
-// one Mihon, Kotatsu and Suwatte all draw: the gearshape holds layout and
-// behaviour, this holds the four things that change the pixels.
-//
-// global, like everything behind the gearshape. per-series filters are the one
-// idea worth taking from Kotatsu and they need a column, so they are not here
 struct ReaderFiltersSheet: View {
     let engine: ReaderEngine
 
@@ -70,9 +64,6 @@ extension ReaderFiltersSheet {
         .scrollContentBackground(.hidden)
     }
 
-    // stated as brightness and stored as dim, so the slider runs the way the
-    // word does: right is brighter, and the value behind it goes the other way.
-    // the ceiling is what the screen can already do at its own minimum
     fileprivate func BrightnessRow(_ dim: Double) -> some View {
         let maximum = ReaderConfiguration.Defaults.maxDim
 
@@ -109,9 +100,8 @@ extension ReaderFiltersSheet {
                     ? "Neutral" : (warmth < 0 ? "Cool \(strength)" : "Warm \(strength)")
             )
 
-            // stepped where its neighbours are continuous, because this is the
-            // only slider whose default sits in the middle - on a continuous
-            // track neutral is a value you can approach and never land on
+            // stepped, unlike its neighbours - the only slider whose default sits
+            // in the middle, and neutral must be reachable exactly
             Slider(
                 value: Binding(get: { warmth }, set: onWarmth),
                 in: -maximum...maximum,

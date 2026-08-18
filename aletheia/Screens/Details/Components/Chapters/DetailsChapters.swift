@@ -12,30 +12,17 @@ import Tagged
 struct DetailsChapters: View {
     let chapters: [Chapter]
     var isFetching: Bool = false
-    // shown here only while there is still something to read. once the reader is
-    // caught up the same line moves into the Continue capsule, which costs no
-    // height and sits where the question is actually asked - so the two
-    // placements are complementary and never both on screen
     var cadence: DetailsComposer.Cadence?
     var hasFetched: Bool = true
-    // counts every origin, disabled ones included: two sources is exactly when
-    // reordering starts to matter, and the common reason to reorder is to put a
-    // working source above one you have turned off
     var sourceCount: Int = 0
-    // series-scoped, so they live on the row rather than in UserDefaults
     var showAllChapters: Bool = false
     var showHalfChapters: Bool = true
     var onShowAllChapters: (Bool) -> Void
     var onShowHalfChapters: (Bool) -> Void
-    // refresh and mark-all deliberately absent: DetailsActions already owns them,
-    // one screen up. no surveyed reader duplicates its chapter bulk actions
     var onSources: () -> Void
     var onScanlators: () -> Void
     var onLanguages: () -> Void
     var onMark: (_ read: Bool, _ numbers: [Double]) -> Void
-    // the queue itself, so a row can ask whether it is in it. reading `index` is
-    // a membership read - it changes on enqueue and finish, seconds apart - and
-    // the per-page ticks are read off the returned instance instead
     var downloads: Compositor.Downloads?
     var onDownload: (_ id: Int64) -> Void = { _ in }
     var onCancelDownload: (_ id: Int64) -> Void = { _ in }
@@ -47,18 +34,12 @@ struct DetailsChapters: View {
     @State private var sort: Sort = .numberDescending
     @State private var isExpanded = false
 
-    // named for what the reader wants, not for the column being sorted. "number
-    // descending" describes the query; "latest first" describes the intent that
-    // sent you to the menu. which field it sorts on is the section header's job
     private enum Sort: Hashable {
         case numberDescending
         case numberAscending
         case dateNewest
         case dateOldest
 
-        // one word each. the section header already names the field, so the label
-        // only has to say which end you land on - and the chip below shows the
-        // chosen word alone, where a phrase reads as a sentence fragment
         var label: String {
             switch self {
             case .numberDescending: "Latest"
@@ -68,10 +49,6 @@ struct DetailsChapters: View {
             }
         }
 
-        // one glyph per intent rather than a pair of arrows. an arrow only says
-        // which way the list runs, which the label already said - these say what
-        // you came for: the new stuff, the beginning, what just landed, the start
-        // of the archive
         var icon: String {
             switch self {
             case .numberDescending: "sparkles"
@@ -86,7 +63,6 @@ struct DetailsChapters: View {
         static let collapsedLimit = 8
         static let skeletonRows = 6
         static let skeletonBarHeight: CGFloat = 10
-        // roughly "Chapter 12 • 2 months ago • flag"
         static let skeletonMeta: [CGFloat] = [64, 6, 96, 6, 16]
         static let skeletonScanlator: CGFloat = 88
         static let sourceIconSize: CGFloat = 44
@@ -102,9 +78,6 @@ struct DetailsChapters: View {
         static let ringDuration: Double = 0.1
     }
 
-    // what the row's trailing control is currently showing. a chapter's own
-    // bytes and the queue are two different facts, and this is where they
-    // collapse into the single thing a person taps
     private enum DownloadPhase: Equatable {
         case idle
         case queued
@@ -132,8 +105,8 @@ struct DetailsChapters: View {
             Header
             Chapters
         }
-        // has to sit on an ancestor that survives the swap - on the Group itself
-        // it is replaced along with the branch, so nothing drives the transition
+        // animation must live on a container that survives the phase swap; on Group
+        // itself it is replaced along with the branch, so nothing drives the transition
         .animation(.settle, value: phase)
     }
 
@@ -155,14 +128,10 @@ struct DetailsChapters: View {
         chapters.count > Layout.collapsedLimit
     }
 
-    // nothing to show yet and no fetch has landed - unknown, not empty
     private var isPending: Bool {
         chapters.isEmpty && (isFetching || !hasFetched)
     }
 
-    // one value for the whole section to animate on. switching on the two
-    // booleans separately would let the skeleton and the list cross-dissolve
-    // through the empty state on the way
     fileprivate var phase: LoadPhase {
         if !chapters.isEmpty { .content } else if isPending { .pending } else { .empty }
     }
@@ -173,9 +142,6 @@ extension DetailsChapters {
         VStack(alignment: .leading, spacing: dimensions.spacing.space8) {
             SectionHeader(title: "Chapters") { Visibility }
 
-            // always drawn. the state carries its own reason when a date cannot
-            // be named, so there is no case where the slot is empty - a line
-            // present on some series and absent on others reads as broken
             if let cadence {
                 DetailsCadence(
                     display: cadence.current.display,
@@ -183,8 +149,6 @@ extension DetailsChapters {
                         ? (glyph: cadence.forceGlyph, action: { cadence.force() })
                         : nil
                 )
-                // its own air. hard against the controls row it grouped with
-                // them and read as a fourth label rather than a statement
                 .padding(.bottom, dimensions.spacing.space4)
             }
 
@@ -200,24 +164,12 @@ extension DetailsChapters {
         }
     }
 
-    // back in the section header, where the other sections put their one control.
-    // it belongs above the row rather than in it: the three below reorder what
-    // wins, these two change what the list is made of
     private var Visibility: some View {
         Menu {
-            // two copies of one thing, which is exactly what this reveals: the
-            // same chapter number from every source rather than only the winner.
-            // deliberately not the 3d stack - that is the source button's glyph,
-            // and these two do different jobs
             Toggle(isOn: allChapters) {
                 Label("Show All", systemImage: "square.on.square")
             }
 
-            // a literal half rather than a division sign: the setting is about
-            // chapter 52.5 existing, not about dividing anything
-            //
-            // off and dimmed while everything is shown - a list that hides nothing
-            // cannot be hiding half chapters, so the switch would be a lie
             Toggle(isOn: halfChapters) {
                 Label("Show Half", systemImage: "circle.lefthalf.filled")
             }
@@ -234,7 +186,6 @@ extension DetailsChapters {
         Binding(get: { showAllChapters }, set: onShowAllChapters)
     }
 
-    // reads as on whenever everything is shown, so the row agrees with the list
     private var halfChapters: Binding<Bool> {
         Binding(
             get: { showAllChapters || showHalfChapters },
@@ -242,17 +193,8 @@ extension DetailsChapters {
         )
     }
 
-    // three separate capsules rather than one segmented group: these narrow three
-    // independent axes, and a shared container asserts they are one control with
-    // three modes. spacing carries the relationship instead.
-    //
-    // all three always present, including on a series with one of everything - a
-    // row whose controls come and go is harder to learn than one that is always
-    // the same shape
     private var Filters: some View {
         HStack(spacing: dimensions.spacing.space8) {
-            // opens Source Priority rather than a filter: with one source there
-            // is no order to change, so it stays visible but inert
             Filter(
                 "plus.square.dashed",
                 "Change source priority",
@@ -262,15 +204,10 @@ extension DetailsChapters {
 
             Filter("person.2", "Filter by scanlator", action: onScanlators)
 
-            // a character in a bubble, not a globe: a globe reads as the web as
-            // often as language, and this narrows what the chapter is written in
             Filter("translate", "Filter by language", action: onLanguages)
         }
     }
 
-    // dimmed rather than removed when it cannot act - the row keeps its shape,
-    // and a control that is present but inert reads as "nothing to do here"
-    // rather than as a feature the app does not have
     private func Filter(
         _ name: String,
         _ label: String,
@@ -286,9 +223,8 @@ extension DetailsChapters {
             .accessibilityLabel(label)
     }
 
-    // a menu row has exactly one image slot and iOS renders it trailing, so the
-    // checkmark takes the icon's place rather than sitting beside it. the icon
-    // has done its job by then - you are looking at the row you already chose
+    // a Menu row has one image slot rendered trailing, so the checkmark takes
+    // the icon's place rather than sitting beside it
     private func Option(_ option: Sort) -> some View {
         Button {
             sort = option
@@ -297,9 +233,6 @@ extension DetailsChapters {
         }
     }
 
-    // padded to a pill, not framed to a square: at 44x44 a capsule renders as a
-    // circle, which sat beside the sort chip's pill as a different shape. same
-    // construction as the sort label so the two match by being built alike
     private func Icon(_ name: String) -> some View {
         Image(systemName: name)
             .font(.subheadline)
@@ -326,10 +259,7 @@ extension DetailsChapters {
 
     private var SortChip: some View {
         Menu {
-            // buttons rather than a Picker: a Picker draws its checkmark on the
-            // leading edge and there is no way to move it. sections still say
-            // which field each pair sorts on, which is what the labels leave out -
-            // number and date disagree whenever a source backfills
+            // buttons, not Picker - a Picker's checkmark is fixed to the leading edge
             Section("Chapter number") {
                 Option(.numberDescending)
                 Option(.numberAscending)
@@ -340,9 +270,6 @@ extension DetailsChapters {
                 Option(.dateOldest)
             }
         } label: {
-            // neutral, not brand. a sort is always set, so a permanent tint says
-            // nothing - and blue already means "a filter is on" one screen over.
-            // the accent is reserved for state that varies
             HStack(spacing: dimensions.spacing.space4) {
                 Text(sort.label)
                 Image(systemName: "chevron.down")
@@ -356,16 +283,12 @@ extension DetailsChapters {
             .frame(height: dimensions.touchTarget)
             .chipBackground(Layout.fillOpacity)
         }
-        // a Menu tints its own label with the accent colour, and .primary in the
-        // background above then resolves against that tint rather than neutral -
-        // which is why this capsule read differently to the filter's
         .menuStyle(.button)
         .buttonStyle(.plain)
     }
 }
 
 extension View {
-    // one definition, so the two controls cannot drift apart again
     fileprivate func chipBackground(_ opacity: Double) -> some View {
         background(.primary.opacity(opacity), in: .capsule)
     }
@@ -375,14 +298,12 @@ extension DetailsChapters {
     private var Chapters: some View {
         Group {
             switch phase {
-            // "none" is only true once a fetch has landed - before that the list
-            // is unknown, not empty, and saying otherwise is a lie for a minute
             case .pending:
                 Skeleton
                     .transition(.opacity)
 
-            // a chapter fetch that fails surfaces through the action alert, so
-            // the section itself never reaches .failed - it renders as empty
+            // chapter fetch failures surface via the action alert, so this
+            // never reaches .failed here - it renders as empty instead
             case .empty, .failed:
                 EmptyState
                     .transition(.opacity)
@@ -391,9 +312,9 @@ extension DetailsChapters {
                 LazyVStack(spacing: 0) {
                     ForEach(displayed) { chapter in
                         Divider()
-                        // on the row, not inside Details - Details carries the
-                        // canRead .disabled, and marking or opening in browser
-                        // must survive an uninstalled source
+                        // context menu on Row, not Details - Details carries the
+                        // canRead .disabled, which would block mark/open-in-browser
+                        // for an uninstalled source's chapters
                         Row(chapter)
                             .contextMenu { RowMenu(chapter) }
                     }
@@ -407,9 +328,8 @@ extension DetailsChapters {
         }
     }
 
-    // built from explicit bars rather than redacted text: redaction sizes each
-    // block to the width of the string behind it, so placeholder copy leaves the
-    // row two thirds empty no matter what it says
+    // explicit bars, not redacted text - redaction sizes each block to the
+    // width of the string behind it, leaving the row mostly empty
     private var Skeleton: some View {
         LazyVStack(spacing: 0) {
             ForEach(0..<Layout.skeletonRows, id: \.self) { _ in
@@ -417,8 +337,6 @@ extension DetailsChapters {
                 SkeletonRow
             }
         }
-        // on the container, so one sweep crosses every row - per-row masks are
-        // n independent animated gradients saying the same thing
         .shimmer()
         .allowsHitTesting(false)
         .accessibilityHidden(true)
@@ -430,7 +348,6 @@ extension DetailsChapters {
                 .fill(.primary.opacity(Layout.fillOpacity))
                 .frame(width: Layout.sourceIconSize, height: Layout.sourceIconSize)
 
-            // mirrors Details: meta line, full-width title, scanlator
             VStack(alignment: .leading, spacing: dimensions.spacing.space12) {
                 HStack(spacing: dimensions.spacing.space4) {
                     ForEach(Array(Layout.skeletonMeta.enumerated()), id: \.offset) { _, width in
@@ -449,7 +366,6 @@ extension DetailsChapters {
         .shimmer()
     }
 
-    // nil width fills the row - a fixed one stops short, as real metadata does
     private func Bar(_ width: CGFloat?) -> some View {
         Capsule()
             .fill(.primary.opacity(Layout.fillOpacity))
@@ -457,11 +373,6 @@ extension DetailsChapters {
             .frame(height: Layout.skeletonBarHeight)
     }
 
-    // two different empties. a fetch that landed and found nothing is a fact
-    // about the source; a fetch that never ran is a fact about us, and saying
-    // "no chapters" there states the source's position on something it was
-    // never asked. the way out is the same in both cases and already on this
-    // screen twice - pull to refresh, and Refresh Chapters in the actions above
     private var EmptyState: some View {
         ContentUnavailableView(
             hasFetched ? "No Chapters" : "No Chapters Yet",
@@ -502,20 +413,16 @@ extension DetailsChapters {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    // the lookup is a read of the collection - it answers WHICH download - and
-    // the progress is read off the returned instance, which is what keeps a page
-    // landing on chapter 3 from redrawing the other two hundred rows. a row whose
-    // lookup returns nil is subscribed to membership alone and never ticks
+    // index is a membership read; the returned instance is what keeps a page
+    // landing on one chapter from re-rendering the other two hundred rows
     private func Storage(_ chapter: Chapter) -> some View {
         let download = downloads?.index[ChapterRecord.ID(rawValue: chapter.id)]
         let state = state(for: chapter, download)
-        // read unconditionally rather than on a branch of the switch below: a
-        // read that only happens in one case is not a dependency in the others
+        // read unconditionally - a conditional read isn't a tracked dependency
+        // in the branches that skip it
         let fraction = download?.fraction ?? 0
 
         return ZStack {
-            // the track, carrying the ring at rest so the trim has something to
-            // fill rather than appearing out of nothing
             Circle()
                 .stroke(lineWidth: Layout.ringWidth)
                 .foregroundStyle(.brand)
@@ -539,9 +446,9 @@ extension DetailsChapters {
         .opacity(state == .idle && !chapter.canRead ? Layout.disabledOpacity : 1)
         .contentShape(.rect)
         .tappable { act(state, on: chapter) }
-        // completed is a status, not a control: deleting a chapter's bytes off a
-        // 20pt target sitting where "downloading, tap to stop" was a second ago is
-        // one mistap away, so deletion lives in the context menu and nowhere else
+        // completed stays non-tappable - deleting off a 20pt target that was
+        // "downloading, tap to stop" a second ago is one mistap away, so
+        // deletion lives in the context menu only
         .disabled(state == .completed || (state == .idle && !chapter.canRead))
         .accessibilityLabel(state.label)
         .animation(.settle, value: state)
@@ -559,8 +466,6 @@ extension DetailsChapters {
                 Image(systemName: "clock.fill")
                     .foregroundStyle(.brand)
 
-            // a stop rather than an x: the ring around it is the thing being
-            // stopped, and the glyph sits inside it
             case .downloading:
                 Image(systemName: "stop.fill")
                     .font(.caption2)
@@ -579,8 +484,6 @@ extension DetailsChapters {
         .contentTransition(.symbolEffect(.replace))
     }
 
-    // downloaded is this row's own bytes, so it outranks a queue entry that can
-    // only be a re-download of something already on disk
     private func state(for chapter: Chapter, _ download: Download?) -> DownloadPhase {
         if chapter.downloaded { return .completed }
 
@@ -687,8 +590,7 @@ extension DetailsChapters {
         }
     }
 
-    // relative to the sorted list as displayed, tapped row included - "above"
-    // means what is on screen above your thumb, not a chapter-number comparison
+    // "above"/"below" is position in the sorted list, not chapter-number comparison
     private func numbers(above chapter: Chapter) -> [Double] {
         guard let index = sorted.firstIndex(where: { $0.id == chapter.id }) else {
             return [chapter.number]
@@ -703,8 +605,6 @@ extension DetailsChapters {
         return sorted[index...].map(\.number)
     }
 
-    // which source this chapter came from - the only per-row signal that a
-    // multi-origin series is being merged together
     @ViewBuilder
     private func SourceIcon(_ chapter: Chapter) -> some View {
         if let icon = chapter.sourceIcon {
@@ -781,7 +681,6 @@ extension DetailsChapters {
         return chapter.publishedDate >= cutoff
     }
 
-    // chapter numbers are stored as doubles - render 12.0 as "12" but keep 12.5
     private func number(_ value: Double) -> String {
         value.formatted(.number.precision(.fractionLength(0...2)))
     }

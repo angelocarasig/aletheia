@@ -7,25 +7,13 @@
 
 import SwiftUI
 
-// the Tagger queue: one page of rows at a time, each auto-searching on
-// Search All and committing only on its own Save tap. nothing here writes
-// to the database directly - every write happens inside
-// TrackerRestoreCommitting.commit
 struct TrackerRestoreScreen: View {
     let composer: MigrationComposer<TrackerImportEntry>
-    // which tracker this whole session pulled from - the composer no longer
-    // carries it (a generic composer's source is fixed at construction, not
-    // a field it exposes), and TrackerRestoreRowView still needs it to map
-    // each row's own remoteStatus to Status for SavedSummary
     let tracker: Tracker
     let onFinish: () -> Void
 
     @State private var searchingAll = false
     @State private var confirmingClose = false
-    // scrolling down hides the pager, scrolling up brings it back - the same
-    // "give the row list the room, keep the chrome one gesture away" shape
-    // a collapsing toolbar uses, hand-rolled because this pager is not a
-    // system toolbar
     @State private var pagerHidden = false
 
     @Environment(\.dimensions) private var dimensions
@@ -36,12 +24,9 @@ struct TrackerRestoreScreen: View {
 
     var body: some View {
         ScrollView {
-            // .id(composer.filter) is what makes a pill switch a whole-content
-            // slide rather than SwiftUI trying to diff two unrelated row sets
-            // in place - the subtree is genuinely a new one each time. a row
-            // leaving the CURRENT pill (Save, Skip) is a different animation:
-            // that's the ForEach's own per-row removal, driven by the
-            // .settle-wrapped mutation in TrackerRestoreComposer
+            // .id(composer.filter) forces a new subtree per filter instead of an
+            // in-place diff - a row leaving via Save/Skip is a separate ForEach
+            // removal, driven by MigrationComposer's own .settle-wrapped mutation
             LazyVStack(spacing: dimensions.spacing.space12) {
                 ForEach(composer.currentPageRows) { row in
                     TrackerRestoreRowView(
@@ -82,9 +67,6 @@ struct TrackerRestoreScreen: View {
         }
         .navigationTitle("Restoring")
         .navigationSubtitle("\(composer.savedCount) of \(composer.rows.count) saved")
-        // this queue is the middle of a process, not a place you back out of
-        // one step at a time - once you're in it, the back chevron's "return
-        // to setup" no longer applies, so Close ends the whole sheet instead
         .navigationBarBackButtonHidden(true)
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
@@ -121,9 +103,6 @@ struct TrackerRestoreScreen: View {
                 .transition(.move(edge: .top).combined(with: .opacity))
             }
         }
-        // closing here is not a plain dismiss - it abandons every row that
-        // hasn't been saved yet, so it earns the same confirm a destructive
-        // action gets rather than the silent Close a form gives up on
         .alert("End Restore Session?", isPresented: $confirmingClose) {
             Button("End Session", role: .destructive, action: onFinish)
             Button("Keep Going", role: .cancel) {}
@@ -145,10 +124,6 @@ struct TrackerRestoreScreen: View {
         return summary
     }
 
-    // the same flat, unglassed "Page N of M" SearchResultsGrid.PageFooter
-    // uses - a caption in .muted with a numeric-text transition, not a
-    // capsule of its own. Previous/Next stay plain buttons beside it, since
-    // this pager is discrete rather than scroll-tracked
     private var Pager: some View {
         HStack {
             Button("Previous") { composer.page -= 1 }
@@ -167,16 +142,6 @@ struct TrackerRestoreScreen: View {
         .frame(minHeight: dimensions.touchTarget)
     }
 
-    // docs/design.md §4: active filter = tinted background + filled variant
-    // + count, never colour alone. each pill states its own count so the
-    // reader never has to guess what switching would show.
-    //
-    // horizontally scrollable rather than a fixed HStack - four pills already
-    // presses a compact width, and a fifth pill (a future outcome, or just a
-    // longer tracker/count string) should compress the tap target rather than
-    // widen the scroller. sized to dimensions.touchTarget, same as any other
-    // tappable row in this app - a caption-sized capsule was too small to hit
-    // reliably in a queue meant to be worked through quickly
     private var FilterPills: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: dimensions.spacing.space8) {

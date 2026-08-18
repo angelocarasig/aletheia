@@ -17,14 +17,10 @@ extension DetailsComposer {
         private(set) var inLibrary = false
         private(set) var status: Status = .planning
 
-        // every collection, each carrying whether this series is in it - the
-        // picker needs all of them, the action row only needs the count
-        //
         // TODO: the view still declares its own copy of this row - CollectionPicker
         // switches to this one when the screen is wired
         private(set) var collections: [Collection] = []
 
-        // from DetailsWriting
         private(set) var saving = false
         private(set) var failure: Failure?
 
@@ -36,13 +32,11 @@ extension DetailsComposer {
             self.database = database
         }
 
-        // from DetailsApplying
         func apply(_ stored: Stored) {
             seriesId = stored.series.id
 
-            // off the series row rather than the entry view - the view selects
-            // it straight from here, so they can never disagree and this is the
-            // shorter path
+            // off the series row, not the entry view - the two can never
+            // disagree this way
             inLibrary = stored.series.inLibrary
             status = stored.series.status
 
@@ -52,24 +46,20 @@ extension DetailsComposer {
             if collections != mapped { collections = mapped }
         }
 
-        // from DetailsWriting
         func clear() {
             failure = nil
         }
 
-        // the ones this series is actually in
         var joined: [Collection] {
             collections.filter(\.contains)
         }
 
-        // adding and removing are the same control, so it is disabled while
-        // there is no row to write to or a write is already running
         var canToggle: Bool {
             seriesId != nil && !saving
         }
 
-        // in or out. returns whether the write landed, because adding opens the
-        // setup flow over the top and that must not appear on a failed add
+        // returns whether the write landed - adding opens the setup flow over
+        // the top, and that must not appear on a failed add
         @discardableResult
         func toggle() async -> Bool {
             guard let seriesId else { return false }
@@ -90,8 +80,6 @@ extension DetailsComposer {
             }
         }
 
-        // membership is a toggle rather than a staged edit - the section
-        // doubles as the picker, and the observation reflects the write at once
         func toggle(collection id: Int64) async {
             saving = true
             defer { saving = false }
@@ -99,8 +87,7 @@ extension DetailsComposer {
             await join(id)
         }
 
-        // what the reader says they are doing with this series. reading is also
-        // set for them when they open a chapter
+        // also set for the reader when they open a chapter, via Chapters.open()
         func set(status value: Status) async {
             guard let seriesId, value != status else { return }
 
@@ -119,9 +106,8 @@ extension DetailsComposer {
             }
         }
 
-        // made from the picker, so it joins the series by default. written
-        // empty first, so the sheet closes on a collection that already exists
-        // rather than one pending a second write
+        // written empty first, so the sheet closes on a collection that
+        // already exists rather than one pending a second write
         func create(
             collection name: String,
             description: String?,
@@ -145,9 +131,8 @@ extension DetailsComposer {
             }
         }
 
-        // the write behind both entry points, without the flag. create() holds
-        // it across the insert and the join, so raising it again here would
-        // clear it while the caller is still working
+        // no saving flag here - create() holds it across both the insert and
+        // the join, so setting it again here would clear it mid-flow
         private func join(_ id: Int64) async {
             guard let seriesId else {
                 AppLog.shared.log(
@@ -171,9 +156,8 @@ extension DetailsComposer {
                         return
                     }
 
-                    // appended, so a collection keeps the order the user added
-                    // things in. query interface rather than raw sql because
-                    // "order" is a reserved keyword and needs escaping
+                    // query interface, not raw sql - "order" is a reserved
+                    // keyword and would need escaping
                     let highest =
                         try SeriesCollectionRecord
                         .filter(SeriesCollectionRecord.Columns.collectionId == collectionId)
@@ -200,7 +184,6 @@ extension DetailsComposer {
 }
 
 extension DetailsComposer.Library {
-    // every collection that exists, each saying whether this series is in it
     struct Collection: Identifiable, Hashable {
         let id: Int64
         let name: String
@@ -223,8 +206,6 @@ extension DetailsComposer.Library {
             )
     }
 
-    // a merge takes the collections of the row it absorbs, so membership
-    // survives folding two copies of a series together
     nonisolated static func adopt(
         from source: SeriesRecord.ID,
         into target: SeriesRecord.ID,

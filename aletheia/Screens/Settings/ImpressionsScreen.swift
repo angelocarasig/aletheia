@@ -8,13 +8,6 @@
 import GRDB
 import SwiftUI
 
-// what the recommender has actually shown, and what came of it. a read-only
-// window onto recommendation_impression, which is otherwise only legible by
-// pulling the database off the device
-//
-// deliberately shows counts beside every rate. at these volumes a percentage on
-// its own is theatre - "25% tap rate" is one tap out of four - and a debug
-// surface that reads as a finding is worse than one that reads as a count
 struct ImpressionsScreen: View {
     @Environment(\.database) private var database
     @Environment(\.dimensions) private var dimensions
@@ -56,9 +49,6 @@ struct ImpressionsScreen: View {
 
             FlowLayout(spacing: dimensions.spacing.space8) {
                 Stat("Impressions", model.total)
-                // a card seen in two separate renders is two impressions and one
-                // recommendation. counting rows measures viewings, which is a
-                // different question and usually not the one being asked
                 Stat("Distinct titles", model.distinct)
                 Stat("Rails", model.batches)
                 Stat("Seeds", model.seeds)
@@ -74,9 +64,6 @@ struct ImpressionsScreen: View {
                 Line("Shown", "\(model.total)")
                 Line(
                     "Tapped", "\(model.tapped) of \(model.total)\(rate(model.tapped, model.total))")
-                // the payoff of series.catalogId: a tapped recommendation whose
-                // catalogue row later appears in the library is a conversion that
-                // nothing could express before the column existed
                 Line("Added to library", "\(model.converted) of \(model.tapped)")
                 Line("Already owned when shown", "\(model.owned) of \(model.total)")
             }
@@ -87,9 +74,6 @@ struct ImpressionsScreen: View {
         VStack(alignment: .leading, spacing: dimensions.spacing.space12) {
             SectionHeader("By position")
 
-            // whether rank alone drives taps is the question impressions exist to
-            // answer, and it needs far more rows than this to answer honestly.
-            // shown anyway because the shape is visible long before the number is
             VStack(alignment: .leading, spacing: dimensions.spacing.space8) {
                 ForEach(model.positions, id: \.rank) { row in
                     HStack(spacing: dimensions.spacing.space12) {

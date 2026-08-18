@@ -7,8 +7,6 @@
 
 import Foundation
 
-// every case is typed. the host never has to read a message to decide what
-// happened
 enum ReaderError: Error, Equatable, Sendable {
     case notFound(ReaderChapter.ID)
     case noPages(ReaderChapter.ID)
@@ -26,7 +24,6 @@ extension ReaderError {
         }
     }
 
-    // a chapter that can never load here, however many times it is retried
     var isRetryable: Bool {
         switch self {
         case .fetchFailed, .offline: true

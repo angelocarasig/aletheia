@@ -7,17 +7,14 @@
 
 import SwiftUI
 
-// one floating control that opens into its own options, the way Books handles
-// the same two jobs. a toolbar item would put them at the far end of the reach
-// arc, above a screen you scroll with your thumb
 struct LibraryActions: View {
     @Environment(\.dimensions) private var dimensions
 
     var onSort: () -> Void
     var onFilter: () -> Void
     var filtered = false
-    // owned by the screen, not the control: the two floating clusters are
-    // mutually exclusive, and only their parent can see both
+    // @Binding, not @State - the two floating clusters are mutually exclusive,
+    // and only the screen can see both to enforce that
     @Binding var expanded: Bool
 
     @Namespace private var namespace
@@ -28,8 +25,8 @@ struct LibraryActions: View {
     }
 
     var body: some View {
-        // spacing is what lets the options separate out of the root instead of
-        // appearing beside it - inside this distance the shapes read as one blob
+        // spacing controls how far the options separate out of the root before
+        // Liquid Glass reads them as one blob
         GlassEffectContainer(spacing: dimensions.spacing.space12) {
             VStack(spacing: dimensions.spacing.space12) {
                 if expanded {
@@ -53,9 +50,8 @@ extension LibraryActions {
             .frame(width: dimensions.size.controlL, height: dimensions.size.controlL)
             .glassEffect(.regular.interactive(), in: .circle)
             .glassEffectID("root", in: namespace)
-            // outside the glass, or it would be sampled into the surface rather
-            // than sit on it. hidden while open, where the filter row is visible
-            // and the dot would be describing something you are looking at
+            // outside the glass container, or the dot would be sampled into the
+            // surface instead of sitting on top of it
             .overlay(alignment: .topTrailing) {
                 if filtered, !expanded {
                     Dot
@@ -68,8 +64,8 @@ extension LibraryActions {
             .accessibilityLabel(expanded ? "Close options" : "Library options")
     }
 
-    // a notification, not decoration: something is being hidden from you right
-    // now. the ring keeps it legible against whatever the glass has sampled
+    // the ring keeps this legible against whatever the glass surface has sampled
+    // from behind it
     fileprivate var Dot: some View {
         Circle()
             .fill(.danger)
@@ -81,8 +77,6 @@ extension LibraryActions {
             .accessibilityLabel("Filters applied")
     }
 
-    // collapsing on select is the point of the cluster: the option it opened is
-    // now on screen, and leaving it expanded behind a sheet means dismissing twice
     fileprivate func Action(
         _ label: String,
         systemImage: String? = nil,

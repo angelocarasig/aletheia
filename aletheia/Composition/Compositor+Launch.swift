@@ -8,18 +8,11 @@
 import BackgroundTasks
 import Foundation
 
-// the graph, and the one registration that cannot wait for a screen.
-//
-// a launch the system starts to run a scheduled task connects no window, so
-// nothing a view owns is ever reached. registration has to happen during launch
-// itself - the api asserts and kills the process otherwise - and the handler
-// that runs later needs the same graph a foreground launch builds, not a second
-// one. see docs/features/background-activity.md 4.7.1
+// BGTaskScheduler registration must happen during launch itself - the api
+// asserts and kills the process otherwise - see docs/features/background-activity.md 4.7.1
 extension Compositor {
-    // built at most once per process, by whoever asks first. an actor rather
-    // than a lazy var because two callers can ask at the same time: bootstrap
-    // from the first frame and a launch handler from the system, and the pool
-    // must not be opened twice
+    // actor rather than a lazy var: bootstrap and a system launch handler can
+    // both ask for this at the same time, and the pool must not be opened twice
     private actor Builder {
         static let shared = Builder()
         private var building: Task<Compositor, Error>?
@@ -28,9 +21,8 @@ extension Compositor {
             if let building { return try await building.value }
 
             let task = Task {
-                // opening the pool and running the migrator are synchronous with
-                // no async form, so this is the one place that has to leave the
-                // main actor
+                // opening the pool and running the migrator are synchronous, so this
+                // is the one place that has to leave the main actor
                 let database = try await Self.open()
                 return Compositor(database: database)
             }
@@ -66,17 +58,15 @@ enum Launch {
     // swiftui gives no contract on how many times an app value is initialised
     private static var registered = false
 
-    // called from the app delegate, which runs on every launch including one the
-    // system starts headlessly. graph-free on purpose: the work of building it
-    // belongs to the handler, which runs later and can await
+    // graph-free on purpose: registration must be synchronous, so building the
+    // graph is deferred to the handler closure below, which runs later and can await
     static func registerScheduledRefresh(log: AppLog = .shared) {
         guard !registered else { return }
         registered = true
 
         #if !targetEnvironment(simulator)
-            // a different api from the continued-processing tasks, and a different
-            // rule: those are exempt from having to register before launch ends, so
-            // they stay with the owner that submits them. this one is not
+            // unlike continued-processing tasks (exempt from launch-time
+            // registration), a BGTaskScheduler identifier must register before launch ends
             let installed = BGTaskScheduler.shared.register(
                 forTaskWithIdentifier: Constants.Tasks.scheduledRefresh,
                 using: nil
@@ -107,9 +97,6 @@ enum Launch {
 
     private static var registeredMetadata = false
 
-    // same shape as registerScheduledRefresh, its own identifier and its own
-    // one-time guard - the api kills the app on a second registration of the
-    // same identifier, and that rule is per identifier, not per call site
     static func registerScheduledMetadataRefresh(log: AppLog = .shared) {
         guard !registeredMetadata else { return }
         registeredMetadata = true

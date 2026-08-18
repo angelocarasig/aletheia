@@ -8,32 +8,26 @@
 import Kingfisher
 import SwiftUI
 
-// the library counterpart to SourceCard. a series here is already owned, so it
-// carries nothing about where it came from and no match state - what matters is
-// how much of it is left to read
 struct LibraryCard: View {
     var title: String?
     var cover: URL?
     var unreadCount: Int = 0
     var activity: Activity?
-    // resolved by the caller from the preference and the reveal together, so the
-    // card never reads either and a grid cannot disagree with itself
+    // resolved by the caller, not computed here - otherwise cards in the same
+    // grid could disagree on whether they're obscured
     var obscured: Bool = false
 
-    // the same two words the details pill uses: waiting for its turn, or being
-    // talked to right now. a card with neither is not in a run at all
     enum Activity {
         case queued
         case checking
     }
 
     @Environment(\.dimensions) private var dimensions
-    // the downsampler's scale factor defaults to 1, so without this a retina
-    // slot decodes at a third of its resolution
+    // DownsamplingImageProcessor's scale defaults to 1 - without this, retina
+    // slots decode at a third of their resolution
     @Environment(\.displayScale) private var displayScale
 
-    // cleared when the url changes, or a recycled cell hands the next series the
-    // previous one's blank
+    // cleared on url change - a recycled cell must drop the previous blank
     @State private var unavailable = false
     @State private var slot: CGSize = .zero
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -47,9 +41,6 @@ struct LibraryCard: View {
         static let placeholderOpacity: Double = 0.1
         static let badgeCap = 99
         static let scrimOpacity: Double = 0.45
-        // lighter, because waiting is a weaker claim on the card than being
-        // worked on - the two have to be distinguishable at a glance across a
-        // grid, not just on the one you are looking at
         static let queuedScrimOpacity: Double = 0.3
     }
 
@@ -64,8 +55,8 @@ struct LibraryCard: View {
     private var Cover: some View {
         Color.clear
             .aspectRatio(Layout.coverAspect, contentMode: .fit)
-            // rounded because the size is part of the downsampler's cache key,
-            // and a fractional point mints a fresh decode every layout pass
+            // rounded because size is part of the downsampler's cache key - a
+            // fractional point mints a fresh decode every layout pass
             .onGeometryChange(for: CGSize.self) { proxy in
                 CGSize(width: proxy.size.width.rounded(), height: proxy.size.height.rounded())
             } action: {
@@ -73,9 +64,8 @@ struct LibraryCard: View {
             }
             .overlay {
                 if let cover {
-                    // zero until the first layout pass, and a downsampler built on
-                    // zero caches under a size that describes nothing - so the
-                    // load waits a frame
+                    // slot is zero until the first layout pass - DownsamplingImageProcessor
+                    // built on a zero size caches under a size that describes nothing
                     if slot.width > 0 {
                         KFImage(cover)
                             .setProcessor(DownsamplingImageProcessor(size: slot))
@@ -83,9 +73,6 @@ struct LibraryCard: View {
                             .backgroundDecode()
                             .resizable()
                             .placeholder { Placeholder.shimmer() }
-                            // a permanently dead url left the shimmer up forever,
-                            // which reads as a card still loading rather than one
-                            // with no artwork
                             .onFailure { _ in unavailable = true }
                             .fade(duration: 0.25)
                             .scaledToFill()
@@ -93,30 +80,22 @@ struct LibraryCard: View {
                             .overlay { if unavailable { Missing } }
                             .onChange(of: cover) { unavailable = false }
                     } else {
-                        // shimmering, not static: there is a cover and it is about
-                        // to be asked for
                         Placeholder.shimmer()
                     }
                 } else {
                     Placeholder
                 }
             }
-            // blur before the activity mark, so a card being checked still says
-            // so on a covered cover - it is our own annotation, not the artwork
+            // obscured must apply before the activity overlay, or the checking
+            // mark - our own annotation, not artwork - gets blurred with the cover
             .obscured(obscured)
             .overlay { Checking }
             .clipShape(.rect(cornerRadius: dimensions.radius.radius12))
-            // outside the clip so the badge is not cut by the corner radius
+            // overlay after clipShape so the badge isn't cut by the corner radius
             .overlay(alignment: .topTrailing) { Unread }
-            // the scrim fades rather than snapping - a card entering and leaving
-            // the run is the most frequent state change on this screen
             .animation(.settle, value: activity)
     }
 
-    // the SourceCard treatment: a scrim carries the state at a glance and a mark
-    // says which one, so the artwork stays readable underneath. centred and
-    // spinning rather than a corner glyph, because this one is happening now
-    // rather than being a fact about the series
     @ViewBuilder
     private var Checking: some View {
         switch activity {
@@ -126,10 +105,8 @@ struct LibraryCard: View {
                     Image(systemName: "arrow.triangle.2.circlepath")
                         .font(.title)
                         .foregroundStyle(.brand)
-                        // continuous rather than the default stepped rotation,
-                        // which reads as stuttering on a long-running check.
-                        // the scrim already says the card is busy, so with
-                        // reduce motion on the symbol simply holds still
+                        // continuous, not the default stepped rotation - stepped
+                        // reads as stuttering on a long-running check
                         .symbolEffect(
                             .rotate, options: .repeat(.continuous), isActive: !reduceMotion)
                 }
@@ -155,9 +132,6 @@ struct LibraryCard: View {
             Text(unreadCount > Layout.badgeCap ? "\(Layout.badgeCap)+" : "\(unreadCount)")
                 .font(.caption2)
                 .fontWeight(.bold)
-                // red rather than brand: this is a notification count, and red is
-                // what a count on artwork reads as everywhere else on the platform.
-                // onBrand is plain white, which is the right contrast on red too
                 .foregroundStyle(.onBrand)
                 .padding(.horizontal, dimensions.spacing.space8)
                 .padding(.vertical, dimensions.spacing.space2)
@@ -176,7 +150,6 @@ struct LibraryCard: View {
                 .truncationMode(.tail)
                 .frame(maxWidth: .infinity, alignment: .leading)
         } else {
-            // stands in for the two lines the real title reserves
             VStack(alignment: .leading, spacing: dimensions.spacing.space4) {
                 Bar(height: Layout.titleHeight)
                 Bar(height: Layout.subtitleHeight)
@@ -185,15 +158,13 @@ struct LibraryCard: View {
         }
     }
 
-    // unshimmered on its own - callers rendering a full grid of empty cards apply
-    // .shimmer() to the container so the sweep runs across the whole grid
+    // deliberately unshimmered here - callers rendering a grid of empty cards
+    // apply .shimmer() to the container so the sweep runs across the whole grid
     private var Placeholder: some View {
         Rectangle()
             .fill(.primary.opacity(Layout.placeholderOpacity))
     }
 
-    // quiet on purpose: artwork that will not load is not something the reader
-    // can act on. the card still names the series and still opens it
     private var Missing: some View {
         Placeholder.overlay {
             Image(systemName: "photo")

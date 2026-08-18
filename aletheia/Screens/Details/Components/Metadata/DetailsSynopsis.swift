@@ -54,8 +54,8 @@ struct DetailsSynopsis: View {
         }
     }
 
-    // truncation can't be read off Text directly - an unclipped copy is rendered
-    // hidden behind the clipped one and the two heights compared
+    // Text exposes no truncation state directly - an unclipped copy is
+    // rendered hidden behind the clipped one and the two heights compared
     private func SynopsisText(_ synopsis: AttributedString) -> some View {
         Text(synopsis)
             .font(.subheadline)

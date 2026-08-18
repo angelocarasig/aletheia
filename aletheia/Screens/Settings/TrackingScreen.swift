@@ -8,8 +8,6 @@
 import AuthenticationServices
 import SwiftUI
 
-// one card per service, and never more than two. signing in is a once-ever act,
-// which is why it lives behind settings rather than in a tab
 struct TrackingScreen: View {
     @Environment(\.compositor) private var compositor
     @Environment(\.dimensions) private var dimensions
@@ -41,9 +39,7 @@ struct TrackingScreen: View {
             .padding(.horizontal, dimensions.screenMargin)
             .padding(.vertical, dimensions.spacing.space16)
             .animation(.settle, value: compositor.trackers.accounts)
-            // signing out is not the only way a card changes: a token running
-            // out moves the name, the sentence and the control at once, and none
-            // of that is a change to the accounts dictionary
+            // needingSignIn changes independently of accounts, so it needs its own animation trigger
             .animation(.settle, value: compositor.trackers.needingSignIn)
         }
         .scrollEdgeEffectStyle(.soft, for: .bottom)
@@ -69,9 +65,6 @@ struct TrackingScreen: View {
             }
             Button("Cancel", role: .cancel) { disconnecting = nil }
         } message: {
-            // nothing local is destroyed and the links survive a reconnect, so
-            // the only cost is that pushes stop. said plainly, because the word
-            // disconnect invites the reader to assume worse
             Text(
                 "Your links stay, and nothing is removed from your list. Progress just stops syncing until you sign in again."
             )
@@ -82,9 +75,7 @@ struct TrackingScreen: View {
                     try await compositor.trackers.signIn(token: token, for: tracker)
                     return nil
                 } catch {
-                    // handed back rather than raised as an alert: the sheet is
-                    // still open with the token in it, and an alert over a field
-                    // that needs correcting is a message where a state belongs
+                    // returned, not routed to the failure alert - the sheet stays open with the token
                     return Failure(error, fallback: "Couldn't Connect")
                 }
             }
@@ -105,9 +96,6 @@ struct TrackingScreen: View {
         )
     }
 
-    // one paragraph, once, rather than a footer under each card repeating half
-    // of it. the asymmetry between the two services is the only thing here a
-    // reader could not guess
     private var Explainer: some View {
         VStack(alignment: .leading, spacing: dimensions.spacing.space8) {
             Text(
@@ -128,8 +116,6 @@ struct TrackingScreen: View {
         )
     }
 
-    // one predicate for both services and both lifecycles, rather than this
-    // screen deciding for itself what a dead account looks like
     private func expired(_ tracker: Tracker) -> Bool {
         compositor.trackers.needingSignIn.contains(tracker)
     }
@@ -139,8 +125,6 @@ struct TrackingScreen: View {
     private func connect(_ tracker: Tracker) {
         guard connecting == nil else { return }
 
-        // no browser grant for this one: the reader pastes a token, and the sheet
-        // owns the whole attempt including its failures
         guard !tracker.usesPastedToken else {
             pasting = tracker
             return
@@ -171,9 +155,6 @@ struct TrackingScreen: View {
 
 // MARK: - Card
 
-// one account, as a view rather than a method on the screen: every state it can
-// be in is then a set of values, so all four are visible in a preview without a
-// keychain, a network, or waiting a year for a token to run out
 private struct TrackingCard: View {
     let tracker: Tracker
     let account: TrackerCredential?
@@ -189,8 +170,6 @@ private struct TrackingCard: View {
         static let tile: CGFloat = 36
     }
 
-    // the branch selector and the animation key are the same value, which is the
-    // whole rule: keying a correlated boolean is how a swap goes dead or partial
     private enum Phase: Equatable {
         case disconnected
         case connecting
@@ -212,19 +191,12 @@ private struct TrackingCard: View {
 
     var body: some View {
         HStack(spacing: dimensions.spacing.space12) {
-            // the brand tile, untinted - a logo recoloured to match its
-            // surroundings stops being a logo
             Image(tracker.icon)
                 .resizable()
                 .frame(width: Layout.tile, height: Layout.tile)
                 .clipShape(.rect(cornerRadius: dimensions.radius.radius4))
 
             VStack(alignment: .leading, spacing: dimensions.spacing.space4) {
-                // the name steps back when the account needs the reader, so the
-                // amber line under it is the loudest thing in the row. a service
-                // that cannot sync is not the heading it was a moment ago - and
-                // the two lines at equal weight read as an ordinary row with an
-                // odd subtitle rather than as something to act on
                 Text(tracker.name)
                     .font(.subheadline)
                     .fontWeight(.semibold)
@@ -242,16 +214,12 @@ private struct TrackingCard: View {
         .animation(.settle, value: phase)
     }
 
-    // three sentences in one slot. each branch fades rather than cutting, and
-    // the container above carries the animation - a bare Group cannot host both
-    // halves of a transition
+    // .animation(value: phase) lives on the parent HStack, not here - a bare Group
+    // (the implicit @ViewBuilder container) can't host a transition itself
     @ViewBuilder
     private var State: some View {
         if let account {
             if needsSignIn {
-                // never "token expired". on one service this is a yearly
-                // certainty and on the other a rarity, and the reader does not
-                // care which produced it - only what to do about it
                 Text("Sign in again to keep tracking")
                     .font(.caption)
                     .foregroundStyle(Palette.warningText)
@@ -274,9 +242,7 @@ private struct TrackingCard: View {
     @ViewBuilder
     private var Action: some View {
         if isConnecting {
-            // a symbol rather than a ProgressView, and not for looks: this slot
-            // is a glyph the rest of the time, and a ProgressView has no stroke
-            // for the outcome to draw out of when the sign-in lands
+            // a symbol, not ProgressView - needs to morph into the outcome glyph via contentTransition
             Glyph("progress.indicator")
                 .symbolEffect(.rotate, options: .repeat(.continuous), isActive: !reduceMotion)
                 .transition(.opacity)
@@ -292,9 +258,6 @@ private struct TrackingCard: View {
             .buttonStyle(.plain)
             .transition(.opacity)
         } else {
-            // the same recipe as the details section's connect and its link
-            // circle: regular interactive glass, shape following the content,
-            // and a semantic foreground because glass vends its own
             Text("Connect")
                 .font(.subheadline)
                 .fontWeight(.semibold)
@@ -309,8 +272,8 @@ private struct TrackingCard: View {
         }
     }
 
-    // one construction for both glyphs this slot can hold, so the swap between
-    // them replaces in place rather than crossfading two different images
+    // one Image construction for both glyphs - keeps view identity stable so
+    // .symbolEffect(.replace) morphs in place instead of crossfading two views
     private func Glyph(_ name: String) -> some View {
         Image(systemName: name)
             .font(.body)
@@ -336,9 +299,6 @@ extension TrackerCredential {
     }
 }
 
-// the four states one account can be in. the third is the one that used to be
-// unreachable without waiting a year, and it is the whole reason this row is a
-// view rather than a method
 #Preview("Account states") {
     NavigationStack {
         ScrollView {
@@ -389,17 +349,13 @@ extension TrackerCredential {
     }
 }
 
-// the screen itself, which reads the real keychain - a layout check rather than
-// a state check, since what it shows is whatever this device is signed into
+// reads the real keychain, not mock data - not deterministic across devices
 #Preview("Screen") {
     NavigationStack {
         TrackingScreen()
     }
 }
 
-// the states in motion, which is the only way to judge a transition - a static
-// preview shows the endpoints and says nothing about the swap between them.
-// tap through: connect, land, run out, disconnect
 #Preview("States - live") {
     @Previewable @State var account: TrackerCredential?
     @Previewable @State var needsSignIn = false

@@ -15,9 +15,6 @@ struct SectionHeader<Trailing: View>: View {
 
     var body: some View {
         HStack(spacing: dimensions.spacing.space8) {
-            // the title takes the width it needs and the rule absorbs what is
-            // left - a two-word heading wrapping while a decorative line keeps
-            // its space is the wrong thing to have given room to
             Text(title)
                 .font(.title2)
                 .fontWeight(.bold)

@@ -18,17 +18,13 @@ extension DetailsComposer {
         private(set) var matches: [Match] = []
         private(set) var isSearching = false
 
-        // from DetailsWriting. a plain bool because attaching and merging both
-        // rewrite the whole screen's identity - there is no one row to key on
+        // a plain bool, not keyed by row like other children - attaching and
+        // merging both rewrite the whole screen's identity at once
         private(set) var saving = false
         private(set) var failure: Failure?
 
-        // enough rows that the right series is on screen without a search
-        // field, few enough that ranking still means something.
-        //
-        // nonisolated because it is read by the nonisolated query that does the
-        // ranking: a static inside a @MainActor type inherits that isolation, and
-        // an immutable Int has nothing to protect
+        // nonisolated: a static inside a @MainActor type inherits that
+        // isolation, and an immutable Int has nothing to protect
         nonisolated static let limit = 10
 
         private let registry: Compositor.Registry
@@ -41,16 +37,14 @@ extension DetailsComposer {
             self.database = database
         }
 
-        // from DetailsWriting
         func clear() {
             failure = nil
         }
 
         var isAmbiguous: Bool { !candidates.isEmpty }
 
-        // the library series a title match turned up, offered before anything
-        // is written. failing here is not worth a screen: the caller settles
-        // instead, which is the same answer as finding nothing
+        // failing here doesn't set failure - the caller settles instead on
+        // false, which is the same outcome as finding nothing
         func load(_ ids: [SeriesRecord.ID]) async -> Bool {
             do {
                 let rows = try await database.reader.read { db in
@@ -66,17 +60,13 @@ extension DetailsComposer {
             }
         }
 
-        // drops the candidates without answering. backing out of the prompt
-        // entirely, which the composer follows by ending the screen - there is
-        // no series to fall back to
         func dismiss() {
             candidates = []
         }
 
-        // with no query: the top library series ranked by how alike their
-        // titles are, scored across both sides' full pools so a romaji copy
-        // still finds its english twin. with a query: the library's own fts
-        // search decides who is in, similarity only decides the order
+        // no query: ranked by title similarity across both sides' full title
+        // pools, so a romaji copy still finds its english twin. with a query:
+        // fts decides who is in, similarity only decides the order
         func search(_ query: String, for id: SeriesRecord.ID) async {
             let text = query.trimmingCharacters(in: .whitespacesAndNewlines)
 
@@ -89,12 +79,11 @@ extension DetailsComposer {
                     return (scored, try Self.candidates(for: scored.map(\.id), in: db))
                 }
 
-                // the caller re-runs this per keystroke and cancels the last
-                // one. a late result must not overwrite a newer query's
+                // re-run per keystroke and the previous one cancelled - a late
+                // result must not overwrite a newer query's
                 guard !Task.isCancelled else { return }
 
-                // hydration returns rows in table order, the score decides
-                // display order
+                // rows come back in table order - scored is what's sorted
                 let byId = Dictionary(uniqueKeysWithValues: rows.map { ($0.id, $0) })
 
                 matches = scored.compactMap { match in
@@ -108,9 +97,6 @@ extension DetailsComposer {
             }
         }
 
-        // the held row already owns an origin for this source, so it moves
-        // across rather than being fetched a second time. answers whether it
-        // landed, because the caller has to re-point the screen at the target
         func reparent(_ held: SeriesRecord.ID, into target: SeriesRecord.ID) async -> Bool {
             saving = true
             defer { saving = false }
@@ -126,7 +112,6 @@ extension DetailsComposer {
             }
         }
 
-        // everything the losing series owns moves across, then its row goes.
         // the target's own preferences, status and ordering stay untouched
         func merge(_ series: SeriesRecord.ID, into target: SeriesRecord.ID) async -> Bool {
             saving = true
@@ -183,9 +168,8 @@ extension DetailsComposer {
             )
         }
 
-        // not memoised the way the displayed cover is: these lists are built
-        // fresh per prompt and thrown away, so there is no session-long cache
-        // key to keep stable
+        // not memoised like the displayed cover - these lists are built fresh
+        // per prompt and thrown away, no session-long cache key to keep stable
         private func artwork(_ remote: URL?, path: String?) -> URL? {
             assets.local(for: path) ?? remote
         }
@@ -196,9 +180,6 @@ extension DetailsComposer {
     }
 }
 
-// the flow around the two writes. it lives on the composer because both end by
-// re-pointing the screen at a different row, and the observation and the held
-// row are the composer's
 extension DetailsComposer {
     func attach(to target: Int64) async {
         let id = SeriesRecord.ID(rawValue: target)
@@ -235,8 +216,6 @@ extension DetailsComposer {
 }
 
 extension DetailsComposer.Identity {
-    // a library series that might be the one just opened, offered before
-    // anything is written
     struct Candidate: Identifiable, Hashable {
         let id: Int64
         let title: String
@@ -251,8 +230,6 @@ extension DetailsComposer.Identity {
 
         var started: Bool { read > 0 }
 
-        // a read date when there is one, the added date when there is not - a
-        // series never opened has nothing else to place it in time
         var meta: String {
             if let lastReadDate {
                 return "Last read \(lastReadDate.formatted(.relative(presentation: .numeric)))"
@@ -261,9 +238,6 @@ extension DetailsComposer.Identity {
         }
     }
 
-    // a series the reader searched for to fold this one into. carries more
-    // than a Candidate because a merge is compared side by side before it is
-    // agreed to
     struct Match: Identifiable, Hashable {
         let id: Int64
         let title: String
@@ -281,7 +255,6 @@ extension DetailsComposer.Identity {
         var match: Int { Int((score * 100).rounded()) }
     }
 
-    // both lists are drawn from the same row, so they are hydrated by one query
     struct Row: Decodable, FetchableRecord, Sendable {
         let id: Int64
         let title: String
@@ -339,9 +312,9 @@ extension DetailsComposer.Identity {
         return try Row.fetchAll(db, sql: sql, arguments: StatementArguments(ids.map(\.rawValue)))
     }
 
-    // scoring runs in swift - the pools are small and sqlite has no
-    // string-distance function to push it into. the cap applies only to the
-    // unqueried list, since a search has already narrowed by hand
+    // runs in swift - sqlite has no string-distance function to push this
+    // into. the cap applies only to the unqueried list, a query has already
+    // narrowed by hand
     nonisolated static func scored(
         for id: SeriesRecord.ID,
         matching query: String,
@@ -364,8 +337,6 @@ extension DetailsComposer.Identity {
         var arguments: StatementArguments = [id]
 
         if !query.isEmpty {
-            // prefix matching, same as the library grid - results narrow as you
-            // type rather than only landing on whole words
             guard let pattern = FTS5Pattern(matchingAllPrefixesIn: query) else { return [] }
             sql += """
 
@@ -408,12 +379,11 @@ extension DetailsComposer.Identity {
         try propagate(for: target, in: db)
     }
 
-    // every origin the losing row owns moves across, then the row itself goes.
-    // metadata, titles and covers move by series rather than by origin: a row
-    // whose supplier has since been removed carries no originId, so an
-    // origin-keyed sweep would leave it behind for the delete below to cascade
-    // away. UPDATE OR IGNORE because the target may already hold the same
-    // supplier, title or url, and a true duplicate is correct to drop
+    // metadata/titles/covers move by seriesId, not originId: a row whose
+    // supplier was removed carries no originId, and an origin-keyed sweep
+    // would leave it for the delete below to cascade away. UPDATE OR IGNORE
+    // because the target may already hold the same supplier/title/url, and a
+    // true duplicate is correct to drop
     nonisolated static func reparent(
         from series: SeriesRecord.ID,
         into target: SeriesRecord.ID,
@@ -467,9 +437,9 @@ extension DetailsComposer.Identity {
         )
     }
 
-    // attaching a source marks everything at or below the series' furthest
-    // read number as read; a merge makes the same promise over the union of
-    // both chapter sets. monotonic, so nothing already further along moves back
+    // marks everything at or below the furthest-read number as read, over the
+    // union of both chapter sets. monotonic, so nothing already further along
+    // moves back
     nonisolated static func propagate(
         for id: SeriesRecord.ID,
         in db: Database
@@ -490,8 +460,8 @@ extension DetailsComposer.Identity {
         let numbers = try Double.fetchAll(db, sql: sql, arguments: [id, id])
         try ChapterRecord.apply(progress: 1.0, toNumbers: numbers, in: id, monotonic: true, db: db)
 
-        // a merge can raise the number past what the service last heard, so the
-        // same intent is recorded here as anywhere else reading is written
+        // a merge can raise the number past what the service last heard - the
+        // same intent is recorded here as anywhere else progress is written
         try SeriesTrackerRecord.enqueue(for: id, in: db)
     }
 }

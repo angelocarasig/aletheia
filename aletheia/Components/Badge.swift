@@ -8,10 +8,6 @@
 import SwiftUI
 
 struct Badge: View {
-    // standalone pills are the content of their own line and carry full weight.
-    // compact is for the two cases that cannot: a pill annotating adjacent text
-    // (at full scale it outsizes the title it marks and drives the row height),
-    // and a pill repeated enough times that full scale reads as a wall
     enum Size {
         case standalone
         case compact
@@ -24,9 +20,6 @@ struct Badge: View {
     @Environment(\.dimensions) private var dimensions
 
     private enum Layout {
-        // a soft wash over the material rather than a solid fill: .subtle at full
-        // strength reads too heavy against the page, so it rides a material that
-        // carries most of the surface and lets the tint just colour it
         static let tint: Double = 0.5
         static let border: Double = 0.2
         static let stroke: CGFloat = 0.5
@@ -53,8 +46,6 @@ struct Badge: View {
             .foregroundStyle(tone.text)
             .padding(.horizontal, horizontal)
             .padding(.vertical, vertical)
-            // material for glassy depth, a soft tone wash over it, and a hairline
-            // tone edge so the pill has a defined shape against the backdrop
             .background {
                 ZStack {
                     Capsule().fill(.ultraThinMaterial)

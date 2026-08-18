@@ -26,9 +26,6 @@ enum NetworkError: DescribableError {
             return "Request timed out"
         case .badResponse:
             return "Server Returned an Error"
-        // one is us failing to build a request and the other is us failing to
-        // read a reply. they shared a sentence that named the response, which
-        // is the wrong direction for half of the pair
         case .encoding:
             return "Couldn't Send the Request"
         case .decoding:
@@ -38,8 +35,6 @@ enum NetworkError: DescribableError {
         }
     }
 
-    // the sentence under the title. errorDescription names what happened; this
-    // says what to do about it, which is the half a dead-end screen is missing
     var failureReason: String? {
         switch self {
         case .cancelled:
@@ -48,8 +43,6 @@ enum NetworkError: DescribableError {
             return "Check your connection and try again."
         case .timeout:
             return "The server took too long to respond. Try again in a moment."
-        // the status code is in the log line that accompanies every one of these,
-        // so dropping it from the sentence loses nothing a person could use
         case .badResponse:
             return "The server responded unexpectedly."
         case .encoding:
@@ -61,8 +54,6 @@ enum NetworkError: DescribableError {
         }
     }
 
-    // a transport problem is worth another go; a payload this app cannot parse
-    // will fail identically every time
     var isRetryable: Bool {
         switch self {
         case .cancelled, .offline, .timeout, .badResponse, .failed:

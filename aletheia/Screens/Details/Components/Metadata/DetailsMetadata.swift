@@ -62,7 +62,6 @@ struct DetailsMetadata: View {
         }
     }
 
-    // ticks rather than freezing at whatever it said when the row was built
     @ViewBuilder
     private func Elapsed(_ date: Date?) -> some View {
         if let date {
@@ -72,7 +71,6 @@ struct DetailsMetadata: View {
         }
     }
 
-    // maxWidth infinity on every cell splits the row into equal thirds
     private func Cell(
         label: String,
         value: String? = nil,

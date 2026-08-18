@@ -7,9 +7,6 @@
 
 import SwiftUI
 
-// primitives (Radix 12-step scales, light/dark colorsets) live in
-// Resources/Assets.xcassets/Colors/Radix. views never reference a raw step -
-// only the semantic aliases below.
 enum Palette {
     // brand (blue)
     static let brand = Color("blue9")
@@ -32,15 +29,12 @@ enum Palette {
 
     // success (grass)
     static let success = Color("grass9")
-    // grass4 rather than the step 3 its siblings use: grass3 in dark is
-    // #1B2A1E, near-black with almost no green left in it, where blue3 keeps a
-    // visible tint from its blue channel. the pair reads as two different
-    // weights of fill rather than two colours of one
+    // grass4, not grass3 like its siblings - grass3 in dark is #1B2A1E,
+    // near-black with almost no green left, unlike blue3's visible tint
     static let successSubtle = Color("grass4")
     static let successText = Color("grass11")
 
-    // a semantic role, paired so text and its background always come from the
-    // steps meant for them: 11 reads on 3, where step 9 is a solid fill and is
+    // step 11 reads as text on step 3's background; step 9 is a solid fill and
     // unreadable as text on anything pale
     enum Tone {
         case brand, success, warning, danger, neutral

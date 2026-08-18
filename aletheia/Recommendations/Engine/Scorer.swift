@@ -167,7 +167,6 @@ struct Scorer: Sendable {
             ranked: ranked)
     }
 
-    // a row's tag columns, for turning a result back into names
     func columns(of row: Int) -> [Int] {
         indptr.withUnsafeBufferPointer { ptr in
             indices.withUnsafeBufferPointer { idx in
@@ -300,9 +299,6 @@ struct Scorer: Sendable {
         }
     }
 
-    // rows with no synopsis hold a zero vector, and a zero dot product would read
-    // as actively dissimilar. they take the block mean instead - a missing
-    // synopsis is an absence, not a penalty
     // the same gather, but the seed side arrives as floats rather than bytes, so
     // the accumulator cannot be integer here
     private func tagBlock(vector: TagVocabulary.Sparse, into out: inout [Float]) {

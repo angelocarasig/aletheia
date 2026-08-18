@@ -7,18 +7,14 @@
 
 import Foundation
 
-// what one signed-in account is, stored in the keychain under the tracker's slug
-// and nowhere else. the account details ride along because the settings screen
-// has to name who is signed in without a request
-//
 // removing a field from this is the safe direction: a key left behind in an
 // already-saved item is ignored on decode, whereas adding a non-optional one
 // throws keyNotFound against every credential already on the device
 struct TrackerCredential: Sendable, Codable, Equatable {
     var accessToken: String
     // myanimelist rotates this on every refresh and the new one must be kept.
-    // anilist has none at all - its token simply expires after a year and the
-    // reader signs in again, which is a routine event there rather than a fault
+    // anilist has none at all - its token simply expires after a year, which is
+    // a routine event there rather than a fault
     var refreshToken: String?
     var expiresDate: Date?
 
@@ -26,8 +22,7 @@ struct TrackerCredential: Sendable, Codable, Equatable {
     var avatar: URL?
     var scoreFormat: ScoreFormat
 
-    // stamped at receipt rather than trusting a served expires_in, and only used
-    // to decide when to refresh ahead of a request
+    // stamped at receipt rather than trusting a served expires_in
     var issuedDate: Date = .now
 
     func isValid(skew: TimeInterval = 300) -> Bool {
@@ -39,12 +34,10 @@ struct TrackerCredential: Sendable, Codable, Equatable {
         refreshToken != nil
     }
 
-    // the one signature both services share once they are out of road, and the
-    // reason a rejected refresh clears the refresh token rather than deleting the
-    // credential: anilist arrives here when its year runs out and myanimelist
-    // when its refresh token is refused, and neither can be told from a never
-    // connected account if the item is gone. deliberate sign-out still deletes,
-    // so no item at all means never connected or disconnected on purpose
+    // anilist arrives here when its year runs out, myanimelist when its refresh
+    // token is refused - neither can be told from a never-connected account if
+    // the item is gone, which is why a rejected refresh clears the refresh token
+    // rather than deleting the credential (deliberate sign-out still deletes)
     var needsReauthentication: Bool {
         !isValid() && !isRefreshable
     }
@@ -57,10 +50,10 @@ struct TrackerCredential: Sendable, Codable, Equatable {
 // MARK: - Expiry
 
 extension TrackerCredential {
-    // both services issue JWTs and both currently send expires_in beside them, so
-    // this is the belt to that pair of braces rather than the primary source. a
-    // nil expiry is the state to avoid: isValid() then answers true forever, which
-    // is mihon's synthesised-expiry bug wearing a different hat
+    // the fallback, not the primary source - both services currently send
+    // expires_in beside the JWT. a nil expiry is the state to avoid: isValid()
+    // then answers true forever, which is mihon's synthesised-expiry bug wearing
+    // a different hat
     static func expiry(inJWT token: String) -> Date? {
         let segments = token.split(separator: ".")
         guard segments.count == 3 else { return nil }

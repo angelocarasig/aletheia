@@ -30,10 +30,6 @@ struct SearchRefineSheet: View {
                         .foregroundStyle(.danger)
                     }
                 }
-                // Close, not Done: every change here is already applied by the
-                // time you see it, so "Done" implies a commit that never happens.
-                // selection-language calls this out - Done belongs only where
-                // there is a real staged commit, paired with Cancel
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Close", systemImage: "xmark") { dismiss() }
                         .labelStyle(.iconOnly)
@@ -45,9 +41,6 @@ struct SearchRefineSheet: View {
     }
 }
 
-// the one shared rendering of a source's declared refinements - the refine
-// sheet shows every group open; the focused screen's inline panel collapses
-// each group behind a disclosure so the idle page stays scannable
 struct SearchFilterPanel: View {
     let vm: SearchGridViewModel
     @Environment(\.dimensions) private var dimensions
@@ -137,9 +130,8 @@ private struct NumberField: View {
             .background(Color.primary.opacity(0.06))
             .clipShape(.rect(cornerRadius: dimensions.radius.radius12))
             .onAppear { sync() }
-            // resynced when the selection changes underneath it. seeded only on
-            // appear, the field kept displaying its number after Clear All while
-            // the selection was gone - and re-editing was the only way back
+            // without this the field kept showing its number after Clear All
+            // even though the selection was gone
             .onChange(of: vm.selection(for: id)) { _, _ in sync() }
             .onChange(of: text) { _, new in
                 if let value = Int(new), value > 0 {
@@ -165,10 +157,8 @@ private struct SegmentedSelect: View {
     let id: String
     let options: [SourceFilter.Option]
 
-    // "Any" is a real segment rather than an implied first option. the getter used
-    // to fall back to options.first when nothing was selected, so the control
-    // rendered as chosen while no selection existed - and once tapped there was
-    // no way back, including through Clear All
+    // the getter previously fell back to options.first when nothing was
+    // selected, rendering the control as chosen with no selection and no way back
     private static let unset = ""
 
     var body: some View {
@@ -238,12 +228,10 @@ private struct MultiSelectGroup: View {
 
     private enum Threshold {
         static let searchable = 15
-        // past this a vocabulary stops being a thing you browse and becomes a
-        // thing you look up, so nothing is offered until something is typed
         static let deferred = 100
-        // FlowLayout measures every child it is handed, so matches are cut before
-        // they reach one. the list is ordered by how many series carry each
-        // option, so the cut keeps the useful end
+        // FlowLayout measures every child it is handed, so results are capped
+        // before it sees them; the list is pre-ordered by popularity so the cut
+        // keeps the useful end
         static let shown = 60
     }
 
@@ -281,17 +269,13 @@ private struct MultiSelectGroup: View {
                     .transition(.opacity)
             }
         }
-        // keyed on what is actually on screen rather than on the search text, so
-        // a keystroke that changes nothing does not animate, and a selection made
-        // with no search still does
+        // keyed on the visible ids rather than the search text, so a keystroke
+        // that changes nothing does not animate
         .animation(Motion.settle, value: visible.map(\.id))
     }
 
     private enum ChipState { case off, included, excluded }
 
-    // a vocabulary in the thousands opens empty: showing the first sixty of 2408
-    // is an arbitrary sample pretending to be a menu. what stays is whatever you
-    // have chosen, which is the one thing you always need to see
     private var isDeferred: Bool {
         options.count > Threshold.deferred
     }
@@ -307,8 +291,8 @@ private struct MultiSelectGroup: View {
         return capped(filtered, keeping: picked)
     }
 
-    // chosen options come first and are never cut, or typing would hide the
-    // selections it is meant to be adding to
+    // chosen options are never cut, or typing would hide the selections it
+    // is meant to be adding to
     private func capped(
         _ matches: [SourceFilter.Option],
         keeping picked: [SourceFilter.Option]
@@ -320,8 +304,8 @@ private struct MultiSelectGroup: View {
         return picked + rest.prefix(max(0, Threshold.shown - picked.count))
     }
 
-    // Text, not String: the inflection markup is parsed by the LocalizedStringKey
-    // overload, and a String variable takes the one that renders it verbatim
+    // Text, not String: inflection markup only parses through the
+    // LocalizedStringKey overload
     private var hint: Text? {
         if search.isEmpty, isDeferred {
             let count = options.count - visible.count
@@ -392,23 +376,19 @@ private struct MultiSelectGroup: View {
     }
 }
 
-// shared with the applied-filter rail on the results screen, so an option
-// reads the same wherever it is shown
 struct FilterChip: View {
     let label: String
     var sensitivity: SourceFilter.Sensitivity = .none
     let tint: Color?
     var glyph: String? = nil
-    // an option that is a thing with a face - a source, rather than a value
     var artwork: ImageResource? = nil
     var strikethrough: Bool = false
     let action: () -> Void
 
     @Environment(\.dimensions) private var dimensions
 
-    // both non-.none levels are flagged, but only one claims a rating. the badge
-    // used to sit on anything marked, which put 18+ on Ecchi and Mature - neither
-    // pornographic, and neither able to open the adult gate
+    // the 18+ badge previously showed on any flagged sensitivity, mislabeling
+    // Ecchi and Mature (neither pornographic) as rated
     private var flagged: Bool { sensitivity != .none }
     private var rated: Bool { sensitivity == .adult }
 

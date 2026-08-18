@@ -19,11 +19,6 @@ struct OriginRecord: Codable, DatabaseRecord {
     private(set) var url: String
     var priority: Int
 
-    // synopsis, classification and publication live on the origin's metadata row
-    // rather than here. origin is the chapter-provenance and fetch unit; a
-    // tracker has to be able to answer for the same three fields without
-    // becoming one. see docs/features/tracker-metadata.md §6.1
-
     // distantPast means never fetched, which is what lets an empty chapter list
     // be told apart from one that has simply not loaded yet
     var chaptersFetchedDate: Date = .distantPast
@@ -84,7 +79,6 @@ extension OriginRecord {
     }
 
     static func createIndexes(db: Database) throws {
-        // foreign key indexes
         try db.create(
             index: "idx_origin_seriesId", on: databaseTableName, columns: [Columns.seriesId.name],
             ifNotExists: true)
@@ -92,7 +86,6 @@ extension OriginRecord {
             index: "idx_origin_sourceId", on: databaseTableName, columns: [Columns.sourceId.name],
             ifNotExists: true)
 
-        // composite index for origin priority lookup
         try db.create(
             index: "idx_origin_priority", on: databaseTableName,
             columns: [
@@ -100,9 +93,9 @@ extension OriginRecord {
                 Columns.priority.name,
             ], ifNotExists: true)
 
-        // a source's slug resolves to at most one origin. sourceId is nullable and
-        // sqlite treats nulls as distinct, so disconnected origins never collide.
-        // note: ifNotExists not supported with unique option - guard manually
+        // a source's slug resolves to at most one origin - sqlite treats NULLs as
+        // distinct in a unique index, so disconnected (null sourceId) origins
+        // never collide. ifNotExists is not supported with unique, hence the guard below
         if try !db.indexes(on: databaseTableName).contains(where: {
             $0.name == "idx_origin_sourceId_slug_unique"
         }) {
@@ -114,10 +107,6 @@ extension OriginRecord {
             )
         }
 
-        // library filtering by publication/classification moved to metadata with
-        // the columns
-
-        // covering index for origin lookups by series and source
         try db.create(
             index: "idx_origin_seriesId_sourceId", on: databaseTableName,
             columns: [
@@ -125,8 +114,8 @@ extension OriginRecord {
                 Columns.sourceId.name,
             ], ifNotExists: true)
 
-        // currently-failing origins are a handful out of everything, so the
-        // aggregate reads a partial index rather than scanning the table
+        // partial index - failing origins are a handful out of everything, so
+        // the aggregate reads this instead of scanning the table
         try db.create(
             index: "idx_origin_failing",
             on: databaseTableName,

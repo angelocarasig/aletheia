@@ -7,11 +7,8 @@
 
 import Foundation
 
-// what the reader needs to know about a chapter, and nothing more. the host
-// maps its own rows onto this - the engine never learns where they came from.
-//
-// position in the array supplied to the engine IS reading order. the engine
-// never sorts by number; a host that wants descending order passes it that way.
+// position in the array supplied to the engine IS reading order - the engine
+// never sorts by number
 struct ReaderChapter: Identifiable, Hashable, Sendable {
     typealias ID = Int64
 

@@ -7,9 +7,6 @@
 
 import SwiftUI
 
-// a preference, so it commits as you touch it and the grid behind is already
-// reordered by the time you close. nothing to confirm, hence Close rather than
-// Done - there is no version of this sheet you can cancel out of
 struct LibrarySortSheet: View {
     @Binding var sort: LibrarySort
     @Binding var ascending: Bool
@@ -26,14 +23,9 @@ struct LibrarySortSheet: View {
                     }
                 }
 
-                // the labels come from the selected option, so this never says
-                // "ascending" and leaves you to work out what that means for dates.
-                // hand-built rather than a segmented picker: those labels are
-                // drawn by uikit and swap instantly when the sort above changes,
-                // with no transition to attach to
+                // hand-built rather than a segmented picker - the picker's labels
+                // are UIKit-drawn and swap instantly with no transition to attach to
                 Section("Order") {
-                    // the option's own default sits on the left, so A to Z leads
-                    // for Title the way Newest first leads for a date
                     HStack(spacing: dimensions.spacing.space8) {
                         Segment(sort.defaultsAscending)
                         Segment(!sort.defaultsAscending)
@@ -52,15 +44,12 @@ struct LibrarySortSheet: View {
             }
         }
         .presentationDetents([.medium, .large])
-        // on the stack rather than at the mutation: the subtitle is nav chrome and
-        // never sees a withAnimation from inside the content. ReaderSourceSwitcher
-        // drives its own subtitle the same way
+        // on the stack, not at the mutation - navigationSubtitle is nav chrome
+        // and doesn't animate from a withAnimation inside the content
         .animation(.smooth, value: sort)
         .animation(.smooth, value: ascending)
     }
 
-    // the label is the only thing that changes when the sort above changes, so it
-    // carries the transition and the capsule around it stays put
     private func Segment(_ value: Bool) -> some View {
         let isSelected = ascending == value
 
@@ -110,8 +99,6 @@ struct LibrarySortSheet: View {
 
             withAnimation(.smooth) {
                 sort = option
-                // each option has an order that is obviously right - a title
-                // landing on Z to A because a date was picked first is a puzzle
                 ascending = option.defaultsAscending
             }
         }

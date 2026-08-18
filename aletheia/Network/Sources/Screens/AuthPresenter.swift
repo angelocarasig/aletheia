@@ -20,12 +20,10 @@ final class AuthPresenter {
 
     private(set) var active: Challenge?
 
-    // the page every capture is rendered into, sheet or no sheet. a WebPage that
-    // is in no view hierarchy is never laid out and never painted, and turnstile
-    // will not run in one - it mounted its iframe, got no layout, was cancelled,
-    // and retried until the capture timed out. mounting it behind the app's own
-    // content costs nothing visually and is the difference between a challenge
-    // that completes and one that loops forever
+    // the page every capture is rendered into, sheet or no sheet. a WebPage in no
+    // view hierarchy is never laid out and never painted, and turnstile will not
+    // run in one - it mounted its iframe, got no layout, was cancelled, and
+    // retried until the capture timed out
     private(set) var mounted: WebPage?
 
     nonisolated init() {}

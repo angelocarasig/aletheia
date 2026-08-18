@@ -19,11 +19,9 @@ extension Compositor {
         func clean() async {
             do {
                 let deleted = try await database.writer.write { db in
-                    // a series never opened in the reader still holds lastReadDate's
-                    // .distantPast default, and status stays at .planning until you
-                    // deliberately pick one - together they mark it as disposable.
-                    // lastReadDate leads because it is the selective one with an
-                    // index behind it; inLibrary covers two values and is not
+                    // never-opened (lastReadDate still .distantPast), never picked a
+                    // status (still .planning), and not in library - together mark a
+                    // series as disposable
                     let never = Date.distantPast
                     return
                         try SeriesRecord

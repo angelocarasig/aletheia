@@ -7,17 +7,9 @@
 
 import SwiftUI
 
-// a fact about the section it sits in, optionally with the one thing that
-// resolves it. the handoff anatomy - glyph, sentence, chevron - because an
-// actionable banner is not a submit: it is "the same thing, done somewhere
-// else". solid tone rather than glass, since a banner sits inside content
-// that is often already glass and glass cannot sample glass
 struct Banner: View {
     private let title: Text
     private let message: Text?
-    // optional, because a notice that is purely prose has nothing for a glyph to
-    // add: the sentence is already the whole of it, and a triangle beside it only
-    // raises the volume of something that was deliberately quiet
     private let systemImage: String?
     private let tone: Palette.Tone
     private let action: (() -> Void)?
@@ -25,7 +17,6 @@ struct Banner: View {
     @Environment(\.dimensions) private var dimensions
 
     private enum Layout {
-        // the second line is what the tap does, not a competing headline
         static let messageOpacity: Double = 0.8
     }
 
@@ -87,8 +78,6 @@ struct Banner: View {
 
             Spacer(minLength: 0)
 
-            // only when there is somewhere to go. a chevron on a banner that
-            // does nothing is an affordance for a tap that never lands
             if action != nil {
                 Image(systemName: "chevron.right")
                     .font(.caption.weight(.bold))
@@ -105,8 +94,8 @@ struct Banner: View {
         )
     }
 
-    // a modifier rather than a branch in the body, so both shapes stay one view
-    // and a banner that gains an action does not remount
+    // viewmodifier branch, not an if/else in body - keeps view identity stable
+    // when action toggles, so the banner does not remount
     private struct Tap: ViewModifier {
         let action: (() -> Void)?
 

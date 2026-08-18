@@ -23,9 +23,6 @@ struct DetailsTags: View {
         VStack(alignment: .leading, spacing: dimensions.spacing.space8) {
             FlowLayout(spacing: dimensions.spacing.space8) {
                 ForEach(visible, id: \.self) { tag in
-                    // the shared pill (Badge), same as metadata and source status.
-                    // tags are labels, not attention, so the neutral tone - and
-                    // compact, because a dozen of them at full scale is a wall
                     Badge(text: tag, tone: .neutral, size: .compact)
                 }
             }

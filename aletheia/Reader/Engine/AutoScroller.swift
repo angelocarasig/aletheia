@@ -20,7 +20,6 @@ final class AutoScroller {
     private(set) var isPaused = false
     private(set) var speed: CGFloat
 
-    // reaching the end should stop, not sit there clamping every frame forever
     var onReachedEnd: (() -> Void)?
 
     init(scrollView: UIScrollView, speed: CGFloat, mode: Orientation) {

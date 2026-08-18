@@ -7,10 +7,9 @@
 
 import Foundation
 
-// a flat public json api with no key, no signing and no renderer. two things
-// shape this file: everything is keyed by integer id rather than a slug, and the
-// endpoint that searches cannot rank while the endpoints that rank cannot
+// the endpoint that searches cannot rank, and the endpoints that rank cannot
 // search - so the rankings arrive as preset shelves through SearchQuery.route
+// instead of as filters/sort on the search endpoint
 struct ScansGGSource: SourceService {
     let network: NetworkConfiguration
 
@@ -48,8 +47,8 @@ struct ScansGGSource: SourceService {
                 ],
                 canExclude: false
             ),
-            // six of the site's seven. Upcoming (5) is deliberately absent, so
-            // there is no way to ask for series that have not started
+            // Upcoming (5) is deliberately absent - no way to ask for series
+            // that have not started
             .multiSelect(
                 id: "q_status",
                 name: "Status",
@@ -63,8 +62,8 @@ struct ScansGGSource: SourceService {
                 ],
                 canExclude: false
             ),
-            // excludable because excluded_tags exists - the same undocumented
-            // parameter the adult gate rides on
+            // excludable because excluded_tags exists - the same parameter the
+            // adult gate rides on, see exclusions(for:gateOpen:) below
             .multiSelect(
                 id: "q_tags",
                 name: "Tags",
@@ -72,9 +71,8 @@ struct ScansGGSource: SourceService {
                 canExclude: true
             ),
         ],
-        // the searchable endpoint takes no sort parameter at all and always
-        // returns newest-first, so one option is the whole honest axis. the
-        // rankings this site does have cannot narrow, and ship as presets below
+        // the search endpoint takes no sort parameter and always returns
+        // newest-first - one option is the whole honest axis
         supportedSort: .init(
             options: [.init(id: "recent", name: "Recently Added")],
             defaultSort: "recent"
@@ -89,7 +87,6 @@ struct ScansGGSource: SourceService {
             .init(
                 id: "latest", name: "Latest Updates",
                 subtitle: "Freshly released chapters", order: 1, route: "latest"),
-            // the plain query - no sort, no filters, id DESC - so it needs no route
             .init(
                 id: "new", name: "New Series",
                 subtitle: "Recently added to the catalogue", order: 2),
@@ -106,9 +103,9 @@ struct ScansGGSource: SourceService {
 // MARK: - Tags
 
 extension ScansGGSource {
-    // declared once and read three ways: the filter options, the id-to-name map
-    // details() needs, and the adult set that drives both the request gate and
-    // the per-item stamp. `GET /tags` is what tells you this has drifted
+    // declared once and read three ways: filter options, the id-to-name map
+    // details() needs, and the adult set that drives the gate and per-item
+    // stamp. `GET /tags` is how you check whether this list has drifted
     struct Tag {
         let id: Int
         let name: String
@@ -192,7 +189,6 @@ extension ScansGGSource {
         }
     }
 
-    // the only shape that honours text and filters, and the only one that pages
     private func browse(_ query: SearchQuery) async throws -> SearchPage<SeriesStub> {
         var items: [URLQueryItem] = [
             .init(name: "limit", value: String(Self.limit)),
@@ -211,9 +207,8 @@ extension ScansGGSource {
             items: rows.map(Self.stub), next: rows.count == Self.limit ? query.page + 1 : nil)
     }
 
-    // ranked by views inside a window. ignores text, every filter and both
-    // pagination parameters - but not excluded_tags, which is the only reason
-    // this can be shown to someone who has not opened the gate
+    // ignores text and every filter except excluded_tags - which is the only
+    // reason this can be shown to someone who has not opened the gate
     private func popular(_ window: String, gate: SearchQuery) async throws -> SearchPage<SeriesStub>
     {
         let items: [URLQueryItem] = [
@@ -223,13 +218,12 @@ extension ScansGGSource {
         ]
 
         let rows: [SeriesDTO] = try await get("series", items)
-        // there is no page 2 - offset and page are both ignored on this route
         return SearchPage(items: rows.map(Self.stub), next: nil)
     }
 
-    // series ranked by newest chapter. the one route excluded_tags does NOT
-    // reach, so the gate is applied here instead - over-fetched so trimming
-    // cannot leave the shelf short
+    // the one route excluded_tags does NOT reach, so the gate is applied
+    // client-side here instead - over-fetched so trimming can't leave the
+    // shelf short
     private func latest(page: Int, gate: SearchQuery) async throws -> SearchPage<SeriesStub> {
         let items: [URLQueryItem] = [
             .init(name: "sort", value: "date"),
@@ -262,9 +256,8 @@ extension ScansGGSource {
         }
     }
 
-    // one parameter carries two things: whatever tags the reader excluded, and -
-    // unless they opened the gate - every adult tag. shut has to mean the request
-    // excludes rather than stays quiet, and this is the only lever that says so
+    // excluded_tags carries two things at once: whatever tags the reader
+    // excluded, and - unless the gate is open - every adult tag
     private static func exclusions(for query: SearchQuery, gateOpen: Bool) -> URLQueryItem {
         var ids: Set<Int> = gateOpen ? [] : adult
 
@@ -280,8 +273,8 @@ extension ScansGGSource {
         "[\(values.joined(separator: ","))]"
     }
 
-    // the item's own tags, never content_rating - 2,984 series tagged Hentai
-    // report themselves as rating 1, so the field can never guarantee a false
+    // the item's own tags, never content_rating - thousands of series tagged
+    // Hentai report themselves as rating 1, so that field can't be trusted
     private static func stub(from row: SeriesDTO) -> SeriesStub {
         SeriesStub(
             slug: String(row.id),
@@ -313,9 +306,8 @@ extension ScansGGSource {
         )
     }
 
-    // whichever signal is stronger. neither can clear a series alone - the rating
-    // is unset on almost the whole catalogue, and an empty tag list is silence
-    // rather than a clean bill - so an untagged, unrated series stays unknown
+    // an empty tag list is silence, not a clean bill - an untagged, unrated
+    // series stays unknown rather than defaulting to safe
     private static func classification(for row: SeriesDTO) -> Classification {
         let tags = Set(row.tags)
         let rating = row.contentRating ?? 1
@@ -325,9 +317,8 @@ extension ScansGGSource {
         return tags.isEmpty ? .Unknown : .Safe
     }
 
-    // seven of theirs onto five of ours. Dropped and Cancelled are the same thing
-    // to a reader, as are Paused and Hiatus. Upcoming has no equivalent and is
-    // not offered as a filter either
+    // Dropped and Cancelled read the same to a reader, as do Paused and Hiatus,
+    // so both pairs collapse to one case each
     private static func publication(_ status: Int?) -> Publication {
         switch status {
         case 1: .Ongoing
@@ -343,8 +334,8 @@ extension ScansGGSource {
 
 extension ScansGGSource {
     func chapters(seriesSlug: String) async throws -> [ChapterEntry] {
-        // unpaginated and across every group, which is what our scanlator
-        // priority wants - the site itself shows one group at a time
+        // unpaginated and across every group - the site itself shows one group
+        // at a time, but scanlator priority needs all of them
         async let rowsTask: [ChapterDTO] = get(
             "chapters", [.init(name: "series_id", value: seriesSlug)])
         // the rows carry group_id and no name, and group_details=true is a no-op

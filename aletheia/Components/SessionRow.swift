@@ -9,11 +9,9 @@ import Kingfisher
 import SwiftUI
 import Tagged
 
-// a sitting, told the same way wherever it appears
-// the destination is the caller's to declare, not a value pushed at the stack:
-// this row appears on screens presented with navigationDestination(isPresented:),
-// where a value push lands UNDER the screen doing the pushing and only surfaces
-// once it is popped
+// destination is a caller-supplied closure, not a value-based navigationDestination
+// push - this row appears on screens presented via navigationDestination(isPresented:),
+// where a value push lands under that screen and only surfaces once it's popped
 struct SessionRow: View {
     let session: ReadingSessionEntry
     let open: (SeriesEntry) -> Void
@@ -24,17 +22,11 @@ struct SessionRow: View {
     private enum Layout {
         static let fillOpacity = 0.05
         static let placeholderOpacity = 0.1
-        // wider than the cover ratio, and deliberately: the height is what sets
-        // the row, and a wider window onto the same artwork shows more of it
-        // without making the row taller. it CROPS rather than stretches -
-        // scaledToFill inside a fixed frame, so the picture keeps its own shape
-        // and the frame decides how much of it you see
         static let coverWidth: CGFloat = 58
         static let coverHeight: CGFloat = 70
     }
 
     var body: some View {
-        // a dead snapshot still names what happened; it just cannot go anywhere
         if session.alive {
             Row
                 .contentShape(.rect)
@@ -44,10 +36,6 @@ struct SessionRow: View {
         }
     }
 
-    // artwork, then what and when, then how much. the clock left the trailing
-    // column and joined the title: a sitting is a thing that happened at a time,
-    // and splitting those across the row made the eye read the row twice. the
-    // amounts are the detail of that sentence, so they sit under it
     private var Row: some View {
         HStack(spacing: dimensions.spacing.space12) {
             Cover
@@ -80,8 +68,8 @@ struct SessionRow: View {
             in: .rect(cornerRadius: dimensions.radius.radius12))
     }
 
-    // history is never deleted, so a session outlives the series it names. the
-    // placeholder is the honest answer there rather than a missing row
+    // reading_session rows outlive a deleted series, so cover may have no
+    // local asset or series-backed url to resolve
     private var Cover: some View {
         let local = compositor.assets.local(for: session.path)
 
@@ -110,10 +98,8 @@ struct SessionRow: View {
             .clipShape(.rect(cornerRadius: dimensions.radius.radius8))
     }
 
-    // the duration moved in here from its own column. always rendered, including
-    // under a minute: omitting it left some rows saying less than others for no
-    // reason a reader could see, and a blank read as missing data rather than as
-    // a short sitting
+    // duration is always appended, even near zero - omitting it read as
+    // missing data rather than a short sitting
     private var summary: String {
         var parts: [String] = []
         if session.chaptersRead > 0 {

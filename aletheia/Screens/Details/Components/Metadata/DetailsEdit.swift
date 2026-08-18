@@ -7,9 +7,6 @@
 
 import SwiftUI
 
-// picks which source speaks for the series. nothing here is typed by the user -
-// every option came from an origin, so the choice is always between things that
-// already exist rather than free text
 struct DetailsEdit: View {
     let titles: [DetailsTitles.Title]
     let synopses: [Synopsis]
@@ -81,8 +78,6 @@ struct DetailsEdit: View {
         }
     }
 
-    // picks stage locally and commit on Done, matching the order sheets and
-    // the collection picker - Cancel discards the pending diff
     private var selection: Int64? {
         switch field {
         case .title: stagedTitle
@@ -92,7 +87,6 @@ struct DetailsEdit: View {
         }
     }
 
-    // only picks that actually moved get written
     private var changed: Bool {
         stagedTitle != titles.first(where: \.isPreferred)?.id
             || stagedSynopsis != synopses.first(where: \.isPreferred)?.id
@@ -142,8 +136,8 @@ struct DetailsEdit: View {
             }
         }
         .presentationDetents([.medium, .large])
-        // preferences can move underneath while the sheet is up; reseed only
-        // while nothing has been staged
+        // reseed only while nothing has been staged, or an external change
+        // would overwrite the reader's pending pick
         .onChange(of: titles) { _, latest in
             guard !touched else { return }
             stagedTitle = latest.first(where: \.isPreferred)?.id
@@ -170,8 +164,6 @@ extension DetailsEdit {
                 .padding(.horizontal, dimensions.screenMargin)
                 .padding(.bottom, dimensions.spacing.space12)
 
-            // one container so adjacent rows blend into a single surface rather
-            // than reading as a stack of separate stickers
             GlassEffectContainer(spacing: dimensions.spacing.space8) {
                 LazyVStack(spacing: dimensions.spacing.space8) {
                     switch field {
@@ -191,17 +183,14 @@ extension DetailsEdit {
                         Suppliers(.status, staged: stagedPublication) { stagedPublication = $0 }
                     }
                 }
-                // every branch after the first is keyed by a metadata row id and
-                // they sit in the same position in the switch, so without this
-                // SwiftUI reuses one branch's views for another
+                // the branches sit in the same position in the switch, so
+                // without this SwiftUI reuses one branch's views for another
                 .id(field)
             }
             .padding(.horizontal, dimensions.screenMargin)
             .padding(.bottom, dimensions.spacing.space24)
         }
         .opacity(isSaving ? Layout.savingOpacity : 1)
-        // has to sit on an ancestor of every row, so the tint leaving one and
-        // arriving on another are the same transaction
         .animation(Layout.settle, value: selection)
         .animation(Layout.settle, value: field)
     }
@@ -253,10 +242,6 @@ extension DetailsEdit {
         }
     }
 
-    // rating and status pick from the same list, because both values live on one
-    // supplier row - what differs is which pin the tap writes and which value the
-    // row shows. showing both on both tabs made the two read as one screen
-    // rendered twice, with no way to tell which answer you were choosing
     @ViewBuilder
     private func Suppliers(
         _ answering: Field,
@@ -289,17 +274,12 @@ extension DetailsEdit {
         }
     }
 
-    // a supplier that is gone still names itself - that is what the durable
-    // supplier key on the row is for, and a blank label is what the pools do
-    // today when provenance is lost
     private func Source(_ name: String?, preferred: Bool, detached: Bool = false) -> some View {
         Text(detached ? "\(name ?? "Unknown source") (removed)" : (name ?? "Unknown source"))
             .font(.subheadline)
             .fontWeight(preferred ? .semibold : .medium)
     }
 
-    // no pin set: display falls back to origin priority. clearing is a
-    // first-class choice rather than a toggle side effect
     private func AutomaticRow(clear: @escaping () -> Void) -> some View {
         let automatic = selection == nil
         return HStack(spacing: dimensions.spacing.space12) {
@@ -342,8 +322,6 @@ extension DetailsEdit {
         }
     }
 
-    // the current pick is not interactive glass - it cannot be tapped, so it
-    // should not offer press feedback
     private func Row(
         preferred: Bool,
         icon: ImageResource?,
@@ -385,7 +363,6 @@ extension DetailsEdit {
                     .resizable()
                     .scaledToFit()
             } else {
-                // the contributing source no longer ships with the app
                 RoundedRectangle(cornerRadius: dimensions.radius.radius4)
                     .fill(.primary.opacity(Layout.fillOpacity))
             }
@@ -449,8 +426,6 @@ private enum Sample {
         ),
     ]
 
-    // the case the split exists for: the rating is taken from the source and the
-    // status from the tracker, which is the only one that can say Hiatus
     static let metadata: [DetailsEdit.Metadata] = [
         .init(
             id: 10, sourceName: "MangaFire", sourceIcon: .mangaFire, classification: .Safe,
@@ -479,8 +454,6 @@ private enum Sample {
     }
 }
 
-// a single-origin series: every tab has exactly one option and nothing to choose
-// between, which is the common case right after adding
 #Preview("One source") {
     Color.clear.sheet(isPresented: .constant(true)) {
         DetailsEdit(

@@ -68,8 +68,7 @@ struct SourceHomeScreen: View {
                 }
             }
 
-            // searching and configuring are unrelated - without the spacer they
-            // share one glass capsule and read as a single control
+            // without this spacer, search and settings share one glass capsule
             ToolbarSpacer(.fixed, placement: .topBarTrailing)
 
             ToolbarItem(placement: .topBarTrailing) {
@@ -121,10 +120,8 @@ struct SourceHomeScreen: View {
             }
 
             PillValue(color: .danger) {
-                // how old the credential is, not how long its cookie says it has
-                // left. the two are unrelated: the cookie always claims a year
-                // and the wall refuses it within minutes, so the countdown was
-                // reporting health it had no way to know about
+                // shows age since capture, not cookie expiry - the cookie always
+                // claims a year but the wall refuses it within minutes
                 if let captured = vm?.credentialCaptured {
                     LiveRelative(date: captured) { relative in
                         Text(relative)

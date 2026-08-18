@@ -281,9 +281,6 @@ struct AniListService: TrackerService, BulkListingTracker {
         if !variables.isEmpty { body["variables"] = variables }
         request.httpBody = try? JSONSerialization.data(withJSONObject: body)
 
-        // one endpoint for every operation here, so the path says nothing a log
-        // reader does not already know - the operation name does. it is the first
-        // line of the query, which is where graphql puts it
         let operation = Self.operation(in: query)
 
         let data: Data
@@ -310,12 +307,7 @@ struct AniListService: TrackerService, BulkListingTracker {
         }
 
         let envelope = try? JSONDecoder().decode(Envelope<Response>.self, from: data)
-        // decoded on its own pass, and that is the whole fix rather than a
-        // tidy-up: graphql sends data and errors in one body, so a data half
-        // that does not fit Response - {"Media":null} against a non-optional
-        // Media - failed the WHOLE envelope and took the error with it. every
-        // such answer arrived as "the service isn't responding", which is the
-        // one thing it demonstrably was doing
+        // decoded on its own pass, not a tidy-up: a data half that doesn't fit Response (e.g. {"Media":null}) used to fail the whole envelope and take the error down with it, surfacing as "the service isn't responding"
         let errors = (try? JSONDecoder().decode(Errors.self, from: data))?.errors
 
         // a dead token is an http 400 with the body {"message":"Invalid
@@ -341,9 +333,7 @@ struct AniListService: TrackerService, BulkListingTracker {
 
         if let error = errors?.first { throw TrackerError.rejected(error.message) }
 
-        // nothing usable and nothing said why, which on this service means the
-        // data half did not fit Response. the same class of failure the envelope
-        // split above was written for, so the body is recorded rather than lost
+        // nothing usable and nothing said why - same failure class the envelope split above exists for, so the body is recorded rather than lost
         TrackerLog.undecodable(
             tracker,
             operation,
@@ -356,8 +346,7 @@ struct AniListService: TrackerService, BulkListingTracker {
         throw TrackerError.unavailable
     }
 
-    // the operation name out of `query Foo(...)` or `mutation Bar(...)`, which is
-    // all that distinguishes one request to this endpoint from another
+    // operation name out of `query Foo(...)` or `mutation Bar(...)` - the only thing distinguishing one request to this single endpoint from another
     private static func operation(in query: String) -> String {
         guard
             let line =
@@ -382,8 +371,7 @@ private struct Envelope<Data: Decodable>: Decodable {
     let data: Data?
 }
 
-// the same body read for its errors alone, so nothing about the shape of the
-// payload can stop the reason reaching the reader
+// the same body read for its errors alone, so a malformed data half can't swallow the reason with it
 private struct Errors: Decodable {
     let errors: [GraphQLError]?
 }
@@ -482,8 +470,6 @@ private struct Media: Decodable {
         }
     }
 
-    // the role rides along because "Story & Art" and "Story" are different
-    // people on a third of these, and a bare pair of names does not say which
     var credits: String? {
         let names = (staff?.edges ?? []).compactMap { $0.node?.name?.full }
         return names.isEmpty ? nil : names.joined(separator: ", ")
@@ -606,8 +592,6 @@ private struct Title: Decodable {
         english ?? romaji ?? native ?? "Untitled"
     }
 
-    // all three, deduplicated. the title pool is where a tracker most outclasses
-    // a source - 6.5 titles a series against roughly one
     var pool: [String] {
         var seen = Set<String>()
         return [romaji, english, native]

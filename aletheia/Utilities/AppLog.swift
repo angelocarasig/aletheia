@@ -8,21 +8,14 @@
 import Foundation
 import os
 
-// every line the app writes about itself, to three places at once: a file that
-// survives the process, any screen currently watching, and os.Logger for the
-// Xcode console.
+// OSLogStore on iOS can only read the CURRENT process - there is no scope for
+// a previous launch - so a crash takes its own explanation with it unless
+// something wrote to disk on the way past, which is why this writes a file.
 //
-// the file is the reason this exists. OSLogStore on iOS can only read the
-// CURRENT process - there is no scope for a previous launch - so a crash takes
-// its own explanation with it unless something wrote to disk on the way past.
-//
-// it replaced a 500-entry in-memory ring buffer that nothing ever read.
-//
-// the intake stream is not decoration. actor calls are not FIFO, so a
-// `Task { await write(line) }` per call races: the lines arrive in whatever
-// order the executor picks, which for a log is the one property that matters.
-// AsyncStream.Continuation.yield is synchronous, thread-safe and ordered, so
-// the public call is a yield and one drain task is the only writer
+// actor calls are not FIFO, so a `Task { await write(line) }` per call races:
+// lines would arrive in whatever order the executor picks. AsyncStream.Continuation.yield
+// is synchronous, thread-safe and ordered, so the public call is a yield and
+// one drain task is the only writer
 actor AppLog {
     nonisolated static let shared = AppLog()
 
@@ -38,14 +31,10 @@ actor AppLog {
         }
     }
 
-    // written at every call site, so it defaults - 60-odd existing lines say
-    // what happened without grading it, and most of them are genuinely .info
     enum Level: String, Sendable, CaseIterable {
         case debug, info, warning, error
 
-        // fixed width, so the category column lines up down the file. the level
-        // is the thing a person scans for first and a ragged left edge is what
-        // stops them
+        // fixed width, so the category column lines up down the file
         var mark: String {
             switch self {
             case .debug: "DBG"
@@ -59,9 +48,9 @@ actor AppLog {
     private nonisolated let intake: AsyncStream<Entry>
     private nonisolated let feed: AsyncStream<Entry>.Continuation
 
-    // each live reader gets its own continuation: an AsyncStream has exactly one
-    // consumer, so a shared one would deliver each line to whichever screen
-    // happened to be waiting
+    // each live reader gets its own continuation - AsyncStream has exactly
+    // one consumer, so a shared one would deliver each line to whichever
+    // screen happened to be waiting
     private var readers: [UUID: AsyncStream<Entry>.Continuation] = [:]
 
     private var handle: FileHandle?
@@ -72,8 +61,8 @@ actor AppLog {
     )
 
     private enum Rotation {
-        // one rotation kept, so the ceiling is 10 MB and a crash still has the
-        // run before it to read
+        // one rotation kept - 10 MB ceiling, and a crash still has the run
+        // before it to read
         static let limit: UInt64 = 5 * 1024 * 1024
         static let current = "aletheia.log"
         static let previous = "aletheia.1.log"
@@ -88,19 +77,16 @@ actor AppLog {
         (intake, feed) = AsyncStream.makeStream(of: Entry.self, bufferingPolicy: .unbounded)
     }
 
-    // called once at launch rather than from init: a task spawned inside an
-    // actor's initialiser captures self before initialisation has finished, and
-    // the unbounded buffer means nothing logged before this call is lost - it is
-    // held and written the moment the drain begins
+    // called once at launch rather than from init - a task spawned inside an
+    // actor's initialiser captures self before initialisation has finished.
+    // the unbounded buffer means nothing logged before this call is lost
     nonisolated func start() {
         Task { await drain() }
     }
 
     // MARK: Writing
 
-    // synchronous and callable from anywhere, which is what every existing call
-    // site already assumes. the signature is unchanged from the version this
-    // replaced, so `level` had to be the parameter that defaults
+    // synchronous and callable from anywhere - every call site assumes this
     nonisolated func log(_ message: String, level: Level = .info, category: String = "app") {
         feed.yield(Entry(date: .now, level: level, category: category, message: message))
     }
@@ -146,8 +132,7 @@ actor AppLog {
     }
 
     private func echo(_ entry: Entry) {
-        // the interpolation is public on purpose: os.Logger redacts string
-        // arguments by default, and a log the developer cannot read is not one
+        // .public on purpose - os.Logger redacts string arguments by default
         switch entry.level {
         case .debug:
             mirror.debug("[\(entry.category, privacy: .public)] \(entry.message, privacy: .public)")
@@ -163,7 +148,7 @@ actor AppLog {
 
     // MARK: Reading
 
-    // oldest first, both files, so a crash and the run that led to it read in
+    // oldest first, both files - a crash and the run that led to it read in
     // one direction
     func history() -> [String] {
         [previous, current]
@@ -172,8 +157,6 @@ actor AppLog {
             .map(String.init)
     }
 
-    // from the moment of subscription. a reader that goes away terminates its
-    // own stream, which is what removes it here - nothing has to remember to
     func live() -> AsyncStream<Entry> {
         let id = UUID()
         let (stream, continuation) = AsyncStream.makeStream(
@@ -193,10 +176,8 @@ actor AppLog {
 
     // MARK: Export
 
-    // both halves, oldest first, and only the ones that exist - sharing the live
-    // url alone hands over the current file, which after a rotation is the part
-    // that does NOT contain what went wrong. no snapshot is written: these are
-    // the real files, so exporting costs nothing and cannot go stale
+    // both halves - the current file alone, right after a rotation, is the
+    // part that does NOT contain what went wrong
     nonisolated func files() -> [URL] {
         [previous, current].filter {
             FileManager.default.fileExists(atPath: $0.path(percentEncoded: false))

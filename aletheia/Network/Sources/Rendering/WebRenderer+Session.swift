@@ -9,8 +9,6 @@ import Foundation
 import WebKit
 
 extension WebRenderer {
-    // one page's lifetime: construction, credential and script injection, and
-    // proving the document is the real one before anything runs against it
     @MainActor
     struct Session {
         let page: WebPage
@@ -73,11 +71,9 @@ extension WebRenderer {
         // a fresh web view starts on an empty document that already reports
         // 'complete', so readyState alone says yes before the real page exists -
         // running a script there dies the moment the navigation commits.
-        //
-        // 'interactive' is enough: the dom is parsed and deferred scripts have
-        // run, which is everything a scrape or an in-page api call needs.
-        // 'complete' additionally waits on every image and font, and a series
-        // page is mostly cover art we never look at
+        // 'interactive' is enough: the dom is parsed and deferred scripts have run.
+        // 'complete' additionally waits on every image and font, which a series
+        // page mostly doesn't need
         private func settled() async throws -> Bool {
             try await bridge.bool(
                 """

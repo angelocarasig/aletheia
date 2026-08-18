@@ -8,13 +8,9 @@
 import Foundation
 
 // who is signed in, and the only thing that reads or writes the tracker keychain.
-//
-// a sibling of AuthRequester rather than a generalisation of it: that one takes a
-// source, refreshes by driving a headless browser, and detects expiry from a
-// challenge page. none of that exists here, where expiry is a status code and a
-// refresh is one form post. what carries over is the shape - a string-keyed
-// single-flight refresh, and saving before returning.
-// see docs/features/trackers.md §6
+// a sibling of AuthRequester, not a generalisation of it - that one drives a
+// headless browser and detects expiry from a challenge page; here expiry is a
+// status code and a refresh is one form post. see docs/features/trackers.md §6
 actor TrackerAuthority {
     private let network: NetworkConfiguration
     private let services: [Tracker: any TrackerService]
@@ -46,15 +42,13 @@ actor TrackerAuthority {
             })
     }
 
-    // the entry point for anything about to make a request
     func token(for tracker: Tracker) async throws -> String {
         guard let credential = peek(tracker) else { throw TrackerError.signedOut }
         guard !credential.isValid() else { return credential.accessToken }
 
         guard !credential.needsReauthentication else {
-            // anilist's year is up, or myanimelist's refresh token was refused.
-            // not an error state to the reader in the first case and rare in the
-            // second, but every request from here fails until they sign in again
+            // anilist's year is up, or myanimelist's refresh token was refused -
+            // every request from here fails until they sign in again
             log.log(
                 "[\(tracker.rawValue)] token expired with no refresh - reauthentication required",
                 level: .warning, category: "trackers")
@@ -64,9 +58,8 @@ actor TrackerAuthority {
         return try await refresh(tracker).accessToken
     }
 
-    // a request came back saying the token is dead. one refresh, then the caller
-    // retries once - and a service with nothing to refresh with goes straight to
-    // asking the reader
+    // one refresh, then the caller retries once - a service with nothing to
+    // refresh with goes straight to asking the reader
     func recover(_ tracker: Tracker) async throws -> String {
         guard let credential = peek(tracker), credential.isRefreshable else {
             throw TrackerError.reauthenticationRequired
@@ -74,10 +67,8 @@ actor TrackerAuthority {
         return try await refresh(tracker).accessToken
     }
 
-    // the durable half of "does this account need the reader". reads the keychain
-    // and nothing else, so it answers the same on the first launch after the token
-    // died as it did the moment it died - unlike the in-memory dead set, which is
-    // an accelerant rather than the record
+    // reads the keychain only, so it answers the same on the first launch after
+    // the token died as it did the moment it died
     nonisolated func needsReauthentication(_ tracker: Tracker) -> Bool {
         peek(tracker)?.needsReauthentication ?? false
     }
@@ -236,14 +227,10 @@ actor TrackerAuthority {
         return credential
     }
 
-    // the paste path. no callback, no code to exchange, nothing to refresh - the
-    // token the reader pastes is the credential.
-    //
-    // it is validated before it is stored, which the redirect flows do not need
-    // to do: a token that came back from a browser is one the service issued
-    // seconds ago, and a string typed or pasted by hand is evidence of nothing
-    // until something asks. that round trip is also what fills in the account
-    // name and its score scale, so it costs nothing extra
+    // no callback, no code to exchange - the token the reader pastes is the
+    // credential. validated before it is stored, unlike the redirect flows: a
+    // string typed or pasted by hand is evidence of nothing until something asks,
+    // and that round trip also fills in the account name and score scale
     func signIn(token pasted: String, for tracker: Tracker) async throws -> TrackerCredential {
         let token = pasted.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !token.isEmpty else { throw TrackerError.rejected("Paste your token to continue.") }
@@ -322,16 +309,11 @@ actor TrackerAuthority {
                 ]
             )
         } catch TrackerError.reauthenticationRequired {
-            // the loop this defends against is a dead refresh token being spent
-            // on every push, and dropping the refresh token is what closes it -
-            // deleting the whole credential closes it too, and takes the evidence
-            // with it. an account signed in for a month would then read as never
-            // connected, and be asked to Connect rather than to sign in again.
-            //
-            // kept instead, minus what is dead: needsReauthentication now answers
-            // true, which is the same signature anilist's expiry produces, so one
-            // predicate covers both services and survives a relaunch. token(for:)
-            // throws without a request, so nothing retries
+            // dropping the refresh token (not the whole credential) closes the
+            // dead-token-spent-on-every-push loop without losing the evidence that
+            // the account was ever connected. needsReauthentication then answers
+            // true - the same signature anilist's expiry produces, so one
+            // predicate covers both services and survives a relaunch
             var stranded = credential
             stranded.refreshToken = nil
             stranded.expiresDate = .distantPast

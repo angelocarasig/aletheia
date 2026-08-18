@@ -7,11 +7,6 @@
 
 import SwiftUI
 
-// the gearshape's destination. everything here is a global preference that
-// follows the reader between titles - the per-series mode stays in the
-// overlay's mode menu, and the tap zones have their own picker behind the
-// hand-tap button. values apply live behind the sheet, so the page is the
-// preview
 struct ReaderSettingsSheet: View {
     let engine: ReaderEngine
 
@@ -54,7 +49,7 @@ struct ReaderSettingsSheet: View {
 
 extension ReaderSettingsSheet {
     fileprivate var Content: some View {
-        // read before any branch so the readouts stay body dependencies
+        // read up front, not inside the row builders, so it registers as a body dependency
         let configuration = engine.configuration
         return ScrollView {
             VStack(spacing: dimensions.spacing.space8) {
@@ -93,9 +88,8 @@ extension ReaderSettingsSheet {
             }
             .tint(Palette.brand)
         }
-        // still adjustable in a paged mode - the value is saved and the caption
-        // says where it lands - but dimmed so the silence on screen reads as
-        // intended rather than broken
+        // dimmed, not disabled - still adjustable in a paged mode, since the
+        // value is saved for when scrolling resumes
         .opacity(active ? 1 : Layout.disabledOpacity)
     }
 

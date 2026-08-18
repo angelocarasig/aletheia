@@ -15,10 +15,6 @@ extension Compositor {
         private let database: DatabaseClient
         private let sourcesBySlug: [String: Source]
 
-        // sorted once here rather than at each call site: declaration order in
-        // Compositor is an implementation detail, and every screen that lists
-        // sources wants the same answer - everything else alphabetically, adult
-        // sources alphabetically after them
         init(sources: [Source], database: DatabaseClient) {
             self.sources = sources.sorted { lhs, rhs in
                 let left = lhs.descriptor.adultOnly

@@ -10,10 +10,10 @@ import GRDB
 
 final class DatabaseClient: Sendable {
     // only here to satisfy the @Entry defaults in AppEnvironment, which the
-    // bootstrapped tree never reads. the app path goes through open().
+    // bootstrapped tree never reads - the app path goes through open().
     // SwiftUI evaluates an environment default the moment a view declares the
-    // property, so in a preview - where the container is not the app's - the
-    // trap fired before any body ran. debug falls back to memory instead
+    // property, so in a preview this trapped before any body ran; debug falls
+    // back to memory instead
     #if DEBUG
         static let client = (try? DatabaseClient()) ?? preview
     #else
@@ -25,7 +25,6 @@ final class DatabaseClient: Sendable {
 
     private static let path: URL = Constants.Paths.database
 
-    // schema creation order - FK targets must precede their referrers
     private static let allRecords: [any DatabaseRecord.Type] = [
         SeriesRecord.self,
         SourceRecord.self,
@@ -48,9 +47,6 @@ final class DatabaseClient: Sendable {
         SeriesLanguagePriorityRecord.self,
         ReadingEventRecord.self,
         ReadingSessionRecord.self,
-
-        // no foreign keys, so its position is free - it sits with the other two
-        // append-only logs
         RecommendationImpressionRecord.self,
     ]
 
@@ -70,11 +66,7 @@ final class DatabaseClient: Sendable {
         config.prepareDatabase { db in
             try db.execute(sql: "PRAGMA synchronous = NORMAL")  // keep - WAL pairing
             try db.execute(sql: "PRAGMA wal_autocheckpoint = 2000")  // keep - sync-burst scar
-            try db.execute(sql: "PRAGMA cache_size = -4000")  // keep - see reader note
-
-            #if DEBUG
-                //            db.trace { print("[SQL]> \($0)") }
-            #endif
+            try db.execute(sql: "PRAGMA cache_size = -4000")  // keep
         }
 
         #if DEBUG
@@ -116,8 +108,8 @@ final class DatabaseClient: Sendable {
     }
 
     #if DEBUG
-        // previews and tests: the schema with nothing in it, no app group and no
-        // file. a pool needs WAL companions on disk, so memory is a queue
+        // DatabaseQueue, not DatabasePool - a pool needs WAL companion files on
+        // disk, which an in-memory database doesn't have
         static let preview: DatabaseClient = try! DatabaseClient(inMemory: ())
 
         private init(inMemory: Void) throws {

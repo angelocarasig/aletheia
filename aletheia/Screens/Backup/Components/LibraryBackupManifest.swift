@@ -7,7 +7,6 @@
 
 import SwiftUI
 
-// rows redact to a shimmer while a count is still loading (nil)
 struct LibraryBackupManifestGroup: View {
     let title: String
     let rows: [(icon: String, label: String, count: Int?)]

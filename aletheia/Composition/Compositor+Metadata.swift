@@ -13,15 +13,10 @@ import Tagged
 import UIKit
 
 extension Compositor {
-    // the whole-library counterpart to a single series' Refresh Metadata
-    // button. reuses the same single-unit calls that button does - Refresh's
-    // origin metadata fetch and Trackers' own - rather than a second worker,
-    // so a Details-triggered refresh and this walk touching the same origin
-    // concurrently join through the machinery OriginRefresher already has.
-    //
-    // no manual entry point exists at this scope, so unlike Compositor.Refresh
-    // there is no ContinuedTask half - only the scheduled task and the
-    // foreground check that covers for it. see docs/features/metadata-refresh.md
+    // reuses Refresh's origin metadata fetch and Trackers' own rather than a
+    // second worker, so a Details-triggered refresh and this walk touching the
+    // same origin concurrently join through the machinery OriginRefresher
+    // already has. see docs/features/metadata-refresh.md
     @MainActor
     @Observable
     final class Metadata {
@@ -42,8 +37,7 @@ extension Compositor {
         var isRunning: Bool { run != nil }
 
         private enum Limits {
-            // series at a time, same width Compositor.Refresh uses - the same
-            // host gates protect both
+            // matches Compositor.Refresh's width - the same host gates protect both
             static let width = 6
         }
 
@@ -88,9 +82,6 @@ extension Compositor {
             total = 0
         }
 
-        // same reasoning as Compositor.Refresh.report() - a run nobody watched
-        // is the only one worth telling about, and it says so whether or not it
-        // found anything
         private func report() async {
             guard UIApplication.shared.applicationState != .active else { return }
             await Notifier.metadataRefreshed(
@@ -135,10 +126,8 @@ extension Compositor {
             }
         }
 
-        // every origin and every linked tracker for one series, sequentially
-        // within the series - the same shape Compositor.Refresh.check uses for
-        // chapters, just without its own task group per series, since
-        // metadata's per-request cost is small enough not to need it
+        // sequential within the series, no per-series task group - metadata's
+        // per-request cost is small enough not to need one
         private func check(_ series: Series) async {
             for origin in series.origins {
                 guard let source = registry.source(slug: origin.sourceSlug) else { continue }
@@ -166,18 +155,13 @@ extension Compositor {
 
         // MARK: The schedule
 
-        // one stamp, not two - there is no manual whole-library trigger here to
-        // protect the automatic schedule from being postponed by, which is the
-        // whole reason Compositor.Refresh keeps two
+        // one stamp, not two like Compositor.Refresh - there is no manual
+        // whole-library trigger here that the automatic schedule needs protecting from
         private func stamp() {
             UserDefaults.standard.set(Date.now, forKey: Preferences.Key.metadataRefreshedDate)
             schedule()
         }
 
-        // asap drops the earliest date rather than starting anything, same
-        // reasoning as Compositor.Refresh.schedule(asap:) - the launch stays the
-        // system's decision, this only removes the floor it was told to wait
-        // behind
         func schedule(asap: Bool = false) {
             let interval =
                 MetadataRefreshInterval(
@@ -219,8 +203,8 @@ extension Compositor {
             #endif
         }
 
-        // the half nobody can silently switch off - the system may simply
-        // never run the task, so the interval is also checked on app open
+        // the system may simply never run the scheduled task, so the interval is
+        // also checked on app open
         func catchUp() {
             let defaults = UserDefaults.standard
             let interval =
@@ -232,8 +216,6 @@ extension Compositor {
 
             guard let last = defaults.object(forKey: Preferences.Key.metadataRefreshedDate) as? Date
             else {
-                // a first-ever launch stamps and waits, rather than walking a
-                // library that was only just added
                 defaults.set(Date.now, forKey: Preferences.Key.metadataRefreshedDate)
                 schedule()
                 return
@@ -252,9 +234,6 @@ extension Compositor {
 
         // MARK: The background task
 
-        // the launch handler calls this once the graph is built - registration
-        // itself has to happen during launch, before any screen exists, so it
-        // lives in Launch, not here
         func adopt(_ task: BGTask) {
             task.expirationHandler = { Task { @MainActor [weak self] in self?.cancel() } }
             start(automatic: true)
@@ -292,13 +271,10 @@ extension Compositor.Metadata {
         let sourceSlug: String
     }
 
-    // ordered by how long it has been since ANY supplier last answered for the
-    // series, oldest first - same rotation reasoning Compositor.Refresh uses:
-    // a BGProcessingTask can be cut off at any point, so a truncated run has
-    // to be cumulative rather than always covering the same head of the
-    // library. a series with no metadata row at all sorts first in SQLite's
-    // default NULL-first ASC ordering, which is correct - nothing has ever
-    // answered for it
+    // oldest-first rotation: a BGProcessingTask can be cut off at any point, so
+    // a truncated run has to be cumulative rather than always covering the same
+    // head of the library. a series with no metadata row sorts first under
+    // SQLite's NULL-first ASC ordering, which is correct - nothing has answered for it
     nonisolated fileprivate static func work(
         registry: Compositor.Registry,
         in db: Database
@@ -333,8 +309,7 @@ extension Compositor.Metadata {
         var order: [Int64] = []
 
         for row in rows {
-            // a source row can outlive the code that reads it, and an origin
-            // nothing can open is not work
+            // a source row can outlive its registered implementation
             guard registry.source(slug: row.sourceSlug) != nil else { continue }
             if origins[row.seriesId] == nil { order.append(row.seriesId) }
             origins[row.seriesId, default: []].append(
@@ -344,13 +319,10 @@ extension Compositor.Metadata {
             )
         }
 
-        // trackers joined in Swift rather than SQL - the table is small (at
-        // most a handful of links per series), and a series reachable only
-        // through a tracker link (every source disabled or gone) still needs
-        // to be in the walk. queried through entry_view rather than the bare
-        // series table so the same skip clause governs both halves - a
-        // finished series skipped on its origins is skipped on its tracker
-        // links too
+        // joined in Swift, not SQL - the table is small, and a series reachable
+        // only through a tracker link (every source disabled or gone) still
+        // needs to be in the walk. queried through entry_view, not the bare
+        // series table, so the same skip clause governs both halves
         let libraryIds = Set(
             try Int64.fetchAll(
                 db,
@@ -376,9 +348,8 @@ extension Compositor.Metadata {
         }
     }
 
-    // the same "what to check" filter Compositor.Refresh.Skips is, its own
-    // keys and its own read - a series a reader chose to skip for chapters
-    // is not necessarily one they want skipped for metadata
+    // its own keys, separate from Compositor.Refresh.Skips - a series skipped
+    // for chapters is not necessarily one the reader wants skipped for metadata
     fileprivate struct Skips: Sendable {
         var completed = false
         var unread = false

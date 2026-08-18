@@ -16,25 +16,20 @@ extension DetailsComposer {
     final class Tracking: DetailsApplying, DetailsWriting {
         private(set) var links: [Link] = []
 
-        // how far this app has you read, which is what a push would send. held
-        // here so a row can put the two numbers side by side without asking
-        // the chapter list to count them again
+        // what a push would send - held here so a row can put the two numbers
+        // side by side without asking the chapter list to recount them
         private(set) var furthest = 0
 
-        // which services are being written, so one row spins while the other
-        // stays live
         private(set) var writing: Set<Tracker> = []
 
-        // from DetailsWriting
         var saving: Bool { !writing.isEmpty }
         private(set) var failure: Failure?
 
         @ObservationIgnored private var seriesId: SeriesRecord.ID?
 
-        // what a definite match is measured against: the display title first,
-        // then every pooled one. a service files a work under whichever name it
-        // knows, and the romaji copy of a title we display in english is the
-        // most common near-miss there is
+        // display title first, then every pooled one - a service files a work
+        // under whichever name it knows, and a romaji title we display in
+        // english is the most common near-miss
         @ObservationIgnored private var seriesTitles: [String] = []
 
         private let host: Compositor.Trackers
@@ -45,7 +40,6 @@ extension DetailsComposer {
             self.database = database
         }
 
-        // from DetailsApplying
         func apply(_ stored: Stored) {
             seriesId = stored.series.id
 
@@ -75,18 +69,17 @@ extension DetailsComposer {
             seriesTitles = [stored.entry.title] + stored.titles.map(\.value)
         }
 
-        // from DetailsWriting
         func clear() {
             failure = nil
         }
 
-        // connected accounts, in a fixed order so the rows never swap places
+        // fixed order (Tracker.allCases), not host.accounts' own order, so the
+        // rows never swap places
         var accounts: [Tracker] {
             Tracker.allCases.filter { host.accounts[$0] != nil }
         }
 
-        // connected but unable to push until the reader signs in again. read
-        // from the credential rather than an in-memory dead set, so it answers
+        // read from the credential, not an in-memory dead set, so it answers
         // the same on the launch after a token died as it did when it died
         var needingSignIn: Set<Tracker> {
             host.needingSignIn
@@ -97,9 +90,8 @@ extension DetailsComposer {
             return host.syncing(series: seriesId.rawValue)
         }
 
-        // the account's own scale, or a sane default while signed out. it is a
-        // property of the account rather than of this series, so it is never
-        // stored on the link row
+        // a property of the account, not this series, so it is never stored
+        // on the link row
         func format(for tracker: Tracker) -> ScoreFormat {
             tracker.fixedScoreFormat ?? host.accounts[tracker]?.scoreFormat ?? .point10
         }
@@ -112,18 +104,16 @@ extension DetailsComposer {
             try await host.search(tracker, query: query, adult: adult)
         }
 
-        // which remote entries on this service are already spoken for by a
-        // DIFFERENT series in the library. two rows pointing at one entry means
-        // both push their own progress and each keeps undoing the other, and
-        // nothing on the entry says which is winning - so the warning has to
-        // name the other series rather than just flagging a clash
+        // two rows pointing at one remote entry means both push their own
+        // progress and each undoes the other, with nothing on the entry saying
+        // which is winning - so the warning names the other series rather than
+        // just flagging a clash
         func conflicts(_ tracker: Tracker) async -> [Int64: String] {
             await Self.conflicts(tracker, excluding: seriesId, in: database)
         }
 
-        // static so the prefetch can call it without capturing the composer -
-        // a stored Task that holds self is a cycle, and this is the only thing
-        // in that task that wanted an instance
+        // static so the prefetch task can call it without capturing the
+        // composer - a stored Task holding self is a retain cycle
         private static func conflicts(
             _ tracker: Tracker,
             excluding current: SeriesRecord.ID?,
@@ -154,12 +144,10 @@ extension DetailsComposer {
             }) ?? [:]
         }
 
-        // MARK: Prefetched matches
-
-        // what the setup flow found before the reader asked. a service with no
-        // entry here is one that either was not searched or whose search failed,
-        // and both render as the ordinary link row - a failed search is not
-        // something the reader requested, so it is not something they are told
+        // a service with no entry here is one that either was not searched or
+        // whose search failed, and both render as the ordinary link row - a
+        // failed search is not something the reader requested, so it is not
+        // something they are told
         enum Match: Equatable {
             case searching
             case found(TrackerCandidate)
@@ -168,9 +156,9 @@ extension DetailsComposer {
 
         private(set) var matches: [Tracker: Match] = [:]
 
-        // the search behind each match, kept whole so opening the link sheet
-        // costs nothing a second time. the sheet awaits this same task, which
-        // is what makes tapping Search mid-flight wait rather than start again
+        // kept whole so opening the link sheet costs nothing a second time -
+        // the sheet awaits this same task, so tapping Search mid-flight waits
+        // rather than starts a new one
         @ObservationIgnored private var searches: [Tracker: Task<Search, Never>] = [:]
 
         struct Search: Sendable {
@@ -179,10 +167,10 @@ extension DetailsComposer {
             var failed = false
         }
 
-        // fired once, when the flow opens. only services that could still be
-        // linked: an account already pointing at this series has nothing to
-        // search for, and searching it would spend a request against anilist's
-        // budget to learn something already on screen
+        // only services that could still be linked - an account already
+        // pointing at this series has nothing to search for, and searching it
+        // would spend a request against anilist's budget to learn something
+        // already on screen
         func prefetch(adult: Bool) {
             for tracker in accounts where searches[tracker] == nil {
                 guard !links.contains(where: { $0.tracker == tracker }) else { continue }
@@ -214,10 +202,9 @@ extension DetailsComposer {
         private static func match(_ outcome: Search, against titles: [String]) -> Match? {
             guard !outcome.failed else { return nil }
 
-            // an entry another series already claims is not a candidate here.
-            // two rows pointing at one entry undo each other's progress, and
-            // the reader picking it deliberately is a different question - the
-            // link sheet still offers it, dimmed, for exactly that case
+            // an entry another series already claims is not a candidate here -
+            // the link sheet still offers it, dimmed, for the reader to pick
+            // deliberately
             var exact = outcome.results.filter { candidate in
                 outcome.conflicts[candidate.id] == nil
                     && titles.contains { Similarity.score($0, candidate.title) == 1 }
@@ -233,25 +220,18 @@ extension DetailsComposer {
             return .found(only)
         }
 
-        // awaited by the link sheet. a search still running is awaited rather
-        // than restarted, which is the whole point - the sheet sits in the same
-        // pending state it already has and no second request is spent
         func prefetched(_ tracker: Tracker) async -> Search? {
             guard let task = searches[tracker] else { return nil }
             let outcome = await task.value
             return outcome.failed ? nil : outcome
         }
 
-        // links what the prefetch found, reading the reader's own entry first so
-        // the service keeps whatever status is already on it. progress is never
-        // sent: this runs before the flow has asked a single question, and the
-        // one thing it must not do is answer one on the reader's behalf
+        // progress is never sent - this runs before the flow has asked a
+        // single question, and the one thing it must not do is answer one on
+        // the reader's behalf
         func autoLink(_ tracker: Tracker, candidate: TrackerCandidate) async {
-            // marked before the entry read, not after. link() raises this flag
-            // itself, but only once it is reached - and the read in front of it
-            // is a whole network round trip, so the button sat inert for the
-            // part of the work the reader was most likely to tap twice through.
-            // insert is idempotent and link()'s own defer clears it either way
+            // marked before the entry read, not after - that read is a whole
+            // network round trip, and link()'s own defer clears this either way
             writing.insert(tracker)
             defer { writing.remove(tracker) }
 
@@ -275,9 +255,6 @@ extension DetailsComposer {
             }
         }
 
-        // pasting a link is the escape hatch for what search cannot reach: a
-        // title romanised differently everywhere, or an entry buried past fifty
-        // results
         func resolve(_ text: String, on tracker: Tracker) async -> TrackerCandidate? {
             guard let id = tracker.remoteId(in: text) else { return nil }
             guard let entry = try? await host.entry(tracker, remoteId: id) else { return nil }
@@ -289,19 +266,15 @@ extension DetailsComposer {
             )
         }
 
-        // what the reader's own list says about one entry, fetched when they
-        // open it rather than for every search result - fifty of these would be
-        // fifty requests against a budget of thirty a minute
+        // fetched when the reader opens the entry, not for every search result
+        // - fifty of those would be fifty requests against a budget of thirty
+        // a minute
         func entry(_ tracker: Tracker, remoteId: Int64) async throws -> TrackerEntry {
             try await host.entry(tracker, remoteId: remoteId)
         }
 
-        // throws rather than raising its own failure: the control that started
-        // this reports on it, and a second telling of one fact is the thing the
-        // chapter-fetch path already learned to stop doing.
-        //
-        // status is passed in rather than read off the series - that lives on
-        // another part of the composer, and a child never reaches sideways
+        // throws rather than raising its own failure - the control that
+        // started this reports on it, so it isn't told twice
         func link(
             _ candidate: TrackerCandidate,
             on tracker: Tracker,
@@ -382,11 +355,9 @@ extension DetailsComposer {
     }
 }
 
-// the remote is ahead and the reader said to accept it. it lives on the
-// composer rather than on Tracking because catching up is a chapter mark - it
-// reuses the batch write rather than inventing a second way to record reading,
-// so the service the number came from is already at it and declines, while a
-// sibling service that is behind is brought up
+// reuses the batch write rather than inventing a second way to record
+// reading - the service the number came from is already at it and declines,
+// while a sibling service that is behind is brought up
 extension DetailsComposer {
     func catchUp(to link: Tracking.Link) async {
         await catchUp(to: link.progress)
@@ -402,9 +373,8 @@ extension DetailsComposer {
 }
 
 extension DetailsComposer.Tracking {
-    // one service this series is linked to, holding what that service last
-    // told us rather than what we believe - the two disagree between finishing
-    // a chapter and the push landing
+    // holds what the service last told us, not what we believe - the two
+    // disagree between finishing a chapter and the push landing
     struct Link: Identifiable, Hashable {
         let id: Int64
         let tracker: Tracker
@@ -446,11 +416,10 @@ extension DetailsComposer.Tracking {
             local > progress + 1
         }
 
-        // progress, then score if it has one. deliberately WITHOUT the sync
-        // stamp: this string is built in apply(), which runs when the database
-        // changes, and "synced 6 secs ago" formatted there stays 6 secs ago
-        // until something else writes. the stamp is a clock, so it belongs to a
-        // TimelineView at the call site rather than to a string built once
+        // deliberately without the sync stamp - this string is built in
+        // apply() and would go stale ("synced 6 secs ago" stays that way until
+        // the next write). the stamp is a clock, so it belongs to a
+        // TimelineView at the call site instead
         var summary: String {
             var parts: [String] = []
             parts.append(total.map { "\(progress) of \($0)" } ?? "\(progress) read")

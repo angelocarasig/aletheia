@@ -7,14 +7,9 @@
 
 import SwiftUI
 
-// the first tier a chapter is ranked by, above the source it came from. a source
-// is a preference; a language you cannot read is a wall, so the preferred site's
-// chinese copy loses to a lower site's english one. two copies in the same
-// language tie here and fall through to source priority as before.
-//
-// flat rather than sectioned because this is consulted before the source is - the
-// rows it compares come from different sites, so an ordering per site could not
-// answer the question being asked
+// ranks above source priority when a chapter is selected - a language you
+// cannot read is a wall, so the preferred site's copy in a lower-ranked
+// language still loses to a lower site's copy in a higher one
 struct LanguageOrder: View {
     let languages: [Language]
     let isLoading: Bool
@@ -32,8 +27,6 @@ struct LanguageOrder: View {
         _working = State(initialValue: languages)
     }
 
-    // every series carries seeded priority rows, so the listed order is always
-    // the stored order and done only has work to do once something moved
     private var committable: Bool {
         !working.isEmpty && working.map(\.id) != languages.map(\.id)
     }
@@ -61,10 +54,9 @@ struct LanguageOrder: View {
         }
         .presentationDetents([.medium, .large])
         .animation(.settle, value: phase)
-        // presented before the read lands, so the rows arrive after init. an
-        // empty working set seeds wholesale; a populated one merges - counts
-        // refresh, the staged order survives, and a language a mid-sheet fetch
-        // just introduced appends at the end instead of never appearing
+        // an empty working set seeds wholesale; a populated one merges - the
+        // staged order survives, and a language a mid-sheet fetch just
+        // introduced appends at the end instead of never appearing
         .onChange(of: languages) { _, latest in
             guard !working.isEmpty else {
                 working = latest
@@ -107,7 +99,7 @@ extension LanguageOrder {
                     }
                 }
             }
-            // always active, so the handles are there without an Edit button
+            // forced active - the drag handles show without a separate Edit button
             .environment(\.editMode, .constant(.active))
             .transition(.opacity)
         }

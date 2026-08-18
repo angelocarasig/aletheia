@@ -16,20 +16,16 @@ struct Compositor: Sendable {
     let downloads: Downloads
     let trackers: Trackers
     let metadata: Metadata
-    // one model, loaded lazily and held. swapping it is a different case in this
-    // one line, which is the whole point of it being behind a protocol
     let recommender: Recommender
-    // what the recommender showed, kept beside it because the two are one
-    // mechanism - a recommendation nobody can prove was on screen is not evidence
     let impressions: Impressions
     let requester: AuthRequester
     let presenter: AuthPresenter
-    // the one funnel every request passes. exposed because a caller that builds
-    // its own gets its own HostGate too, which is the cap silently not applying
+    // a caller that constructs its own NetworkService gets its own HostGate too,
+    // silently bypassing the shared concurrency cap - always reuse this instance
     let network: NetworkConfiguration
 
-    // no default - resolving the singleton opens the pool and runs migrations,
-    // and that has to happen off the main actor during bootstrap
+    // no default: resolving the DatabaseClient singleton opens the pool and runs
+    // migrations, which must happen off the main actor during bootstrap
     init(database: DatabaseClient) {
         let network = NetworkService()
         let presenter = AuthPresenter()

@@ -35,8 +35,6 @@ final class PageFailureView: UIView {
         fatalError("init(coder:) has not been implemented")
     }
 
-    // the error names itself: title, sentence and whether retrying could change
-    // the answer all come off the typed value, never off a message string
     func configure(with error: ReaderPageError) {
         title.text = error.errorDescription
         message.text = error.failureReason

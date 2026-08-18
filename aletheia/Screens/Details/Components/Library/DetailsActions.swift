@@ -14,8 +14,6 @@ struct DetailsActions: View {
     let canRefresh: Bool
     let canRefreshMetadata: Bool
     let status: Status
-    // how many collections hold this series. only the zero/non-zero distinction
-    // is drawn, but the count is what the menu needs to describe itself
     let collectionCount: Int
     var onToggleLibrary: () -> Void
     var onSetStatus: (Status) -> Void
@@ -25,8 +23,6 @@ struct DetailsActions: View {
     var onMarkAll: (Bool) -> Void
     var onEditDetails: () -> Void
     var onMerge: () -> Void
-    // the bulk half of downloads. per-chapter lives on the chapter row, where
-    // the thing being acted on is
     var onDownloadUnread: () -> Void = {}
     var onDeleteDownloads: () -> Void = {}
 
@@ -37,15 +33,8 @@ struct DetailsActions: View {
         static let detachedOpacity: Double = 0.3
     }
 
-    // the three fixed-width controls share one shape, so the row reads as a
-    // primary ask followed by a strip of things already answered. glass rather
-    // than a solid slab: at 44pt these are small elements, so each flips light
-    // or dark against whatever the header leaves behind them
     private struct Square: ViewModifier {
         var tint: Color?
-        // pinned only where the tint is opaque enough that the surface has
-        // stopped deciding for itself. left nil, glass vends its own answer,
-        // which is the rule everywhere the tint is a semantic wash
         var label: Color?
         var detached = false
 
@@ -70,8 +59,6 @@ struct DetailsActions: View {
         }
     }
 
-    // one primary and three squares: the squares are the things you already own
-    // the answer to, so they cost a fixed sliver each and the ask takes the rest
     var body: some View {
         GlassEffectContainer(spacing: dimensions.spacing.space8) {
             HStack(spacing: dimensions.spacing.space8) {
@@ -113,11 +100,6 @@ struct DetailsActions: View {
         .disabled(!canToggle)
     }
 
-    // on inverts: the text colour becomes the fill and the canvas colour the
-    // lettering. an accent would say "this is the interesting one", and owned is
-    // the resting state - inversion says it without spending a hue. the tint is
-    // opaque enough to stop glass choosing its own content colour, which is why
-    // these two are the only pinned foregrounds here
     private func fill(_ on: Bool) -> Color? {
         on ? .textPrimary : nil
     }
@@ -126,15 +108,6 @@ struct DetailsActions: View {
         on ? .canvas : .textPrimary
     }
 
-    // where the user is with the series, which only means anything once it is
-    // theirs - outside the library every series would claim to be "planning".
-    //
-    // a square like the two beside it rather than the word it used to spell: the
-    // primary is the only thing on this row still being asked, and a control
-    // stating an answer at twice the width of its neighbours took that place.
-    // what carries the meaning instead is glyph plus tint, and the menu names
-    // all five the moment it opens - which is the only time the exact word
-    // decides anything, since reading it is not what changes it
     private var StatusAction: some View {
         Menu {
             Picker("Status", selection: statusBinding) {
@@ -143,12 +116,10 @@ struct DetailsActions: View {
                 }
             }
         } label: {
-            // iconOnly rather than a bare Image: the word is gone from the screen
-            // and not from VoiceOver, which reads the label it still carries
             Label(status.label, systemImage: status.icon)
                 .labelStyle(.iconOnly)
                 // the write lands from a menu with no animation of its own, so
-                // the glyph needs one here or the replace has nothing to run in
+                // the symbol replace needs one here or it has nothing to run in
                 .contentTransition(.symbolEffect(.replace))
                 .animation(.settle, value: status)
                 .modifier(
@@ -159,8 +130,6 @@ struct DetailsActions: View {
                     )
                 )
         }
-        // menus tint their own label with the accent colour whatever the content
-        // says, which would overrule the glass's own answer
         .menuStyle(.button)
         .buttonStyle(.plain)
         .accessibilityLabel("Reading status")
@@ -172,8 +141,6 @@ struct DetailsActions: View {
         Binding(get: { status }, set: onSetStatus)
     }
 
-    // membership is non-exclusive, so the filled variant is the channel - a count
-    // on a 44pt square would be unreadable, and the picker states the number
     private var CollectionsAction: some View {
         Image(systemName: collectionCount > 0 ? "rectangle.stack.fill" : "rectangle.stack")
             .contentTransition(.symbolEffect(.replace))
@@ -207,8 +174,6 @@ struct DetailsActions: View {
             }
             .disabled(!canRefresh)
 
-            // merging pulls this series into another one you own, so it only
-            // means something once both sides can be library rows
             Button(action: onMerge) {
                 Label("Merge Into", systemImage: "arrow.triangle.merge")
             }
@@ -239,10 +204,6 @@ struct DetailsActions: View {
                 Label("Mark All as Unread", systemImage: "x.circle.fill")
             }
         } label: {
-            // always inverted, never off: overflow has no state to report, so
-            // the one fixed anchor in the row is the thing that always looks the
-            // same. it is also what the other two invert *to*, which is what
-            // makes their on-state read as arriving somewhere
             Image(systemName: "ellipsis")
                 .modifier(Square(tint: fill(true), label: label(true)))
         }
@@ -253,10 +214,6 @@ struct DetailsActions: View {
 
 }
 
-// the tint marks a state, it does not fill a button - at full strength the
-// status square read as loud as the primary beside it, which inverts the row's
-// hierarchy. the glyph keeps the *Text step, so the colour channel survives the
-// quieter wash
 private enum Tint {
     static let opacity: Double = 0.25
 }
@@ -264,11 +221,8 @@ private enum Tint {
 extension Status {
     var label: String {
         switch self {
-        // each one is a sentence the reader said about themselves, so it reads as
-        // their words rather than a system state. "set aside" and "not for me"
-        // carry the might-come-back distinction that paused and dropped left to
-        // be guessed, and "finished" keeps the reader's answer apart from the
-        // work's own Completed
+        // reads as the reader's own words, not a system state - "finished" is
+        // kept apart from Publication's own Completed
         case .reading: "Reading"
         case .completed: "Finished"
         case .paused: "Set Aside"
@@ -287,10 +241,6 @@ extension Status {
         }
     }
 
-    // the same five meanings as a Badge tone, which pairs step 11 text on step 3
-    // background rather than letting a fill colour be drawn as text. planning is
-    // neutral for the reason above: it is where every series starts, so it is not
-    // worth an accent
     var tone: Palette.Tone {
         switch self {
         case .reading: .brand
@@ -301,25 +251,16 @@ extension Status {
         }
     }
 
-    // the surface tint, not the glyph colour - the *Text steps are drawn on a
-    // subtle background, and a glass tint is a fill. status is the one control
-    // that keeps a hue: five states that genuinely differ, where the other two
-    // are on/off and invert instead
     var surface: Color? {
         switch self {
         case .reading: Palette.brand.opacity(Tint.opacity)
         case .completed: Palette.success.opacity(Tint.opacity)
         case .paused: Palette.warning.opacity(Tint.opacity)
         case .dropped: Palette.danger.opacity(Tint.opacity)
-        // no tint: the accent is spent on states that vary, and plan-to-read is
-        // where every series starts
         case .planning: nil
         }
     }
 
-    // a semantic wash is not opaque, so the glyph stays legible drawn in the
-    // same family's text step rather than left to glass. planning has no wash
-    // and no pin
     var onSurface: Color? {
         switch self {
         case .reading: Palette.brandText
@@ -383,8 +324,6 @@ private struct ActionsPreview: View {
     }
 }
 
-// every state the row can be in, stacked, so a design change can be judged
-// against all of them at once rather than one screenshot at a time
 #Preview("States") {
     ScrollView {
         VStack(alignment: .leading, spacing: 20) {
@@ -401,8 +340,6 @@ private struct ActionsPreview: View {
     .background(.canvas)
 }
 
-// the status square is the only control whose glyph and tint both move, so it
-// gets its own sweep - the five sit closest together at this size
 #Preview("Status") {
     ScrollView {
         VStack(alignment: .leading, spacing: 20) {
@@ -428,8 +365,6 @@ private struct ActionsPreview: View {
     .environment(\.colorScheme, .dark)
 }
 
-// the row lives under the header at full width; a narrow container is where the
-// primary label truncates first, which is what a redesign has to survive
 #Preview("Narrow") {
     ActionsPreview(caption: "320pt")
         .padding(16)

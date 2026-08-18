@@ -15,10 +15,8 @@ enum RecordError: Error {
 protocol DatabaseRecord: FetchableRecord, MutablePersistableRecord, TableRecord {
     associatedtype ID = Tagged<Self, Int64>
 
-    /// primary key for the record
     var id: ID? { get }
 
-    /// the database table name for this record
     static var databaseTableName: String { get }
 
     /// creates the initial table schema (v1.0.0)
@@ -32,9 +30,7 @@ protocol DatabaseRecord: FetchableRecord, MutablePersistableRecord, TableRecord 
 // MARK: - Default Implementations
 
 extension DatabaseRecord {
-    static func createIndexes(db: Database) throws {
-        // override in records that need indexes
-    }
+    static func createIndexes(db: Database) throws {}
 }
 
 // MARK: - Helper Extensions

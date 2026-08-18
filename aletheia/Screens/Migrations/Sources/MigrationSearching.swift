@@ -7,19 +7,10 @@
 
 import Foundation
 
-// title search across a fixed set of already-installed sources, for a fixed
-// title - not the live-typing debounced search SearchViewModel is built for,
-// so this does not reuse that type, only the same source.search(_:) call it
-// makes (Screens/Search/SearchViewModel.swift). shared by every migration
-// flow unchanged - none of it is specific to where the title came from
 protocol MigrationSearching: Sendable {
     func search(title: String, in sources: [Source]) async -> MigrationMatch
 }
 
-// a candidate is pre-selected when its title exactly matches (case- and
-// diacritic-insensitive) and it is the only one that does - the same "an
-// exact string match is worth trusting to pre-fill, never to silently
-// commit" line trackers.md Q4 already draws. Save still requires its own tap
 struct LiveMigrationSearcher: MigrationSearching {
     private let log: AppLog
 
@@ -27,10 +18,8 @@ struct LiveMigrationSearcher: MigrationSearching {
         self.log = log
     }
 
-    // a bounded wait per source, not a race-condition sleep: a migration
-    // session fans out to every selected source at once, and one scraped
-    // source with no timeout of its own must never hold up every other row
-    // behind it
+    // bounded per-source wait, not a race-condition sleep - a scraped source
+    // with no timeout of its own must not hold up every other row behind it
     private enum Timing {
         static let perSource: Duration = .seconds(15)
     }

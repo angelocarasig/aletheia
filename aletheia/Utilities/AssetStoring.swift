@@ -7,23 +7,20 @@
 
 import Foundation
 
-// a remote thing worth keeping on disk where the key is supplied by the caller
-// rather than derived from the urls, which is what lets a cover (keyed by its
-// own url) and a chapter (keyed by origin and slug, with many page urls) be the
-// same shape
+// key is caller-supplied, not derived from the urls - lets a cover (keyed by
+// its own url) and a chapter (keyed by origin and slug, many page urls) share
+// this shape
 struct Asset: Sendable {
     let key: String
     let parts: [URL]
     let folder: URL
 
-    // whatever the source itself would send - referer, pinned agent, and the
-    // cookies it already holds. a referer alone was enough for covers and is not
-    // enough for pages: behind cloudflare the missing cookie comes back as a
-    // 200 text/html challenge, which store() then refuses as "not an image".
-    // built once by SourceService.requestHeaders so no caller composes its own
+    // a referer alone is enough for covers but not pages - behind cloudflare
+    // the missing cookie comes back as a 200 text/html challenge, which
+    // store() then refuses as "not an image". built once by
+    // SourceService.requestHeaders so no caller composes its own
     let headers: [String: String]
 
-    // many parts land as a directory, one lands as a file
     var collected: Bool { parts.count > 1 }
 }
 

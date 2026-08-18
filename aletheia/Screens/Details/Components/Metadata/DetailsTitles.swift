@@ -27,8 +27,9 @@ struct DetailsTitles: View {
         Set(titles.compactMap(\.sourceName)).count
     }
 
-    // the tint moves between rows on a write that comes back through the
-    // observation, so the tap's own transaction is long closed by then
+    // the tint moves between rows once the write comes back through the
+    // observation, well after the tap's own transaction has closed - the
+    // ancestor's own .animation is what drives that transition, not the tap
     private var preferred: Int64? {
         titles.first(where: \.isPreferred)?.id
     }
@@ -43,8 +44,6 @@ struct DetailsTitles: View {
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .topBarTrailing) {
-                        // picks apply instantly, so there is nothing to "do" -
-                        // this button only closes
                         Button("Close", systemImage: "xmark") { dismiss() }
                             .labelStyle(.iconOnly)
                     }
@@ -61,8 +60,6 @@ struct DetailsTitles: View {
             ScrollView {
                 Explanation
 
-                // one container so adjacent rows blend into a single surface
-                // rather than reading as a stack of separate stickers
                 GlassEffectContainer(spacing: dimensions.spacing.space8) {
                     LazyVStack(spacing: dimensions.spacing.space8) {
                         AutomaticRow
@@ -84,8 +81,6 @@ struct DetailsTitles: View {
                 .padding(.bottom, dimensions.spacing.space24)
             }
             .opacity(isSaving ? Layout.savingOpacity : 1)
-            // has to sit on an ancestor of every row, so the tint leaving one and
-            // arriving on another are the same transaction
             .animation(Layout.settle, value: preferred)
         }
     }
@@ -99,9 +94,6 @@ struct DetailsTitles: View {
             .padding(.bottom, dimensions.spacing.space12)
     }
 
-    // no pin set: display falls back to origin priority. selection language:
-    // the checkmark sits on whichever row is in effect, and clearing is a
-    // first-class choice rather than a toggle side effect
     private var AutomaticRow: some View {
         HStack(spacing: dimensions.spacing.space12) {
             Image(systemName: "wand.and.stars")
@@ -150,8 +142,6 @@ struct DetailsTitles: View {
             }
         }
         .padding(dimensions.spacing.space12)
-        // the current pick is not interactive glass - it cannot be tapped, so it
-        // should not offer press feedback
         .glassEffect(
             title.isPreferred
                 ? .regular.tint(Palette.brand.opacity(Layout.tintOpacity))
@@ -177,7 +167,6 @@ struct DetailsTitles: View {
                     .resizable()
                     .scaledToFit()
             } else {
-                // the contributing source no longer ships with the app
                 RoundedRectangle(cornerRadius: dimensions.radius.radius4)
                     .fill(.primary.opacity(Layout.fillOpacity))
             }
@@ -212,9 +201,6 @@ private enum Sample {
         .init(id: id, value: value, sourceName: source, sourceIcon: icon, isPreferred: preferred)
     }
 
-    // a real pool: the romanised original, the licensed english release, a
-    // shorthand, and the native script. lengths vary wildly, which is the thing
-    // the row has to survive
     static let pool: [DetailsTitles.Title] = [
         title(
             1,
@@ -238,8 +224,6 @@ private enum Sample {
     }
 }
 
-// nothing picked, so the fallback wording in the explanation is the operative
-// half and no row carries the tint
 #Preview("No preference") {
     Color.clear.sheet(isPresented: .constant(true)) {
         DetailsTitles(
@@ -254,8 +238,6 @@ private enum Sample {
     }
 }
 
-// the common case for a freshly added series - one source, one title, and the
-// sheet still has to justify opening
 #Preview("Single title") {
     Color.clear.sheet(isPresented: .constant(true)) {
         DetailsTitles(

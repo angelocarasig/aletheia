@@ -24,31 +24,23 @@ struct DetailsHeader: View {
     @Environment(\.displayScale) private var displayScale
 
     private enum Layout {
-        // a cover is fitted into this box rather than forced into one shape.
-        // the height is a standard 11:16 cover at 160pt, so an ordinary cover
-        // draws exactly as it always has; the wider bound is what lets a square
-        // or landscape cover use the room it needs instead of being cropped
         static let coverWidth: CGFloat = 160
         static let coverAspect: CGFloat = 11 / 16
         static let coverMaxWidth: CGFloat = 200
         static var coverMaxHeight: CGFloat { coverWidth / coverAspect }
         static let fadeDuration: Double = 0.25
         static let placeholderOpacity: Double = 0.1
-        // the box the artwork is fitted inside, so it is the most any cover here
-        // can be drawn at. deliberately NOT coverFrame: that is derived from the
-        // loaded image's own size, so keying the downsampler on it would feed the
-        // result back into the cache key and load a second time
+        // deliberately not derived from coverFrame - coverFrame comes from
+        // the loaded image's own size, so keying the downsampler on it would
+        // feed the result back into the cache key and load a second time
         static var coverTarget: CGSize { CGSize(width: coverMaxWidth, height: coverMaxHeight) }
     }
 
     @State private var measured: CGSize = .zero
-    // reset by the cover changing, or a new preferred cover inherits the old
-    // one's failure and never gets its own attempt
+    // reset on cover change, or a new preferred cover inherits the old one's
+    // failure and never gets its own attempt
     @State private var unavailable = false
 
-    // the image's own ratio, fitted inside the box. until it reports a size this
-    // is the standard cover shape, so the common case never reflows and the
-    // skeleton it replaces is already the right shape
     private var coverFrame: CGSize {
         guard measured.width > 0, measured.height > 0 else {
             return CGSize(width: Layout.coverWidth, height: Layout.coverMaxHeight)
@@ -101,19 +93,17 @@ struct DetailsHeader: View {
             .setProcessor(DownsamplingImageProcessor(size: Layout.coverTarget))
             .scaleFactor(displayScale)
             .backgroundDecode()
-            // kingfisher reports the decoded size, which is ratio-true even when
-            // a processor has downsampled it - the ratio is all this needs
+            // Kingfisher reports the decoded size, which stays ratio-true
+            // even after a processor has downsampled it
             .onSuccess { measured = $0.image.size }
             .resizable()
             .placeholder { Placeholder }
-            // without this a dead url shimmers forever - kingfisher keeps showing
-            // the placeholder on failure, so "loading" and "will never load" drew
-            // identically. the header is where that was most visible
+            // without this a dead url shimmers forever - Kingfisher keeps
+            // showing the placeholder on failure, so "loading" and "will
+            // never load" drew identically
             .onFailure { _ in unavailable = true }
             .fade(duration: Layout.fadeDuration)
             .scaledToFill()
-            // a new preferred cover is a new identity, so it crossfades in over
-            // the old one rather than swapping hard
             .id(cover)
             .transition(.opacity)
             .frame(width: coverFrame.width, height: coverFrame.height)

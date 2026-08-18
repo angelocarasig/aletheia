@@ -8,57 +8,31 @@
 import Kingfisher
 import SwiftUI
 
-// one candidate, in full, and the last thing between the reader and a write to a
-// public list.
-//
-// the search list can only show what a row has space for, and the fact that
-// matters most is not on the service's media at all - it is on the READER'S own
-// entry for it: whether they already track this, how far it says they are, and
-// what linking would change that to. so this fetches the entry on appear rather
-// than the list fetching fifty of them, and states the outcome in words before
-// the button that causes it
 struct DetailsTrackerCandidate: View {
     let tracker: Tracker
     let candidate: TrackerCandidate
-    // how far this app has you read, which is what a link would seed the entry with
     let localProgress: Int
-    // another series in the library already points at this entry
     let conflict: String?
-    // the account's own scale, so a score renders in the units the reader set on
-    // the website rather than ours
     let scoreFormat: ScoreFormat
-    // already linked: the screen becomes a manage screen and the commit saves
-    // rather than links
     var linked: Bool = false
-    // off inside the add-to-library flow. the series was added seconds ago, so
-    // local progress is zero by construction and the banner fires on every link
-    // saying the same thing - which is not a disagreement, it is the expected
-    // state of a fresh row. the series page already shows the divergence as a
-    // standing fact on the tracker row, so this is a duplicate asked at the one
-    // moment the reader has no way to answer it
+    // off inside the add-to-library flow - local progress there is zero by
+    // construction, so the disagreement banner would fire on every link
+    // saying the same expected thing rather than reporting a real conflict
     var reconciles: Bool = true
-    // read from the link row rather than from the entry this screen fetches, so
-    // it still answers while that fetch is running and when it fails - which is
-    // exactly when "are these numbers current" is worth asking. nil on the way
-    // IN to a link, where nothing could have synced yet
+    // read from the link row, not from the entry this screen fetches, so it
+    // still answers while that fetch is running and when it fails. nil on
+    // the way IN to a link, where nothing could have synced yet
     var syncedDate: Date?
     var onLoad: () async throws -> TrackerEntry
-    // awaited rather than fired: a control that reports saving, saved and failed
-    // has to know which of those happened, and only the caller does
     var onCommit: (TrackerCandidate, TrackerUpdate) async throws -> Void
-    // the flag is whether to remove the entry from the reader's list as well -
-    // two genuinely different outcomes, so the alert asks rather than assuming
     var onUnlink: ((Bool) -> Void)?
-    // marks chapters read in THIS app, up to the number the service holds
     var onCatchUp: ((Int) -> Void)?
-    // the other direction: this app is further along, so every linked service
-    // gets the number. all of them, not just this one - they are all behind the
-    // same read state
+    // pushes to every linked service, not just this one - they are all
+    // behind the same local read state
     var onPushLocal: (() -> Void)?
-    // leaves the whole flow, which is not the same as leaving this screen. the
-    // caller owns it because @Environment(\.dismiss) means "pop" on a pushed
-    // copy of this view and "close the sheet" on a root one, and the X has to
-    // mean the second thing in both places
+    // caller-owned because @Environment(\.dismiss) means "pop" on a pushed
+    // copy of this view and "close the sheet" on a root one, and this has
+    // to mean the second thing in both places
     var onClose: (() -> Void)?
 
     @Environment(\.dimensions) private var dimensions
@@ -69,33 +43,21 @@ struct DetailsTrackerCandidate: View {
     @State private var phase: LoadPhase = .pending
     @State private var failure: Failure?
 
-    // its own reference type so only the backdrop observes it - held beside the
-    // scroll view, every update would re-evaluate a body holding the whole screen
+    // its own reference type so only the backdrop observes it - held beside
+    // the scroll view, every update would re-evaluate a body holding the
+    // whole screen
     @State private var scroll = DetailsScroll()
 
-    // the draft, seeded from whichever is further along once the entry lands.
-    // separate from `entry` because the commit is staged - nothing reaches the
-    // service until the button, which is the rule for anything that writes to a
-    // public list
     @State private var status: Status = .reading
     @State private var progress = 0
     @State private var score = 0
     @State private var seeded = false
     @State private var unlinking = false
     @State private var confirming: TrackerReconcile?
-    // the write landed and the screen stayed. the button becomes the state it
-    // produced, and tapping it again is the way back out
     @State private var committed = false
-    // whether the draft holds anything the service has not been told. set by the
-    // controls themselves rather than derived from a diff, so it survives the
-    // entry failing to load - the push re-reads before it writes anyway
-    // what the controls held when the screen settled, so "changed" is a
-    // comparison rather than a flag: moving a value and moving it back is not a
-    // change, and a one-way flag said it was.
-    //
-    // captured at SEED time rather than diffed against the fetched entry, which
-    // is the part that has to stay - seeding runs on the failure path too, so a
-    // reader whose entry would not load can still edit and still save
+    // captured at seed time, not diffed against the fetched entry - seeding
+    // also runs on the failure path, so a reader whose entry would not load
+    // can still edit and still save
     @State private var baseline: Draft?
 
     private struct Draft: Equatable {
@@ -107,12 +69,10 @@ struct DetailsTrackerCandidate: View {
     private var current: Draft {
         .init(status: status, progress: progress, score: score)
     }
-    // the inline save's own lifecycle, which is separate from `committed`: that
-    // one is about a link having been made, this one about a write landing
     @State private var saving: SaveState = .idle
-    // an alert rather than an inline field: this screen is a large-detent sheet
-    // and the row sits mid-height, so a number pad would cover the row it is
-    // editing along with the commit below it
+    // an alert, not an inline field - the row sits mid-height on a
+    // large-detent sheet, and a number pad would cover both the row being
+    // edited and the commit button below it
     @State private var typing = false
     @State private var draft = ""
 
@@ -124,13 +84,8 @@ struct DetailsTrackerCandidate: View {
     }
 
     private enum Layout {
-        // fractions of the artwork's own 700pt height. it is untouched above
-        // fadeStart, gone below fadeEnd, and on its way out between them
         static let fadeStart: CGFloat = 0.20
         static let fadeEnd: CGFloat = 0.75
-
-        // where a stepper stops when the service has no total - high enough that
-        // no real series reaches it, low enough that a held finger cannot run away
         static let progressCeiling = 9999
         static let coverWidth: CGFloat = 120
         static let coverAspect: CGFloat = 11 / 16
@@ -139,25 +94,21 @@ struct DetailsTrackerCandidate: View {
         static let barHeight: CGFloat = 6
         static let trackOpacity: Double = 0.15
         static let tickWidth: CGFloat = 3
-        // a state marker, not a fill: at full strength the destructive control
-        // outweighs the one it sits beside, which inverts what the row offers
         static let washOpacity: Double = 0.25
-        // sized to the cap height of the subheadline beside it, so the mark
-        // reads as part of the label rather than as a separate element
         static let markSize: CGFloat = 18
         static let markDrop: CGFloat = 4
     }
 
-    // what the screen actually draws: the seed it was handed, with anything the
-    // fetched entry knows better laid over it. a linked row can only seed an id,
-    // a title and a total, so without this the artwork never arrives - the
-    // request that carries it lands in `entry` and nothing reads it
+    // a linked row can only seed an id, a title and a total - without this
+    // overlay the artwork never arrives, since the fetch that carries it
+    // lands in `entry` and nothing else reads it
     private var subject: TrackerCandidate {
         guard let entry else { return candidate }
         let remote = entry.candidate
 
-        // every fallback here reads the SEED, never `subject` - this is the
-        // getter that produces it, so a self-reference is unbounded recursion
+        // every fallback below reads the seed (`candidate`), never `subject` -
+        // this is the getter that produces `subject`, so referencing it here
+        // is unbounded recursion
         return TrackerCandidate(
             id: candidate.id,
             title: remote.title.isEmpty ? candidate.title : remote.title,
@@ -184,7 +135,6 @@ struct DetailsTrackerCandidate: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: dimensions.spacing.space24) {
-                    // the backdrop shows through here
                     Spacer()
                         .frame(height: DetailsBackdrop.heroHeight)
 
@@ -198,10 +148,9 @@ struct DetailsTrackerCandidate: View {
                 .padding(.horizontal, dimensions.screenMargin)
                 .padding(.bottom, dimensions.spacing.space16)
             }
-            // clamped inside the transform, not after: the callback only fires
-            // when its value changes, so clamping stops it entirely past the ramp
-            // rather than firing for the rest of the scroll. rounding bounds the
-            // ramp itself to a few dozen updates instead of one a frame
+            // clamped inside the transform, not the action - the callback only
+            // fires when its returned value changes, so clamping the value
+            // itself is what stops updates past the ramp, not a check in action
             .onScrollGeometryChange(for: CGFloat.self) { geometry in
                 let scrolled = geometry.contentOffset.y + geometry.contentInsets.top
                 let ramped = min(max(scrolled, 0), DetailsBackdrop.blurDistance)
@@ -216,10 +165,6 @@ struct DetailsTrackerCandidate: View {
         .navigationBarTitleDisplayMode(.inline)
         .containerBackground(.clear, for: .navigation)
         .toolbar {
-            // trailing on both presentations, so it never collides with the back
-            // chevron a pushed copy already has: the chevron goes back one, this
-            // leaves. one destructive action does not earn a menu, so unlink
-            // moved into Details where it reads next to what it undoes
             if let onClose {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Close", systemImage: "chevron.down", action: onClose)
@@ -227,9 +172,6 @@ struct DetailsTrackerCandidate: View {
                 }
             }
         }
-        // both outcomes are destructive and only one is reversible, so they are
-        // spelled out rather than hidden behind one word. the default is the
-        // quiet one: stop syncing, leave the list alone
         .alert("Chapters Read", isPresented: $typing) {
             TypingAlert
         } message: {
@@ -253,10 +195,9 @@ struct DetailsTrackerCandidate: View {
             onPushLocal: { onPushLocal?() }
         )
         .safeAreaInset(edge: .bottom) { Commit }
-        // the button reports whether there is unsent work, so touching a control
-        // after a save has to take it out of Synced - otherwise the one tap that
-        // would send the change unlinks instead, and the only way to save is to
-        // close the sheet and come back
+        // touching a control after a save has to clear `committed`, or the
+        // button stays showing "Synced" - the next tap would unlink instead
+        // of sending the change, with no way to save but closing and reopening
         .onChange(of: status) { _, _ in touched() }
         .onChange(of: progress) { _, _ in touched() }
         .onChange(of: score) { _, _ in touched() }
@@ -319,10 +260,6 @@ struct DetailsTrackerCandidate: View {
 
     // MARK: Actions
 
-    // above the entry rather than under the last fact on the page. both are one
-    // tap and both are about the entry this screen is showing, so they belong
-    // where it is introduced - as rows at the bottom they were reachable only by
-    // scrolling past everything the reader came here to read
     @ViewBuilder
     private var Actions: some View {
         let url = tracker.url(for: subject.id)
@@ -339,20 +276,10 @@ struct DetailsTrackerCandidate: View {
                             .tappable { openURL(url) }
                     }
 
-                    // a circle, and the narrower of the two: leaving is not what
-                    // this screen is for, and a destructive control at equal
-                    // width to the one beside it reads as an equal offer.
-                    //
-                    // the link family has no slash and no badge.minus - checked
-                    // against the sdk's own catalog rather than guessed at, since
-                    // a symbol that does not exist renders as nothing at all.
-                    // personalhotspot.slash is the interlocking rings with a
-                    // slash through them, which is the broken-chain reading the
-                    // link family never shipped.
-                    //
-                    // the wash is a quarter strength, which is what keeps the
-                    // glyph legible in the same family's text step rather than
-                    // left to glass - the same pairing DetailsActions uses
+                    // personalhotspot.slash (interlocking rings, slashed) - the
+                    // link family has no slash or badge.minus variant, checked
+                    // against the SDK's own catalog rather than guessed; a
+                    // symbol that does not exist renders as nothing at all
                     if unlinkable {
                         Image(systemName: "personalhotspot.slash")
                             .foregroundStyle(Palette.dangerText)
@@ -372,8 +299,6 @@ struct DetailsTrackerCandidate: View {
 
     private struct Control: ViewModifier {
         var tint: Color?
-        // a circle takes its width from its height and carries no label, so it
-        // reads as one action rather than the short end of a pair
         var circular = false
 
         @Environment(\.dimensions) private var dimensions
@@ -390,8 +315,8 @@ struct DetailsTrackerCandidate: View {
                     height: dimensions.size.controlL
                 )
 
-            // branched rather than type-erased: the shape parameter takes a
-            // concrete InsettableShape and the two have no common box here
+            // branched rather than type-erased - InsettableShape has no
+            // common existential to hold .rect and .circle here
             if circular {
                 sized.glassEffect(glass, in: .circle)
             } else {
@@ -409,9 +334,6 @@ struct DetailsTrackerCandidate: View {
 
     // MARK: Your entry
 
-    // the section the search list could not carry, and the reason this screen
-    // exists. an entry the reader already tracks says so in their own numbers,
-    // not the service's
     @ViewBuilder
     private var Entry: some View {
         VStack(alignment: .leading, spacing: dimensions.spacing.space12) {
@@ -428,8 +350,6 @@ struct DetailsTrackerCandidate: View {
                 Loading.transition(.opacity)
             }
 
-            // split at the full stop it already had: what is true, then what it
-            // costs. one paragraph made the reader finish both to learn either
             if let conflict {
                 Banner(
                     "\(conflict) is already linked to this entry",
@@ -443,8 +363,6 @@ struct DetailsTrackerCandidate: View {
 
     private var Loading: some View {
         HStack(spacing: dimensions.spacing.space8) {
-            // a continuously spinning symbol is what Reduce Motion exists for,
-            // and the words beside it already say what is happening
             Image(systemName: "progress.indicator")
                 .symbolEffect(.rotate, options: .repeat(.continuous), isActive: !reduceMotion)
 
@@ -460,14 +378,11 @@ struct DetailsTrackerCandidate: View {
         )
     }
 
-    // glyph-less on purpose: the two banners this one sits between are things to
-    // act on, and this is a note about a fetch that failed harmlessly
     @ViewBuilder
     private var Trouble: some View {
-        // Failure is already a title and a sentence under it, so the two halves
-        // go to the two slots rather than one of them being dropped. it used to
-        // read .message alone, which renders blank for any error that states a
-        // title and nothing else
+        // title and message both go to their own slot - this used to read
+        // .message alone, which rendered blank for any error that states
+        // only a title
         if let failure {
             Banner(
                 title: Text(failure.title),
@@ -481,18 +396,6 @@ struct DetailsTrackerCandidate: View {
         }
     }
 
-    // five states, and each says something different:
-    //
-    //   not listed    what linking will write, since there is nothing to compare
-    //   in step       both rows, and a mark saying so - silence would read as
-    //                 the card having failed to work out the answer
-    //   remote ahead  both rows, service leading
-    //   local ahead   both rows, this app leading
-    //   no total      both rows, no bars, counts read "60 read" instead
-    //
-    // the two rows render in all four listed states. the shape is what a reader
-    // learns, and a card that reorganises itself when the numbers agree teaches
-    // the layout twice
     @ViewBuilder
     private func Standing(_ entry: TrackerEntry) -> some View {
         VStack(alignment: .leading, spacing: dimensions.spacing.space16) {
@@ -514,13 +417,8 @@ struct DetailsTrackerCandidate: View {
                 )
 
                 if entry.progress == localProgress {
-                    // a verdict on the two rows above rather than a third row of
-                    // the same kind, so it sits behind a rule - which is also
-                    // what stops it reading as a label for the bar it follows
                     Divider()
 
-                    // a fact, so it takes the secondary checkmark rather than the
-                    // brand one - nothing here was chosen
                     Label("In step", systemImage: "checkmark")
                         .font(.footnote)
                         .fontWeight(.medium)
@@ -528,17 +426,12 @@ struct DetailsTrackerCandidate: View {
                         .foregroundStyle(.secondary)
                 }
             } else {
-                // one thought, so they sit together: what is true, then what the
-                // commit will do about it. at the card's own spacing they read as
-                // two separate announcements
                 VStack(alignment: .leading, spacing: dimensions.spacing.space4) {
                     Text("Not on your \(tracker.name) list yet.")
                         .font(.subheadline)
                         .fontWeight(.medium)
                         .foregroundStyle(.secondary)
 
-                    // the state a reader meets first, and the only one where the
-                    // commit writes a number nothing on screen has shown them
                     Group {
                         if localProgress > 0 {
                             Text("Linking adds it at chapter \(localProgress).")
@@ -559,9 +452,8 @@ struct DetailsTrackerCandidate: View {
         )
     }
 
-    // `leading` is which side is further along, not which side is right. when the
-    // two agree both lead, so neither dims and equality reads as equality rather
-    // than as a tie nobody won
+    // `leading` means further along, not "correct" - when the two agree both
+    // are passed true, so neither dims
     private func Side<Icon: View>(
         _ name: String,
         @ViewBuilder icon: () -> Icon,
@@ -571,17 +463,11 @@ struct DetailsTrackerCandidate: View {
     ) -> some View {
         VStack(alignment: .leading, spacing: dimensions.spacing.space8) {
             HStack(alignment: .firstTextBaseline, spacing: dimensions.spacing.space8) {
-                // centred on the text rather than sharing its baseline: a square
-                // mark hung off a baseline sits low against the letters beside it
                 icon()
                     .frame(width: Layout.markSize, height: Layout.markSize)
                     .clipShape(.circle)
                     .alignmentGuide(.firstTextBaseline) { $0[.bottom] - Layout.markDrop }
 
-                // the quieter half of the pair: whose number it is matters less
-                // than what the number is, and the mark beside it has already
-                // said whose. a step down in size does that without a second
-                // colour doing it
                 Text(name)
                     .font(.footnote)
                     .fontWeight(.medium)
@@ -599,8 +485,8 @@ struct DetailsTrackerCandidate: View {
                 }
                 .font(.subheadline)
                 .fontWeight(.semibold)
-                // fixed-width digits, or the numericText roll shifts every
-                // character beside it each time a count crosses a digit width
+                // monospaced or the numericText roll shifts every character
+                // beside it each time the count crosses a digit width
                 .monospacedDigit()
                 .contentTransition(.numericText())
                 .animation(.settle, value: value)
@@ -610,8 +496,6 @@ struct DetailsTrackerCandidate: View {
         }
     }
 
-    // no denominator, no bar: a length with nothing to be a fraction of is
-    // decoration, and an ongoing series genuinely has no total
     @ViewBuilder
     private func Bar(value: Int, of total: Int?, leading: Bool) -> some View {
         if let total, total > 0 {
@@ -634,40 +518,25 @@ struct DetailsTrackerCandidate: View {
 
     // MARK: Sync
 
-    // a banner in the section it concerns rather than a control in the chrome.
-    // the disagreement is a fact about the numbers directly below it, and beside
-    // the commit it read as a second thing to press before leaving
     @ViewBuilder
     private var Disagreement: some View {
         if reconciles, let entry, entry.isListed, entry.progress != localProgress {
             let remoteAhead = entry.progress > localProgress
 
-            // the cloud is the service and the arrow is which way the number
-            // travels, so the glyph says WHO is ahead rather than only which
-            // direction something moves. a bare up/down arrow was true of the
-            // transfer and silent about the two parties, which is the whole
-            // subject of this banner.
-            //
-            // branched rather than ternaried so each string stays a literal:
-            // a ternary with a String on either side erases inflection markup
             Group {
                 if remoteAhead {
                     Banner(
                         "\(tracker.name) is at chapter \(entry.progress)",
-                        // what the tap does, said before it is tapped: this one
-                        // writes read state across every source of this series
+                        // marks chapters read across every source of this
+                        // series, not just this tracker's view of it
                         message: "Mark chapters up to \(entry.progress) as read here",
                         systemImage: "icloud.and.arrow.down",
-                        // brand, matching the section banner: an offer is not a
-                        // warning, and the two amber notices on this screen are
-                        // both things that went wrong
                         tone: .brand,
                         action: { confirming = .pull(entry.progress) }
                     )
                 } else {
                     Banner(
                         "You are at chapter \(localProgress) here",
-                        // and this one writes to a public list
                         message: "Update \(tracker.name) to match",
                         systemImage: "icloud.and.arrow.up",
                         tone: .brand,
@@ -681,10 +550,6 @@ struct DetailsTrackerCandidate: View {
 
     // MARK: Editor
 
-    // status, chapters read and score - the three things a reader changes by
-    // hand, in one place rather than a second sheet behind this one. staged:
-    // every control writes to the draft and only the commit reaches the service,
-    // because a stray tap here lands on a public profile
     @ViewBuilder
     private var Editor: some View {
         if phase != .pending {
@@ -712,8 +577,6 @@ struct DetailsTrackerCandidate: View {
         }
     }
 
-    // our own five, never the wire's vocabulary - CURRENT and plan_to_read stay
-    // on the wire where they belong
     private var StatusRow: some View {
         Menu {
             Picker("Status", selection: $status) {
@@ -748,11 +611,6 @@ struct DetailsTrackerCandidate: View {
         .buttonStyle(.plain)
     }
 
-    // a stepper rather than a field: the number moves by one almost every time,
-    // and a keyboard over a sheet to type "43" is the wrong trade
-    // the stepper is for drift and the field is for distance. holding + through
-    // three hundred chapters is not a thing anyone will do, and it was the only
-    // way to reach a number a reader already knows
     private var ProgressRow: some View {
         HStack(spacing: dimensions.spacing.space12) {
             Text("Chapters Read")
@@ -767,10 +625,9 @@ struct DetailsTrackerCandidate: View {
         .frame(minHeight: dimensions.touchTarget)
     }
 
-    // hand-built rather than a Stepper, because the value sits BETWEEN the two
-    // buttons and a Stepper renders its pair as one unit with nothing to put
-    // between them. what that costs is press-and-hold auto-repeat, which typing
-    // replaces - and which was never going to carry three hundred chapters
+    // hand-built, not a Stepper - Stepper renders its two buttons as one
+    // unit with nothing insertable between them, and the value has to sit
+    // between the minus and the plus here
     private var ProgressControl: some View {
         HStack(spacing: 0) {
             Step("minus") { progress = max(floor, progress - 1) }
@@ -802,9 +659,6 @@ struct DetailsTrackerCandidate: View {
             .accessibilityLabel(glyph == "plus" ? "Increase" : "Decrease")
     }
 
-    // the middle segment is the value AND its context: the total is not editable
-    // and is drawn as such, but it lives inside the tap target because splitting
-    // them puts a number and the thing it is out of on opposite sides of a rule
     private var ProgressValue: some View {
         HStack(spacing: dimensions.spacing.space4) {
             Text("\(progress)")
@@ -830,21 +684,18 @@ struct DetailsTrackerCandidate: View {
         .accessibilityHint("Enter a number")
     }
 
-    // zero, not how far this app has you read. an explicit edit here is the ONE caller
-    // allowed to lower a number - everything automatic carries a monotonic guard
-    // precisely so that this can be the exception - and a floor at what this app
-    // has read made the control unable to correct the mistake a reader would
-    // most want to correct
+    // zero, not localProgress - everywhere else progress carries a monotonic
+    // guard, but an explicit edit here is the one place allowed to lower the
+    // number, since that is precisely the mistake a reader would want to fix
     private var floor: Int { 0 }
 
-    // flat rather than the entry's own total: a stated total is frequently wrong
-    // or absent on an ongoing work, and a stepper that stops short of where the
-    // reader knows they are is a worse failure than one that lets them overshoot
+    // flat, not the entry's own total - a stated total is frequently wrong or
+    // absent on an ongoing work, and stopping short of where the reader knows
+    // they are is worse than letting them overshoot
     private var ceiling: Int { Layout.progressCeiling }
 
-    // the account's own scale, five shapes over one 0...100 number underneath -
-    // which is what makes switching scale on the website a display change here
-    // rather than a migration
+    // score is always stored 0...100 - the account's chosen scale is a
+    // display format over that number, not a different unit
     private var ScoreRow: some View {
         Menu {
             Picker("Score", selection: $score) {
@@ -885,8 +736,6 @@ struct DetailsTrackerCandidate: View {
             VStack(alignment: .leading, spacing: dimensions.spacing.space12) {
                 SectionHeader("Synopsis")
 
-                // not truncated here. the list clipped it to two lines because
-                // fifty rows had to fit; one entry has the room
                 Text(synopsis)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
@@ -907,9 +756,9 @@ struct DetailsTrackerCandidate: View {
         }
     }
 
-    // clamped on the way in rather than while typing: a field that refuses the
-    // second keystroke of "300" because 3 is out of range is unusable, so the
-    // bounds are applied once, when the number is committed
+    // clamped on the way in, not while typing - validating each keystroke
+    // against the range would refuse the second digit of "300" for landing
+    // out of bounds, so the clamp applies once, on commit
     private func apply() {
         defer { typing = false }
         guard let value = Int(draft.filter(\.isNumber)) else { return }
@@ -918,13 +767,6 @@ struct DetailsTrackerCandidate: View {
 
     // MARK: Save
 
-    // linked only. on the way IN to a link there is nothing to save yet - the
-    // whole draft rides the one commit in the footer - so this is the control
-    // that exists once the screen has stopped being about linking and started
-    // being about editing.
-    //
-    // it slides out of the section it belongs to rather than living in the
-    // chrome, because it saves THAT section and nothing else on the screen
     @ViewBuilder
     private var Save: some View {
         if linked, changed || saving != .idle {
@@ -945,9 +787,6 @@ struct DetailsTrackerCandidate: View {
         }
     }
 
-    // one slot, four things to say, so the glyph replaces in place rather than
-    // each state arriving as its own view. the spinner is a symbol for the same
-    // reason: a ProgressView has no stroke for the outcome to draw out of
     @ViewBuilder
     private var SaveLabel: some View {
         switch saving {
@@ -963,10 +802,10 @@ struct DetailsTrackerCandidate: View {
         }
     }
 
-    // red, not amber. amber is the attention colour - something needs looking at
-    // - where this is an action the reader took a second ago that did not happen.
-    // the persistent SYNC FAILED badge on the series row stays amber for exactly
-    // that reason: it is a status waiting to be noticed, not a failed tap
+    // red, not amber - this is an action the reader took a second ago that
+    // did not happen, unlike the persistent SYNC FAILED badge on the series
+    // row, which stays amber because it is a status waiting to be noticed,
+    // not a failed tap
     private var saveTint: Color {
         switch saving {
         case .failed: Palette.dangerText
@@ -982,13 +821,8 @@ struct DetailsTrackerCandidate: View {
             saving = .saving
             do {
                 try await onCommit(subject, update)
-                // the draft IS what the service now holds, so it becomes the
-                // thing the next edit is measured against
                 baseline = current
                 saving = .saved
-                // the control has said what happened; leaving it there would
-                // make "Saved" a permanent claim about a draft that can move
-                // again a second later
                 try? await Task.sleep(for: .seconds(2))
                 if saving == .saved { saving = .idle }
             } catch {
@@ -1018,8 +852,6 @@ struct DetailsTrackerCandidate: View {
                     Fact("Format", format)
                 }
 
-                // only once a link exists. on the way in, "Never" would be
-                // stating the premise of the screen back at the reader
                 if linked {
                     Fact("Last synced", synced)
                 }
@@ -1028,8 +860,6 @@ struct DetailsTrackerCandidate: View {
         }
     }
 
-    // two different nevers, and only one of them is information: a link whose
-    // seeding never landed genuinely has not synced, and says so
     private var synced: String {
         guard let syncedDate, syncedDate > .distantPast else { return "Never" }
         return syncedDate.formatted(.relative(presentation: .named))
@@ -1052,8 +882,6 @@ struct DetailsTrackerCandidate: View {
 
     // MARK: Commit
 
-    // the one action this screen exists for, at the bottom where a thumb is,
-    // labelled with its outcome rather than "Done"
     private var Commit: some View {
         HStack(spacing: dimensions.spacing.space8) {
             Primary
@@ -1062,20 +890,12 @@ struct DetailsTrackerCandidate: View {
         .padding(.bottom, dimensions.spacing.space8)
     }
 
-    // the same shape DetailsActions.Primary uses for Add to Library / In Library,
-    // because this is the same kind of control: one button whose done state is a
-    // resting state rather than a new offer.
-    //
-    // done INVERTS - the text colour becomes the fill and the canvas colour the
-    // lettering - rather than taking an accent. an accent would say "this is the
-    // interesting one", and synced is precisely the state that has stopped being
-    // interesting. it was .glassProminent with no tint, which is the system
-    // accent painting a flat slab over the glass
+    // done inverts (text colour becomes the fill, canvas colour the
+    // lettering) rather than taking an accent - it was .glassProminent with
+    // no tint before, which was just the system accent painting a flat slab
+    // over the glass
     @ViewBuilder
     private var Primary: some View {
-        // a linked screen has nothing to put here: saving moved into the section
-        // it saves, and unlink into Details. leaving a disabled "Save"
-        // behind would be a second control for a job that already has one
         if !linked || committed {
             PrimaryLabel
                 .lineLimit(1)
@@ -1097,7 +917,6 @@ struct DetailsTrackerCandidate: View {
                 )
                 .tappable {
                     if committed {
-                        // the same button, now the way out of what it created
                         unlinking = true
                     } else {
                         link()
@@ -1110,9 +929,6 @@ struct DetailsTrackerCandidate: View {
         }
     }
 
-    // the same four things the Save control says, in the same order, because
-    // linking is a write like any other - it just ends somewhere Save does not,
-    // at a state that stays rather than fading back to idle
     @ViewBuilder
     private var PrimaryLabel: some View {
         if committed {
@@ -1130,9 +946,7 @@ struct DetailsTrackerCandidate: View {
         }
     }
 
-    // the link half of commit(). it reports the same way and differs at the end:
-    // a save says "Saved" and goes quiet, a link becomes the thing it created
-    // and stays. the error was swallowed with try? before, so a link that failed
+    // the error used to be swallowed with try?, so a link that failed still
     // reported itself as Synced
     private func link() {
         guard saving != .saving else { return }
@@ -1151,16 +965,14 @@ struct DetailsTrackerCandidate: View {
         }
     }
 
-    // nothing to save is not a thing to offer saving, so a manage screen sits
-    // disabled until something moves. a link has always got something to write
     private var changed: Bool {
         guard let baseline else { return false }
         return current != baseline
     }
 
-    // sparse: only what the reader actually moved. an omitted field is preserved
-    // on both services, and a blind full-object write is what resets statuses and
-    // moves list positions on services that have no idea you did not mean to
+    // sparse - only what the reader actually moved. an omitted field is
+    // preserved on the service, where a blind full-object write can reset
+    // statuses and move list positions the reader never touched
     private var update: TrackerUpdate {
         var patch = TrackerUpdate(remoteId: subject.id, entryId: entry?.entryId)
         guard let entry else {
@@ -1186,9 +998,9 @@ struct DetailsTrackerCandidate: View {
         }
     }
 
-    // seeding moves all three controls, and that is not the reader editing - it
-    // is the screen arriving. the flag has to survive that or every entry would
-    // open already claiming unsent work
+    // guarded on `seeded`, or seeding the three controls on arrival would
+    // itself count as the reader editing, and every entry would open
+    // already claiming unsent work
     private func touched() {
         guard seeded else { return }
         committed = false
@@ -1202,27 +1014,19 @@ struct DetailsTrackerCandidate: View {
             phase = .content
         } catch {
             failure = Failure(error, fallback: "Couldn't Check Your List")
-            // the draft still has to exist: the reader can link without us having
-            // read their entry, and the push re-reads it before writing anyway
             seed(from: nil)
             phase = .failed
         }
     }
 
-    // seeded once, from whichever side is further along - which is the same rule
-    // the push itself applies, so the controls open showing what would happen if
-    // the reader changed nothing
     private func seed(from remote: TrackerEntry?) {
         guard !seeded else { return }
         seeded = true
 
         progress = max(remote?.progress ?? 0, localProgress)
         score = remote?.score ?? 0
-        // an entry the service does not hold yet opens on what linking would
-        // actually write. progress is how far this app has you read rather than zero,
-        // because that is what the push sends whatever this control shows - and
-        // a series with nothing read is want-to-read rather than reading, which
-        // is the one part of the default that was asserting something untrue
+        // defaulting an unlisted entry to .reading would be wrong for a
+        // series with nothing read yet - .planning is the honest default
         status = remote?.status ?? (localProgress > 0 ? .reading : .planning)
         baseline = current
     }
@@ -1231,8 +1035,6 @@ struct DetailsTrackerCandidate: View {
 // MARK: - Previews
 
 private struct CandidatePreview: View {
-    // a real cover, unlike the search list's specimens: the backdrop IS what
-    // these previews are for, and it has nothing to blur or dim without one
     static let cover = URL(
         string:
             "https://s4.anilist.co/file/anilistcdn/media/manga/cover/large/bx159655-Kv58QINz1rXm.jpg"
@@ -1262,25 +1064,15 @@ private struct CandidatePreview: View {
         score: 80
     )
     var stalls = false
-    // how the commit behaves, so the save control's three outcomes are all
-    // reachable without a network
     var commitDelay: Duration = .seconds(1)
     var commitFails = false
     var linked = false
     var syncedDate: Date? = .now.addingTimeInterval(-7200)
 
-    // spelled out rather than inlined: a ternary between a closure and nil gives
-    // the type checker nothing to infer the closure's shape from
     private var unlink: ((Bool) -> Void)? {
         linked ? { _ in } : nil
     }
 
-    // presented the way the app presents it rather than rendered bare: this
-    // screen is always inside a sheet, either as that sheet's root when reached
-    // from a linked row or pushed into the link sheet's stack when reached from
-    // a search result. rendering it flat hid the two things the sheet decides -
-    // how the large detent crops the backdrop, and where the commit sits once
-    // the drag indicator and the home affordance have taken their room
     var body: some View {
         Palette.canvas
             .ignoresSafeArea()
@@ -1318,22 +1110,13 @@ private struct CandidatePreview: View {
 }
 
 // MARK: Linking - reached from a search result, nothing committed yet
-//
-// the screen is the same one both ways round, so the previews are grouped by
-// which door was used rather than by which control happens to be on screen.
-// linking is the half where the commit says Link, there is no unlink, and the
-// Last synced row is absent because nothing has
 
-// the ordinary case: an entry this reader does not have on their list. no
-// comparison to draw and no sync control, because there is nothing to compare
 #Preview("Linking · not on your list") {
     CandidatePreview(
         entry: .init(remoteId: 101177, title: "Kanojo mo Kanojo", totalChapters: 122)
     )
 }
 
-// already on their list and ahead of this app - the sync control appears BEFORE
-// anything is linked, which is the case that decides whether linking is safe
 #Preview("Linking · already on your list") {
     CandidatePreview(
         localProgress: 12,
@@ -1349,16 +1132,12 @@ private struct CandidatePreview: View {
     )
 }
 
-// the same entry is already linked to a different series in the library. the
-// commit stays available - the reader may genuinely be fixing the other one
 #Preview("Linking · claimed by another series") {
     CandidatePreview(conflict: "Girlfriend, Girlfriend")
 }
 
 // MARK: Managing - reached from a linked row, and the commit saves
 
-// in step, which is what most linked series look like most of the time: no sync
-// control, because there is nothing to reconcile
 #Preview("Managing · in step") {
     CandidatePreview(
         localProgress: 38,
@@ -1374,8 +1153,6 @@ private struct CandidatePreview: View {
     )
 }
 
-// the service has heard more than this app has - the control pulls, and taking
-// it marks chapters read locally
 #Preview("Managing · service is ahead") {
     CandidatePreview(
         localProgress: 12,
@@ -1392,8 +1169,6 @@ private struct CandidatePreview: View {
     )
 }
 
-// and the other direction, where taking it tells EVERY linked service rather
-// than only this one
 #Preview("Managing · you are ahead") {
     CandidatePreview(
         localProgress: 60,
@@ -1410,14 +1185,10 @@ private struct CandidatePreview: View {
     )
 }
 
-// linked, but the seeding never landed - the one case where Never is a fact
-// rather than a restatement of the screen's premise
 #Preview("Managing · never synced") {
     CandidatePreview(linked: true, syncedDate: nil)
 }
 
-// an entry the service already calls finished. automatic pushes skip it
-// entirely, so an explicit edit here is the only thing that can still write
 #Preview("Managing · finished on the service") {
     CandidatePreview(
         localProgress: 122,
@@ -1435,31 +1206,21 @@ private struct CandidatePreview: View {
 }
 
 // MARK: The inline save
-//
-// linked only, and it slides out of the Edit section the moment the draft moves.
-// move any control and watch it appear; these three cover what happens after it
-// is tapped, which is the part a static preview cannot show
 
-// a one-second write, so the spinner is actually visible before the tick
 #Preview("Save · succeeds") {
     CandidatePreview(linked: true)
 }
 
-// slow enough to sit in the saving state and watch the rotate
 #Preview("Save · slow") {
     CandidatePreview(commitDelay: .seconds(6), linked: true)
 }
 
-// the failure keeps the draft: nothing is discarded, and the reason replaces the
-// label rather than raising an alert over the control that caused it
 #Preview("Save · fails") {
     CandidatePreview(commitFails: true, linked: true)
 }
 
 // MARK: Shapes the metadata can take
 
-// no year, no format, and a work with no stated total - every optional row in
-// the Details section absent at once, which is what a thin entry looks like
 #Preview("Sparse metadata") {
     CandidatePreview(
         candidate: .init(
@@ -1475,16 +1236,10 @@ private struct CandidatePreview: View {
 
 // MARK: Load states
 
-// the entry is still being fetched: the comparison cannot be drawn yet, and the
-// commit must not be offered against numbers nobody has seen. the Last synced
-// row still answers, because it comes off the stored row rather than the fetch
 #Preview("Loading the entry") {
     CandidatePreview(stalls: true, linked: true)
 }
 
-// and the same screen when that fetch fails. the draft is still editable, which
-// is deliberate - the push re-reads before it writes, so a failed read here does
-// not make the reader's answer unusable
 #Preview("Entry wouldn't load") {
     CandidatePreview(entry: nil, linked: true)
 }

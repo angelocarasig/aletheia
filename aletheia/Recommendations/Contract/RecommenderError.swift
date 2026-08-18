@@ -40,9 +40,6 @@ enum RecommenderError: DescribableError {
         }
     }
 
-    // none of these clear by trying again. a missing bundle stays missing for the
-    // life of the install, and a version mismatch needs a different build - a
-    // retry button here would be an affordance that cannot work
     var isRetryable: Bool { false }
 
     // the reader gets the sentences above; this is what goes to the log, where a

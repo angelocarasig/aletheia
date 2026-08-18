@@ -7,18 +7,15 @@
 
 import Foundation
 
-// no remote user id here. one was carried for a while and read by nothing, and
-// the third service's is a string rather than a number - so the field was
-// deleted rather than widened to hold a value no screen asks for.
-// see docs/features/tracker-mangabaka.md §7.1
+// no remote user id here - one was carried for a while and read by nothing, and
+// the third service's is a string rather than a number, so the field was
+// deleted rather than widened. see docs/features/tracker-mangabaka.md §7.1
 struct TrackerViewer: Sendable, Equatable {
     let name: String
     var avatar: URL?
     var scoreFormat: ScoreFormat = .point10
 }
 
-// a search result. enough per row to separate a sequel from its parent at a
-// glance, which is the whole job of the link sheet
 struct TrackerCandidate: Sendable, Hashable, Identifiable {
     let id: Int64
     let title: String
@@ -45,13 +42,10 @@ struct TrackerCandidate: Sendable, Hashable, Identifiable {
     }
 }
 
-// what the service says about one media, plus your entry on it if you have one
 struct TrackerEntry: Sendable, Equatable {
     let remoteId: Int64
     let title: String
     var totalChapters: Int?
-    // the same display facts a search result carries, so an entry opened from a
-    // linked row renders as fully as one opened from a search
     var cover: URL?
     var year: Int?
     var authors: String?
@@ -78,7 +72,6 @@ struct TrackerEntry: Sendable, Equatable {
 
     var isListed: Bool { entryId != nil || status != nil }
 
-    // what a search row would have shown for the same media
     var candidate: TrackerCandidate {
         TrackerCandidate(
             id: remoteId,

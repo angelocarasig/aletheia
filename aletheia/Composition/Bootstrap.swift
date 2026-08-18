@@ -8,9 +8,6 @@
 import Observation
 import SwiftUI
 
-// everything the app needs standing up before its first frame, run off the main
-// actor and reported phase by phase. migrations live in the opening phase, so the
-// progress surface is already in place when they start taking real time
 @MainActor
 @Observable
 final class Bootstrap {
@@ -33,8 +30,6 @@ final class Bootstrap {
             }
         }
 
-        // drives a determinate bar - an indeterminate spinner says nothing about
-        // how much is left, which matters once migrations are slow
         var progress: Double {
             switch self {
             case .idle: 0
@@ -59,10 +54,9 @@ final class Bootstrap {
 
         do {
             phase = .opening
-            // the same instance a headless launch handler resolves - built once
-            // per process by whoever asks first, so opening the app mid-run
-            // attaches to the run in flight rather than constructing a second
-            // graph that reports idle
+            // Compositor.shared() is process-wide and single-flight, so this attaches
+            // to a run already in flight (e.g. from a headless BGTask) instead of
+            // building a second graph
             let compositor = try await Compositor.shared()
 
             phase = .seeding
@@ -71,34 +65,25 @@ final class Bootstrap {
             phase = .cleaning
             await compositor.db.clean()
 
-            // after clean, whose cascade is what orphans the files it collects.
-            // does not block the first frame - it enumerates a directory that can
-            // hold thousands of entries
+            // must run after db.clean() - its cascade is what orphans the files being swept
             compositor.assets.sweep()
             compositor.downloads.sweep()
 
-            // registration has to complete before launch ends, and a launch the
-            // system started for the task itself has no screens to do it from
+            // must complete before launch ends - a system-started BGTask launch has
+            // no screen to register from later
             compositor.refresh.register()
             compositor.downloads.register()
             compositor.refresh.catchUp()
             compositor.metadata.catchUp()
 
-            // re-armed at launch as well as at the end of every run. a run that
-            // never reaches its own completion - killed, crashed, jetsammed -
-            // takes the pending request with it and schedules nothing in its
-            // place, so without this the schedule dies silently and stays dead.
-            // not on every foreground: the anchor does not move, so resubmitting
-            // per activation is churn for an identical request
+            // re-armed at launch, not just end of run - a killed/crashed/jetsammed run
+            // takes its pending BGTaskScheduler request with it, so without this the
+            // schedule dies silently
             compositor.refresh.schedule()
             compositor.metadata.schedule()
 
-            // the queue is intent, and intent is what a kill destroys - the bytes
-            // already on disk are picked up again for free
             compositor.downloads.restore()
 
-            // the pending columns are durable, so anything that piled up while
-            // offline drains on its own once an account is back
             compositor.trackers.hydrate()
             compositor.trackers.restore()
 
@@ -107,22 +92,15 @@ final class Bootstrap {
             self.compositor = compositor
             phase = .ready
 
-            // warming is 236 ms of pure I/O and nothing on screen waits for it.
-            // the recommendations rail draws its own skeleton, queries off this
-            // actor, and sits below the chapter list - so a launch that blocked
-            // on this was holding back Home, Library, Search, Sources and the
-            // reader to save a wait that only ever happened behind a shimmer
-            //
-            // .utility rather than .userInitiated on purpose: 116 MB of reads now
-            // overlap the first frame's covers and the two sweeps, and this is
-            // the one of those the user is not waiting for
+            // warming is ~236ms of pure I/O nothing on screen waits for; .utility
+            // (not .userInitiated) is deliberate so it doesn't compete with the
+            // first frame's covers and the two sweeps above
             Task(priority: .utility) {
                 await compositor.recommender.warm()
 
-                // the probes re-load the whole bundle and run eleven timed
-                // queries. run before .ready they froze the launch spinner for
-                // ~400 ms in every DEBUG build - and being non-isolated work
-                // called without await, they did it on the main actor
+                // ModelBundle.probe() reloads the whole bundle and runs eleven timed
+                // queries; running it before .ready froze the launch spinner ~400ms in
+                // DEBUG because it's non-isolated work called without await
                 #if DEBUG
                     await Task.detached { ModelBundle.probe() }.value
                     await ModelBundle.probe(compositor.recommender)

@@ -7,10 +7,6 @@
 
 import SwiftUI
 
-// the press state of a Step card - same shape TrackerRestoreSetupScreen's own
-// uses, duplicated rather than shared per that file's own note: three
-// setup flows that each look nothing else like one another have no reason
-// to share this
 extension EnvironmentValues {
     @Entry fileprivate var sourceMigrationStepPressed = false
 }
@@ -25,12 +21,6 @@ private struct SourceMigrationStepButtonStyle: ButtonStyle {
     }
 }
 
-// three steps, pushed: which source to move series off, which sources to
-// search across (plus Migrate-or-Copy), then the queue. every series
-// currently carrying an origin on the picked "from" source is offered -
-// SeriesOnSourceMigrationSource, see docs. nothing here writes to the
-// database - the first write is a row's own Save, inside
-// OriginMigrationCommitter.commit
 struct SourceMigrationScreen: View {
     var onFinish: () -> Void
 
@@ -49,9 +39,6 @@ struct SourceMigrationScreen: View {
         static let overlineTracking: CGFloat = 1.2
     }
 
-    // the same existence gate SearchViewModel's own source list uses - while
-    // bypassAdultSources is off, an adultOnly source does not exist here at
-    // all, not merely hidden
     private var availableSources: [Source] {
         let defaults = UserDefaults.standard
         let unlocked =
@@ -64,9 +51,6 @@ struct SourceMigrationScreen: View {
 
     var body: some View {
         FromStep
-            // rebuilds whenever the "from" source changes - construction is
-            // pure, nothing has run yet, so there is nothing worth
-            // preserving by patching an existing instance instead
             .task(id: selectedFromSourceSlug) {
                 guard let selectedFromSourceSlug else {
                     composer = nil
@@ -86,9 +70,7 @@ struct SourceMigrationScreen: View {
                     precheckLabel: "Already Attached"
                 )
             }
-            // Migrate/Copy is picked on the Sources step, but the committer
-            // that uses it is built here - re-run so a mode change before
-            // Start is tapped actually takes
+            // committer captures mode as a let at init, so a mode change needs a rebuild here
             .task(id: mode) {
                 guard let selectedFromSourceSlug else { return }
                 composer = MigrationComposer(

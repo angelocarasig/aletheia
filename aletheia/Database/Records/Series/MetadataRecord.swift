@@ -9,10 +9,8 @@ import Foundation
 import GRDB
 import Tagged
 
-// what one supplier says a series is. an origin owns one of these and so does a
-// tracker link, which is the whole point: publication and classification had no
-// home outside origin, and admitting a chapterless row into origin forks the
-// meaning of sourceId IS NULL at eighteen sites.
+// admitting a chapterless row into origin instead of a separate table would
+// fork the meaning of sourceId IS NULL at eighteen call sites.
 // see docs/features/tracker-metadata.md §6.1
 struct MetadataRecord: Codable, DatabaseRecord, UniqueRecord {
     typealias ID = Tagged<Self, Int64>
@@ -20,10 +18,8 @@ struct MetadataRecord: Codable, DatabaseRecord, UniqueRecord {
 
     private(set) var seriesId: SeriesRecord.ID
 
-    // the live link. at most one is set, and both go null when the supplier is
-    // removed - a metadata row outlives its supplier exactly as cover and title
-    // rows already do, so removing a source does not take its synopsis or
-    // silently clear a pin pointing at it
+    // at most one is set, and both go null when the supplier is removed - a
+    // metadata row outlives its supplier, same as cover and title rows already do
     var originId: OriginRecord.ID?
     var trackerId: SeriesTrackerRecord.ID?
 
@@ -37,9 +33,8 @@ struct MetadataRecord: Codable, DatabaseRecord, UniqueRecord {
     var publication: Publication
     var fetchedDate: Date = .distantPast
 
-    // no supplier left. the row is still pinnable and still labelled through
-    // supplier, but it can never win automatic resolution, because resolution
-    // runs through origin priority and this has no origin
+    // no supplier left - still pinnable and labelled through supplier, but can
+    // never win automatic resolution since that runs through origin priority
     var detached: Bool {
         originId == nil && trackerId == nil
     }
@@ -135,9 +130,8 @@ extension MetadataRecord {
     }
 
     static func createIndexes(db: Database) throws {
-        // the unique key above is (seriesId, supplier), so reads and the cascade
-        // keyed by series already ride its leftmost column. these two are for
-        // the set null on supplier delete and for re-adoption on re-attach
+        // no separate seriesId index needed - the unique key above is (seriesId,
+        // supplier), and reads keyed by series already ride its leftmost column
         try db.create(
             index: "idx_metadata_originId",
             on: databaseTableName,
@@ -152,7 +146,6 @@ extension MetadataRecord {
             ifNotExists: true
         )
 
-        // library filtering, moved here from origin with the columns
         try db.create(
             index: "idx_metadata_seriesId_publication",
             on: databaseTableName,

@@ -8,43 +8,27 @@
 import Kingfisher
 import SwiftUI
 
-// picking which entry on a service this series is.
-//
-// staged rather than instant-apply, and nothing is preselected even when one
-// result comes back alone: linking writes to a public list and can overwrite
-// somebody's progress, so it never happens without a deliberate tap. the same
-// reasoning DetailsDisambiguation is built on, and the same shape
 struct DetailsTrackerLink: View {
     let tracker: Tracker
     let seriesTitle: String
-    // what is already linked, so re-linking a service shows what it would replace
     let existing: DetailsTracking.Link?
     let adult: Bool
-    // how far this app has you read, shown beside the service's own number
     let localProgress: Int
     let scoreFormat: ScoreFormat
     var onSearch: (String) async throws -> [TrackerCandidate]
-    // the setup flow searches this service before the reader opens the sheet.
-    // awaiting it rather than re-running is what makes opening mid-flight wait
-    // on the request already in the air instead of spending a second one - the
-    // sheet sits in the pending state it would have been in anyway. nil means
-    // nothing was prefetched, or the prefetch failed, and this searches as usual
+    // awaited rather than re-run - opening mid-flight (the setup flow already
+    // searches before the sheet opens) waits on the request already in the
+    // air instead of starting a second one. nil means nothing was prefetched
+    // or the prefetch failed, and this searches as usual
     var onPrefetched: () async -> DetailsComposer.Tracking.Search? = { nil }
-    // the reader's entry for one media, fetched only when they open it
     var onLoadEntry: (Int64) async throws -> TrackerEntry
     var onCatchUp: (Int) -> Void
     var onPushLocal: () -> Void
-    // remote entries already spoken for by another series in the library
     var onConflicts: () async -> [Int64: String]
-    // a pasted link or a bare id, for the entry search cannot reach
     var onResolve: (String) async -> TrackerCandidate?
     var onCommit: (TrackerCandidate, TrackerUpdate) async throws -> Void
-    // reached only after a link has landed on this screen, where the commit has
-    // become "Synced" and tapping it again is how the reader backs out
     var onUnlink: (Bool) -> Void
     var onCancel: () -> Void
-    // passed through to the candidate screen this pushes - off inside the
-    // add-to-library flow, where a fresh row has nothing to reconcile
     var reconciles: Bool = true
 
     @Environment(\.dimensions) private var dimensions
@@ -59,30 +43,19 @@ struct DetailsTrackerLink: View {
     @State private var seeded = false
 
     private enum Layout {
-        // wider than a thumbnail now that the row carries three text blocks -
-        // the artwork sets the row's height and the text decides how far past it
         static let coverWidth: CGFloat = 84
         static let coverAspect: CGFloat = 11 / 16
         static let border: CGFloat = 2
         static let titleLines = 3
         static let authorLines = 2
-        // two, not four: anyone opening this sheet already knows the plot - it is
-        // why they are linking it - and four lines was the tallest and least
-        // deciding block on the row
         static let synopsisLines = 2
-        // context, not a deciding fact, so it sits under everything else
         static let synopsisOpacity: Double = 0.7
         static let placeholderOpacity: Double = 0.1
-        // enough to drop a row out of the scan without hiding it. two rows earn
-        // it: one already claimed by another series in the library, and a novel
-        // in a comic reader. both stay pickable - the first when the reader is
-        // correcting the OTHER series' link, the second because a service that
-        // files a work as a novel is sometimes the one that is wrong
+        // both a conflicted row and a novel result stay pickable - dimmed,
+        // not hidden, since the reader may genuinely mean either one
         static let sidelinedOpacity: Double = 0.55
         static let settle: Animation = .smooth(duration: 0.2)
-        // long enough that typing a title does not fire a request per keystroke,
-        // short enough that stopping feels like it answered immediately. also
-        // what keeps anilist inside 30 requests a minute while a reader types
+        // also keeps AniList inside its 30-requests-a-minute limit while typing
         static let debounce: Duration = .milliseconds(400)
     }
 
@@ -98,9 +71,6 @@ struct DetailsTrackerLink: View {
                         Button("Cancel", action: onCancel)
                     }
                 }
-                // the row opens the entry rather than selecting it: what decides
-                // a link is the reader's own standing on that entry, and a
-                // fifty-row list cannot carry fifty of those
                 .navigationDestination(item: $opened) { candidate in
                     DetailsTrackerCandidate(
                         tracker: tracker,
@@ -114,9 +84,6 @@ struct DetailsTrackerLink: View {
                         onUnlink: onUnlink,
                         onCatchUp: onCatchUp,
                         onPushLocal: onPushLocal,
-                        // the same exit the list behind it offers, so leaving is
-                        // one tap from either page rather than a pop and then a
-                        // Cancel
                         onClose: onCancel
                     )
                 }
@@ -124,8 +91,6 @@ struct DetailsTrackerLink: View {
         .presentationDetents([.large])
         .presentationDragIndicator(.visible)
         .task {
-            // seeded from the title the reader sees, which is the one they would
-            // have typed. the first search runs without them asking
             query = seriesTitle
 
             if let prefetched = await onPrefetched() {
@@ -140,9 +105,9 @@ struct DetailsTrackerLink: View {
             seeded = true
         }
         .onChange(of: query) { _, text in
-            // the seed is not a keystroke. assigning the series title above fires
-            // this, and letting it schedule meant every open ran the same search
-            // twice - once directly and once again 400ms later
+            // seeding `query` above fires this too - without the guard, every
+            // open ran the same search twice: once directly, once again
+            // 400ms later
             guard seeded else { return }
             schedule(text)
         }
@@ -213,11 +178,6 @@ struct DetailsTrackerLink: View {
         }
     }
 
-    // top-aligned throughout, and nothing pinned to the bottom. metadata anchored
-    // to the base of a row whose height comes from the artwork floats sixty
-    // points below anything it describes when the entry is thin, and empty space
-    // under a stack reads as air where the same space inside one reads as a
-    // missing element
     private func Row(_ candidate: TrackerCandidate) -> some View {
         let clash = conflicts[candidate.id]
         let sidelined = clash != nil || candidate.isNovel
@@ -227,10 +187,6 @@ struct DetailsTrackerLink: View {
 
             VStack(alignment: .leading, spacing: dimensions.spacing.space4) {
                 HStack(alignment: .top, spacing: dimensions.spacing.space8) {
-                    // three lines and the priority, because the title is what
-                    // actually separates a work from its own colour edition -
-                    // truncating it mid-word to make room for a year pill spends
-                    // the deciding field on the least deciding one
                     Text(candidate.title)
                         .font(.subheadline)
                         .fontWeight(.semibold)
@@ -260,16 +216,6 @@ struct DetailsTrackerLink: View {
 
                 Meta(candidate)
 
-                // the highest-value thing on the row and the only fact the app
-                // alone can know: two library rows aimed at one remote entry push
-                // against each other forever, and the entry itself never says
-                // which one is winning. named, because a bare warning would send
-                // the reader to another screen to learn what they need here
-                // a badge rather than a warning line: this is not a fault, it
-                // is a FACT about the reader's own library - that entry is spoken
-                // for by a series they already have. the neutral tone says so
-                // without implying they did something wrong, and the series name
-                // sits beside it in the app's own voice rather than the service's
                 if let clash {
                     HStack(alignment: .firstTextBaseline, spacing: dimensions.spacing.space4) {
                         Badge(text: "IN YOUR LIBRARY", tone: .neutral, size: .compact)
@@ -296,10 +242,6 @@ struct DetailsTrackerLink: View {
             in: .rect(cornerRadius: dimensions.radius.radius16, style: .continuous)
         )
         .contentShape(.rect)
-        // faded as a set rather than per element: everything on a sidelined row is
-        // equally less relevant, and dimming only the text would leave the cover
-        // at full strength pulling the eye to the row the reader is least likely
-        // to want. still selectable
         .opacity(sidelined ? Layout.sidelinedOpacity : 1)
         .accessibilityHint(hint(clash: clash, novel: candidate.isNovel))
     }
@@ -312,10 +254,6 @@ struct DetailsTrackerLink: View {
         return parts.joined(separator: " ")
     }
 
-    // year is text rather than a pill: a date is not a state, and giving it pill
-    // weight put it in competition with the one mark that is. the chapter count
-    // is simply absent when null - permanent and normal for anything still
-    // publishing, and the ONGOING mark two lines up already says so
     @ViewBuilder
     private func Meta(_ candidate: TrackerCandidate) -> some View {
         let year = candidate.year
@@ -341,9 +279,7 @@ struct DetailsTrackerLink: View {
     private func Marks(_ candidate: TrackerCandidate) -> some View {
         HStack(spacing: dimensions.spacing.space4) {
             // the classic misfire is linking the light novel to the manga -
-            // same title, same author, same year, often the same cover art. it
-            // only appears when the answer is surprising, since manga is the
-            // assumption every reader already brings
+            // same title, author and year, often the same cover art
             if let format = candidate.format {
                 Badge(text: format.uppercased(), tone: .warning, size: .compact)
             }
@@ -443,9 +379,6 @@ struct DetailsTrackerLink: View {
 // MARK: - Previews
 
 extension TrackerCandidate {
-    // covers are left nil on purpose: a preview that reaches the network renders
-    // differently depending on whether it did, which is the one thing a specimen
-    // must not do
     fileprivate static let samples: [TrackerCandidate] = [
         .init(
             id: 101177,
@@ -477,7 +410,6 @@ extension TrackerCandidate {
             synopsis: "A light novel adaptation.",
             format: "Novel"
         ),
-        // no author and no synopsis - the row has to survive both being absent
         .init(
             id: 30013,
             title: "Girlfriend, Girlfriend: Colour Edition",
@@ -524,7 +456,6 @@ private struct LinkPreview: View {
                 case .results:
                     return TrackerCandidate.samples
                 case .slow:
-                    // long enough to sit in the skeleton and look at it
                     try await Task.sleep(for: .seconds(30))
                     return TrackerCandidate.samples
                 case .empty:
@@ -563,8 +494,6 @@ private struct LinkPreview: View {
     LinkPreview(conflicts: [101177: "Girlfriend, Girlfriend"])
 }
 
-// the state the sheet opens in every time, and the one a debounce spends most
-// of its life in
 #Preview("Searching") {
     LinkPreview(outcome: .slow)
 }
@@ -573,14 +502,10 @@ private struct LinkPreview: View {
     LinkPreview(outcome: .empty)
 }
 
-// a throttle rather than an outage, because that is the failure this sheet will
-// actually meet - anilist runs at thirty requests a minute
 #Preview("Failed") {
     LinkPreview(outcome: .failing)
 }
 
-// re-linking states what it would replace, or the reader is committing over
-// something they cannot see
 #Preview("Change link") {
     LinkPreview(
         existing: .init(

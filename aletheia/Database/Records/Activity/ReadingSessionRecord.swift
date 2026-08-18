@@ -78,8 +78,6 @@ extension ReadingSessionRecord {
             ifNotExists: true
         )
 
-        // time spent on one series. reading_event carries the same pair and this
-        // table was the half that went without
         try db.create(
             index: "idx_reading_session_seriesId_startedDate",
             on: databaseTableName,

@@ -38,9 +38,6 @@ final class SearchViewModel {
 
     // MARK: Adult sources
 
-    // mirrors the stored preference, written by the view that owns the @AppStorage.
-    // this screen has no filters, so a tick cannot be the gate here - the toggle
-    // IS the ask, and changing it re-runs the search the way a keystroke does
     var includeAdult = Preferences.Default.includeAdultSources {
         didSet {
             guard includeAdult != oldValue else { return }
@@ -48,8 +45,7 @@ final class SearchViewModel {
         }
     }
 
-    // while false, adultOnly sources are not merely excluded - they do not
-    // exist, so nothing counts them or hints at them
+    // while false, adultOnly sources don't just get excluded - they don't exist
     var bypassAdult = Preferences.Default.bypassAdultSources {
         didSet {
             guard bypassAdult != oldValue else { return }
@@ -57,8 +53,8 @@ final class SearchViewModel {
         }
     }
 
-    // never filtered out of `sources` itself - correlators are built per source at
-    // configure and an excluded one simply never observes
+    // never filtered out of `sources` itself - correlators are built per source
+    // at configure, and an excluded one simply never observes
     private var searchable: [Source] {
         bypassAdult && includeAdult ? sources : sources.filter { !$0.descriptor.adultOnly }
     }
@@ -83,8 +79,6 @@ final class SearchViewModel {
         !sections.isEmpty && sections.allSatisfy { $0.phase == .loaded && $0.stubs.isEmpty }
     }
 
-    // one equatable value covering every state the results area renders from,
-    // so a single .animation(value:) can drive all section transitions
     var stateKey: String {
         (active ? "active" : "idle")
             + sections.map { "|\($0.id):\($0.phase.rawValue):\($0.stubs.count)" }.joined()
@@ -157,10 +151,9 @@ final class SearchViewModel {
             guard let self, !Task.isCancelled, self.generation == expected else { return }
             guard !self.sources.isEmpty else { return }
 
-            // captured once. `sections` is positional - searchSection writes into
-            // sections[index], and the index comes from this array - so re-reading
-            // the computed property would let a toggle flipped between the two
-            // uses file one source's results under another's heading
+            // captured once - sections[index] below is positional against this
+            // array, so re-reading the computed property between the two uses
+            // could file one source's results under another's heading
             let searching = self.searchable
 
             self.submitted = trimmed
@@ -183,8 +176,6 @@ final class SearchViewModel {
         }
     }
 
-    // a stale task must never write into a newer run's sections, so every write
-    // is gated on the generation it was spawned for
     private func searchSection(index: Int, source: Source, text: String, generation expected: Int)
         async
     {

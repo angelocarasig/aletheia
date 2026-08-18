@@ -12,16 +12,14 @@ struct SourceCard: View {
     var stub: SeriesStub?
     var referer: URL?
     var match: SeriesMatch?
-    // resolved by the caller from the preference and the reveal switch together,
-    // so the card never reads either and a grid cannot disagree with itself
+    // resolved by the caller, not computed here - otherwise cards in the same
+    // grid could disagree on whether they're obscured
     var obscured: Bool = false
-    // a picker's own choice, not a match against the library - a different
-    // question from `match`, so it gets its own flag rather than overloading it
     var selected: Bool = false
 
     @Environment(\.dimensions) private var dimensions
-    // the downsampler's scale factor defaults to 1, so without this a retina
-    // slot decodes at a third of its resolution
+    // DownsamplingImageProcessor's scale defaults to 1 - without this, retina
+    // slots decode at a third of their resolution
     @Environment(\.displayScale) private var displayScale
 
     @State private var slot: CGSize = .zero
@@ -46,8 +44,8 @@ struct SourceCard: View {
     private var Cover: some View {
         Color.clear
             .aspectRatio(Layout.coverAspect, contentMode: .fit)
-            // rounded because the size is part of the downsampler's cache key,
-            // and a fractional point mints a fresh decode every layout pass
+            // rounded because size is part of the downsampler's cache key - a
+            // fractional point mints a fresh decode every layout pass
             .onGeometryChange(for: CGSize.self) { proxy in
                 CGSize(width: proxy.size.width.rounded(), height: proxy.size.height.rounded())
             } action: {
@@ -55,9 +53,8 @@ struct SourceCard: View {
             }
             .overlay {
                 if let cover = stub?.cover {
-                    // zero until the first layout pass, and a downsampler built on
-                    // zero caches under a size that describes nothing - so the
-                    // load waits a frame
+                    // slot is zero until the first layout pass - DownsamplingImageProcessor
+                    // built on a zero size caches under a size that describes nothing
                     if slot.width > 0 {
                         KFImage(cover)
                             .requestModifier(AnyModifier.referer(referer))
@@ -75,8 +72,8 @@ struct SourceCard: View {
                     Placeholder
                 }
             }
-            // blur before the badge, so a match marker stays readable on a
-            // covered card - it is our own annotation, not the artwork
+            // obscured must apply before the badge overlays, or the match
+            // marker - our own annotation, not artwork - gets blurred too
             .obscured(obscured)
             .overlay { Badge }
             .overlay { Selected }
@@ -93,7 +90,6 @@ struct SourceCard: View {
                 .truncationMode(.tail)
                 .frame(maxWidth: .infinity, alignment: .leading)
         } else {
-            // stands in for the two lines the real title reserves
             VStack(alignment: .leading, spacing: dimensions.spacing.space4) {
                 Bar(height: Layout.titleHeight)
                 Bar(height: Layout.subtitleHeight)
@@ -102,8 +98,8 @@ struct SourceCard: View {
         }
     }
 
-    // unshimmered on its own - callers rendering a full grid of empty cards apply
-    // .shimmer() to the container so the sweep runs across the whole grid
+    // deliberately unshimmered here - callers rendering a grid of empty cards
+    // apply .shimmer() to the container so the sweep runs across the whole grid
     private var Placeholder: some View {
         Rectangle()
             .fill(.primary.opacity(0.1))
@@ -116,10 +112,6 @@ struct SourceCard: View {
             .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    // the same scrim-plus-centred-glyph recipe LibraryCard's Checking uses for
-    // "this card is the one something is happening to" - here the something is
-    // a picker's choice rather than a running check, so the glyph is a tick
-    // and the tint is success rather than brand
     @ViewBuilder
     private var Selected: some View {
         if selected {
@@ -133,8 +125,6 @@ struct SourceCard: View {
         }
     }
 
-    // only states worth acting on are marked - an unmatched result stays silent.
-    // both states share one treatment so they read as the same kind of signal
     @ViewBuilder
     private var Badge: some View {
         switch match?.outcome {
@@ -147,8 +137,6 @@ struct SourceCard: View {
         }
     }
 
-    // the scrim carries the state at a glance and the corner mark says which one,
-    // so the artwork stays readable underneath instead of hosting a centred icon
     private func Marker(systemImage: String, tint: Color) -> some View {
         Color.black.opacity(Layout.scrimOpacity)
             .overlay(alignment: .topTrailing) {

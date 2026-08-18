@@ -8,8 +8,9 @@
 import Kingfisher
 import SwiftUI
 
-// its own reference type so only the backdrop observes it - held as state beside
-// the scroll view, every update would re-evaluate a body holding every chapter
+// its own reference type so only the backdrop observes it - as @State beside
+// the scroll view, every scroll update would re-evaluate a body holding
+// every chapter
 @MainActor
 @Observable
 final class DetailsScroll {
@@ -20,13 +21,12 @@ extension DetailsBackdrop {
     // read by the scroll spacer and the skeleton too, so the three stay aligned
     static let heroHeight: CGFloat = 200
 
-    // how far you scroll before the blur and the dim reach full strength.
-    // points, never a fraction of the content: a 1925 chapter series and an 8
-    // chapter one must feel identical
+    // points, never a fraction of content height - a 1925 chapter series and
+    // an 8 chapter one must feel identical
     static let blurDistance: CGFloat = 200
 
-    // the scroll callback only fires when its value changes, so rounding bounds
-    // the blur to a few dozen updates rather than one a frame
+    // rounds the scroll offset so the callback (which only fires on change)
+    // fires a few dozen times rather than once a frame
     static let blurStep: CGFloat = 8
 }
 
@@ -34,19 +34,14 @@ struct DetailsBackdrop: View {
     let cover: URL?
     let referer: URL?
     let scroll: DetailsScroll
-    // how far you scroll before the blur and the dim are at full strength. this
-    // is per-surface because a screen with a tall header has further to scroll
-    // before the artwork is in the way, and the caller's own clamp has to use
-    // the same distance, which is why it is passed rather than read off the type
+    // passed rather than read off the type - per-surface, because a caller
+    // with a taller header needs its own clamp to agree with this distance
     var blurDistance: CGFloat = DetailsBackdrop.blurDistance
 
-    // where the artwork fades out, as fractions of its own 700pt height: 0 is
-    // its top edge, 1 its bottom. above fadeStart it is untouched, below fadeEnd
-    // it is gone, and between them it is on its way out.
-    //
-    // lowering BOTH moves the whole fade up. lowering only fadeStart makes the
-    // fade longer, which is softer rather than higher - the mistake that is easy
-    // to make here, because it looks like nothing moved
+    // fractions of the artwork's own 700pt height: 0 is its top edge, 1 its
+    // bottom. lowering BOTH moves the whole fade up; lowering only fadeStart
+    // makes the fade longer (softer, not higher) - easy to mistake for no
+    // change at all
     var fadeStart: CGFloat = Layout.fadeStart
     var fadeEnd: CGFloat = Layout.fadeEnd
 
@@ -61,16 +56,16 @@ struct DetailsBackdrop: View {
         static let sample = CGSize(width: 120, height: 180)
         static let radius: CGFloat = 12
 
-        // white washes artwork out faster than black darkens it, so light needs
-        // a gentler range for the same perceived effect
+        // white washes artwork out faster than black darkens it, so light
+        // needs a gentler range for the same perceived effect
         enum Dim {
             static let dark: ClosedRange<Double> = 0.20...0.65
             static let light: ClosedRange<Double> = 0.08...0.40
         }
     }
 
-    // downsampled first - kingfisher blurs on the CPU at full pixel size, a real
-    // hitch on a 6MP cover for detail this radius discards anyway
+    // downsampled first - Kingfisher blurs on the CPU at full pixel size,
+    // which hitches on a 6MP cover for detail this radius discards anyway
     private static let softened: any ImageProcessor =
         DownsamplingImageProcessor(size: Layout.sample)
         |> BlurImageProcessor(blurRadius: Layout.radius)
@@ -84,8 +79,9 @@ struct DetailsBackdrop: View {
         return range.lowerBound + progress * (range.upperBound - range.lowerBound)
     }
 
-    // a pre-blurred copy crossfades over the sharp one: animating a blur radius
-    // re-runs a full screen convolution every frame, opacity does not
+    // a pre-blurred copy crossfades over the sharp one - animating a blur
+    // radius directly re-runs a full-screen convolution every frame, opacity
+    // does not
     var body: some View {
         GeometryReader { geometry in
             ZStack {
@@ -106,10 +102,9 @@ struct DetailsBackdrop: View {
     }
 
     private func Artwork(_ size: CGSize, processor: (any ImageProcessor)? = nil) -> some View {
-        // the animation sits on this stable Color.clear ancestor, not on the
-        // image: .id(cover) replaces the KFImage, so an animation modifier on the
-        // image itself is torn down with it and never drives the transition. keyed
-        // on cover alone, so it never fires on the scroll-driven blur opacity
+        // animation sits on this stable Color.clear ancestor, not the image -
+        // .id(cover) replaces the KFImage, so an animation on the image itself
+        // would be torn down with it and never drive the transition
         Color.clear
             .frame(width: size.width, height: Layout.height)
             .overlay {
@@ -133,7 +128,6 @@ struct DetailsBackdrop: View {
             .shimmer()
     }
 
-    // see-through at fadeStart, solid canvas at fadeEnd
     private var Fade: some View {
         LinearGradient(
             colors: [.clear, Palette.canvas],

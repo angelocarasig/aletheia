@@ -21,12 +21,6 @@ private struct DisconnectedMigrationStepButtonStyle: ButtonStyle {
     }
 }
 
-// one step, not two - there is no "from" to pick, disconnected is a fixed
-// query (origin.sourceId IS NULL, the only thing "disconnected" means in
-// this codebase - DisconnectedOriginMigrationSource). just which sources to
-// search across and Migrate-or-Copy, then the same queue source migration
-// uses. nothing here writes to the database - the first write is a row's
-// own Save, inside OriginMigrationCommitter.commit
 struct DisconnectedSourceMigrationScreen: View {
     var onFinish: () -> Void
 
@@ -57,9 +51,7 @@ struct DisconnectedSourceMigrationScreen: View {
             guard composer == nil else { return }
             composer = makeComposer()
         }
-        // Migrate/Copy is picked on this same step, but the committer that
-        // uses it is built ahead of time - re-run so a mode change before
-        // Start is tapped actually takes
+        // committer captures mode as a let at init, so a mode change needs a rebuild here
         .onChange(of: mode) {
             composer = makeComposer()
         }

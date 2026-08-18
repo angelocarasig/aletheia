@@ -89,9 +89,8 @@ struct ModelBundle: Sendable {
         return ModelBundle(manifest: manifest, metadata: metadata, mapped: mapped)
     }
 
-    // a typed view of one named array. the dtype in the manifest has to agree
-    // with the Swift type asked for, which is what stops a uint16 column index
-    // being read as uint32 - the same bytes, half the elements, no error
+    // a typed view of one named array - the guard below is what stops a uint16
+    // column being silently read as uint32
     func array<Element: ModelScalar>(
         _ file: String,
         _ name: String,

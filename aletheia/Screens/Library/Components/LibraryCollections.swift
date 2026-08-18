@@ -7,9 +7,6 @@
 
 import SwiftUI
 
-// the collection switcher as a floating control, mirroring LibraryActions across
-// the screen. at rest it is one circle - the navigation title already says which
-// collection you are in, so the button only has to be the way to change it
 struct LibraryCollections: View {
     @Environment(\.dimensions) private var dimensions
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -20,8 +17,8 @@ struct LibraryCollections: View {
     var onCreate: () -> Void
     var onRename: (LibraryViewModel.Collection) -> Void
     var onDelete: (LibraryViewModel.Collection) -> Void
-    // owned by the screen, not the control: the two floating clusters are
-    // mutually exclusive, and only their parent can see both
+    // @Binding, not @State - the two floating clusters are mutually exclusive,
+    // and only the screen can see both to enforce that
     @Binding var expanded: Bool
 
     @Namespace private var glass
@@ -52,8 +49,6 @@ struct LibraryCollections: View {
 // MARK: - Root
 
 extension LibraryCollections {
-    // tinted whenever a collection is active, so the control itself answers "am I
-    // still filtered" without opening
     fileprivate var Root: some View {
         Image(systemName: expanded ? "xmark" : "square.stack")
             .contentTransition(.symbolEffect(.replace))
@@ -78,9 +73,8 @@ extension LibraryCollections {
 // MARK: - Panel
 
 extension LibraryCollections {
-    // wrapping rather than scrolling: a horizontal row inside a vertical scroll
-    // view is a real assistive-tech trap, and every collection visible at once is
-    // the whole reason this opens instead of being a menu
+    // FlowLayout, not a horizontal scroll row - nesting a horizontal scroll
+    // inside this vertical one is an accessibility trap
     fileprivate var Panel: some View {
         VStack(alignment: .leading, spacing: dimensions.spacing.space12) {
             Text("Collections")
@@ -141,8 +135,6 @@ extension LibraryCollections {
         .foregroundStyle(isSelected ? AnyShapeStyle(.brand) : AnyShapeStyle(.primary))
         .contentShape(.capsule)
         .tappable {
-            // one transaction, so the panel closing and the grid reflowing read
-            // as halves of the same gesture
             withAnimation(animation) {
                 selected = id
                 expanded = false
@@ -151,7 +143,6 @@ extension LibraryCollections {
         .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
     }
 
-    // dashed, so it reads as an action rather than another collection to pick
     fileprivate var New: some View {
         Label("New", systemImage: "plus")
             .font(.subheadline)

@@ -15,8 +15,9 @@
     // above it, so anything undocumented fails here first rather than inside the
     // scorer where a wrong count reads as a wrong recommendation
     //
-    // this is a probe, not the wiring. it is replaced by Composition owning a
-    // Recommender at step 7 and should be deleted then
+    // this is a probe, not the wiring. kept deliberately past Composition owning
+    // a Recommender - with no test target it is the only regression check for
+    // steps 2 through 6 (docs/recommendations/port-plan.md)
     extension ModelBundle {
         private struct GoldenCase: Decodable {
             struct Row: Decodable {
@@ -120,7 +121,6 @@
                             + " - synopsis \(r.synopsis?.count ?? 0) chars")
                 }
 
-                // the projected path: tags only, no title anything can resolve
                 let projected = try await recommender.recommend(
                     Payload(
                         titles: ["zzzz no such series zzzz"],
@@ -161,7 +161,6 @@
                 let titleOff = try bundle.array("titles.bin", "offsets", of: UInt32.self)
                 let titles = try bundle.blob("titles.blob")
 
-                // counts the manifest states, re-derived from the mapped bytes
                 var problems: [String] = []
                 func expect(_ ok: Bool, _ what: String) {
                     if !ok { problems.append(what) }

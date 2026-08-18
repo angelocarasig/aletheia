@@ -10,8 +10,7 @@ import WebKit
 
 enum RenderError: DescribableError {
     case noContent
-    // distinct from noContent because it is the one that is worth retrying: the
-    // page was never given a chance to answer, rather than answering emptily
+    // worth retrying, unlike noContent: the page never got a chance to answer
     case timedOut
 
     var errorDescription: String? {
@@ -96,8 +95,6 @@ final class WebRenderer {
         return bodies
     }
 
-    // paginates by clicking a DOM pager and returns each page's outerHTML, for
-    // sources whose data exists only in the rendered DOM
     func renderPaged(
         _ url: URL,
         credential: SourceCredential,
@@ -130,9 +127,8 @@ final class WebRenderer {
         return pages
     }
 
-    // runs one async JS function in the page and returns whatever string it
-    // resolves to. the script owns its own waiting and paging, so a whole
-    // multi-page harvest costs one round trip instead of one per step
+    // the script owns its own waiting and paging, so a whole multi-page harvest
+    // costs one round trip instead of one per step
     func run(
         _ url: URL,
         credential: SourceCredential,
@@ -155,10 +151,7 @@ final class WebRenderer {
             storage: storage
         )
         let built = clock.now
-        // the script's result is only reachable while the page is - releasing it
-        // mid-call destroys the completion handler (WKErrorDomain 4). every other
-        // method here touches the page in a loop and never notices; this one
-        // calls it once, so ARC is free to let go the moment the call suspends
+        // releasing the page mid-call destroys the completion handler (WKErrorDomain 4)
         defer { withExtendedLifetime(session) {} }
 
         guard try await session.ready(anchor: selector, within: timeout) else {
@@ -171,8 +164,6 @@ final class WebRenderer {
         let json = try await bounded(
             session, script: script, arguments: arguments, timeout: timeout)
 
-        // split three ways because they fail for different reasons: build is
-        // process launch, settle is the site booting, script is the work itself
         log.log(
             "run: build \(Self.ms(built - started))ms · settle \(Self.ms(settled - built))ms · script \(Self.ms(clock.now - settled))ms · \(json.count) bytes",
             level: .debug,
@@ -183,8 +174,7 @@ final class WebRenderer {
 
     // callJavaScript has no timeout of its own, and discarding the page does not
     // reliably resume a pending call - WebKit drops the handler outright when the
-    // content process is torn down, stranding the await forever. so the timeout
-    // has to win the race rather than be trusted to unstick the loser
+    // content process is torn down, stranding the await forever
     private func bounded(
         _ session: Session,
         script: String,

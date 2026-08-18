@@ -7,10 +7,6 @@
 
 import SwiftUI
 
-// the bigger picture behind a row's compact summary: every candidate as a
-// SourceCard in a grid, plus the query that found them, editable in place.
-// tapping a card commits the pick and closes - there is nothing else to
-// confirm, the same one-step choice DetailsTrackerLink already uses
 struct MigrationCandidatePicker: View {
     let title: String
     let candidates: [MigrationCandidate]
@@ -49,9 +45,6 @@ struct MigrationCandidatePicker: View {
         static let skeletonCount = 6
     }
 
-    // branch and animation share this one value, per docs/design.md §1 - a
-    // surface that keys its swap on a different flag than the one it
-    // branches on is how a transition goes dead or partial
     private var phase: LoadPhase {
         if searching { .pending } else if candidates.isEmpty { .empty } else { .content }
     }

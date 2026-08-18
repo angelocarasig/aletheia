@@ -7,9 +7,6 @@
 
 import UIKit
 
-// a stroked ring that fills as the bytes land, with the percentage inside it.
-// a page is the content surface, so its pending state shows how far along it is
-// rather than an uncontextual spinner - see docs/design.md §1
 final class PageProgressView: UIView {
     private let track = CAShapeLayer()
     private let fill = CAShapeLayer()
@@ -20,8 +17,6 @@ final class PageProgressView: UIView {
         static let stroke: CGFloat = diameter * (16.0 / 140.0)
         static let text: CGFloat = diameter * (36.0 / 140.0)
         static let trackAlpha: CGFloat = 0.15
-        // a cache hit completes with no progress callbacks at all, so nothing is
-        // shown until a load has been running long enough to be worth reporting
         static let threshold: TimeInterval = 0.15
         static let settle: CFTimeInterval = 0.25
     }
@@ -67,8 +62,6 @@ final class PageProgressView: UIView {
         DispatchQueue.main.asyncAfter(deadline: .now() + Layout.threshold, execute: reveal)
     }
 
-    // a response without a length cannot be a fraction, so the ring stays at
-    // zero and the page simply arrives - the same shape as a cache hit
     func update(received: Int64, total: Int64) {
         guard total > 0 else { return }
         set(min(1, max(0, Double(received) / Double(total))), animated: true)

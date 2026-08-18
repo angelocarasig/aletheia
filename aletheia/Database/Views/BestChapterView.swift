@@ -57,7 +57,6 @@ extension BestChapterView {
                     o.seriesId,
                     m.showHalfChapters,
                     m.showAllChapters,
-                    -- compute visibility based on half-chapter filtering rules
                     -- isVisible = 1 means this chapter should be shown to the user
                     CASE
                         WHEN m.showAllChapters = 1 THEN 1
@@ -65,16 +64,12 @@ extension BestChapterView {
                         WHEN c.number = CAST(c.number AS INTEGER) THEN 1
                         ELSE 0
                     END as isVisible,
-                    -- rank chapters within each series/number combination
                     -- rank = 1 means this is the best source for this chapter number
                     ROW_NUMBER() OVER (
                         PARTITION BY o.seriesId, c.number
                         ORDER BY
-                            -- language outranks origin deliberately: a source is a
-                            -- preference, a language you cannot read is a wall. the
-                            -- preferred source's chinese copy loses to a lower
-                            -- source's english one, and two copies in the same
-                            -- language tie here and fall through to origin as before
+                            -- language outranks origin deliberately - see
+                            -- SeriesLanguagePriorityRecord
                             COALESCE(slp.priority, 999) ASC,  -- first: language priority (null treated as worst)
                             o.priority ASC,  -- then: origin priority (0 is best)
                             COALESCE(osp.priority, 999) ASC,  -- then: scanlator priority (null treated as worst)
@@ -115,7 +110,6 @@ extension BestChapterView {
     }
 
     static func createIndexes(db: Database) throws {
-        // optimize the window function partitioning and ordering
         try db.create(
             index: "idx_chapter_origin_scanlator_priority",
             on: ChapterRecord.databaseTableName,
@@ -127,7 +121,6 @@ extension BestChapterView {
             ifNotExists: true
         )
 
-        // optimize the scanlator priority join
         try db.create(
             index: "idx_origin_scanlator_priority_covering",
             on: OriginScanlatorPriorityRecord.databaseTableName,

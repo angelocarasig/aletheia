@@ -68,7 +68,6 @@ struct BackupExportScreen: View {
         ) { result in
             switch result {
             case .success:
-                // stamped on a confirmed save, not when the file is built
                 let now = Date.now
                 UserDefaults.standard.set(now, forKey: Preferences.Key.libraryBackupExportedDate)
                 lastBackupDate = now

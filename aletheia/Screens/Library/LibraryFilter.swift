@@ -6,38 +6,21 @@
 //
 
 import Foundation
-// for ImageResource - the tracker chips draw the service marks, and the type is
-// generated into the asset symbol namespace rather than Foundation
 import SwiftUI
 import Tagged
 
-// an empty set means "not filtering on this", never "match nothing" - the two
-// read the same in a Set and only one of them is ever what someone meant.
-//
-// groups are ANDed and options within a group are ORed, which is what every
-// filter panel does and what people expect without being told: reading OR
-// planning, AND ongoing
 struct LibraryFilter: Equatable, Codable {
-    // status, publication and classification carry real opposites - "not
-    // dropped" or "not hiatus" is as normal a thing to want as "is reading" - so
-    // all three are tri-state. read progress is derived per-entry from dates and
-    // counts rather than stored, and "not unread" reads as a strange thing to
-    // ask for, so it stays a plain include-only set
     var statuses = TriSet<Status>()
     var publications = TriSet<Publication>()
     var classifications = TriSet<Classification>()
     var readStates: Set<ReadState> = []
 
-    // by id, not by name: a tag renamed upstream keeps the filter pointing at the
-    // same tag, and a deleted one drops out on its own
     var tags = TriSet<TagRecord.ID>()
     var sources = TriSet<SourceRecord.ID>()
     var trackers = TriSet<TrackerFilter>()
 
-    // rowids are positive and autoincrementing, so a negative one can never
-    // collide with a real source. stands for "this series has an origin whose
-    // source is gone" - a state worth filtering for, and the only one that has
-    // no row to name it
+    // sentinel for "series has an origin whose source no longer exists" - rowids
+    // are positive, so -1 never collides with a real source
     static let detachedSource = SourceRecord.ID(rawValue: -1)
 
     var isActive: Bool {
@@ -54,9 +37,8 @@ struct LibraryFilter: Equatable, Codable {
             + trackers.count
     }
 
-    // asOf rather than a date read in here: one recency option compares against
-    // now, and a predicate that reads the clock itself answers differently for
-    // each entry in the same pass
+    // asOf is passed in rather than read here - a predicate that reads the clock
+    // itself would answer differently for each entry in the same pass
     func matches(_ entry: LibraryViewModel.Entry, asOf: Date) -> Bool {
         if !statuses.matches(entry.status) {
             return false
@@ -66,8 +48,6 @@ struct LibraryFilter: Equatable, Codable {
             return false
         }
 
-        // a series with no origins has nothing to compare, so any filter on
-        // origin-owned metadata excludes it rather than letting it through
         if !publications.isEmpty {
             guard let publication = entry.publication, publications.matches(publication) else {
                 return false
@@ -83,9 +63,6 @@ struct LibraryFilter: Equatable, Codable {
         return true
     }
 
-    // tags, sources and trackers are relationships, not columns on the row, so
-    // they are matched against maps the view model holds rather than against the
-    // entry
     func matches(
         tagIDs: Set<TagRecord.ID>,
         sourceIDs: Set<SourceRecord.ID>,
@@ -99,8 +76,6 @@ struct LibraryFilter: Equatable, Codable {
             return false
         }
 
-        // ORed like every other group, which is what makes anilist + untracked
-        // mean "linked there, or linked nowhere" rather than a contradiction
         if !trackers.excluded.isEmpty, trackers.excluded.contains(where: { $0.matches(linked) }) {
             return false
         }
@@ -123,10 +98,6 @@ struct LibraryFilter: Equatable, Codable {
     }
 }
 
-// off, then included, then excluded, then off again - a group narrows to what
-// it includes, hides what it excludes, and excluding always wins when the same
-// option somehow ended up in both. an empty TriSet means "not filtering on
-// this", the same rule the plain Set groups already followed
 struct TriSet<Element: Hashable & Codable>: Equatable, Codable {
     var included: Set<Element> = []
     var excluded: Set<Element> = []
@@ -157,14 +128,12 @@ struct TriSet<Element: Hashable & Codable>: Equatable, Codable {
         }
     }
 
-    // a single column value against the group - status, publication, classification
     func matches(_ value: Element) -> Bool {
         if excluded.contains(value) { return false }
         if !included.isEmpty, !included.contains(value) { return false }
         return true
     }
 
-    // a relationship an entry can carry more than one of - tags, sources
     func matchesAny(_ values: Set<Element>) -> Bool {
         if !excluded.isDisjoint(with: values) { return false }
         if !included.isEmpty, included.isDisjoint(with: values) { return false }
@@ -172,10 +141,6 @@ struct TriSet<Element: Hashable & Codable>: Equatable, Codable {
     }
 }
 
-// a link is a relationship, so this sits with tags and sources rather than with
-// the column-backed groups. untracked is a real answer rather than the absence
-// of one - "which of these have I never linked" is the question the group is
-// most often opened for
 enum TrackerFilter: Codable, Hashable {
     case linked(Tracker)
     case untracked
@@ -191,8 +156,6 @@ enum TrackerFilter: Codable, Hashable {
         tracker?.name ?? "Not Linked"
     }
 
-    // the service marks are template-rendered for surfaces that tint them; the
-    // chip draws the full-colour tile, the same one the tracking rows use
     var artwork: ImageResource? {
         tracker.flatMap { ImageResource(name: $0.icon, bundle: .main) }
     }
@@ -202,20 +165,15 @@ enum TrackerFilter: Codable, Hashable {
         return linked.contains(tracker)
     }
 
-    // every service, in the order Tracker declares them, then the negative case -
-    // it is the odd one out and reads as a footnote to the list rather than a
-    // peer. read off Tracker.allCases rather than written out: this was a
-    // hand-kept copy of that enum, and mangabaka shipped 10/8 without ever
-    // reaching the library filters because nobody remembered a third list existed
+    // derived from Tracker.allCases rather than hand-copied - a hand-kept copy
+    // missed mangabaka's launch and dropped it from library filters
     static var ordered: [TrackerFilter] {
         Tracker.allCases.map(TrackerFilter.linked) + [.untracked]
     }
 }
 
-// stored as one string, so a filter saved before this was an enum with a payload
-// still decodes. lowercased on the way in for the same reason - the two enums
-// spelled myanimelist differently, and a reader's saved filters should not be
-// dropped over a capital letter
+// lowercased because Tracker and the enum it replaced spelled myanimelist
+// differently - dropping this would break already-saved filters
 extension TrackerFilter {
     private static let untrackedKey = "untracked"
 
@@ -239,16 +197,12 @@ extension TrackerFilter {
     }
 }
 
-// how far through it you are, which no single column answers - unread comes from
-// the chapter count and started comes from a date
 enum ReadState: String, CaseIterable, Codable {
     case unread
     case inProgress
     case finished
     case stale
 
-    // long enough that a slow scanlation group is not caught by it, and not a
-    // preference: it is read at match time, so moving it rewrites nothing
     private enum Rule {
         static let stale: TimeInterval = 60 * 24 * 60 * 60
     }
@@ -267,10 +221,6 @@ enum ReadState: String, CaseIterable, Codable {
         case .unread: entry.lastReadDate == .distantPast
         case .inProgress: entry.lastReadDate > .distantPast && entry.unreadCount > 0
         case .finished: entry.unreadCount == 0
-        // only against a series still claiming Reading: a reader who said Set
-        // Aside has already answered, and saying it back to them would be the
-        // app disputing their own word. derived on read, so nothing is written
-        // and being wrong costs a row in a list rather than a status
         case .stale:
             entry.status == .reading
                 && entry.lastReadDate > .distantPast
@@ -283,7 +233,6 @@ enum ReadState: String, CaseIterable, Codable {
     }
 }
 
-// one toggle for all three groups, so the sheet never grows a per-group variant
 extension Set {
     mutating func toggle(_ element: Element) {
         if contains(element) {
@@ -294,10 +243,8 @@ extension Set {
     }
 }
 
-// label, icon and tint already live on Status in DetailsActions
+// label, icon, and tint live on Status in DetailsActions, not here
 extension Status {
-    // the order a series moves through, not alphabetical - the list reads as a
-    // lifecycle and the one you are most likely to want sits first
     static var ordered: [Status] {
         [.reading, .planning, .paused, .completed, .dropped]
     }
@@ -314,8 +261,6 @@ extension Publication {
         }
     }
 
-    // Unknown last: it is a gap in what a source told us, not a state a series
-    // is in, so it should never lead the list
     static var ordered: [Publication] {
         [.Ongoing, .Hiatus, .Completed, .Cancelled, .Unknown]
     }

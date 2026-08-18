@@ -28,8 +28,8 @@ final class Correlator {
         matches[stub.slug]
     }
 
-    // the tracked region is defined by the fetch closure, so a changed stub list
-    // needs a new observation rather than a re-fetch of the existing one
+    // a changed stub list needs a new observation, not a re-fetch of the
+    // existing one - the tracked region is fixed by the fetch closure
     func observe(_ stubs: [SeriesStub]) {
         task?.cancel()
 
@@ -57,8 +57,8 @@ final class Correlator {
         let sourceSlug = sourceSlug
 
         return AsyncStream { continuation in
-            // match skips the origin query entirely until the source row exists,
-            // so the tracked region varies - trackingConstantRegion would be wrong
+            // match skips the origin query until the source row exists, so the
+            // tracked region varies - trackingConstantRegion would be wrong
             let observation =
                 ValueObservation
                 .tracking { db in
@@ -68,8 +68,8 @@ final class Correlator {
                         uniquingKeysWith: { first, _ in first }
                     )
                 }
-                // any write to series, origin, title or source re-runs the fetch,
-                // and most of those leave every badge exactly as it was
+                // most writes to series/origin/title/source leave every badge
+                // exactly as it was
                 .removeDuplicates()
 
             let cancellable = observation.start(

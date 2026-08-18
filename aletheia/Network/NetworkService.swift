@@ -14,7 +14,6 @@ protocol NetworkConfiguration: Sendable {
         url: URL, body: Request, headers: [String: String]?
     ) async throws -> Response
 
-    // generic
     func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse)
 }
 
@@ -42,22 +41,17 @@ final class NetworkService: NetworkConfiguration {
     init(gate: HostGate = HostGate()) {
         self.gate = gate
 
-        // an owned session rather than .shared, which ignores configuration and
-        // so cannot carry a resource timeout at all. a caller needing different
-        // timings builds its own request and goes through send(_:)
+        // URLSession.shared ignores configuration entirely, so it cannot carry a
+        // resource timeout - hence an owned session here
         let configuration = URLSessionConfiguration.default
         configuration.timeoutIntervalForRequest = Constants.Network.timeout
         configuration.timeoutIntervalForResource = Constants.Network.resourceTimeout
         configuration.httpMaximumConnectionsPerHost = Constants.Network.connectionsPerHost
 
-        // cookies are ours to set, never the session's. with the default policy
-        // urlsession composes the Cookie header from HTTPCookieStorage.shared,
-        // which makes a header set by SourceCredential.apply advisory rather
-        // than authoritative - and worse, self-poisoning: every cloudflare
-        // challenge page carries Set-Cookie, urlsession writes those into the
-        // shared jar, and the next request then argues with the clearance the
-        // capture just earned. nothing here wants an ambient cookie jar; the
-        // credential is the whole story
+        // with the default policy urlsession composes the Cookie header from
+        // HTTPCookieStorage.shared, overriding what SourceCredential.apply set -
+        // and every cloudflare challenge page carries Set-Cookie, so the session
+        // would keep overwriting a fresh clearance with the jar's stale one
         configuration.httpShouldSetCookies = false
         configuration.httpCookieAcceptPolicy = .never
         configuration.httpCookieStorage = nil
@@ -110,7 +104,6 @@ final class NetworkService: NetworkConfiguration {
         }
     }
 
-    // overriden function for get calls that expect `Data` returned (typically icons, chapter pages)
     func get(url: URL, headers: [String: String]? = nil) async throws -> Data {
         var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData)
         request.httpMethod = "GET"
@@ -124,7 +117,7 @@ final class NetworkService: NetworkConfiguration {
         let (data, response) = try await perform(request)
         try handleResponse(response)
 
-        return data  // Return raw, no JSON decoding
+        return data
     }
 
     func post<Request: Encodable, Response: Decodable>(
@@ -186,8 +179,6 @@ final class NetworkService: NetworkConfiguration {
         return try await perform(request)
     }
 
-    // the one place a request leaves the app: the host gate, the owned session,
-    // and the url-error mapping all live here so no path can miss one
     private func perform(_ request: URLRequest) async throws -> (Data, URLResponse) {
         try await gate.execute(host: request.url?.host()) { [session] in
             do {

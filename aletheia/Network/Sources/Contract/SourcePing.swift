@@ -21,21 +21,16 @@ struct PingResult: Sendable {
 extension SourceService {
     var pingURL: URL { descriptor.baseURL }
 
-    // the network is passed in, never defaulted. it used to read
-    // `= NetworkService()`, which constructs one PER CALL - so a screen of seven
-    // source rows built seven URLSessions and seven HostGates, and the 3-per-host
-    // cap meant nothing at exactly the moment the app was touching seven hosts
-    // at once
+    // network is passed in, never defaulted - `= NetworkService()` used to
+    // construct one PER CALL, so a screen of seven source rows built seven
+    // URLSessions and seven HostGates, defeating the 3-per-host cap entirely
     func ping(using network: NetworkConfiguration) async -> PingResult {
         let clock = ContinuousClock()
         let start = clock.now
 
-        // the cached credential, never a refresh - same rule as
-        // SourceService.requestHeaders. a screen of source rows pings every row
-        // it draws, and a capture from there would put a verification sheet in
-        // front of a reader who only opened a list. so a source behind a wall
-        // reads red until something they actually asked for earns the cookies,
-        // which is the honest answer anyway: until then we cannot reach it
+        // the cached credential only, never a refresh - a ping triggering a
+        // verification sheet on a screen the reader only opened to browse would
+        // be a bad surprise; a source behind a wall just reads red until then
         var request = URLRequest(url: pingURL)
         if let authenticating = self as? any AuthenticatingSource,
             let credential = await authenticating.requester.peek(slug: descriptor.slug)
@@ -62,9 +57,8 @@ extension SourceService {
 
 // URLRequest.timeoutInterval cannot shorten a request made by a session that
 // carries its own timeoutIntervalForRequest - the session's value wins, so a
-// ping asking for 1.5s waited the full 30 and a dead source's row sat spinning
-// for half a minute. a race is the only way a CALLER can impose a deadline on a
-// shared session, and it works because URLSession honours task cancellation
+// ping asking for 1.5s waited the full 30s. racing against a sleeping task is
+// the only way a caller can impose its own deadline on a shared session
 private func withDeadline<Value: Sendable>(
     _ limit: Duration,
     _ work: @escaping @Sendable () async throws -> Value
@@ -76,7 +70,6 @@ private func withDeadline<Value: Sendable>(
             throw CancellationError()
         }
 
-        // whichever finishes first, then the other is cancelled on the way out
         let first = try await group.next()!
         group.cancelAll()
         return first

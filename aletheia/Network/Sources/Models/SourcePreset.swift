@@ -16,9 +16,7 @@ struct SourcePreset: Sendable, Identifiable, Hashable {
     let filters: [FilterSelection]
     let sort: SortSelection?
 
-    // opaque to everything but the source that declared it. presets are the only
-    // query the app builds without user text, which is what lets one name a
-    // different endpoint - see SearchQuery.route
+    // opaque to everything but the source that declared it - see SearchQuery.route
     let route: String?
 
     init(

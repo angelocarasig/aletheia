@@ -14,9 +14,7 @@ import Foundation
 // cannot move unless the payload does. without it a 53ms query runs on every
 // reader progress tick
 struct Payload: Sendable, Equatable {
-    // the whole pool, not just the primary. names vote: the reference
-    // implementation took the first that matched anything and resolved
-    // "Best Wishes" to "Black Market +Plus" through the alternate name "Bitch"
+    // the whole pool, not just the primary - names vote, see AliasIndex.tally
     var titles: [String] = []
     var tags: [String] = []
     // present when the reader has linked this series to MangaBaka, whose remote
@@ -24,10 +22,6 @@ struct Payload: Sendable, Equatable {
     var catalogId: CatalogID?
 }
 
-// the same shape as SourceService: a static descriptor for identity, behaviour
-// behind the protocol, concrete implementations in Providers. static facts go on
-// the descriptor, behaviour goes in the protocol, and an opt-in may only ever
-// unlock something extra - a caller must always have a working else
 struct RecommenderDescriptor: Sendable, Hashable {
     let slug: String
     let name: String

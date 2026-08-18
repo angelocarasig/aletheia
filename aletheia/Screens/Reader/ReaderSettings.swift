@@ -7,8 +7,8 @@
 
 import Foundation
 
-// reading mode is per-series and lives on the series row. everything here is a
-// global preference that follows the reader between titles
+// reading mode lives on the series row, not here - everything else is a global
+// preference that follows the reader between titles
 enum ReaderSettings {
     private enum Key {
         static let dim = "reader.dim"

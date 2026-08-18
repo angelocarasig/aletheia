@@ -7,8 +7,6 @@
 
 import SwiftUI
 
-// choosing a layout flashes it behind the sheet rather than waiting for a
-// dismissal, so the preview and the real thing are seen together
 struct ReaderTapZonePicker: View {
     let layout: ReaderTapZones.Layout
     let reversed: Bool
@@ -73,8 +71,7 @@ extension ReaderTapZonePicker {
 
     fileprivate func Row(_ option: ReaderTapZones.Layout) -> some View {
         HStack(spacing: dimensions.spacing.space12) {
-            // drawn by the same view as the full-screen flash, so a row can
-            // never describe a layout the reader does not actually use
+            // same view as the full-screen flash, so it can't drift from what the reader actually uses
             ReaderTapZoneMap(layout: option, reversed: reversed, isCompact: true)
                 .frame(width: Layout.mapWidth, height: Layout.mapWidth * Layout.mapRatio)
                 .clipShape(.rect(cornerRadius: dimensions.radius.radius4))
@@ -147,8 +144,6 @@ extension ReaderTapZonePicker {
         Text("Saved across all your series")
     }
 
-    // a right-to-left series mirrors the zones on its own, so the toggle is
-    // already on when the sheet opens and saying nothing would read as a bug
     fileprivate var flipSummary: String {
         guard isRightToLeft else { return "Swap the back and forward zones." }
         return "This series reads right to left, so the zones are mirrored already."

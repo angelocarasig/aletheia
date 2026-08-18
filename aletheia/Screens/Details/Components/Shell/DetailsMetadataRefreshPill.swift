@@ -7,10 +7,9 @@
 
 import SwiftUI
 
-// the metadata counterpart to DetailsRefreshPill - one row per source and per
-// linked tracker, each answering for itself. no queued/checking split like
-// the chapter pill has: metadata refresh has no host-gate visibility hook to
-// read, so every unanswered row is simply "checking"
+// unlike DetailsRefreshPill, there is no queued/checking split here - metadata
+// refresh has no host-gate visibility hook to read, so every unanswered row
+// is simply "checking"
 struct DetailsMetadataRefreshPill: View {
     let outcomes: [DetailsComposer.Refresh.MetadataOutcomeRow]
 
@@ -65,9 +64,8 @@ struct DetailsMetadataRefreshPill: View {
                     .foregroundStyle(.success)
                     .transition(reduceMotion ? .opacity : AnyTransition(.symbolEffect(.drawOn)))
 
-            // the inverse of updated, same vocabulary DetailsRefreshPill uses
-            // for unchanged chapters - not a tick, which reads as an
-            // achievement the supplier did not earn
+            // not a checkmark - that reads as an achievement the supplier
+            // did not earn
             case .unchanged:
                 Image(systemName: "minus.circle")
                     .foregroundStyle(.muted)

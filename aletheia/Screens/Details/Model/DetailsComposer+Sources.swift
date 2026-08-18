@@ -16,23 +16,20 @@ extension DetailsComposer {
     @MainActor
     @Observable
     final class Sources: DetailsApplying, DetailsWriting {
-        // every source this series is available from, in the order they are
-        // ranked. unavailable ones stay in the list and sort last
+        // unavailable sources stay in the list and sort last, rather than
+        // being hidden
         private(set) var origins: [Origin] = []
 
-        // read on present rather than from the bundle, because both sheets need
-        // rows the screen's own list does not have - a language or a scanlator
-        // that currently wins nothing still has to be rankable
+        // read on present, not from the bundle - both sheets need rows the
+        // screen's own list excludes, since a language or scanlator winning
+        // nothing right now still has to be rankable
         private(set) var languageOrder: [Language] = []
         private(set) var scanlatorOrder: [Group] = []
         private(set) var isLoadingLanguages = false
         private(set) var isLoadingScanlators = false
 
-        // which origins are being written, so one row spins without dimming the
-        // rest. a reorder marks every row it moves
         private(set) var writing: Set<Int64> = []
 
-        // from DetailsWriting
         var saving: Bool { !writing.isEmpty }
         private(set) var failure: Failure?
 
@@ -46,14 +43,12 @@ extension DetailsComposer {
             self.database = database
         }
 
-        // from DetailsApplying
         func apply(_ stored: Stored) {
             seriesId = stored.series.id
 
             let mapped = stored.origins.map { row in
-                // the row survives every kind of unavailability, so only the
-                // icon needs the registry - it is a compiled asset, not stored
-                // data
+                // only the icon needs the registry - a compiled asset, not
+                // stored data, unlike the rest of this row
                 Origin(
                     id: row.id,
                     name: row.sourceName ?? row.sourceSlug ?? "Unknown Source",
@@ -74,13 +69,10 @@ extension DetailsComposer {
             if origins != mapped { origins = mapped }
         }
 
-        // from DetailsWriting
         func clear() {
             failure = nil
         }
 
-        // move a source to the front. what wins a chapter is decided by this
-        // order, so promoting one can change which copy the reader opens
         func promote(_ originId: Int64) async {
             let target = OriginRecord.ID(rawValue: originId)
 
@@ -92,7 +84,6 @@ extension DetailsComposer {
             }
         }
 
-        // the whole ranking at once, as the reorder sheet committed it. it is
         // trusted rather than diffed - anything the sheet left out keeps its
         // place at the end
         func reorder(_ ids: [Int64]) async {
@@ -103,12 +94,9 @@ extension DetailsComposer {
             }
         }
 
-        // detach a source from this series. the last one cannot go - a series
-        // with no sources has nothing to read.
-        //
-        // the chapters go with it by cascade, and its titles and covers stay in
-        // the pool with a null originId - a name the reader picked is not ours
-        // to take back
+        // the last source cannot go. chapters cascade away with it, but its
+        // titles and covers stay in the pool with a null originId - a name the
+        // reader picked is not ours to take back
         func remove(_ originId: Int64) async {
             guard let seriesId, origins.count > 1 else { return }
             let target = OriginRecord.ID(rawValue: originId)
@@ -130,9 +118,9 @@ extension DetailsComposer {
             }
         }
 
-        // the write behind both rearrangements. the stored order is read inside
-        // the transaction and handed to the caller to rework, so a sheet built
-        // before a source was removed still commits against what is there now
+        // order is read fresh inside the transaction and handed to the caller
+        // to rework, so a sheet built before a source was removed still
+        // commits against what is there now
         private func arrange(
             _ marked: [Int64],
             _ transform: @escaping ([OriginRecord.ID]) -> [OriginRecord.ID]
@@ -154,9 +142,8 @@ extension DetailsComposer {
             }
         }
 
-        // which language wins when two sources carry the same chapter. every
-        // language this series has a chapter in, ranked, with unranked ones
-        // last - which is where best_chapter puts them too
+        // unranked languages sort last here - which is where best_chapter puts
+        // them too
         func languages() async {
             guard let seriesId, !isLoadingLanguages else { return }
 
@@ -168,17 +155,15 @@ extension DetailsComposer {
                     try Self.languages(for: seriesId, in: db)
                 }
             } catch {
-                // a background load. the screen keeps what it has rather than
-                // nagging about it
+                // a background load - keeps what it has rather than nagging
                 AppLog.shared.log("languages failed - \(error)", level: .error, category: "details")
             }
         }
 
-        // the sheet lists only languages the series actually has chapters in,
-        // so a commit is a swap within the slots those languages already hold:
-        // they take each other's priorities, sorted ascending, and every
-        // unlisted language keeps its place. no priority is ever minted or
-        // duplicated, and the seeded order of absent languages survives
+        // a commit is a swap within the slots the listed languages already
+        // hold - they take each other's priorities, sorted ascending, and
+        // every unlisted language keeps its place. no priority is ever minted
+        // or duplicated
         func reorder(languages codes: [String]) async {
             guard let seriesId else { return }
 
@@ -187,8 +172,7 @@ extension DetailsComposer {
 
             do {
                 try await database.writer.write { db in
-                    // a series from before seeding may lack rows. heal first,
-                    // or there are no slots to swap
+                    // a series from before seeding may lack rows to swap
                     try SeriesLanguagePriorityRecord.seedDefaults(for: seriesId, in: db)
 
                     let rows =
@@ -216,8 +200,6 @@ extension DetailsComposer {
             }
         }
 
-        // the same question one level down, asked per source, because a
-        // scanlator belongs to the site that published it
         func scanlators() async {
             guard let seriesId, !isLoadingScanlators else { return }
 
@@ -230,17 +212,14 @@ extension DetailsComposer {
                 }
                 scanlatorOrder = Self.group(rows, into: origins)
             } catch {
-                // a background load. the screen keeps what it has rather than
-                // nagging about it
                 AppLog.shared.log(
                     "scanlators failed - \(error)", level: .error, category: "details")
             }
         }
 
-        // priority is stored per (origin, scanlator), so an ordering is
-        // committed one source at a time. every row is written, not just the
-        // moved ones - a hole in the sequence would let the unranked fallback
-        // rearrange things behind the reader
+        // every row is written, not just the moved ones - a hole in the
+        // sequence would let the unranked (999) fallback rearrange things
+        // behind the reader
         func reorder(scanlators ids: [Int64], in originId: Int64) async {
             writing.insert(originId)
             defer { writing.remove(originId) }
@@ -267,7 +246,6 @@ extension DetailsComposer {
 }
 
 extension DetailsComposer.Sources {
-    // one source this series is available from
     struct Origin: Identifiable, Hashable {
         let id: Int64
         let name: String
@@ -296,18 +274,15 @@ extension DetailsComposer.Sources {
         }
     }
 
-    // one language this series has chapters in, as the ranking sheet lists it
     struct Language: Identifiable, Hashable {
-        // the LanguageCode raw value, which is what gets written back
         let id: String
         let flag: String
         let name: String
         let chapterCount: Int
     }
 
-    // a source with its scanlators under it. ranking happens inside a group,
-    // never across them, because a scanlator belongs to the site that
-    // published it
+    // ranking happens inside a group, never across them - a scanlator belongs
+    // to the site that published it
     struct Group: Identifiable, Hashable {
         let id: Int64
         let name: String
@@ -321,9 +296,6 @@ extension DetailsComposer.Sources {
         let chapterCount: Int
     }
 
-    // why a source cannot be used, and they are not interchangeable - each
-    // wants a different answer from the reader: re-enable it, re-attach it, or
-    // accept that the source no longer ships with the app
     nonisolated static func availability(
         of row: DetailsComposer.Stored.Origin
     ) -> Origin.Availability {
@@ -338,8 +310,7 @@ extension DetailsComposer.Sources {
         }
     }
 
-    // the saved ranking, listing only languages this series has chapters in.
-    // the rows are seeded at creation, so a missing one is a gap to heal rather
+    // rows are seeded at creation, so a missing one is a gap to heal rather
     // than an absence to rank around
     nonisolated static func languages(
         for id: SeriesRecord.ID,
@@ -419,9 +390,8 @@ extension DetailsComposer.Sources {
         let chapterCount: Int
     }
 
-    // one flat list folded into a group per source. done in place so the
-    // query's ordering survives - origin priority between groups, scanlator
-    // priority within one
+    // not re-sorted - the query's own ordering (origin priority between
+    // groups, scanlator priority within one) is what this relies on
     nonisolated static func group(
         _ rows: [ScanlatorRow],
         into origins: [Origin]
@@ -454,8 +424,6 @@ extension DetailsComposer.Sources {
         return groups
     }
 
-    // the series' origins as they currently rank, which is what any rearrange
-    // is applied to
     nonisolated static func ordered(
         for id: SeriesRecord.ID,
         in db: Database
@@ -467,14 +435,8 @@ extension DetailsComposer.Sources {
             .fetchAll(db)
     }
 
-    // takes the list as the answer and writes each origin's position onto it:
-    // first gets priority 0, next 1, and so on. lower wins, so position 0 is
-    // the source that supplies a chapter when more than one carries it, and
-    // the source the reader opens by default.
-    //
-    // every row is written rather than only the ones that moved. moving one
-    // origin shifts everything after it anyway, and rewriting the lot is one
-    // pass with nothing to work out
+    // lower wins - position 0 is the source that supplies a chapter when more
+    // than one carries it, and the source the reader opens by default
     nonisolated static func assign(
         _ ordered: [OriginRecord.ID],
         in db: Database
@@ -487,8 +449,7 @@ extension DetailsComposer.Sources {
         }
     }
 
-    // closes the hole a removal leaves, so the numbers run 0, 1, 2 with none
-    // missing. nothing stops two origins sharing a priority, but keeping them
+    // nothing stops two origins sharing a priority, but keeping them
     // consecutive means (priority, id) always sorts the way the list reads
     nonisolated static func renumber(
         for id: SeriesRecord.ID,

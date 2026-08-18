@@ -8,11 +8,6 @@
 import Foundation
 import SwiftSoup
 
-// an aggregator of aggregators: what its api calls a group is a rival site, and
-// one chapter number routinely carries five to ten translations across mirrors
-// and languages. two of the four calls are a form-encoded json api and two are
-// scrapes, all four riding a php session paired with a csrf meta token.
-// shapes and probes in docs/sources/mangaball.md
 struct MangaBallSource: SourceService, AuthenticatingSource {
     let requester: AuthRequester
 
@@ -363,8 +358,6 @@ extension MangaBallSource {
         let authors = try Self.unique(document.select(Selector.authors).map { try $0.text() })
 
         return SeriesDetail(
-            // the id is the identity everywhere else, and the canonical path is
-            // only ever a way of asking for it
             slug: seriesSlug,
             title: title.trimmingCharacters(in: .whitespacesAndNewlines),
             altTitles: try Self.altTitles(of: document),
@@ -556,12 +549,12 @@ extension MangaBallSource {
         }
     }
 
-    // declared here rather than fetched: 96 tags across five groups, small enough
-    // to ship and only moving when we do, which is what lets it take part in the
-    // descriptor's fingerprint honestly. the site adds a handful a year and never
-    // removes, so a stale list costs a missing option and never a broken id.
-    // `POST /api/v1/tag/search/` with search_type=getTagFilter is what tells you
-    // this has drifted. sensitivity is ours - the site marks nothing as adult.
+    // declared here rather than fetched: small enough to ship, and lets the
+    // taxonomy take part in the descriptor's fingerprint honestly since it only
+    // moves when we do. the site adds a handful a year and never removes, so a
+    // stale list costs a missing option and never a broken id. `POST
+    // /api/v1/tag/search/` with search_type=getTagFilter is what tells you this
+    // has drifted. sensitivity is ours - the site marks nothing as adult.
     //
     // the content/format/genre/origin/theme grouping is a ui convention: all five
     // serialise into the same two tri-state arrays

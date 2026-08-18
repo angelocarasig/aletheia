@@ -10,29 +10,18 @@ import GRDB
 import SwiftUI
 import Tagged
 
-// one point on the series' number line, and everything able to fill it. this is
-// the shape both reader sheets read: the chapter list draws one row per slot and
-// the source switcher draws that slot's options.
-//
-// grouping by number rather than by row is the whole point - a series is a number
-// line, and which origin currently wins a number is a ranking answer that moves
 struct ChapterSlot: Identifiable, Hashable, Sendable {
     let number: Double
-    // ranked the way best_chapter ranks them: origin priority, then scanlator
-    // priority, then id. never empty - a slot exists because a row filled it
     let options: [Option]
 
     var id: Double { number }
 
     var best: Option { options[0] }
 
-    // what the engine is keyed on. the reader takes a bare Int64 slot token, so
-    // the row id is unwrapped here rather than at every call site
     var chapter: ReaderChapter.ID { best.id.rawValue }
 
-    // read state belongs to the number, so it is resolved here rather than per
-    // option. max, not best.progress, because rows written before read state
-    // propagated by number can still disagree with each other
+    // max, not best.progress - rows written before read state propagated by
+    // number can still disagree with each other
     var progress: Double {
         options.map(\.progress).max() ?? 0
     }
@@ -41,8 +30,6 @@ struct ChapterSlot: Identifiable, Hashable, Sendable {
 
     var started: Bool { progress > 0 && progress < 1 }
 
-    // more than one thing can serve this number, so the switcher has something
-    // to offer. the button is pointless when it can only show what you have
     var hasAlternatives: Bool { options.count > 1 }
 
     struct Option: Identifiable, Hashable, Sendable {
@@ -54,15 +41,10 @@ struct ChapterSlot: Identifiable, Hashable, Sendable {
         let publishedDate: Date
         let progress: Double
 
-        // a snapshot, and only ever finished: path is stamped on completion, so
-        // an in-flight download reads as not downloaded. a slot is built once per
-        // sheet, so a download landing while it is open shows on the next open.
-        // this is the screen that makes the per-row rule legible - when ranking
-        // moves, it is where you find the row the badge moved to
+        // path is stamped only on completion, so an in-flight download reads as
+        // not downloaded; slot is a snapshot, built once per sheet open
         let downloaded: Bool
 
-        // the source's own identity, so the switcher can group options under it.
-        // both nil together when the origin has been disconnected from its source
         let sourceName: String?
         let sourceIcon: ImageResource?
     }
@@ -71,9 +53,8 @@ struct ChapterSlot: Identifiable, Hashable, Sendable {
 // MARK: - Building
 
 extension ChapterSlot {
-    // the flat shape the query returns, one per chapter row. ordering is the
-    // caller's job: rows must arrive number-ascending, rank-ascending within a
-    // number, so grouping is one pass and options keep their ranking
+    // caller must supply rows number-ascending, rank-ascending within a number -
+    // grouping is a single pass and relies on that order
     struct Row: Decodable, FetchableRecord, Sendable {
         let id: Int64
         let originId: Int64
@@ -88,8 +69,7 @@ extension ChapterSlot {
         let sourceName: String?
     }
 
-    // icons resolve here rather than at render: an ImageResource lookup per row
-    // per redraw is waste, and a slot is built once per sheet
+    // resolved here rather than at render, to avoid a lookup per row per redraw
     static func group(_ rows: [Row], icon: (String) -> ImageResource?) -> [ChapterSlot] {
         var slots: [ChapterSlot] = []
         var current: (number: Double, options: [Option])?

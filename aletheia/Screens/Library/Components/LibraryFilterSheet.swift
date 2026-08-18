@@ -7,10 +7,6 @@
 
 import SwiftUI
 
-// the same grammar as the source refine sheet: options are FilterChips in a
-// FlowLayout, bare checkmark and brand tint when on, nothing when off. an option
-// should read the same wherever it is shown, and this is the app's second place
-// that picks a subset from a set
 struct LibraryFilterSheet: View {
     @Binding var filter: LibraryFilter
     var tags: [LibraryViewModel.Option<TagRecord.ID>] = []
@@ -22,13 +18,11 @@ struct LibraryFilterSheet: View {
 
     private enum Motion {
         static let settle: Animation = .snappy(duration: 0.28)
-        // out of its own centre, since a wrapped row has no edge to arrive from
-        // and the chips beside it are reflowing at the same time
         static let chip: AnyTransition = .scale(scale: 0.85).combined(with: .opacity)
     }
 
-    // named once: the title is both the heading and the key a group is expanded
-    // by, so a literal in two places would drift
+    // the title string doubles as the key `expanded` is toggled by - a literal
+    // used in two places could drift out of sync
     private enum Titles {
         static let progress = "Progress"
         static let status = "Reading Status"
@@ -40,23 +34,20 @@ struct LibraryFilterSheet: View {
     }
 
     private enum Threshold {
-        // past this a vocabulary stops being something you scan and becomes
-        // something you look up
         static let searchable = 15
         // FlowLayout measures every child handed to it, so the cut happens before
         // it, not inside it
         static let shown = 60
     }
 
-    // by title rather than by index, so reordering the groups cannot silently
-    // expand a different one
+    // by title, not index - a conditionally hidden group (tags/sources/trackers
+    // can be absent) would shift indices and expand the wrong row
     @State private var expanded: Set<String> = []
 
-    // per group, so searching tags does not wipe what was typed under sources
     @State private var searches: [String: String] = [:]
 
-    // Text, not String, and if/else rather than a ternary - either one erases the
-    // literal to a plain String and the inflection markup renders on screen
+    // Text, not String - coercing this to String would print the inflection
+    // markup literally instead of rendering it
     private var subtitle: Text {
         if filter.isActive {
             Text("^[\(filter.count) filter](inflect: true) applied")
@@ -69,9 +60,6 @@ struct LibraryFilterSheet: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: dimensions.spacing.space12) {
-                    // three bands, divided: how you are reading it, what the work
-                    // itself is, and where it came from. the order runs from what
-                    // you control to what you only observe
                     Group(
                         Titles.progress,
                         icon: "book.pages",
@@ -110,10 +98,6 @@ struct LibraryFilterSheet: View {
                         selection: $filter.classifications
                     )
 
-                    // all three are empty until something is owned, so the group
-                    // is absent rather than an expandable row with nothing in it.
-                    // the divider goes with them, or an empty library shows a
-                    // rule under the last group with nothing beneath it
                     if !tags.isEmpty || !sources.isEmpty || !trackers.isEmpty {
                         Band
                     }
@@ -142,8 +126,6 @@ struct LibraryFilterSheet: View {
                         )
                     }
 
-                    // last of the three relationship groups, and last overall: a
-                    // link is the furthest thing here from the series itself
                     if !trackers.isEmpty {
                         Group(
                             Titles.trackers,
@@ -181,10 +163,6 @@ struct LibraryFilterSheet: View {
         .task { seed() }
     }
 
-    // opens whatever is already narrowing the grid, so a filter you set last week
-    // is visible rather than hidden behind a row you have to remember to tap.
-    // nothing set means nothing to reveal, so the first group opens instead of
-    // leaving three dead rows
     private func seed() {
         guard expanded.isEmpty else { return }
 
@@ -199,18 +177,12 @@ struct LibraryFilterSheet: View {
         if expanded.isEmpty { expanded.insert(Titles.progress) }
     }
 
-    // one builder for every group: each is the same question asked of a different
-    // enum, and three hand-written copies would drift the moment one is edited
-    // inset from the cards either side, so it reads as separating them rather
-    // than as another edge belonging to one of them
     private var Band: some View {
         Divider()
             .padding(.horizontal, dimensions.spacing.space12)
             .padding(.vertical, dimensions.spacing.space4)
     }
 
-    // keyed by id rather than by the option itself, so an enum can store its own
-    // cases while a tag stores only its row id
     private func Group<Option: Hashable, Key: Hashable>(
         _ title: String,
         icon: String,
@@ -277,15 +249,11 @@ struct LibraryFilterSheet: View {
         }
         .padding(dimensions.spacing.space12)
         .background(.primary.opacity(0.04), in: .rect(cornerRadius: dimensions.radius.radius16))
-        // keyed on what is actually on screen rather than on the search text, so a
-        // keystroke matching the same set does not re-animate, and a selection made
-        // with no search still does
+        // keyed on what's actually shown, not the search text - so a selection
+        // change (which reorders shown) animates even when the search text didn't
         .animation(Motion.settle, value: shown.map { $0[keyPath: id] })
     }
 
-    // status, publication, rating, tags, sources and trackers - a tap cycles
-    // off -> included -> excluded -> off, the same grammar the source refine
-    // sheet already uses for a remote source's own multi-select filters
     private func Group<Option: Hashable, Key: Hashable>(
         _ title: String,
         icon: String,
@@ -386,9 +354,8 @@ struct LibraryFilterSheet: View {
         let chosen = options.filter { selection.wrappedValue.contains($0[keyPath: id]) }
 
         guard !query.isEmpty else {
-            // a vocabulary in the hundreds opens empty: showing the first sixty of
-            // four hundred is an arbitrary sample pretending to be a menu. what
-            // stays is whatever is chosen, which is the one thing always needed
+            // searchFirst groups start empty, not truncated - showing the first N
+            // of hundreds would be an arbitrary sample pretending to be a menu
             guard !searchFirst else { return chosen }
             guard options.count > Threshold.shown else { return options }
 
@@ -399,8 +366,6 @@ struct LibraryFilterSheet: View {
         return options.filter { $0[keyPath: label].localizedCaseInsensitiveContains(query) }
     }
 
-    // the tri-state groups: same shape as the group above, chosen means
-    // included-or-excluded rather than just contains
     private func visible<Option: Hashable, Key: Hashable>(
         _ options: [Option],
         in title: String,
@@ -423,14 +388,10 @@ struct LibraryFilterSheet: View {
         return options.filter { $0[keyPath: label].localizedCaseInsensitiveContains(query) }
     }
 
-    // the count is the only per-group text worth keeping: it says which group is
-    // narrowing things, which the chips below only answer if you read them all
     private func Header(_ title: String, icon: String, count: Int, isOpen: Bool) -> some View {
         let isActive = count > 0
 
         return HStack(spacing: dimensions.spacing.space8) {
-            // fills and turns brand when the group is narrowing, so the state has
-            // a shape channel and not only the count beside it
             Image(systemName: icon)
                 .symbolVariant(isActive ? .fill : .none)
                 .font(.subheadline)

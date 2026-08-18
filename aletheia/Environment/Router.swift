@@ -8,17 +8,15 @@
 import Observation
 import SwiftUI
 
-// cross-tab navigation. a tab root owns its own stack, so a view inside one has
-// no way to reach another - and the alternative to this is a closure per
-// destination, threaded down by hand and accumulating on Main one jump at a time
+// a tab root owns its own NavigationStack - a view inside one has no way to
+// reach another directly
 @Observable
 final class Router {
     var tab: AppTab = .home
 
-    // the token is what makes a repeat request land. the receiving screen seeds
-    // itself once per token, so asking twice for the same text is two events
-    // rather than one no-op - the seed guard on SearchScreen reads vm.query,
-    // which is no longer empty the second time
+    // the token is what makes a repeat request land - SearchScreen's seed
+    // guard reads vm.query, which is no longer empty the second time, so
+    // without a token asking twice for the same text is a no-op
     private(set) var search: Search?
 
     struct Search: Equatable {

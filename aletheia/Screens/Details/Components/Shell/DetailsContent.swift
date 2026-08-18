@@ -8,11 +8,9 @@
 import SwiftUI
 import Tagged
 
-// the scroll's contents, one view per section. each takes only the part of the
-// composer it draws, so a chapter finishing redraws the chapter list and leaves
-// the header, the sources and the tracking rows alone. written as views rather
-// than as builder functions for exactly that reason - a function is pasted into
-// its caller, and everything it reads becomes the caller's dependency
+// each section is a separate View type, not a builder function - a function
+// is pasted into its caller and everything it reads becomes the caller's
+// dependency, so a chapter finishing would redraw the whole scroll content
 struct DetailsContent: View {
     let composer: DetailsComposer
     let actions: Actions
@@ -21,8 +19,6 @@ struct DetailsContent: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: dimensions.spacing.space20) {
-            // the backdrop shows through here rather than parallaxing - it is a
-            // sibling of the scroll view, not a header inside it
             Spacer()
                 .frame(height: DetailsBackdrop.heroHeight)
 
@@ -42,9 +38,6 @@ struct DetailsContent: View {
     }
 }
 
-// everything the sections need the screen to do. gathered into one value so a
-// section takes two parameters rather than nine closures, and so adding a sheet
-// does not change every signature between here and it
 extension DetailsContent {
     struct Actions {
         var openCovers: () -> Void
@@ -61,9 +54,6 @@ extension DetailsContent {
         var link: (Tracker) -> Void
         var manage: (DetailsComposer.Tracking.Link) -> Void
         var connect: () -> Void
-        // the mark a tracker's number asks for. it spans two children - read
-        // state belongs to chapters, the number came from tracking - so it is
-        // the root's, which is where it already lived for the manage sheet
         var catchUp: (Int) -> Void
         var mark: (Bool, [Double]) -> Void
         var read: (DetailsComposer.Chapters.Row) -> Void
@@ -107,10 +97,6 @@ private struct ActionsSection: View {
                     canRefreshMetadata: composer.refresh.canRefreshMetadata,
                     status: library.status,
                     collectionCount: library.joined.count,
-                    // the add is committed first and the flow opens over it, so
-                    // closing at any page leaves the series added. removing
-                    // stays a plain toggle - there is nothing to set up on the
-                    // way out
                     onToggleLibrary: {
                         Task {
                             let adding = !library.inLibrary
@@ -148,7 +134,6 @@ private struct SynopsisSection: View {
     let series: DetailsComposer.Series
 
     var body: some View {
-        // emptiness is decided at mapping - an empty synopsis arrives as nil
         DetailsSynopsis(synopsis: series.synopsis)
     }
 }
@@ -170,14 +155,10 @@ private struct TrackingSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // tracking requires library membership (trackers.md Q6). it used to
-            // render nothing at all off-library, on the grounds that a Link row
-            // which cannot be operated is an affordance that lies - but a
-            // section that is simply absent lies differently, and worse: a
-            // reader with two connected accounts and no tracking on screen
-            // concludes the feature is broken rather than gated. dimmed and
-            // inert says both things at once, and the line underneath says what
-            // unlocks it
+            // tracking requires library membership (trackers.md Q6). shown
+            // dimmed and inert rather than hidden off-library - a section
+            // that is simply absent reads as broken, not gated, to a reader
+            // with accounts already connected
             DetailsTracking(
                 accounts: tracking.accounts,
                 links: tracking.links,
@@ -212,7 +193,6 @@ private struct SourcesSection: View {
                     retrying: refresh.retrying,
                     onSetPrimary: { id in Task { await sources.promote(id) } },
                     onReorder: { ids in Task { await sources.reorder(ids) } },
-                    // its chapters go with it, so this one asks first
                     onRemove: { id in
                         guard let origin = sources.origins.first(where: { $0.id == id }) else {
                             return
@@ -237,8 +217,8 @@ private struct MetadataSection: View {
             classification: series.classification,
             publication: series.publication,
             readCount: series.readCount,
-            // both numbers now come from the same place, so "12 of 40" cannot
-            // become "12 of 120" when every source's copy is on show
+            // read and total come from the same place - a per-source total
+            // would let "12 of 40" drift into "12 of 120" across sources
             totalCount: series.totalCount,
             lastFetchedDate: series.metadataFetchedDate,
             lastReadDate: series.lastReadDate
@@ -289,9 +269,6 @@ private struct ChaptersSection: View {
     }
 }
 
-// last on the screen, and the only section whose content comes from neither the
-// database nor a source. it reads one child and nothing else, so a chapter
-// progress tick cannot redraw twenty covers
 private struct RecommendationsSection: View {
     let recommendations: DetailsComposer.Recommendations
     let actions: DetailsContent.Actions

@@ -15,7 +15,6 @@ enum LibraryBackupBuilder {
         try await database.reader.read { db in try build(in: db) }
     }
 
-    // a fast preview of what build() would write, without building it
     static func summary(database: DatabaseClient) async throws -> LibraryBackupSummary {
         try await database.reader.read { db in
             let seriesCount =

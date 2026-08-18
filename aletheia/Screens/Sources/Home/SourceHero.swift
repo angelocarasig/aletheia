@@ -70,8 +70,6 @@ struct SourceHero: View {
         }
     }
 
-    // branch selector and animation key are one value - see
-    // docs/features/loading-transitions.md
     private var phase: LoadPhase {
         if !entries.isEmpty { .content } else if isLoading { .pending } else { .empty }
     }

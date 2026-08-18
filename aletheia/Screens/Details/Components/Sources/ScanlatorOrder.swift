@@ -7,11 +7,7 @@
 
 import SwiftUI
 
-// the second half of how a merged series decides what you read. origin priority
-// picks between sites; this picks between groups posting the same chapter on one
-// site, which is what fills a gap the top source never covered.
-//
-// sectioned rather than flat because priority is stored per (origin, scanlator) -
+// sectioned rather than flat - priority is stored per (origin, scanlator), so
 // a group ranked first on one site says nothing about its rank on another
 struct ScanlatorOrder: View {
     let groups: [Origin]
@@ -34,7 +30,6 @@ struct ScanlatorOrder: View {
         _working = State(initialValue: groups)
     }
 
-    // only the origins whose order actually moved get written
     private var changed: [Origin] {
         working.filter { group in
             guard let original = groups.first(where: { $0.id == group.id }) else { return false }
@@ -65,9 +60,9 @@ struct ScanlatorOrder: View {
         }
         .presentationDetents([.medium, .large])
         .animation(.settle, value: phase)
-        // presented before the read lands, so the rows arrive after init. gated on
-        // being empty rather than unchanged - the same guard written against
-        // `changed` never fires, because an empty set differs from a populated one
+        // gated on `working` being empty, not on `changed` being empty - an
+        // unloaded list and an untouched one both read as "unchanged", so a
+        // guard against `changed` could not tell the two apart
         .onChange(of: groups) { _, latest in
             guard working.isEmpty else { return }
             working = latest
@@ -101,8 +96,6 @@ extension ScanlatorOrder {
                         ForEach(group.scanlators) { scanlator in
                             Row(scanlator)
                         }
-                        // scoped to this section: moving a group between origins
-                        // would be meaningless, since it is a different ranking
                         .onMove { source, destination in
                             group.scanlators.move(fromOffsets: source, toOffset: destination)
                         }
@@ -111,7 +104,7 @@ extension ScanlatorOrder {
                     }
                 }
             }
-            // always active, so the handles are there without an Edit button
+            // forced active - the drag handles show without a separate Edit button
             .environment(\.editMode, .constant(.active))
             .transition(.opacity)
         }

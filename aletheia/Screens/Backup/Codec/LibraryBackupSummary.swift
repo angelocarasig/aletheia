@@ -15,7 +15,6 @@ struct LibraryBackupSummary: Equatable {
     let collectionCount: Int
     let trackerLinkCount: Int
 
-    // distinct by name - the portable identity the schema itself uses
     init(decoding backup: LibraryBackup) {
         seriesCount = backup.series.count
         chapterCount = backup.series.reduce(0) { total, series in

@@ -7,8 +7,6 @@
 
 import SwiftUI
 
-// the only UIKit seam the rest of the app sees. everything above this is
-// SwiftUI, everything below it is a collection view
 struct ReaderSurface: UIViewControllerRepresentable {
     let engine: ReaderEngine
 

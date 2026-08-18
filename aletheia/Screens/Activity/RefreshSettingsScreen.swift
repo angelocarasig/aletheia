@@ -8,9 +8,6 @@
 import BackgroundTasks
 import SwiftUI
 
-// what a library refresh checks, and whether it ever runs on its own. both
-// default to the least surprising thing: check everything, run only when asked.
-// see docs/features/background-activity.md 4.7
 struct RefreshSettingsScreen: View {
     @AppStorage(Preferences.Key.refreshAutomatic)
     private var automatic = Preferences.Default.refreshAutomatic
@@ -32,10 +29,8 @@ struct RefreshSettingsScreen: View {
     #if DEBUG
         @State private var armed: Armed = .none
 
-        // a request with no earliest date is a third state, not a missing one: it is
-        // armed and carries no floor, which is the whole point of the toggle. it is
-        // also self-clearing - the run that takes it re-arms with a date, so the
-        // toggle falls back to off on its own rather than claiming a spent request
+        // no-earliest-date is a distinct armed state, not a missing one - self-clearing, since the run
+        // that consumes it re-arms with a date, so this never claims a spent request
         private enum Armed: Equatable {
             case none
             case soon
@@ -64,10 +59,6 @@ struct RefreshSettingsScreen: View {
             } header: {
                 Text("Automatic")
             } footer: {
-                // on or off, never a cadence: ios runs a processing task when the
-                // device is idle and charging, so a chosen interval would be a
-                // promise made by the wrong party. said plainly because the
-                // alternative is a reader concluding the setting is broken
                 Text(
                     automatic
                         ? "iOS chooses when this runs, usually while the device is idle and charging overnight. If it never runs, the check happens next time you open the app."
@@ -85,10 +76,8 @@ struct RefreshSettingsScreen: View {
             }
 
             #if DEBUG
-                // nothing can make ios launch the task now, so the offer is to drop
-                // the twelve-hour floor and let the next natural opportunity take it.
-                // the pending request is what this reads - anything derived from the
-                // setting would state a run four separate conditions can prevent
+                // reads the scheduler's pending request, not the setting - deriving a state from the setting
+                // alone would claim a run that four separate conditions can still prevent
                 Section {
                     Toggle("Run at the Next Opportunity", isOn: asap)
                         .disabled(!automatic)
@@ -102,8 +91,6 @@ struct RefreshSettingsScreen: View {
         }
         #if DEBUG
             .task { armed = await pendingRun() }
-            // a finished run re-arms behind the floor again, so the toggle is stale
-            // the moment the walk ends and stale again on every return to the screen
             .onChange(of: compositor.refresh.isRunning) { _, running in
                 guard !running else { return }
                 Task { armed = await pendingRun() }
@@ -115,8 +102,7 @@ struct RefreshSettingsScreen: View {
         #endif
         .navigationTitle("Library Updates")
         .navigationBarTitleDisplayMode(.inline)
-        // turning it off has to withdraw the pending request rather than wait for
-        // the next run to notice nobody wants one
+        // schedule() is called unconditionally - turning off must actively withdraw the pending request
         .onChange(of: automatic) { _, on in
             compositor.refresh.schedule()
 
@@ -124,9 +110,6 @@ struct RefreshSettingsScreen: View {
                 Task { armed = await pendingRun() }
             #endif
 
-            // asked here rather than at launch: the notification only exists for
-            // a run nobody watched, so the request has nothing to explain itself
-            // with until someone has asked for those runs
             guard on else { return }
             Task { await Notifier.promote() }
         }
@@ -140,11 +123,8 @@ struct RefreshSettingsScreen: View {
         .onAppear { refreshStatus = UIApplication.shared.backgroundRefreshStatus }
     }
 
-    // only when the setting is asking for something the system is refusing, and
-    // never when restricted: that reader is under parental controls or a managed
-    // profile and has no way to act on it, so apple's own guidance is not to say
-    // anything. denied cannot say whether this app or the whole system is off,
-    // which is why the copy names the path rather than the switch
+    // excludes .restricted deliberately - that reader is under parental/managed controls with no way to
+    // act on it, and Apple's guidance is not to surface it
     private var showsRefreshDisabled: Bool {
         automatic && refreshStatus == .denied
     }
@@ -155,10 +135,7 @@ struct RefreshSettingsScreen: View {
     }
 
     #if DEBUG
-        // the toggle writes a request and reads the answer back, so what it shows is
-        // the scheduler's state rather than the tap's. turning it off restores the
-        // ordinary floor - there is no third position for "cancel everything", since
-        // that is what the setting above is for
+        // reads the scheduler's state back, not the tap - there is no "cancel everything" position, that's the setting above
         private var asap: Binding<Bool> {
             Binding(
                 get: { armed == .soon },
@@ -189,9 +166,6 @@ struct RefreshSettingsScreen: View {
                 case .none:
                     return "No run is armed."
                 case .soon:
-                    // said plainly because the toggle reads like a trigger and is not.
-                    // the honest expectation is apple's own: idle and charging, usually
-                    // overnight, within about two days
                     return
                         "Armed with no waiting period. iOS still picks the moment, and in practice that means while the device is idle and charging. This clears itself once a run takes it."
                 case .at(let date):
@@ -202,9 +176,6 @@ struct RefreshSettingsScreen: View {
         }
     #endif
 
-    // one sentence per switch, because "skip finished" reads obvious and is not:
-    // the status comes from the source and only updates when the series is
-    // opened, so it can be wrong in the direction that skips something live
     private var footer: String {
         var lines: [String] = []
 

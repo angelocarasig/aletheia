@@ -9,10 +9,8 @@ import Foundation
 import GRDB
 import Tagged
 
-// which chapter "keep reading" opens, per series: the partially-read chapter
-// touched most recently wins, else the lowest-numbered unread one. a series
-// with neither is finished and has no target. resuming a partway chapter and
-// starting the next unread one are different intents, so the case says which
+// resuming a partway chapter and starting the next unread one are different
+// intents, so the case says which
 enum ContinueTarget: Hashable, Sendable {
     case resume(chapterId: ChapterRecord.ID, number: Double, progress: Double)
     case start(chapterId: ChapterRecord.ID, number: Double)

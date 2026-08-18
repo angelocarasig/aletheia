@@ -28,8 +28,6 @@ enum LibrarySort: String, CaseIterable, Identifiable {
         }
     }
 
-    // one glyph per option, never a shared arrow - an arrow describes the
-    // direction, which is the other control on the sheet
     var icon: String {
         switch self {
         case .added: "calendar.badge.plus"
@@ -40,9 +38,6 @@ enum LibrarySort: String, CaseIterable, Identifiable {
         }
     }
 
-    // what ascending means differs per option, and saying it plainly is cheaper
-    // than making someone try both. dates read newest-first when descending,
-    // which is why every date option defaults that way
     func direction(ascending: Bool) -> String {
         switch self {
         case .title: ascending ? "A to Z" : "Z to A"

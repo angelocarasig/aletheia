@@ -9,41 +9,21 @@ import Kingfisher
 import SwiftUI
 import Tagged
 
-// an aggregate with no drill-down turns every accuracy doubt into a dispute
-// nothing can settle, so the numbers and the sessions that produced them ship as
-// one surface.
-//
-// a section rather than a screen since 2026-08-11: it is the Activity tab's
-// content, under the operational rows. it declares no ScrollView and no padding
-// of its own - the tab owns one scroll for both halves, or the status rows would
-// pin while the charts scrolled under them
 struct ReadingActivitySection: View {
     @Environment(\.compositor) private var compositor
     @Environment(\.dimensions) private var dimensions
 
     @State private var vm: StatsViewModel?
-    // both remembered: a screen that resets how you were looking at it every
-    // time you open it is one you have to re-aim on every visit
     @AppStorage(Preferences.Key.statsScope) private var scope = Preferences.Default.statsScope
     @AppStorage(Preferences.Key.statsMetric) private var metric = Preferences.Default.statsMetric
 
-    // the period the chart is showing. the grid dims everything outside it, so
-    // moving the stepper moves the emphasis - one selection, two resolutions
     @State private var anchor: Date = .now
-    // the bar the chart has picked out, normalised to that bucket's start. owned
-    // here rather than in the chart because the session list is what it scopes
     @State private var selected: Date?
-    // the Details push has to be declared here: this screen is itself presented
-    // with navigationDestination(isPresented:), so a value push from inside it
-    // lands beneath it
+    // this screen is itself presented with navigationDestination(isPresented:), so a value push
+    // declared anywhere else in it would land beneath the presenting screen instead of above it
     @State private var route: SeriesEntry?
     @State private var expanded = false
-    // sessions or series: the same rows, folded or not. carried over when the
-    // Activity tab stopped duplicating this data - grouping by series is the one
-    // cut that feed had which nothing else did, and at a large library it is
-    // triage ("what have I been ignoring") rather than a memory-lane view
     @State private var bySeries = false
-    // 0 to 1, and every all-time tile multiplies its own total by it
     @State private var counted: Double = 0
     @State private var lifted = false
     @State private var rolled = false
@@ -51,8 +31,6 @@ struct ReadingActivitySection: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    // built on appearance in the app; a preview hands one in already holding a
-    // snapshot, which is what keeps the canvas off a database
     init(vm: StatsViewModel? = nil) {
         _vm = State(initialValue: vm)
     }
@@ -61,17 +39,12 @@ struct ReadingActivitySection: View {
         static let heatWeeks = 16
         static let fillOpacity = 0.05
         static let groupingWidth: CGFloat = 140
-        // SessionRow's own numbers: the two rows swap through one slot, so a
-        // difference of a few points would read as the list jumping
+        // must match SessionRow's own cover size - the two rows swap through one slot
         static let coverWidth: CGFloat = 58
         static let coverHeight: CGFloat = 70
         static let placeholderOpacity = 0.1
         static let collapsedSessions = 5
-        // long enough for the deceleration to be legible, short enough that the
-        // real numbers are not being withheld from someone who came to read them
         static let rollDuration: TimeInterval = 1.1
-        // small: three cards swelling in unison reads as the section breathing,
-        // and anything past a few percent reads as a layout bug instead
         static let rollLift: CGFloat = 1.05
         static let snapDuration: TimeInterval = 0.32
 
@@ -80,8 +53,6 @@ struct ReadingActivitySection: View {
         }
     }
 
-    // what the picker is currently showing, expressed as dates the grid can
-    // outline. today, or the calendar week today falls in
     private var highlight: DateInterval? {
         let calendar = Calendar.current
         return calendar.dateInterval(of: scope == .day ? .day : .weekOfYear, for: anchor)
@@ -138,10 +109,6 @@ struct ReadingActivitySection: View {
             }
         }
         .animation(.settle, value: phase)
-        // declared here rather than by the tab: this is the only thing in the
-        // stack that pushes a series, and the tab is presented with
-        // navigationDestination(isPresented:) elsewhere, where a value push
-        // would land beneath the screen doing the pushing
         .navigationDestination(item: $route) { DetailsScreen(entry: $0) }
         .task {
             guard vm == nil else { return }
@@ -157,44 +124,20 @@ struct ReadingActivitySection: View {
 extension ReadingActivitySection {
     fileprivate func Content(_ snapshot: StatsViewModel.Snapshot) -> some View {
         VStack(alignment: .leading, spacing: dimensions.spacing.space24) {
-            // first now, not last. it was a footer because a fresh install
-            // showed the same number under "All Time" and "This Week" and
-            // everyone read that as a bug - but under the operational rows
-            // the collision is gone, and these are the one part of this
-            // section that does not grade you: the reader coming back after
-            // a gap named them the only thing they were glad to see
             VStack(alignment: .leading, spacing: dimensions.spacing.space12) {
                 SectionHeader("All Time")
                 Totals(snapshot)
             }
 
-            // ONE block, not two charts. the grid and the bars were the
-            // same data at two spans, a screen apart, in the same blue -
-            // which read as two libraries rather than one system. now the
-            // picker drives both: the bars show the span, and the grid
-            // outlines the days those bars are made of, so a reader can see
-            // where this week sits inside four months without being told.
-            //
-            // no section header either: the readout inside the chart is the
-            // title, and a header above it was the second one for one thing
             VStack(alignment: .leading, spacing: dimensions.spacing.space16) {
-                // the block opens on a caption and a grid, so the readout
-                // inside the chart arrives too late to title anything. a
-                // header rather than moving the number above the map
                 SectionHeader("Last 16 Weeks")
 
-                // grid first: it is the map, and the bars below are the
-                // detail of whichever part of it the stepper has picked out
                 ReadingHeatmap(
                     heat: snapshot.heat(for: metric),
                     weeks: Layout.heatWeeks,
                     asOf: .now,
                     highlight: highlight,
                     metric: metric,
-                    // tapping a day moves the chart to the period that day
-                    // falls in, at whatever granularity is currently
-                    // selected - the picker says what a tap means, so a tap
-                    // must not silently change the picker
                     onSelect: { anchor = $0 }
                 )
 
@@ -206,21 +149,12 @@ extension ReadingActivitySection {
                     metric: $metric,
                     anchor: $anchor,
                     asOf: .now,
-                    // the same span the grid draws, so the stepper can reach
-                    // every cell above it and nothing beyond
                     earliest: Layout.heatStart,
                     selected: $selected
                 )
             }
-
-            // a grid tap moves the period, which makes any bar selection
-            // stale - and it writes anchor directly rather than through the
-            // chart's stepper, so the chart never sees it
             .onChange(of: anchor) { selected = nil }
 
-            // the two lists occupy one slot and swap through each other, so
-            // picking a bar reads as the list changing what it is about
-            // rather than as the screen reflowing under the finger
             Group {
                 if let bucket = selectedBucket(snapshot) {
                     BucketSessions(bucket, sessions: snapshot.recent)
@@ -235,10 +169,6 @@ extension ReadingActivitySection {
         }
     }
 
-    // three across is the first thing on this screen to break as text grows -
-    // "Time Read" alone overflows a third of the width well before the largest
-    // settings - so past the accessibility sizes the row becomes a column and
-    // each tile takes the full width
     @ViewBuilder
     fileprivate func Totals(_ snapshot: StatsViewModel.Snapshot) -> some View {
         let tiles: [(target: Double, format: (Double) -> String, label: String)] = [
@@ -262,10 +192,8 @@ extension ReadingActivitySection {
                 }
             }
         }
-        // once per launch, and the flag lives on the screen because that is
-        // exactly the lifetime asked for: the tab keeps this alive across visits
-        // and the process is what ends it. no preference, nothing persisted -
-        // reopening the app is the whole trigger
+        // rolled has no persistence of its own - it lives as long as this view does, which the tab
+        // keeps alive across visits, so relaunching the process is what actually resets it
         .task {
             guard !rolled else { return }
             rolled = true
@@ -274,14 +202,6 @@ extension ReadingActivitySection {
                 return
             }
             CountUpHaptic.play(duration: Layout.rollDuration)
-            // the cards swell while the numbers climb and snap back when they
-            // land, so the ramp's last tap is the release of something the eye
-            // watched build rather than a beep at the end of a counter.
-            //
-            // the snap rides withAnimation's completion rather than a sleep -
-            // it fires when the roll genuinely finishes, which is also the beat
-            // the haptic pattern already scheduled its pop on. two clocks, one
-            // instant, and neither is waiting on the other
             withAnimation(.easeOut(duration: Layout.rollDuration)) {
                 counted = 1
                 lifted = true
@@ -293,29 +213,12 @@ extension ReadingActivitySection {
         }
     }
 
-    // the digits and the ramp read the same fraction, so they decelerate
-    // together - one number animated once, rather than three counters and a
-    // schedule that could drift apart
     fileprivate func Rolling(_ tile: (target: Double, format: (Double) -> String, label: String))
         -> some View
     {
         CountingText(value: counted * tile.target, format: tile.format)
     }
 
-    // a caption on the grid rather than two tiles under it: a run is the grid's
-    // own summary, not a third statistic, and as boxed tiles it read as a
-    // stranded second group with the legend wedged between.
-    //
-    // the second number is a TOTAL, not a personal best. "best 18 days" beside a
-    // current run of 1 is a scoreboard - it hands a returning reader a figure
-    // they have already fallen short of, which is the loss mechanic
-    // home-screen.md rules out and the one thing a reader coming back after a
-    // gap said would stop them opening the app. a total only ever goes up, so
-    // there is nothing to fail at, and it summarises the same grid the run does
-    // on day one both halves said "1 day" and the caption read as one fact
-    // stammered twice. the total is the honest half - it only ever goes up - so
-    // the run joins it only once the two can differ. scoped to the grid above
-    // rather than to all time, so it states what the reader can actually count
     @ViewBuilder
     fileprivate func Runs(_ snapshot: StatsViewModel.Snapshot) -> some View {
         if snapshot.currentRun > 1, snapshot.currentRun < snapshot.heat.count {
@@ -338,10 +241,8 @@ extension ReadingActivitySection {
         }
     }
 
-    // a builder rather than a Text, so the value can be a view that animates
-    // itself. it took Text because a String parameter is one of the four silent
-    // inflection killers - a builder keeps that safe, since a Text passed in is
-    // still a literal at its own call site
+    // ViewBuilder rather than a String, so a passed-in Text stays a literal at its own call site -
+    // a String parameter here would render inflection markup verbatim with no warning
     fileprivate func Tile(label: String, @ViewBuilder value: () -> some View) -> some View {
         VStack(spacing: dimensions.spacing.space4) {
             value()
@@ -358,17 +259,12 @@ extension ReadingActivitySection {
             .primary.opacity(Layout.fillOpacity),
             in: .rect(cornerRadius: dimensions.radius.radius12)
         )
-        // each card about its own centre rather than the row about the row's:
-        // scaling the group would slide the outer two sideways, which reads as
-        // the layout shifting instead of the cards swelling
+        // scaleEffect per-tile, not on the row - scaling the group would slide the outer tiles sideways
         .scaleEffect(lifted ? Layout.rollLift : 1)
     }
 
     fileprivate var granularity: Calendar.Component { scope == .day ? .hour : .day }
 
-    // the bar the chart has picked, resolved against the same sittings the bars
-    // were built from. recomputing the spine here rather than passing the bucket
-    // up keeps the chart's selection a plain date
     fileprivate func selectedBucket(_ snapshot: StatsViewModel.Snapshot) -> ReadingBuckets.Bucket? {
         guard let selected else { return nil }
 
@@ -380,19 +276,12 @@ extension ReadingActivitySection {
         return buckets.first { $0.start == selected }
     }
 
-    // Recent Reading, re-scoped to one bar. the rows are whole sittings with
-    // their own values, so a sitting that straddled the bucket reads larger than
-    // the caption above it - the caption answers what the bar said, the rows
-    // answer what happened, and the clock time on the row is the difference
     fileprivate func BucketSessions(
         _ bucket: ReadingBuckets.Bucket, sessions: [ReadingSessionEntry]
     ) -> some View {
         let rows = ReadingBuckets.sittings(sessions, in: bucket, of: granularity)
 
         return VStack(alignment: .leading, spacing: dimensions.spacing.space12) {
-            // moving from one bar to the next keeps this block on screen, so the
-            // words have to carry the change themselves - without it the header
-            // is the one part of the swap that jumps
             VStack(alignment: .leading, spacing: dimensions.spacing.space4) {
                 SectionHeader(bucketTitle(bucket))
                     .contentTransition(.opacity)
@@ -417,9 +306,6 @@ extension ReadingActivitySection {
         }
     }
 
-    // the date is carried, not just the hour: the bar's own annotation says only
-    // "13:00" and the stepper naming the day has scrolled off by the time this
-    // list is being read
     fileprivate func bucketTitle(_ bucket: ReadingBuckets.Bucket) -> String {
         switch scope {
         case .day:
@@ -428,8 +314,7 @@ extension ReadingActivitySection {
         }
     }
 
-    // branches, each owning its literal - a String here renders the inflection
-    // markup verbatim with no warning
+    // each branch owns its literal - a String parameter here renders the inflection markup verbatim with no warning
     @ViewBuilder
     fileprivate func Amount(_ count: Int) -> some View {
         switch metric {
@@ -438,8 +323,6 @@ extension ReadingActivitySection {
         }
     }
 
-    // the cap counts rows, not days: five sittings deep is the same amount of
-    // screen whether they happened across one evening or five
     fileprivate func Sessions(_ sessions: [ReadingSessionEntry]) -> some View {
         VStack(alignment: .leading, spacing: dimensions.spacing.space12) {
             SectionHeader(title: "Recent Reading") {
@@ -455,9 +338,6 @@ extension ReadingActivitySection {
         .animation(.settle, value: bySeries)
     }
 
-    // in the header rather than the toolbar: it scopes this section and nothing
-    // else on the screen, and the toolbar is two scroll-lengths away from what
-    // it would be changing
     fileprivate var Grouping: some View {
         Picker("Grouping", selection: $bySeries) {
             Text("Days").tag(false)
@@ -491,10 +371,7 @@ extension ReadingActivitySection {
         }
     }
 
-    // folded from the same rows rather than queried again: a session already
-    // carries its series, so the grouping is a view of what is loaded and not a
-    // second trip. ordered by how recently each series was read, which is what
-    // makes the top of the list the thing you are actually in the middle of
+    // folded from the already-loaded rows, not a second query - a session already carries its series
     fileprivate func SeriesList(_ sessions: [ReadingSessionEntry]) -> some View {
         let groups = Self.series(from: sessions)
         let visible = expanded ? groups : Array(groups.prefix(Layout.collapsedSessions))
@@ -510,9 +387,6 @@ extension ReadingActivitySection {
         }
     }
 
-    // the same anatomy as SessionRow, because it is the same row folded: artwork,
-    // then what and when, then how much. a grouping toggle that also changed the
-    // shape of every row would read as two screens rather than two views
     fileprivate func SeriesRow(_ group: SeriesTotal) -> some View {
         let row = HStack(spacing: dimensions.spacing.space12) {
             Cover(group)
@@ -527,10 +401,6 @@ extension ReadingActivitySection {
 
                     Spacer(minLength: 0)
 
-                    // sittings, not days: the row is folded from sessions, and
-                    // two in one evening is two sittings however the calendar
-                    // counts them. it takes the slot the clock holds on a
-                    // session row - both answer "how often", at two grains
                     Text("^[\(group.sittings) sitting](inflect: true)")
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -615,8 +485,6 @@ extension ReadingActivitySection {
             .sorted { $0.latest > $1.latest }
     }
 
-    // the chapter list's control, same shape and same words - two lists on two
-    // screens that both open short should not expand differently
     fileprivate func ExpandToggle(_ count: Int, noun: String = "Sessions") -> some View {
         HStack(spacing: dimensions.spacing.space8) {
             Image(systemName: expanded ? "chevron.up" : "chevron.down")
@@ -661,8 +529,7 @@ extension ReadingActivitySection {
         static func sessions(_ count: Int) -> [ReadingSessionEntry] {
             (0..<count).map { index in
                 let started: Date = .now.addingTimeInterval(TimeInterval(-index * 7_200))
-                // the first one is deliberately seconds long - the case that used
-                // to render "0m" beside a full page count
+                // deliberately seconds long - regression case for "0m" rendering beside a full page count
                 let length = index == 0 ? 40 : 900 + index * 300
                 return ReadingSessionEntry(
                     id: Int64(index + 1),
@@ -680,8 +547,6 @@ extension ReadingActivitySection {
             }
         }
 
-        // the fortnight the chart buckets - separate from the Sessions fixture,
-        // which is a shorter list meant to be read rather than aggregated
         static func recent(days: Int) -> [ReadingSessionEntry] {
             var rows: [ReadingSessionEntry] = []
             let calendar = Calendar.current
@@ -746,8 +611,6 @@ extension ReadingActivitySection {
         }
     }
 
-    // the sparse end: one reading day against a full grid of empties, which is what
-    // a first-day install actually looks like
     #Preview("Sparse") {
         NavigationStack {
             ScrollView {
@@ -784,14 +647,10 @@ extension ReadingActivitySection {
     }
 #endif
 
-// one series' share of a window, folded from its sittings. not a database shape:
-// the sessions are already loaded, so this exists only to say what they add up to
 struct SeriesTotal: Identifiable {
     let seriesId: Int64
     let title: String
     let alive: Bool
-    // taken from the newest sitting rather than fetched: every session already
-    // carries its series' artwork, and the newest one holds the freshest cover
     let cover: URL?
     let path: String?
     let chapters: Int
@@ -805,13 +664,8 @@ struct SeriesTotal: Identifiable {
 
 // MARK: - Counting text
 
-// a number that animates through its own range rather than cutting to it.
-// Animatable is what makes that possible without a timer: SwiftUI interpolates
-// `animatableData` and re-invokes `body` per frame, so the curve, the duration
-// and the cancellation all belong to the animation that set the value.
-//
-// monospaced, or the digits change width as they roll and the tile jitters
-// under its own label
+// Animatable interpolates animatableData and re-invokes body per frame, so the count
+// animates through its own range without a timer
 private struct CountingText: View, Animatable {
     var value: Double
     let format: (Double) -> String

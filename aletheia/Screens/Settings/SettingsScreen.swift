@@ -7,9 +7,6 @@
 
 import SwiftUI
 
-// the app's first settings destination. it exists because tracker sign-in was
-// the third settings-shaped thing to need a home after refresh cadence and the
-// reader's own panel, and each had been bolted onto a different tab's chrome
 struct SettingsScreen: View {
     @Environment(\.compositor) private var compositor
     @Environment(\.dimensions) private var dimensions
@@ -34,8 +31,6 @@ struct SettingsScreen: View {
                     Card(
                         "Tracking",
                         systemImage: "arrow.trianglehead.2.clockwise.rotate.90",
-                        // what is connected, answered before the destination is
-                        // opened rather than inside it
                         detail: connected ?? "Not connected"
                     ) { showingTracking = true }
 
@@ -71,10 +66,7 @@ struct SettingsScreen: View {
                 VStack(alignment: .leading, spacing: dimensions.spacing.space12) {
                     SectionHeader("Diagnostics")
 
-                    // shipped rather than DEBUG-gated: the run worth reading is
-                    // the one that already crashed, on a device with no Xcode
-                    // attached, which is exactly the build a condition would
-                    // have excluded
+                    // shipped rather than DEBUG-gated - the crash worth reading has no Xcode attached
                     Card(
                         "Logs",
                         systemImage: "text.alignleft",
@@ -116,9 +108,8 @@ struct SettingsScreen: View {
                     .font(.subheadline)
                     .fontWeight(.semibold)
 
-                // the string changes in place rather than the view being
-                // replaced, so this is a content transition - a .transition
-                // would never fire, because no branch is inserted or removed
+                // contentTransition, not .transition - the string changes in place, no
+                // view is inserted or removed for a .transition to fire on
                 Text(detail)
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -155,9 +146,8 @@ struct SettingsScreen: View {
 
 // MARK: - Previews
 
-// reads the real keychain for its one variable line, so this is a layout check
-// rather than a state check - the subtitle says whatever this device is signed
-// into, and "Not connected" only appears when it genuinely is not
+// reads the real keychain, so the "Tracking" detail reflects this device's actual
+// signed-in state rather than mock data - not deterministic across devices
 #Preview {
     NavigationStack {
         SettingsScreen()

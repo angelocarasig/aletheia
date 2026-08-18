@@ -17,10 +17,8 @@ final class SourceHomeViewModel {
     private(set) var heroEntries: [SeriesStub] = []
     private(set) var isLoadingHero = true
 
-    // when the credential was last earned, not when its cookie claims to expire.
-    // every cf_clearance declares 365 days and none of them lasts an hour, so a
-    // countdown off that date told the reader a year of health about something
-    // that had already stopped working. "captured 3m ago" is a fact we own
+    // when the credential was captured, not when its cookie claims to expire -
+    // every cf_clearance declares 365 days but none lasts an hour
     private(set) var credentialCaptured: Date?
     private(set) var isRefreshingCredential = false
 
@@ -84,8 +82,6 @@ final class SourceHomeViewModel {
         isLoadingHero = false
     }
 
-    // unique series with covers, deterministically shuffled so the selection is
-    // stable within a day (per source) and rotates daily.
     private static func sample(from stubs: [SeriesStub], seed: UInt64, count: Int) -> [SeriesStub] {
         var seen = Set<String>()
         let unique = stubs.filter { $0.cover != nil && seen.insert($0.slug).inserted }
@@ -100,10 +96,7 @@ final class SourceHomeViewModel {
     }
 }
 
-// MARK: - Seeded Randomness
-
-// canonical SplitMix64: the standard seedable generator (also what's used to
-// seed xoshiro). well-distributed from any seed including 0, so no guard needed.
+// SplitMix64 - well-distributed from any seed including 0, so no guard needed
 private struct SeededGenerator: RandomNumberGenerator {
     private var state: UInt64
 
@@ -120,12 +113,9 @@ private struct SeededGenerator: RandomNumberGenerator {
     }
 }
 
-// MARK: - Stable Hashing
-
 extension String {
-    // FNV-1a (64-bit). deterministic across launches, unlike String.hashValue
-    // which Swift randomizes per process - the day-seeded hero selection needs a
-    // launch-stable seed so it stays fixed for the whole day.
+    // FNV-1a: deterministic across launches, unlike String.hashValue which
+    // Swift randomizes per process
     fileprivate var stableHash: UInt64 {
         var hash: UInt64 = 0xCBF2_9CE4_8422_2325
         for byte in utf8 {

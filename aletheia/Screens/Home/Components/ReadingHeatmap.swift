@@ -7,28 +7,15 @@
 
 import SwiftUI
 
-// a contribution-style record of reading days: columns are weeks, rows are
-// weekdays, intensity is chapters finished. a passive record, never a
-// countdown.
-//
-// THE RULE THIS GRID BROKE AND NOW KEEPS: an unlabelled contributions grid is
-// decoration. Without a stated metric a reader cannot say what the colour means,
-// and without axes they cannot say when a cell is - so the whole chart encodes
-// nothing recoverable. Everyone shown the unlabelled version guessed "one square
-// is a day" from the row count alone, and one read the empty left gutter as a
-// rendering fault. The weekday stubs are what that gutter is for.
+// unlabelled, this grid tested as decoration - readers guessed the metric from
+// row count alone, and one read the empty left gutter as a rendering fault.
+// the weekday stubs are what that gutter is for
 struct ReadingHeatmap: View {
     let heat: [Int: Int]
     let weeks: Int
     let asOf: Date
-    // the span the chart above is currently showing. the two are one layer of
-    // information at two resolutions, so the grid outlines the days the bars
-    // are made of rather than sitting beside them as a second opinion
     var highlight: DateInterval?
     var metric: ReadingMetric = .pages
-    // the grid is the index and the chart below is the detail, so a cell is a
-    // way in rather than a swatch. asserting the link with a marker never
-    // worked - demonstrating it does
     var onSelect: ((Date) -> Void)?
 
     @Environment(\.dimensions) private var dimensions
@@ -41,36 +28,23 @@ struct ReadingHeatmap: View {
         static let spacing: CGFloat = 3
         static let stubWidth: CGFloat = 26
         static let monthHeight: CGFloat = 14
-        // an abbreviated month needs roughly this many columns of room to its
-        // right before it starts running off the end of the grid
         static let monthClearance = 3
-        // the empty tone is neutral, never the ramp's zeroth step: brand at a
-        // low opacity against near-black is about one just-noticeable
-        // difference on a dim OLED, so "did not read" and "read a little" would
-        // be the same colour to most eyes in most rooms
-        // both channels, not either. dimming alone was too quiet to find - the
-        // eye has nothing to catch on - and the earlier green ring alone read as
-        // a per-cell verdict. together the outline says "here" and the dimming
-        // says "not there", and the outline is drawn in the text colour rather
-        // than a semantic one so it cannot be mistaken for a status
+        // dim + outline together, not opacity alone - too subtle to notice; an
+        // earlier ring-only design read as a per-cell verdict, not a highlight
         static let dimmed: Double = 0.3
         static let markWidth: CGFloat = 1.5
         static let markOpacity: Double = 0.85
         static let markerID = "period"
-        // a day with no reading still has to read as a cell rather than as a
-        // hole in the grid - too far down and the whole shape disappears into
-        // the background and only the filled days look like anything at all
+        // brand at low opacity is near-indistinguishable from itself on a dim
+        // OLED, so zero uses a separate neutral tone rather than the ramp's
+        // own lowest step
         static let emptyOpacity = 0.22
         static let lowOpacity = 0.45
         static let midOpacity = 0.62
-        // quantiles of the days actually read, not fractions of the busiest one.
-        // peak-derived thresholds let a single enormous day push every ordinary
-        // day into the lowest bin, and on a short record they produced "one day,
-        // top bin, 270+" - noise rendered as achievement.
-        //
-        // below a real sample there is nothing to take a quantile of, so the
-        // scale falls back to absolute page counts. self-referential is right in
-        // principle; self-referential to n=1 is not
+        // quantiles of days actually read, not fractions of the peak - a
+        // peak-derived scale let one huge day push every other into the lowest
+        // bin. below a real sample there's nothing to take a quantile of, so
+        // this falls back to absolute counts
         static let sampleMinimum = 14
         static let absoluteLow = 20
         static let absoluteMid = 60
@@ -78,9 +52,9 @@ struct ReadingHeatmap: View {
 
     private var calendar: Calendar { Calendar.current }
 
-    // half-open, written out rather than DateInterval.contains - that one is
-    // inclusive of `end`, so a day period matched its own midnight AND the next
-    // day's, and a week matched eight columns
+    // half-open, written out rather than DateInterval.contains(_:) - that's
+    // inclusive of `end`, which matched a day period against its own midnight
+    // AND the next day's
     private func inPeriod(_ date: Date) -> Bool {
         guard let highlight else { return true }
         return date >= highlight.start && date < highlight.end
@@ -106,8 +80,6 @@ struct ReadingHeatmap: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: dimensions.spacing.space8) {
-            // the grid cannot say what its own colour measures, so the caption
-            // does. without it the legend reads "more of what?"
             Text(metric.caption)
                 .font(.caption2)
                 .foregroundStyle(.muted)
@@ -127,17 +99,13 @@ struct ReadingHeatmap: View {
 
             Legend
         }
-        // a spring rather than .settle: .settle is the crossfade curve for a
-        // load swapping in, and this is a thing travelling a measurable distance
+        // .settle is the crossfade for a load swapping in; this marker travels a
+        // measurable distance, which wants a spring instead
         .animation(.snappy(duration: 0.28), value: highlight)
     }
 
-    // Mon/Wed/Fri only - every row labelled is a wall of text at this cell size,
-    // and three anchors are enough to count from
-    // hidden rather than shrunk once text scales: 9pt was below the platform's
-    // legibility floor, and a label that cannot survive scaling has to be
-    // removable instead. the stubs are the most redundant thing here - the row
-    // order is a week, which the month ruler above already anchors
+    // hidden rather than shrunk past a point: 9pt is below the platform's
+    // legibility floor, so a label that can't survive scaling gets removed
     @ViewBuilder
     private var Stubs: some View {
         if dynamicTypeSize < .accessibility1 {
@@ -157,12 +125,9 @@ struct ReadingHeatmap: View {
 
     private func WeekColumn(_ week: Int) -> some View {
         VStack(spacing: Layout.spacing) {
-            // a month name sits over the first column that falls inside it, so
-            // the ruler appears where the month actually turns
-            // never clipped to one cell: a month name is wider than a 14pt
-            // square, so constraining it produced "J..." and "A...". it is
-            // anchored at its first column and allowed to overflow rightward,
-            // and it is dropped entirely when too few columns remain to carry it
+            // not clipped to one cell - a month name is wider than 14pt and
+            // constraining it produced "J..."/"A..."; this overflows rightward
+            // from its anchor column instead
             Text(monthLabel(week))
                 .font(.caption2)
                 .foregroundStyle(.muted)
@@ -174,14 +139,9 @@ struct ReadingHeatmap: View {
                 Cell(for: date(week: week, day: day))
             }
         }
-        // ONE marker, not an outline per cell. a week in this grid is a column
-        // and a day is a cell inside it, so every selection is a contiguous
-        // vertical run in a single column - which means the marker can be a
-        // single rectangle that travels and resizes between them rather than
-        // one set fading out while another fades in.
-        //
-        // fading said "that selection ended, this one began". moving says "the
-        // selection you are holding went there", which is what the chevron did
+        // one marker that moves and resizes via matchedGeometryEffect, not a
+        // fade-out/fade-in pair - a selection is always a contiguous run in
+        // one column
         .overlay(alignment: .top) {
             if let run = markedRun(week) {
                 RoundedRectangle(cornerRadius: dimensions.radius.radius4)
@@ -193,8 +153,6 @@ struct ReadingHeatmap: View {
         }
     }
 
-    // the contiguous stretch of this column that falls inside the period, as a
-    // start row and a length. nil when the column is untouched by it
     private func markedRun(_ week: Int) -> (start: Int, count: Int)? {
         let marked = (0..<7).filter { day in
             guard let date = date(week: week, day: day) else { return false }
@@ -222,8 +180,6 @@ struct ReadingHeatmap: View {
                 .contentShape(.rect)
                 .tappable { onSelect?(date) }
         } else {
-            // a day that has not happened yet holds its place invisibly, so
-            // the current week's column keeps the grid's shape
             Color.clear
                 .frame(width: Layout.cell, height: Layout.cell)
         }
@@ -241,10 +197,6 @@ struct ReadingHeatmap: View {
                     .frame(width: Layout.cell, height: Layout.cell)
             }
 
-            // the reader's own busiest day, which is the only number on this
-            // ramp that is a ceiling. printing the middle threshold instead
-            // named an interior boundary as if it were the top, and read as a
-            // target set by somebody else
             Text(peak > 0 ? "\(peak)" : "")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
@@ -267,10 +219,9 @@ struct ReadingHeatmap: View {
         return date.formatted(.dateTime.weekday(.abbreviated))
     }
 
-    // anchored from the newest column and walked backwards, so the month you
-    // are actually in always gets a label. walking forwards dropped it whenever
-    // the current month was younger than the clearance - which is most of the
-    // time, and is why a grid ending in August was labelled only to July
+    // walked backwards from the newest column - walking forwards dropped the
+    // current month whenever it was younger than the clearance, which is most
+    // of the time (a grid ending in August was labelled only to July)
     private var monthColumns: Set<Int> {
         var labelled: Set<Int> = []
         var last: Int?
@@ -287,8 +238,6 @@ struct ReadingHeatmap: View {
                 continue
             }
 
-            // never two labels close enough to collide, since a month name is
-            // wider than the cell it is anchored to
             if let last, last - week < Layout.monthClearance { continue }
             labelled.insert(week)
             last = week
@@ -302,8 +251,8 @@ struct ReadingHeatmap: View {
         return current.formatted(.dateTime.month(.abbreviated))
     }
 
-    // week 0 is the oldest column; day 0 is the first weekday of the user's
-    // calendar. dates come from the calendar, never from key arithmetic
+    // always through Calendar, never fixed-interval offset math - DST shifts
+    // break a raw 86400-second day/week stride
     private func date(week: Int, day: Int) -> Date? {
         guard let thisWeek = calendar.dateInterval(of: .weekOfYear, for: asOf)?.start,
             let weekStart = calendar.date(
@@ -335,8 +284,6 @@ struct ReadingHeatmap: View {
     .background(.canvas)
 }
 
-// the bins, one per row, so the empty tone can be checked against the lowest
-// filled one - the pair the old ramp could not separate
 #Preview("Bins") {
     ReadingHeatmap(
         heat: {

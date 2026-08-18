@@ -25,7 +25,6 @@ struct KeychainStore: Sendable {
             throw KeychainError.encodingFailed(error)
         }
 
-        // replace any existing item
         SecItemDelete(baseQuery(account: account) as CFDictionary)
 
         var query = baseQuery(account: account)

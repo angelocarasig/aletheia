@@ -22,8 +22,8 @@ final class HomeViewModel {
 
     @ObservationIgnored private var stream: Task<Void, Never>?
 
-    // hidden from the continue rail until read again - the value is the moment
-    // of dismissal, so a later lastReadDate resurrects the series
+    // value is the dismissal date, not lastReadDate - a later lastReadDate
+    // resurrects the series
     private var dismissed: [SeriesRecord.ID: Date]
 
     private enum Rule {
@@ -31,15 +31,8 @@ final class HomeViewModel {
         static let continueLimit = 10
         static let continueBatch = 20
         static let addedLimit = 12
-        // a tease that admits it is one. twelve rows was a slice pretending to
-        // be the whole list, and it buried every section under it
         static let updateLimit = 5
-        // short on purpose. a resume surface stops being glanceable somewhere
-        // around six rows, and these two sit under a rail that has already
-        // answered the question for most visits
         static let shelfLimit = 4
-        // the window the two shelves are drawn from before they are split and
-        // capped. wide enough that a library with a long tail still fills them
         static let shelfBatch = 60
     }
 
@@ -75,8 +68,8 @@ final class HomeViewModel {
         snapshot != nil && continueReading.isEmpty && updates.isEmpty && recentlyAdded.isEmpty
     }
 
-    // the hidden set is part of what the query walks, so hiding one restarts the
-    // observation and the rail refills from behind it rather than losing a slot
+    // hidden is snapshotted once per observe() call, so a new dismissal needs a
+    // restart to take effect and refill the rail from behind it
     func dismiss(_ id: SeriesRecord.ID) {
         dismissed[id] = .now
         let raw = Dictionary(uniqueKeysWithValues: dismissed.map { ($0.key.rawValue, $0.value) })
@@ -92,14 +85,11 @@ final class HomeViewModel {
 
     func observe() {
         guard stream == nil else { return }
-        // captured once - an observation re-runs on every write and dates
-        // computed inside it would slide mid-session (inject asOf, never Date()
-        // in a query - the metrics rule)
+        // never Date() inside the tracking closure - it re-runs on every write
+        // and a date computed there would slide mid-session
         let asOf = Date.now
         let cutoff = asOf.addingTimeInterval(-Rule.window)
 
-        // while the bypass is off, adult-only sources do not exist here - not on
-        // the rails, not in the numbers behind them
         let adultSlugs = AdultGate.slugs(in: registry)
 
         let hidden = Dictionary(uniqueKeysWithValues: dismissed.map { ($0.key.rawValue, $0.value) })
@@ -151,9 +141,6 @@ final class HomeViewModel {
         var failingTrackers: Int
     }
 
-    // a series and the chapters that arrived for it after you owned it. the
-    // grouping is the point - "Series - 3 new chapters" is one row where three
-    // chapter rows would be three
     struct UpdateRow: Equatable, Sendable {
         let entry: EntryRow
         let count: Int
@@ -179,9 +166,6 @@ final class HomeViewModel {
             unreadCount = entry.unreadCount
             lastReadDate = entry.lastReadDate
             addedDate = entry.addedDate
-            // derived from Classification rather than a source's per-item flag,
-            // so this is wider than a search stub's: Explicit folds erotica in
-            // with pornography, and disk carries nothing narrower
             adult = entry.classification == .Explicit
         }
     }
@@ -199,8 +183,6 @@ final class HomeViewModel {
     ) throws -> Stored {
         let excluded = try AdultGate.excluded(slugs: adultSlugs, in: db)
 
-        // the exclusion rides in the query rather than trimming the result, so
-        // the limit counts rows the rail can actually show
         let library =
             EntryView
             .filter(EntryView.Columns.inLibrary == true)
@@ -226,20 +208,9 @@ final class HomeViewModel {
         )
     }
 
-    // what arrived while you were away, which is the question every reader in
-    // the ecosystem opens their app to answer and the one this screen could not.
-    //
-    // the discriminator is `c.publishedDate > s.addedDate`: chapters the source
-    // actually released AFTER the series was yours. without it, adding a
-    // 400-chapter series posts 400 updates - those are a backlog, not news, and
-    // the backlog is what Recently Added is for. publishedDate rather than
-    // addedDate because a backfilled chapter that lands in the local db today
-    // is not news just for arriving today - it was published whenever the
-    // source says it was
-    //
-    // ranked through best_chapter so a series carried by three sources counts a
-    // chapter once, and filtered to unread so a row never says "3 new" about
-    // three you have already read
+    // new = c.publishedDate > s.addedDate, not addedDate/created-today: a
+    // backfilled chapter landing today isn't news, it was published whenever
+    // the source says. bc.rank = 1 dedupes a series carried by multiple sources
     nonisolated static func updating(
         excluded: Set<Int64>,
         limit: Int,
@@ -277,8 +248,6 @@ final class HomeViewModel {
             .fetchAll(db)
             .reduce(into: [Int64: EntryView]()) { $0[$1.seriesId] = $1 }
 
-        // the same resolver Continue Reading uses, so tapping an update opens
-        // the chapter rather than a screen about the chapter
         let targets = try ContinueTarget.resolve(for: ids, in: db)
 
         return grouped.prefix(limit).compactMap { id, count, latest in
@@ -287,10 +256,9 @@ final class HomeViewModel {
         }
     }
 
-    // two things still thin a page after SQL has had its say: a series the
-    // reader hid, and one whose chapters are all finished (no target). so the
-    // walk pages backwards through recency until the rail is full or the window
-    // runs out, rather than trimming a single page and showing the remainder
+    // hidden series and no-target (fully read) series can still shrink a page
+    // below continueLimit after the SQL fetch, so this walks pages until the
+    // rail is full or the window runs out, rather than trimming a single page
     nonisolated private static func continuing(
         from library: QueryInterfaceRequest<EntryView>,
         cutoff: Date,
@@ -327,26 +295,17 @@ final class HomeViewModel {
         return Array(rows.prefix(Rule.continueLimit))
     }
 
-    // the two shelves under the rail, and they are one query because they are one
-    // partition. every library series sits in exactly one of three places:
-    //
-    //   read inside the window  -> Continue Reading, the rail
-    //   fell out, mid-chapter   -> Pick Back Up
-    //   fell out, between them  -> Waiting For You
-    //
-    // the cutoff is the rail's own, so nothing can be in the rail and a shelf at
-    // once, and ContinueTarget already draws the second line for free: .resume
-    // means the reader stopped inside a chapter, .start means they finished one
-    // cleanly and chapters piled up behind it. no series appears twice, which is
-    // the whole reason these are not two independent filters
+    // three mutually exclusive states per library series, split on the rail's
+    // own cutoff so nothing is in the rail and a shelf at once: read within the
+    // window -> rail, fell out mid-chapter -> stalled, fell out cleanly with
+    // unread piled up -> waiting
     nonisolated private static func shelves(
         from library: QueryInterfaceRequest<EntryView>,
         cutoff: Date,
         in db: Database
     ) throws -> (stalled: [ContinueRow], waiting: [ContinueRow]) {
-        // never read at all is not "fell behind" - it is a series you added and
-        // have not started, which Recently Added used to carry and nothing on
-        // this screen claims any more
+        // lastReadDate == .distantPast means never read - excluded here, that's
+        // Recently Added's territory, not a shelf
         let cold =
             try library
             .filter(EntryView.Columns.lastReadDate < cutoff)
@@ -363,8 +322,7 @@ final class HomeViewModel {
         var waiting: [ContinueRow] = []
 
         for entry in cold {
-            // no target means every chapter is finished. that is caught up, not
-            // waiting, and it belongs on neither shelf
+            // nil target means every chapter is read - caught up, not on either shelf
             guard let target = targets[entry.seriesId] else { continue }
             let row = ContinueRow(entry: EntryRow(entry), target: target)
 
@@ -375,11 +333,7 @@ final class HomeViewModel {
             }
         }
 
-        // most recently abandoned first: the one you stopped last is the one you
-        // still half-remember, which is what makes it the cheapest to re-enter
         stalled = Array(stalled.prefix(Rule.shelfLimit))
-        // biggest pile first, because the question this shelf answers is "what
-        // have I fallen furthest behind on", not "what is oldest"
         waiting = Array(
             waiting
                 .sorted { $0.entry.unreadCount > $1.entry.unreadCount }
@@ -389,10 +343,6 @@ final class HomeViewModel {
         return (stalled, waiting)
     }
 
-    // a source that dies quietly takes its series' new chapters with it and says
-    // nothing, so it is found weeks later wondering why a favourite went silent.
-    // counted by source rather than by origin because that is what the banner
-    // claims - the screen behind it breaks the same failures down per series
     nonisolated private static func failing(
         excluded: Set<Int64>,
         in db: Database
@@ -416,10 +366,6 @@ final class HomeViewModel {
         ) ?? 0
     }
 
-    // counted by SERIES, not by service - the two services are at most two, so a
-    // count of them says almost nothing, where "four series are not syncing" is
-    // the size of the problem. the dead-account case is not this: it is one fact
-    // about an account and Activity names it directly
     nonisolated private static func failingLinks(
         excluded: Set<Int64>,
         in db: Database
@@ -527,8 +473,6 @@ extension HomeViewModel {
         let adult: Bool
     }
 
-    // one per series, never one per chapter: a reader wants to know which of
-    // their series moved, and by how much - not to scroll a chapter log
     struct UpdateEntry: Identifiable, Hashable {
         let id: SeriesRecord.ID
         let title: String
@@ -539,8 +483,6 @@ extension HomeViewModel {
         let adult: Bool
     }
 
-    // one row on either shelf. the two differ by what the second line says, not
-    // by what they hold, so they share a type - and the caller picks the line
     struct ShelfEntry: Identifiable, Hashable {
         let id: SeriesRecord.ID
         let title: String
@@ -591,14 +533,10 @@ extension HomeViewModel {
 
 #if DEBUG
     extension HomeViewModel {
-        // a model already holding its answer. observe() is never called, so nothing
-        // reads a database and every phase is reachable by what is handed in here
         static func preview(
             snapshot: Snapshot? = nil,
             failure: Failure? = nil
         ) -> HomeViewModel {
-            // the pieces directly rather than a whole Compositor - building that
-            // constructs every source, and a preview has no use for one
             let database = DatabaseClient.preview
             let registry = Compositor.Registry(sources: [], database: database)
             let model = HomeViewModel(

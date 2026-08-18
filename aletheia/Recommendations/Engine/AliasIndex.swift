@@ -31,8 +31,7 @@ struct AliasIndex: Sendable {
     }
 
     // every row any of these names points at, with the count of names that named
-    // it. a payload carries a title pool rather than one string, and the counts
-    // are what let a caller prefer the row several names agree on
+    // it - the counts are what let a caller prefer the row several names agree on
     //
     // the reference implementation took the first name that matched anything and
     // shipped a real bug doing it: "Best Wishes" resolved to "Black Market +Plus"

@@ -9,15 +9,6 @@ import Kingfisher
 import SwiftUI
 import Tagged
 
-// the one row shape Home's vertical shelves share: artwork, two lines, one
-// trailing accessory, and the whole row is the target. four sections wearing
-// four anatomies would make the eye re-parse at every header, and a resume
-// surface is read in seconds.
-//
-// what keeps it from being a Library cell: every row resolves to a MOMENT - a
-// chapter to open - rather than to a series to browse. there is no sort control,
-// no filter, and no see-all; a shelf that grew any of those would be Library
-// with fewer options
 struct ShelfRow: View {
     let title: String
     let cover: URL?
@@ -42,9 +33,6 @@ struct ShelfRow: View {
                 Text(title)
                     .font(.subheadline)
                     .fontWeight(.semibold)
-                    // two lines, not one: a real light-novel title truncated to
-                    // one line is unrecognisable, and the row is allowed to grow
-                    // because nothing below it is pinned
                     .lineLimit(2)
                     .multilineTextAlignment(.leading)
 
@@ -64,8 +52,6 @@ struct ShelfRow: View {
                     .padding(.horizontal, dimensions.spacing.space8)
                     .padding(.vertical, dimensions.spacing.space4)
                     .background(Palette.brandSubtle, in: .capsule)
-                    // the pill is a label on the row, never its own target - two
-                    // adjacent targets in a 60pt row is a mis-tap waiting
                     .allowsHitTesting(false)
             }
         }
@@ -120,7 +106,6 @@ struct ShelfRow: View {
             obscured: false
         )
 
-        // the row that decides the layout: a real title, at length
         ShelfRow(
             title: "The Eminence in Shadow: I Am Going to Rule the World Behind the Scenes",
             cover: nil,

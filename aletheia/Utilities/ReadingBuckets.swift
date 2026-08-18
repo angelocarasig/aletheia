@@ -8,20 +8,15 @@
 import Foundation
 import SwiftUI
 
-// sittings into fixed time buckets - twenty-four hours of a day, or seven days
-// of a week - so a chart can ask "when do I read" rather than only "did I".
+// not a GROUP BY on localDayKey: a session is an interval, not an instant, and
+// localDayKey is stamped from endedDate - a sitting running 23:30 -> 00:30
+// would file wholly on the second day, so a 21:00 bar could claim minutes that
+// happened at 23:00. buckets are computed by interval intersection in swift
+// instead. see docs/features/metrics.md for calendar/presentation maths.
 //
-// THE REASON THIS IS NOT A GROUP BY: a session is an interval, not an instant.
-// `localDayKey` is stamped from endedDate, so a sitting running 23:30 -> 00:30
-// is filed wholly on the second day. A heatmap cell never noticed - it is on or
-// off - but the moment a bar encodes a quantity, an hour of reading vanishes
-// from one day and reappears in the next, and in an hourly chart it lands at
-// 00:00 when half of it was 23:00. Buckets are therefore computed by INTERVAL
-// INTERSECTION here in Swift, which is also where docs/features/metrics.md
-// puts calendar and presentation maths.
-// what a bar's height and a grid cell's intensity mean. one choice drives both,
-// because the two are one layer of information and a grid measuring chapters
-// beside bars measuring pages is a palette claiming a consistency it lacks
+// one metric drives both the bar chart and the heatmap grid - a grid measuring
+// chapters beside bars measuring pages would be a palette claiming a
+// consistency it lacks
 enum ReadingMetric: String, CaseIterable, Identifiable, Sendable {
     case pages
     case chapters
@@ -61,12 +56,10 @@ enum ReadingBuckets {
         }
     }
 
-    // pages are counted per sitting rather than per instant, so a sitting that
-    // straddles a boundary has its pages apportioned by how much of its elapsed
-    // time fell either side. that assumes an even pace, which is untrue in
-    // detail and honest in aggregate - the alternative, filing the whole sitting
-    // under the bucket it began in, states that a two-hour read happened
-    // entirely at 21:00
+    // a sitting straddling a boundary has its pages apportioned by elapsed
+    // time on either side - assumes an even pace, untrue in detail but honest
+    // in aggregate. the alternative (filing it whole under the start bucket)
+    // states a two-hour read happened entirely at 21:00
     static func hourly(
         _ sessions: [ReadingSessionEntry],
         on day: Date,
@@ -93,15 +86,10 @@ enum ReadingBuckets {
             sessions, into: starts, next: { calendar.date(byAdding: .day, value: 1, to: $0) })
     }
 
-    // the average ACTIVE bucket across everything handed in, at the same
-    // granularity the chart is drawing. empty buckets are excluded on purpose:
-    // a mean over every hour of every day is a number no hour ever looked like,
-    // and the question the line answers is "what does a bar of mine usually
-    // look like", not "what is my rate around the clock".
-    //
-    // walks each sitting into only the buckets it actually touches rather than
-    // against a fixed spine, so the cost is the number of sittings and not the
-    // length of history
+    // empty buckets are excluded on purpose - a mean over every hour of every
+    // day is a number no hour ever looked like. walks each sitting into only
+    // the buckets it touches rather than a fixed spine, so cost is the number
+    // of sittings, not the length of history
     static func averageActive(
         _ sessions: [ReadingSessionEntry],
         of granularity: Calendar.Component,
@@ -141,12 +129,9 @@ enum ReadingBuckets {
         return Int((active.reduce(0, +) / Double(active.count)).rounded())
     }
 
-    // every sitting the bucket overlaps, in the order handed in. membership
-    // follows the bars rather than the stored localDayKey: a sitting running
-    // 23:40 -> 00:20 built both bars, so tapping either has to find it, and
-    // filing it by start alone leaves the second bar with height and nothing
-    // behind it. the rows keep their own whole values - the bucket's share is
-    // the bar's business, not the sitting's
+    // membership follows overlap, not the stored localDayKey - a sitting
+    // running 23:40 -> 00:20 built both bars, so filing it by start alone
+    // would leave the second bar with height and nothing behind it
     static func sittings(
         _ sessions: [ReadingSessionEntry],
         in bucket: Bucket,
@@ -185,9 +170,8 @@ enum ReadingBuckets {
                 let from = max(session.startedDate, bucketStart)
                 let to = min(session.endedDate, bucketEnd)
 
-                // a sitting recorded as instantaneous still happened somewhere,
-                // so it lands whole in the bucket containing its start rather
-                // than dividing by a zero span
+                // an instantaneous sitting lands whole in its start bucket
+                // rather than dividing by a zero span
                 guard span > 0 else {
                     if session.startedDate >= bucketStart, session.startedDate < bucketEnd {
                         pages[index] += session.pagesRead
@@ -214,9 +198,7 @@ enum ReadingBuckets {
 
 #if DEBUG
     extension ReadingBuckets {
-        // the boundary cases the interval maths exists for. run from a preview or a
-        // scratch target; assertions rather than a test file, since the project has
-        // no test target
+        // assertions rather than a test file, since the project has no test target
         static func check() {
             var calendar = Calendar(identifier: .gregorian)
             calendar.timeZone = TimeZone(secondsFromGMT: 0)!
@@ -244,8 +226,7 @@ enum ReadingBuckets {
                 pages: 40
             )
 
-            // half the sitting fell before midnight, so half the pages did too -
-            // the stored localDayKey would have filed all forty on the tenth
+            // localDayKey alone would have filed all forty pages on the tenth
             let hours = hourly([straddle], on: midnight, calendar: calendar)
             assert(hours.count == 24)
             assert(
@@ -253,7 +234,6 @@ enum ReadingBuckets {
                 "expected half of a midnight straddle in hour 0, got \(hours[0].pages)")
             assert(hours[1...].allSatisfy { $0.pages == 0 })
 
-            // an instantaneous sitting divides by no span and still lands somewhere
             let instant = midnight.addingTimeInterval(3_600 * 9)
             let zero = hourly(
                 [session(from: instant, to: instant, pages: 12)], on: midnight, calendar: calendar)
@@ -262,8 +242,6 @@ enum ReadingBuckets {
                 zero.reduce(0) { $0 + $1.pages } == 12,
                 "an instant sitting must not be counted twice")
 
-            // the straddle built two bars, so both have to be able to name it - and
-            // a bucket it never touched must not
             let before = hourly(
                 [straddle], on: midnight.addingTimeInterval(-3_600), calendar: calendar)
             assert(sittings([straddle], in: hours[0], of: .hour, calendar: calendar).count == 1)
@@ -272,13 +250,10 @@ enum ReadingBuckets {
                 "a sitting crossing midnight must appear under the hour it started in")
             assert(sittings([straddle], in: hours[5], of: .hour, calendar: calendar).isEmpty)
 
-            // a sitting ending exactly on a boundary belongs to the bucket it was
-            // in, not the one it stopped at
             let upTo = session(from: midnight, to: midnight.addingTimeInterval(3_600), pages: 5)
             assert(sittings([upTo], in: hours[0], of: .hour, calendar: calendar).count == 1)
             assert(sittings([upTo], in: hours[1], of: .hour, calendar: calendar).isEmpty)
 
-            // a week bucket set is seven long and conserves what it was given
             let week = daily([straddle], weekOf: midnight, calendar: calendar)
             assert(week.count == 7)
             assert(week.reduce(0) { $0 + $1.pages } <= 40)
@@ -287,9 +262,8 @@ enum ReadingBuckets {
         }
     }
 
-    // the interval maths is the one part of this feature that can be silently wrong
-    // and look right, so it gets the check. run the preview: it traps on failure and
-    // prints otherwise
+    // the interval maths is the one part of this feature that can be silently
+    // wrong and look right - run the preview, it traps on failure
     #Preview("Bucket check") {
         let _ = ReadingBuckets.check()
 

@@ -7,24 +7,21 @@
 
 import Foundation
 
-// every /api/ path answers an unsigned request with 403 {"message": "Missing
-// token."} - an application check, not cloudflare. the token is deterministic
-// and stateless: no timestamp, no nonce, no session, no cookie, no user agent.
+// every /api/ path 403s without a signed token - an application check, not
+// cloudflare. the token is deterministic and stateless: no timestamp, nonce,
+// session, cookie, or user agent.
 //
-// this is not deobfuscation. the site signs inside a jscrambler bytecode vm
-// and nothing here touches it - what follows reimplements the algorithm that vm
-// performs, from constants a human extracted once. so the tables are data with
-// a shelf life: mangafire rotated the previous scheme's keys three times in six
-// weeks before replacing it wholesale. a rotation surfaces as a 403 on a request
-// that still reproduces `reference`, which is why that test vector is here and
-// not only in a test target this project does not yet build.
+// this reimplements the algorithm mangafire's jscrambler vm performs, from
+// constants extracted once - not a live deobfuscation. the tables have a
+// shelf life (mangafire rotated keys three times in six weeks before
+// replacing the scheme wholesale), so a rotation surfaces as a 403 despite
+// still reproducing `reference` - hence that vector living here.
 //
 // see docs/sources/mangafire.md
 enum MangaFireSigner {
-    // the canonical string is NOT the request url, and the two differences are
-    // the whole difficulty. sign `key[0]`/`key[1]` while sending `key[]`, and
-    // sign the decoded value while sending the encoded one. either mistake is a
-    // 403 that looks exactly like a rotated table
+    // the canonical string is not the request url: sign `key[0]`/`key[1]` while
+    // sending `key[]`, and sign the decoded value while sending the encoded one.
+    // either mistake is a 403 that looks exactly like a rotated table
     static func sign(path: String, items: [URLQueryItem]) -> URLQueryItem {
         let sorted = items.enumerated()
             .sorted { left, right in

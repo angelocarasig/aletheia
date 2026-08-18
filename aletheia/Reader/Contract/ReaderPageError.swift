@@ -8,23 +8,15 @@
 import Foundation
 import Kingfisher
 
-// page-scoped, deliberately separate from ReaderError. that type is about
-// chapters - every case carries a chapter id and says things like "Empty
-// Chapter" - and a single image failing to download is a different unit of
-// failure. the cell has no chapter-level answer to give
 enum ReaderPageError: Error, Equatable, Sendable {
     case offline
     case timedOut
-    // the server answered, just not with an image. status is kept because 404
-    // and 503 are the same sentence to a reader but not the same advice
     case unavailable(status: Int)
     case corrupt
     case failed
 }
 
 extension ReaderPageError {
-    // a page that can never load, however many times it is retried. a missing
-    // page is missing; a server having a bad minute is worth another tap
     var isRetryable: Bool {
         switch self {
         case .offline, .timedOut, .failed: true
@@ -66,10 +58,8 @@ extension ReaderPageError: DescribableError {
 // MARK: - Kingfisher
 
 extension ReaderPageError {
-    // the completion handler only ever hands back a KingfisherError, so this is
-    // the single boundary where its vocabulary stops. cancellation never reaches
-    // here - the cell drops it before mapping, because a reused cell cancelling
-    // its own load is not a failure the reader should ever see
+    // the cell filters cancellation before calling this - a reused cell
+    // cancelling its own load must never be mapped to a failure here
     init(_ error: KingfisherError) {
         switch error {
         case .responseError(let reason):

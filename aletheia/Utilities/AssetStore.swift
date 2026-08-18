@@ -11,9 +11,8 @@ struct AssetStore: AssetStoring {
     private let network: NetworkConfiguration
     private let log: AppLog
 
-    // no throttler of its own any more: pacing is per host and lives inside
-    // NetworkService, so a cover and a chapter fetch at the same site finally
-    // share one budget instead of being two limits blind to each other
+    // no throttler of its own - pacing is per host, inside NetworkService, so
+    // a cover and a chapter fetch at the same site share one budget
     init(network: NetworkConfiguration, log: AppLog = .shared) {
         self.network = network
         self.log = log
@@ -43,7 +42,7 @@ struct AssetStore: AssetStoring {
 
             let data: Data = try await network.get(url: remote, headers: headers)
 
-            // a status code is not enough. cloudflare interstitials and hotlink
+            // a status code is not enough - cloudflare interstitials and hotlink
             // blocks come back 200 text/html, and persisting one would set a path
             // that claims success, so the remote fallback would never fire again
             guard let format = Self.format(of: data) else { throw AssetError.notAnImage(remote) }
@@ -61,8 +60,8 @@ struct AssetStore: AssetStoring {
             progress?(index + 1, asset.parts.count)
         }
 
-        // a collected asset is named by its directory; a single one by the file
-        // that actually landed, extension included
+        // collected asset -> named by directory; single -> by the file that
+        // actually landed, extension included
         return Constants.Paths.relative(
             asset.collected ? asset.location : (written ?? asset.location))
     }
@@ -112,8 +111,8 @@ struct AssetStore: AssetStoring {
         return removed
     }
 
-    // doubles as the validity check - an unrecognised header means the response
-    // was not an image and must not be persisted
+    // doubles as the validity check - an unrecognised header means the
+    // response was not an image and must not be persisted
     private static func format(of data: Data) -> String? {
         guard data.count >= 12 else { return nil }
         let bytes = [UInt8](data.prefix(12))

@@ -9,11 +9,8 @@ import Foundation
 import Kingfisher
 
 extension AnyModifier {
-    // most sources reject image requests that do not carry their own referer,
-    // and a cloudflare-fronted one wants the pinned agent and its cookies too.
     // headers ride here rather than in the processor, so a credential refresh
-    // does not change the cache key and orphan every page already on disk
-    // covers and search thumbnails only ever needed the one header
+    // does not change kingfisher's cache key and orphan every page on disk
     static func referer(_ url: URL?) -> AnyModifier {
         headers(url.map { ["Referer": $0.absoluteString] } ?? [:])
     }

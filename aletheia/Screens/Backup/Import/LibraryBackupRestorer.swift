@@ -9,14 +9,6 @@ import Foundation
 import GRDB
 import Tagged
 
-// a full restore, not a per-row queue: the library ends up matching the
-// backup exactly. anything currently in the library but absent from the
-// backup is removed from it; every backup series is attached (its source
-// still installed) or reattached as disconnected (it isn't) - the same
-// disconnected state Library's own filter and DetailsSources' badge
-// already know how to render and that Disconnected Migration already
-// knows how to fix. chapters seed straight from the backup in both cases,
-// never a live fetch - the payload already has them
 enum LibraryBackupRestorer {
     struct Summary: Equatable {
         var restoredCount = 0

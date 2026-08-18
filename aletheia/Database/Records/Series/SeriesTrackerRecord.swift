@@ -9,9 +9,9 @@ import Foundation
 import GRDB
 import Tagged
 
-// one series joined to one entry on one list service. two rows if both services
-// are linked, and they never consult each other - a failure on one is not a
-// failure on the other, and neither arbitrates the other's numbers.
+// two rows if both services are linked, and they never consult each other - a
+// failure on one is not a failure on the other, and neither arbitrates the
+// other's numbers.
 //
 // the remote* columns are a deliberate copy of what the service last said. an
 // offline or signed-out series still has to render "AniList - 44 of 240", and a
@@ -162,8 +162,7 @@ extension SeriesTrackerRecord {
     }
 
     static func createIndexes(db: Database) throws {
-        // foreign key index. the unique key above already covers reads keyed by
-        // series, so this is for the cascade
+        // the unique key above already covers reads keyed by series, so this is for the cascade
         try db.create(
             index: "idx_series_tracker_seriesId",
             on: databaseTableName,
@@ -179,8 +178,8 @@ extension SeriesTrackerRecord {
             ifNotExists: true
         )
 
-        // the drain reads only dirty rows, which are a handful of the table at
-        // any moment. same shape as idx_origin_failing
+        // partial index, same shape as idx_origin_failing - dirty rows are a
+        // handful of the table at any moment
         try db.create(
             index: "idx_series_tracker_pending",
             on: databaseTableName,

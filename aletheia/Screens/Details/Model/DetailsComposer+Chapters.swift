@@ -20,12 +20,9 @@ extension DetailsComposer {
         private(set) var showAll = false
         private(set) var showHalf = true
 
-        // from DetailsWriting
         private(set) var saving = false
         private(set) var failure: Failure?
 
-        // which series this is for, taken as the bundle goes past. nothing
-        // draws it, so it stays out of observation
         @ObservationIgnored private var seriesId: SeriesRecord.ID?
 
         private let database: DatabaseClient
@@ -34,7 +31,6 @@ extension DetailsComposer {
             self.database = database
         }
 
-        // from DetailsApplying
         func apply(_ stored: Stored) {
             seriesId = stored.series.id
 
@@ -45,14 +41,12 @@ extension DetailsComposer {
             }
         }
 
-        // from DetailsWriting
         func clear() {
             failure = nil
         }
 
-        // where a tapped chapter goes, or nil if it cannot be opened. it does
-        // not open anything - navigation has to happen in the tap itself, so
-        // this stays synchronous and open() does the writing behind it
+        // synchronous and does not write - navigation must happen in the tap
+        // itself, so open() does the writing separately, behind it
         func read(_ chapter: Row) -> Target? {
             guard let seriesId else { return nil }
             guard chapters.contains(where: { $0.id == chapter.id }) else { return nil }
@@ -63,16 +57,15 @@ extension DetailsComposer {
             )
         }
 
-        // stamps the series as read and moves its status to .reading, which is what keeps
-        // the launch purge from deleting it. the page position itself is
-        // written by the reader, not here
+        // moves the series to .reading, which is what keeps the launch purge
+        // from deleting it - the page position itself is written by the reader
         func open(_ chapter: Row) async {
             guard let seriesId else { return }
             let opened = Date.now
 
             do {
                 try await database.writer.write { db in
-                    // by number, so opening a chapter marks it opened whichever
+                    // by number, so this marks the chapter opened whichever
                     // source ends up serving it
                     try ChapterRecord.apply(
                         readDate: opened,
@@ -88,8 +81,6 @@ extension DetailsComposer {
             }
         }
 
-        // a confirmation to put in front of a bulk mark, or nil to just do it.
-        // asked for one chapter at a time it is always nil
         func request(read: Bool, numbers: [Double]) -> Request? {
             let unique = Set(numbers)
             guard unique.count > 1 else { return nil }
@@ -107,9 +98,7 @@ extension DetailsComposer {
             )
         }
 
-        // writes progress for these chapter numbers across every origin that
-        // carries them. leaves the read date alone, because marking is
-        // bookkeeping rather than reading
+        // leaves the read date alone - marking is bookkeeping, not reading
         func mark(read: Bool, numbers: [Double]) async {
             guard let seriesId else { return }
             let numbers = Array(Set(numbers))
@@ -120,9 +109,8 @@ extension DetailsComposer {
 
             do {
                 try await database.writer.write { db in
-                    // clearing is the one write allowed to move progress
-                    // backwards - marking unread has to actually reach rows
-                    // that were read
+                    // monotonic only when marking read - marking unread must be
+                    // able to move progress backwards
                     try ChapterRecord.apply(
                         progress: read ? 1.0 : 0.0,
                         toNumbers: numbers,
@@ -131,10 +119,9 @@ extension DetailsComposer {
                         db: db
                     )
 
-                    // one push for the batch maximum rather than one per
-                    // number. unmarking lowers the furthest-read number, which enqueue
-                    // simply declines to write - a tracker is never told to
-                    // forget a chapter
+                    // unmarking lowers the furthest-read number, which enqueue
+                    // declines to write - a tracker is never told to forget a
+                    // chapter
                     try SeriesTrackerRecord.enqueue(for: seriesId, in: db)
                 }
             } catch {
@@ -142,14 +129,12 @@ extension DetailsComposer {
             }
         }
 
-        // off, the list is one row per chapter number. on, every source's copy
-        // of a number is its own row. it overrides the half filter too, since a
-        // list showing everything cannot be hiding halves
+        // also overrides the half filter - a list showing everything cannot be
+        // hiding halves
         func show(all value: Bool) async {
             await write(SeriesRecord.Columns.showAllChapters, value)
         }
 
-        // whether half chapters, the .5 numbers, appear in the list
         func show(half value: Bool) async {
             await write(SeriesRecord.Columns.showHalfChapters, value)
         }
@@ -185,25 +170,16 @@ extension DetailsComposer.Chapters {
         let progress: Double
         let url: URL
 
-        // nil when the origin's source is no longer installed
         let sourceIcon: ImageResource?
-
-        // an uninstalled or disabled source can still show its chapters, but
-        // nothing can fetch pages for them
         let canRead: Bool
 
-        // this row's own bytes, not this chapter number's. two sources serving
-        // chapter 44 are two rows with two paths, and downloading one says
-        // nothing about the other
+        // per row, not per chapter number - two sources serving chapter 44 are
+        // two rows with two paths, and downloading one says nothing about the other
         let downloaded: Bool
 
         var finished: Bool { progress >= 1 }
     }
 
-    // where the reader opens. it says only which series and which chapter,
-    // because the reader resolves its own chapter list and page urls from
-    // those. it is a navigation value, so it has to compare on something
-    // stable, and a pair of row ids is that
     struct Target: Hashable, Identifiable {
         let seriesId: SeriesRecord.ID
         let chapterId: ChapterRecord.ID
@@ -211,35 +187,23 @@ extension DetailsComposer.Chapters {
         var id: Int64 { chapterId.rawValue }
     }
 
-    // a bulk mark waiting to be confirmed. returned instead of written when the
-    // change is big enough to be worth asking about, so the screen can put up a
-    // dialog and call mark() only if the reader agrees. nil means go ahead
     struct Request: Identifiable {
-        // fresh per prompt, so the screen can tell one confirmation from the
-        // next even when the same chapters are picked twice
+        // fresh per prompt, so the same chapters picked twice still get their
+        // own confirmation
         let id = UUID()
 
-        // true marks the chapters finished, false clears them back to unread
         let read: Bool
-
-        // the chapter numbers to write. by number rather than by row, so the
-        // write reaches every origin carrying that number
         let numbers: [Double]
-
-        // how many chapters the reader picked. this is the number the dialog
-        // leads with, because it is what they think they asked for
         let scope: Int
 
-        // how many of those lose something they would miss, which is a page
-        // position part way through a chapter. lower than scope, because
-        // marking read only overwrites chapters left unfinished
+        // marking read only counts chapters left partway through as affected;
+        // marking unread counts every chapter that had progress at all
         let affected: Int
     }
 }
 
-// the chapter list as it is read and shaped. both run on the database queue:
-// turning four hundred rows into display rows costs about 700ms, and that is a
-// frame, so neither the raw row nor the mapping ever reaches the main actor
+// both run on the database queue: turning four hundred rows into display rows
+// costs about 700ms, which is a frame, so neither step reaches the main actor
 extension DetailsComposer.Chapters {
     nonisolated static func rows(
         for id: SeriesRecord.ID,
@@ -265,8 +229,8 @@ extension DetailsComposer.Chapters {
             JOIN \(OriginRecord.databaseTableName) o ON o.id = c.\(ChapterRecord.Columns.originId.name)
             LEFT JOIN \(SourceRecord.databaseTableName) src ON src.id = o.\(OriginRecord.Columns.sourceId.name)
             WHERE bc.seriesId = ?
-              -- rank = 1 is the deduplicated list. showAllChapters drops that
-              -- filter entirely, so every source's copy of a number is a row
+              -- rank = 1 is the deduplicated list; showAllChapters drops the
+              -- filter so every source's copy of a number is its own row
               AND (bc.showAllChapters = 1 OR bc.rank = 1)
               -- isVisible already folds in showAllChapters and showHalfChapters
               AND bc.isVisible = 1
@@ -276,8 +240,6 @@ extension DetailsComposer.Chapters {
         return try Chapter.fetchAll(db, sql: sql, arguments: [id])
     }
 
-    // not carried in the bundle, unlike the other row types - it is read here
-    // and handed straight to display(), so it never reaches the main actor
     struct Chapter: Decodable, FetchableRecord, Sendable {
         let id: Int64
         let slug: String
@@ -293,10 +255,9 @@ extension DetailsComposer.Chapters {
         let sourceSlug: String?
     }
 
-    // ordered the way best_chapter ranks them: priority first, id as the
-    // deterministic tiebreak, unavailable sources last. the icon resolves
-    // through the registry, so a source no longer compiled in yields nil and
-    // the row renders a placeholder
+    // order is whatever rows(for:in:) returned (number ascending); this just
+    // maps. the icon resolves through the registry, so a source no longer
+    // compiled in yields nil and the row renders a placeholder
     nonisolated static func display(
         _ rows: [Chapter],
         registry: Compositor.Registry

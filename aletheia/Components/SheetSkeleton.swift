@@ -7,8 +7,6 @@
 
 import SwiftUI
 
-// the pending state of a list-shaped sheet: rows in the shape the content will
-// take, not a spinner over nothing. one shimmer sweep on the container
 struct SheetSkeleton: View {
     var rows: Int = 8
 

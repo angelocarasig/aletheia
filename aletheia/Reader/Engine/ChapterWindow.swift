@@ -7,9 +7,8 @@
 
 import Foundation
 
-// holds page urls for the few chapters around the reader and nothing else. a
-// decoded page is ~11mb, so the whole series can never be resident - only urls
-// are, and those are a few kilobytes per chapter.
+// holds page urls for the few chapters around the reader and nothing else - a
+// decoded page is ~11mb, so the whole series can never be resident
 //
 // single-flight is a task map rather than an array of continuations: a second
 // caller awaits the same task, cancellation comes free, and there is no way to
@@ -18,8 +17,6 @@ actor ChapterWindow {
     private let source: any ReaderPageSource
     private let limit: Int
 
-    // reading order, so eviction can pick by distance from where the reader
-    // actually is rather than by how long ago something was touched
     private let slots: [ReaderChapter.ID: Int]
 
     private var pages: [ReaderChapter.ID: [ReaderPage]] = [:]
@@ -63,7 +60,6 @@ actor ChapterWindow {
             touch(id)
             return Load(pages: fetched, evicted: evictIfNeeded(protecting: id))
         } catch {
-            // a failed fetch is never cached, so a retry actually retries
             inFlight[id] = nil
             throw error
         }
@@ -82,7 +78,8 @@ actor ChapterWindow {
     }
 
     // says which chapter is being read, which is what eviction measures from.
-    // not the most recently loaded - preloading a neighbour would claim that
+    // a preload also calls this via load(_:), so it's the caller's job
+    // (ReaderEngine re-touching on the actual page change) to correct it back
     func touch(_ id: ReaderChapter.ID) {
         guard pages[id] != nil else { return }
         current = id
@@ -108,9 +105,9 @@ actor ChapterWindow {
 
     // MARK: Private
 
-    // the chapter furthest from the one being read goes, not the least recently
-    // touched - recency fires on chapter change, so scrolling back and forth
-    // scrambles it and it never knows about reading distance
+    // the chapter furthest from the one being read goes, not the least
+    // recently touched - a recency-based policy scrambles under scrolling
+    // back and forth, since it never knows about reading distance
     private func evictIfNeeded(protecting keep: ReaderChapter.ID) -> ReaderChapter.ID? {
         guard pages.count > limit else { return nil }
 

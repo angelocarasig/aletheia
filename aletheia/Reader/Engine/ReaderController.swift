@@ -8,8 +8,8 @@
 import Photos
 import UIKit
 
-// one section per chapter, one item per page. sections are what make chapter
-// insertion and eviction expressible without any index arithmetic
+// one section per chapter, one item per page - sections make chapter
+// insertion and eviction expressible without index arithmetic
 @MainActor
 final class ReaderController: UIViewController {
     typealias DataSource = UICollectionViewDiffableDataSource<ReaderChapter.ID, ReaderItem>
@@ -42,8 +42,6 @@ final class ReaderController: UIViewController {
     private var ratios: [ReaderChapter.ID: CGFloat] = [:]
     private var samples: [ReaderChapter.ID: [CGFloat]] = [:]
 
-    // how far the offset must move once the pending batch lands, to hold the
-    // page under the reader still while content above it changes height
     private var pendingOffsetAdjustment: CGFloat = 0
 
     // separator heights are cached rather than recomputed, because extent() runs
@@ -51,8 +49,6 @@ final class ReaderController: UIViewController {
     private var separatorExtents: [ReaderBoundary: CGFloat] = [:]
     private var separatorDirections: [ReaderBoundary: ReadingDirection] = [:]
 
-    // reading order decides direction, so the last position is kept rather than
-    // the last offset - coordinates cannot answer this under right-to-left
     private(set) var lastDirection: ReadingDirection = .forward
 
     private var pendingInvalidation = false
@@ -68,7 +64,6 @@ final class ReaderController: UIViewController {
     private var mutations = 0
 
     var onVisiblePageChanged: ((ReaderPage, Int, Int) -> Void)?
-    // the engine owns what a boundary means; the controller only renders it
     var separatorModel: ((ReaderBoundary, ReadingDirection) -> ReaderSeparatorModel)?
     var onSeparatorReached: ((ReaderBoundary, ReadingDirection) -> Void)?
     var onSeparatorRetry: ((ReaderBoundary) -> Void)?
@@ -199,9 +194,6 @@ final class ReaderController: UIViewController {
             }
             setOffsetWithoutAnimation(restored)
 
-            // both answers to the same question: what the layout says is
-            // centre-screen now, and what the stale visible set would have said.
-            // if they agree, the geometry is settled and the reporter is honest
             let centre = centremostPage()
             let stale = collectionView.indexPathsForVisibleItems
                 .min { lhs, rhs in
@@ -374,8 +366,6 @@ final class ReaderController: UIViewController {
         configuration = value
         autoScroller?.setSpeed(value.autoScrollSpeed)
         autoScroller?.setMode(value.mode)
-        // changing the dwell restarts it - the bar would otherwise finish the
-        // cycle it was already part-way through at the old duration
         autoAdvancer?.setInterval(value.autoAdvanceInterval)
         prefetcher = PagePrefetcher(count: value.prefetchCount, width: pageWidth, scale: pageScale)
 
@@ -413,8 +403,6 @@ final class ReaderController: UIViewController {
 
     // MARK: Auto-scroll
 
-    // a strip creeps, a paged mode dwells and then slides. the two are different
-    // enough that they are different drivers rather than a branch inside one
     func startAutoScroll() {
         guard autoScroller == nil, autoAdvancer == nil else { return }
 
@@ -481,7 +469,6 @@ final class ReaderController: UIViewController {
         max(1, view.bounds.width - configuration.horizontalPadding * 2)
     }
 
-    // the display this reader is on, not the one UIScreen.main used to assume
     private var pageScale: CGFloat {
         max(1, traitCollection.displayScale)
     }
@@ -728,9 +715,6 @@ final class ReaderController: UIViewController {
         var extents: [ReaderBoundary: CGFloat] = [:]
         for item in flatItems() {
             guard case .separator(let boundary) = item else { continue }
-            // sized for the reader's own text size: the band's constants are
-            // per content-size category, so a scaled headline gets a box that
-            // scaled with it rather than one it overflows
             extents[boundary] =
                 separatorModel?(boundary, .forward)
                 .height(for: traitCollection.preferredContentSizeCategory)
@@ -806,7 +790,6 @@ final class ReaderController: UIViewController {
         case .separator(.start):
             return ReadingPosition(slot: -1, index: .max)
         case .separator(.after(let chapter)):
-            // sits after every page of the chapter it trails
             return order.firstIndex(of: chapter)
                 .map { ReadingPosition(slot: $0, index: .max) }
         }
@@ -911,8 +894,6 @@ final class ReaderController: UIViewController {
         collectionView.setContentOffset(offset, animated: true)
     }
 
-    // presented from here rather than from the cell: a cell has no view
-    // controller to present from
     private func share(_ image: UIImage, page: ReaderPage) {
         let caption = shareCaption?(page.chapter)
         let item = PageActivityItem(
@@ -1229,9 +1210,6 @@ private final class FullInvalidationContext: UICollectionViewLayoutInvalidationC
     override var invalidateEverything: Bool { true }
 }
 
-// one case, because everything else the photo library refuses states its own
-// reason. a denial does not - it arrives as a change-request error naming a
-// mechanism rather than the permission behind it
 private enum SaveError: DescribableError {
     case denied
 
@@ -1241,6 +1219,5 @@ private enum SaveError: DescribableError {
         "aletheia has no permission to add to your photo library. You can allow it in Settings."
     }
 
-    // asking again gets the same refusal until something changes outside the app
     var isRetryable: Bool { false }
 }

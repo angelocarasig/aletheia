@@ -7,13 +7,8 @@
 
 import SwiftUI
 
-// which way the sync is about to write, and how far. an enum rather than two
-// booleans: both directions ask before they act, and one value is what keeps
-// the two alerts in the same shape
 enum TrackerReconcile: Equatable {
-    // the service is further along: mark chapters read in this app
     case pull(Int)
-    // this app is further along: send the number out to every linked service
     case push(Int)
 
     var chapter: Int {
@@ -24,10 +19,6 @@ enum TrackerReconcile: Equatable {
 }
 
 extension View {
-    // the same confirmation from two places - the section banner and the manage
-    // sheet - because the two offers write the same thing and the warnings are
-    // the load-bearing part. a second copy of this wording is a second copy that
-    // drifts, and what it would drift about is what a tap costs
     func trackerReconcile(
         _ pending: Binding<TrackerReconcile?>,
         subject: String,
@@ -45,9 +36,6 @@ extension View {
     }
 }
 
-// subject is who the push lands on - one service by name, or "your trackers"
-// where a series is linked to both. the pull side never needs it: marking read
-// happens here, and which service suggested the number does not change that
 private struct TrackerReconcileAlert: ViewModifier {
     @Binding var pending: TrackerReconcile?
     let subject: String
@@ -66,10 +54,9 @@ private struct TrackerReconcileAlert: ViewModifier {
         }
     }
 
-    // both directions confirm, and both confirms are built from one value, so
-    // they stay in step. what differs is what each costs: one writes history
-    // that cannot be un-happened, the other writes a number that can be typed
-    // back on the service's own site
+    // pull is .destructive, push is not - a pull writes read history that
+    // cannot be un-happened, a push writes a number the reader can just
+    // retype on the service's own site
     func body(content: Content) -> some View {
         content
             .alert(title, isPresented: presented, presenting: pending) { reconcile in

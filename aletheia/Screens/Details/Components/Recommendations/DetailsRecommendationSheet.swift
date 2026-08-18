@@ -8,9 +8,6 @@
 import Kingfisher
 import SwiftUI
 
-// what the rail deliberately leaves out. everything here comes from the model
-// bundle rather than the database - this is a series the reader almost certainly
-// does not own, so there is no row to read and nothing to navigate to yet
 struct DetailsRecommendationSheet: View {
     let result: Recommendation
 
@@ -33,10 +30,6 @@ struct DetailsRecommendationSheet: View {
                 VStack(alignment: .leading, spacing: dimensions.spacing.space20) {
                     header
                     findIt
-                    // match leads: this screen exists to say why the title is
-                    // here, and the synopsis and tags are the evidence behind
-                    // that claim rather than the claim itself. it is also the
-                    // only section that cannot be read anywhere else in the app
                     match
                     if let synopsis = result.synopsis { self.synopsis(synopsis) }
                     if !result.tags.isEmpty { tags }
@@ -61,13 +54,6 @@ struct DetailsRecommendationSheet: View {
         .presentationDragIndicator(.visible)
     }
 
-    // a recommendation is a catalogue row, not something the reader has - so the
-    // only thing this screen can offer is a way to go and find it. without it the
-    // sheet states a case and gives nowhere to act on it
-    //
-    // searching rather than opening: the same title sits under different names
-    // and different quality on each source, and picking between them is the
-    // reader's call
     private var findIt: some View {
         Text("Search all sources")
             .font(.headline)
@@ -77,8 +63,6 @@ struct DetailsRecommendationSheet: View {
             .background(.brand.opacity(0.1))
             .clipShape(.rect(cornerRadius: dimensions.radius.radius12))
             .tappable {
-                // both are state changes in one transaction, so the sheet leaves
-                // as the tab switches rather than hanging over the new one
                 router.searchAllSources(result.title)
                 dismiss()
             }
@@ -108,8 +92,6 @@ struct DetailsRecommendationSheet: View {
                     .fontWeight(.semibold)
                     .fixedSize(horizontal: false, vertical: true)
 
-                // authors and artists are separate in the catalogue and usually
-                // the same person, so they are joined rather than labelled twice
                 let people = Array(Set(result.authors + result.artists)).sorted()
                 if !people.isEmpty {
                     Text(people.joined(separator: ", "))
@@ -120,8 +102,6 @@ struct DetailsRecommendationSheet: View {
 
                 FlowLayout(spacing: dimensions.spacing.space4) {
                     Badge(text: result.format.label, tone: .neutral, size: .compact)
-                    // both carry the app's own tone rather than neutral - these
-                    // are the two facts here that vary in a way worth colouring
                     Badge(
                         text: result.publication.rawValue,
                         tone: result.publication.tone,
@@ -142,10 +122,6 @@ struct DetailsRecommendationSheet: View {
     private var tags: some View {
         VStack(alignment: .leading, spacing: dimensions.spacing.space8) {
             SectionHeader("Tags")
-            // the model ranks on far more tags than a reader wants to read, and
-            // they arrive in column order rather than by importance
-            // same pill and same gap as DetailsTags - these are the same kind of
-            // thing on two screens, and the sheet was drawing them a size larger
             FlowLayout(spacing: dimensions.spacing.space8) {
                 ForEach(result.tags.prefix(12), id: \.self) { tag in
                     Badge(text: tag, tone: .neutral, size: .compact)
@@ -154,11 +130,9 @@ struct DetailsRecommendationSheet: View {
         }
     }
 
-    // what the number on the card is made of. three blocks rather than one bar,
-    // because "shares your tags" and "reads like it" are different claims and a
-    // reader can tell which one they trust. era is shown and deliberately
-    // excluded from the confidence figure above it - a shared publication year
-    // was reading as a content match
+    // era is shown as its own meter but deliberately excluded from the
+    // confidence figure above it - a shared publication year was reading as
+    // a content match when it was folded in
     private var match: some View {
         VStack(alignment: .leading, spacing: dimensions.spacing.space12) {
             SectionHeader(title: "Match") {
@@ -171,9 +145,8 @@ struct DetailsRecommendationSheet: View {
                 Meter(label: "Era", value: result.blocks.era)
             }
 
-            // a z-score against this seed's own field. states its own scope
-            // because it is the one figure here that means nothing next to
-            // another recommendation's
+            // states its own scope - a z-score against this one seed means
+            // nothing next to another recommendation's
             Text(
                 "Ranked \(result.score.formatted(.number.precision(.fractionLength(2)))) above average for this title."
             )
@@ -225,8 +198,6 @@ struct DetailsRecommendationSheet: View {
 }
 
 extension Float {
-    // the blocks and the confidence are all 0...1 quantities read at a glance
-    // beside each other, so they are formatted in one place rather than four
     var percent: String {
         Double(min(max(self, 0), 1)).formatted(.percent.precision(.fractionLength(0)))
     }

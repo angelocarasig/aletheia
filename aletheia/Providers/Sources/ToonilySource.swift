@@ -8,10 +8,6 @@
 import Foundation
 import SwiftSoup
 
-// madara wordpress theme behind cloudflare: every content call is server-rendered
-// html (the admin-ajax "api" returns rendered fragments, not json), so this is a
-// SwiftSoup scrape riding the auth layer. shapes documented and verify-gated in
-// docs/sources/toonily.md
 struct ToonilySource: SourceService, AuthenticatingSource {
     let requester: AuthRequester
 
@@ -48,10 +44,7 @@ struct ToonilySource: SourceService, AuthenticatingSource {
         supportedFilters: [
             .text(id: "author", name: "Writer"),
             .text(id: "artist", name: "Artist"),
-            // the 30 slugs the site's own search form exposes, verbatim - the
-            // taxonomy holds ~55 terms but the raunchier ones are deliberately
-            // absent from their ui, and we declare only what their client sends.
-            // mature is this site's adult catch-all, so ticking it opens the gate
+            // only the 30 slugs the site's own search form exposes - taxonomy has ~55, rest deliberately absent from their ui
             .multiSelect(
                 id: "genre",
                 name: "Genres",
@@ -108,9 +101,6 @@ struct ToonilySource: SourceService, AuthenticatingSource {
                 ],
                 canExclude: false
             ),
-            // the tri-state gate from docs/sources/toonily.md §2c: absent means the
-            // request actively excludes adult content; either marked option opens
-            // the gate and every stub in the response inherits the stamp
             .select(
                 id: "mature",
                 name: "Mature Content",
@@ -120,8 +110,7 @@ struct ToonilySource: SourceService, AuthenticatingSource {
                 ]
             ),
         ],
-        // option ids are the site's own m_orderby values, which its order-by tab
-        // bar composes with s and every filter - verified from the live markup
+        // option ids are the site's own m_orderby values, verified from live markup
         supportedSort: .init(
             options: [
                 .init(id: "relevance", name: "Best match"),
@@ -158,8 +147,7 @@ struct ToonilySource: SourceService, AuthenticatingSource {
         ]
     }
 
-    // the root serves the cloudflare interstitial to a plain request, which would
-    // read as down - robots.txt is the one route the edge serves unchallenged
+    // root serves the cloudflare interstitial to a plain request - robots.txt is the one route the edge serves unchallenged
     var pingURL: URL { descriptor.baseURL.appendingPathComponent("robots.txt") }
 
     var specification: AuthSpecification {
@@ -189,9 +177,7 @@ extension ToonilySource {
                 forHTTPHeaderField: "Content-Type")
             request.setValue("XMLHttpRequest", forHTTPHeaderField: "X-Requested-With")
         }
-        // request-scoped, never in the credential: search sends it only when the
-        // gate is open, everything after search sends it always - an adult title
-        // the reader owns must keep resolving whatever the current search gate says
+        // request-scoped, not on the credential - search sends it only when the gate is open, everything after always sends it
         if mature {
             request.setValue(Self.matureCookie, forHTTPHeaderField: "Cookie")
         }
@@ -208,9 +194,6 @@ extension ToonilySource {
 // MARK: - Search
 
 extension ToonilySource {
-    // one transport: the site's own GET search form, every parameter - filters,
-    // m_orderby, adult - server-tested by their client. presets are plain sort
-    // presets riding the same path
     func search(_ query: SearchQuery) async throws -> SearchPage<SeriesStub> {
         let gateOpen = allowsAdult(for: query)
         let (data, _) = try await requester.send(
@@ -219,14 +202,11 @@ extension ToonilySource {
         let document = try SwiftSoup.parse(String(decoding: data, as: UTF8.self))
         let stubs = try Self.stubs(from: document, adult: gateOpen)
 
-        // no total anywhere - the fragment ends with a .no-posts marker instead
         let noPosts = try !document.select(Selector.noResults).isEmpty()
         let exhausted = stubs.isEmpty || noPosts
         return SearchPage(items: stubs, next: exhausted ? nil : query.page + 1)
     }
 
-    // GET /?s=...&post_type=wp-manga - the search-advanced-form, parameter for
-    // parameter. pagination is wordpress's /page/N/ prefix
     private func searchURL(for query: SearchQuery, gateOpen: Bool) -> URL {
         var items: [URLQueryItem] = [
             .init(name: "post_type", value: "wp-manga"),
@@ -253,9 +233,7 @@ extension ToonilySource {
             }
         }
 
-        // the form's own radio: "" all content, 0 family friendly, 1 mature only.
-        // any adult-marked tick (the mature select or the mature genre) opens to
-        // all - only the explicit Only narrows to 1
+        // site's own radio: "" all, 0 family-friendly, 1 mature-only - any adult tick opens to all, only explicit "only" narrows to 1
         let adult: String =
             switch query.filters.first(where: { $0.id == "mature" }) {
             case .select(_, "only"): "1"
@@ -294,8 +272,7 @@ extension ToonilySource {
         }
     }
 
-    // /serie/<slug>/ today, /webtoon/<slug>/ before the apr-2025 redesign - old
-    // links still circulate, so both path markers resolve
+    // /webtoon/<slug>/ was the path before the apr-2025 redesign - old links still circulate
     private static func slug(from href: String) -> String? {
         let parts = href.split(separator: "/")
         for marker in [Substring(seriesPath), "webtoon"] {
@@ -307,8 +284,7 @@ extension ToonilySource {
         return nil
     }
 
-    // their search chokes on punctuation, so the maintained implementations strip
-    // to lowercase alphanumerics before sending
+    // their search chokes on punctuation - strip to lowercase alphanumerics before sending
     private static func sanitized(_ text: String?) -> String {
         (text ?? "")
             .lowercased()
@@ -337,8 +313,7 @@ extension ToonilySource {
         }
         let tags = try document.select(Selector.genres).map { try $0.text() }.filter { !$0.isEmpty }
 
-        // the site 301s legacy /webtoon/ paths, so the canonical slug is whatever
-        // the response url carries - the duplicate guard checks both
+        // site 301s legacy /webtoon/ paths - canonical slug comes from the response url, not the request
         let canonical = response.url.flatMap { Self.slug(from: $0.path) } ?? seriesSlug
 
         return SeriesDetail(
@@ -355,9 +330,7 @@ extension ToonilySource {
         )
     }
 
-    // the stock madara 18+ overlay was removed for the site-wide family-mode
-    // toggle, so genres are the per-title signal - Mature is this site's adult
-    // catch-all (its genre archive collapses to near-empty under family mode)
+    // the stock madara 18+ overlay was removed for a site-wide family-mode toggle, so genres are the per-title adult signal now
     private static func classification(tags: [String]) -> Classification {
         let adult = tags.contains { tag in
             let lowered = tag.lowercased()
@@ -403,8 +376,7 @@ extension ToonilySource {
                 title: title,
                 number: Self.number(from: title),
                 language: .english,
-                // no group attribution anywhere on the site, and this keys the
-                // scanlator priority rows, so it has to be stable across fetches
+                // no group attribution on the site - this keys scanlator priority so it must stay stable across fetches
                 scanlator: descriptor.name,
                 url: seriesURL(seriesSlug).appendingPathComponent(slug),
                 publishedDate: Self.date(from: date)
@@ -432,8 +404,7 @@ extension ToonilySource {
         return formatter
     }()
 
-    // "Aug 8, 25", "August 8, 2025", "2 days ago", "UP" (a badge meaning today).
-    // unparseable dates fall to .distantPast rather than failing the list
+    // handles "Aug 8, 25", "August 8, 2025", "2 days ago", and "UP" (badge meaning today); unparseable falls to .distantPast
     private static func date(from value: String?) -> Date {
         guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty
         else {
@@ -475,8 +446,7 @@ extension ToonilySource {
 
 extension ToonilySource {
     func content(seriesSlug: String, chapterSlug: String) async throws -> [PageURL] {
-        // ?style=list forces the long-strip markup; without it madara may
-        // paginate the reader one image per page
+        // ?style=list forces long-strip markup - without it madara may paginate one image per page
         var components = URLComponents(
             url: seriesURL(seriesSlug).appendingPathComponent(chapterSlug),
             resolvingAgainstBaseURL: false
@@ -488,14 +458,12 @@ extension ToonilySource {
         let (data, _) = try await requester.send(request(url, mature: true), for: self)
         let document = try SwiftSoup.parse(String(decoding: data, as: UTF8.self))
 
-        // madara's optional aes page wrapper - never observed on toonily, so its
-        // appearance is a parse failure to surface, not content to silently drop
+        // madara's optional aes page wrapper - never observed on toonily, so treat its appearance as a parse failure, not content to drop
         guard try document.select(Selector.protector).isEmpty() else {
             throw URLError(.cannotParseResponse)
         }
 
-        // no dimensions anywhere on this site - tier 2 in-band extraction fills
-        // them during the real download
+        // no dimensions on this site - tier 2 in-band extraction fills them during the real download
         return try document.select(Selector.pageImage).enumerated().compactMap { index, image in
             try Self.imageURL(from: image).map { PageURL(index: index, url: $0) }
         }
@@ -505,8 +473,7 @@ extension ToonilySource {
 // MARK: - Images
 
 extension ToonilySource {
-    // lazy-loading moves the real url through a parade of attributes; src is the
-    // last resort because it usually holds the placeholder
+    // lazy-loading moves the real url through several attributes - src is last resort, it usually holds the placeholder
     private static func imageURL(from element: Element) throws -> URL? {
         for attribute in ["data-src", "data-lazy-src", "data-cfsrc", "data-manga-src", "src"] {
             let value = try element.attr(attribute).trimmingCharacters(in: .whitespacesAndNewlines)
@@ -515,8 +482,7 @@ extension ToonilySource {
         return nil
     }
 
-    // listing covers are downsized variants with a -WxH filename suffix on the
-    // static cdn; stripping it addresses the full-resolution original
+    // listing covers are downsized variants with a -WxH filename suffix - stripping it addresses the full-resolution original
     private static func fullResolution(_ url: URL) -> URL {
         let string = url.absoluteString
         guard let match = string.firstMatch(of: /-\d+x\d+(?=\.\w+$)/) else { return url }

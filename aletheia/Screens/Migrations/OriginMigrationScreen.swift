@@ -13,10 +13,6 @@ private enum OriginMigrationScreenLayout {
     static let scrollThreshold: CGFloat = 8
 }
 
-// the queue source migration, disconnected migration, and backup import all
-// push to - the same Tagger shape TrackerRestoreScreen uses, over the
-// generic MigrationRowView instead. nothing here writes to the database
-// directly - every write happens inside the composer's own MigrationCommitting
 struct OriginMigrationScreen<Entry: MigrationEntry>: View {
     let composer: MigrationComposer<Entry>
     var savedLabel: String = "Moved"

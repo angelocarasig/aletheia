@@ -15,35 +15,13 @@ private enum MigrationComposerLayout {
     static let pageSize = 20
 }
 
-// owns one migration session's whole state - the rows pulled from its
-// source, which sources they search against, and every action the queue
-// screen drives. generic over the entry type, so tracker restore, source
-// migration and disconnected-source migration all run the same queue,
-// pagination, search and save/skip machinery through their own source and
-// committer rather than three copies of it.
-//
-// takes exactly one already-resolved MigrationSource - unlike the tracker
-// restore composer this replaces, there is no live re-selection of "which
-// source pulls the entries" inside the composer itself. a flow that offers
-// that choice (tracker restore's own tracker picker) makes it on its own
-// setup screen, as plain local state, and only resolves the concrete source
-// once Start is tapped
 @MainActor
 @Observable
 final class MigrationComposer<Entry: MigrationEntry> {
     private let source: any MigrationSource<Entry>
     private let searching: any MigrationSearching
     private let committing: any MigrationCommitting<Entry>
-    // an entry the precheck already resolved locally, before any search runs
-    // - the same guard tracker restore uses against "this remoteId is
-    // already linked", generalized to whatever a given flow needs to check.
-    // defaults to finding nothing, since not every flow needs one
     private let precheck: ([Entry]) async -> Set<Entry.ID>
-    // a row that already knows what it would search for - backup import's
-    // fast path, when an entry's original source is still installed: no
-    // live search call needed, the candidate is already known. defaults to
-    // idle, since tracker restore and source migration never know the
-    // destination ahead of time
     private let initialMatch: (Entry) -> MigrationMatch
     private let log: AppLog
 
@@ -62,13 +40,8 @@ final class MigrationComposer<Entry: MigrationEntry> {
         }
     }
 
-    // the pill label for a precheck-matched row - "Already Linked" reads
-    // right for tracker restore, a different flow names its own precheck
     private let precheckLabel: String
 
-    // pills over the working set, not a fourth "all" - a saved or skipped row
-    // has nothing left to do, so there is no view that needs to show every
-    // row at once
     enum RowFilter: CaseIterable, Identifiable, Hashable {
         case remaining
         case precheckMatched
@@ -96,9 +69,6 @@ final class MigrationComposer<Entry: MigrationEntry> {
         self.precheckLabel = precheckLabel
         self.log = log
 
-        // the same existence gate SearchViewModel's own source list uses -
-        // while bypassAdultSources is off, an adultOnly source does not
-        // exist here at all, not merely hidden
         let defaults = UserDefaults.standard
         let unlocked =
             defaults.bool(forKey: Preferences.Key.bypassAdultSources)
@@ -106,8 +76,6 @@ final class MigrationComposer<Entry: MigrationEntry> {
         self.availableSources =
             unlocked ? registry.sources : registry.sources.filter { !$0.descriptor.adultOnly }
 
-        // nothing pre-checked - migrating a whole library is a real decision
-        // about where its chapters come from, not a default to accept
         self.selectedSourceSlugs = []
     }
 
@@ -115,9 +83,8 @@ final class MigrationComposer<Entry: MigrationEntry> {
         availableSources.filter { selectedSourceSlugs.contains($0.descriptor.slug) }
     }
 
-    // resolved once per composer rather than per row - a candidate carries
-    // only its source's slug, and the queue's row view needs the source
-    // itself to draw its icon
+    // a candidate carries only its source's slug; the queue's row view needs
+    // the source itself to draw its icon
     var sourcesBySlug: [String: Source] {
         Dictionary(uniqueKeysWithValues: availableSources.map { ($0.descriptor.slug, $0) })
     }
@@ -131,10 +98,6 @@ final class MigrationComposer<Entry: MigrationEntry> {
         }
     }
 
-    // paginated over the current pill's rows, not the master list - a row
-    // that just saved leaves this set on its own, which is what gives the
-    // reader "a fresh 20" after clearing a page rather than a fixed window
-    // that still shows what it already finished with
     private var filteredRows: [MigrationRow<Entry>] {
         switch filter {
         case .remaining: rows.filter { !$0.precheckMatched && !$0.isSettled }
@@ -201,9 +164,8 @@ final class MigrationComposer<Entry: MigrationEntry> {
 
     // MARK: Queue
 
-    // sequential per row, matching StashApp's Tagger - each search() call
-    // already fans out concurrently across the selected sources internally,
-    // so this is the only serialization needed, not a second layer of it
+    // sequential per row - search() already fans out across selected sources
+    // internally, so parallelizing here would double up the concurrency
     func searchAllOnCurrentPage() async {
         let ids = currentPageRows.filter { $0.match == .idle }.map(\.id)
         for id in ids {
@@ -211,15 +173,10 @@ final class MigrationComposer<Entry: MigrationEntry> {
         }
     }
 
-    // query defaults to the entry's own title - the picker sheet is what
-    // lets a reader override it when the entry's title is not what any
-    // installed source calls the series
     func search(_ id: Entry.ID, query: String? = nil) async {
         guard let index = rows.firstIndex(where: { $0.id == id }) else { return }
         let title = query ?? rows[index].entry.title
         rows[index].match = .searching
-        // a fresh search is a fresh attempt - a stale failure from the last
-        // candidate should not carry over to whatever this one finds
         rows[index].outcome = nil
 
         let match = await searching.search(title: title, in: selectedSources)
@@ -231,7 +188,6 @@ final class MigrationComposer<Entry: MigrationEntry> {
     func select(_ candidate: MigrationCandidate, for id: Entry.ID) {
         guard let index = rows.firstIndex(where: { $0.id == id }) else { return }
         rows[index].match = .found(rows[index].match.candidates, selected: candidate)
-        // picking a (possibly different) candidate is also a fresh attempt
         rows[index].outcome = nil
     }
 
@@ -244,25 +200,17 @@ final class MigrationComposer<Entry: MigrationEntry> {
         let outcome = await committing.commit(rows[index].entry, candidate: candidate)
 
         guard let index = rows.firstIndex(where: { $0.id == id }) else { return }
-        // this is the mutation that can drop the row out of whatever pill is
-        // currently showing (Remaining, once outcome lands) - animated here
-        // rather than left to whatever transaction happens to be active when
-        // the awaited commit returns, which is generally none at all
+        // animated explicitly - after an await there is no active transaction
+        // to inherit, so this would otherwise land unanimated
         withAnimation(.settle) {
             rows[index].saving = false
             rows[index].outcome = outcome
         }
     }
 
-    // the reader's own call that a row is done being retried - moves it out
-    // of Remaining and into the Failed pill, carrying whatever reason it
-    // last gave (a save failure, "Stopped" for a cancelled attempt, or the
-    // search's own dead end) so it is never silently lost
     func skip(_ id: Entry.ID) {
         guard let index = rows.firstIndex(where: { $0.id == id }) else { return }
 
-        // this is what moves the row out of Remaining and into Failed, so it
-        // gets the same animated-mutation treatment save() does
         withAnimation(.settle) {
             switch rows[index].outcome {
             case .failed(let reason): rows[index].outcome = .skipped(reason)

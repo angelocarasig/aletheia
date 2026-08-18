@@ -13,9 +13,6 @@ extension Compositor {
     struct Assets: Sendable {
         private let downloader: CoverDownloader
 
-        // shared with the chapter downloader rather than built twice: one store
-        // means one place that knows the on-disk layout, and the sweep's
-        // fixed-depth enumeration is part of that layout
         let store: any AssetStoring
 
         init(
@@ -34,8 +31,7 @@ extension Compositor {
             )
         }
 
-        // the work is owned by the actor, not by whoever asked for it - a screen
-        // that goes away two seconds after opening must not cancel its downloads
+        // detached from the caller's task so a screen dismissing does not cancel it
         func enqueue(series: SeriesRecord.ID) {
             guard !Constants.App.isPreview else { return }
             Task { await downloader.enqueue(series) }
@@ -87,8 +83,7 @@ actor CoverDownloader {
         await download(pending)
     }
 
-    // launch order matters: clean() has already cascaded away disposable series,
-    // and that cascade is what manufactures the orphans this collects
+    // must run after db.clean() - its cascade is what creates the orphans this collects
     func sweep() async {
         do {
             let live = try await database.reader.read { db in
@@ -114,10 +109,9 @@ actor CoverDownloader {
             return
         }
 
-        // not `try?`: a decode failure here returns an empty backlog, which is
-        // indistinguishable from "nothing to download" and silently stops every
-        // cover on the device from ever being fetched. it has already happened
-        // once, when Pending grew a column this query did not select
+        // not `try?` - a decode failure would read as an empty backlog and silently
+        // stop covers from ever being fetched; happened once when Pending grew a
+        // column this query did not select
         let backlog: [Pending]
         do {
             backlog = try await database.reader.read { db in
@@ -135,15 +129,6 @@ actor CoverDownloader {
         await download(backlog)
     }
 
-    // the descending fallback the pool always implied and never had. covers are
-    // add-only and a series points at exactly one of them, so a preferred cover
-    // that turns out to be gone left the series with no artwork while a working
-    // sibling sat in the same table, reachable only by opening the covers sheet
-    // and picking it by hand.
-    //
-    // only when the dead one is the PREFERRED one: a spare cover 404ing changes
-    // nothing about what is on screen, and repointing on it would overrule a
-    // choice the reader made
     private func promote(from row: Pending) async {
         let dead = row.id
         let series = row.seriesId
@@ -155,9 +140,7 @@ actor CoverDownloader {
                     current.preferredCoverId?.rawValue == dead
                 else { return nil }
 
-                // ordered the way the pool was built, which is quality
-                // descending - so the first survivor is the best one left. a
-                // cover already on disk wins outright over one still to try
+                // id order is quality-descending, matching how the pool was built
                 let alternates =
                     try CoverRecord
                     .filter(CoverRecord.Columns.seriesId == series)
@@ -191,8 +174,7 @@ actor CoverDownloader {
                 "cover \(dead) is gone - series \(series) promoted to \(promoted)",
                 category: "assets")
 
-            // the promoted one may have no file yet, and nothing else will come
-            // back for it: this pass has already filtered its queue
+            // this pass already filtered its queue, so the promoted cover needs its own enqueue
             await enqueue(SeriesRecord.ID(rawValue: series))
         } catch {
             log.log(
@@ -213,9 +195,6 @@ actor CoverDownloader {
         var written: [Int64: String] = [:]
 
         for row in queued {
-            // a disconnected origin has no source to speak for it, so the request
-            // goes out with the pinned agent alone - the same bare request it
-            // made before headers were a source's business
             let headers =
                 row.sourceSlug
                 .flatMap { registry.source(slug: $0) }?
@@ -235,11 +214,7 @@ actor CoverDownloader {
                 failures[row.id, default: 0] += 1
                 log.log("cover \(row.id) failed - \(error)", level: .error, category: "assets")
 
-                // a url that is GONE is not a url to try again. counting attempts
-                // against it burns three requests a launch forever, and - worse -
-                // leaves the series pointing at artwork that can never arrive.
-                // the pool already holds the alternates, so the answer is to
-                // repoint rather than to keep asking
+                // a gone url will never succeed, so stop retrying and repoint instead
                 if Self.isGone(error) {
                     failures[row.id] = Limits.attempts
                     await promote(from: row)
@@ -249,12 +224,11 @@ actor CoverDownloader {
 
         guard !written.isEmpty else { return }
 
-        // the write closure runs off this actor, so it takes a snapshot rather
-        // than the mutable accumulator itself
+        // snapshot for the write closure, which does not run on this actor
         let paths = written
 
-        // one transaction, not one per cover: each write wakes the details
-        // observation and both entry views
+        // batched into one transaction - a write per cover would wake the
+        // details observation and both entry views repeatedly
         do {
             try await database.writer.write { db in
                 for (id, path) in paths {
@@ -273,10 +247,8 @@ actor CoverDownloader {
 }
 
 extension CoverDownloader {
-    // 404 and 410 are the two answers that mean "not coming back". everything
-    // else - a timeout, a 500, no connection - is the same url on a bad day, and
-    // NetworkError.isRetryable cannot tell them apart because it is true for
-    // every status code
+    // NetworkError.isRetryable is true for every badResponse status, so it can't
+    // distinguish gone (404/410) from a transient failure - check status here instead
     fileprivate static func isGone(_ error: Error) -> Bool {
         guard case NetworkError.badResponse(let status, _) = error else { return false }
         return status == 404 || status == 410
@@ -289,9 +261,8 @@ extension CoverDownloader {
         let sourceSlug: String?
     }
 
-    // every join is LEFT: metadataId, originId and sourceId are each ON DELETE
-    // SET NULL, so a cover whose supplier is gone yields no referer and is
-    // downloaded without one
+    // LEFT JOINs throughout: metadataId/originId/sourceId are ON DELETE SET NULL,
+    // so a cover whose supplier is gone still resolves, just without a referer
     fileprivate static func pending(for series: SeriesRecord.ID, in db: Database) throws
         -> [Pending]
     {
@@ -314,8 +285,6 @@ extension CoverDownloader {
         return try Pending.fetchAll(db, sql: sql, arguments: [series])
     }
 
-    // the backstop for whatever the write path missed, so it is bounded and
-    // ordered by what the user is most likely to look at
     fileprivate static func backlog(limit: Int, in db: Database) throws -> [Pending] {
         let sql = """
             SELECT

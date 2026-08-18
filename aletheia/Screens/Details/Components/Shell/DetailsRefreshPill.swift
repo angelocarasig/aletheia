@@ -7,9 +7,6 @@
 
 import SwiftUI
 
-// one row per source, each answering for itself: a spinner becomes that source's
-// outcome in place, so a dead source is named rather than collapsing the whole
-// run into "couldn't refresh". a single-origin series is one row
 struct DetailsRefreshPill: View {
     let outcomes: [DetailsComposer.Refresh.Outcome]
     let refresher: Compositor.Refresh
@@ -18,11 +15,7 @@ struct DetailsRefreshPill: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private enum Layout {
-        // the source badge - sized to the pill's text line, not to the 44pt row
-        // icon it is cropped from
         static let badge: CGFloat = 20
-        // wide enough for a source name beside a failure sentence, narrow enough
-        // that the pill never spans the screen it floats over
         static let width: CGFloat = 320
     }
 
@@ -40,10 +33,6 @@ struct DetailsRefreshPill: View {
     }
 
     private func Row(_ outcome: DetailsComposer.Refresh.Outcome) -> some View {
-        // no answer yet is two different things: waiting for a slot at the host,
-        // or actually talking to it. the unit knows which, and a row that says
-        // "checking" while nothing is in flight is the small lie that makes a
-        // slow refresh look broken
         let started = refresher.isChecking(origin: outcome.id)
 
         return HStack(spacing: dimensions.spacing.space8) {
@@ -61,15 +50,12 @@ struct DetailsRefreshPill: View {
         }
     }
 
-    // every state is a symbol, spinner included, so the outcome can enter by
-    // drawing itself along the stroke the spinner drew off - the reader's
-    // separator badge speaks the same dialect
     private func Icon(_ outcome: DetailsComposer.Refresh.Outcome, started: Bool) -> some View {
         Group {
             switch outcome.result {
-            // waiting for a slot is not the same as talking to the host, and a
-            // spinner for something that has not begun is the small lie that
-            // makes a slow refresh look stuck
+            // waiting for a host slot is not the same as talking to the host -
+            // a spinner before anything has begun is the small lie that makes
+            // a slow refresh look stuck
             case nil where !started:
                 Image(systemName: "clock")
                     .foregroundStyle(.muted)
@@ -86,9 +72,8 @@ struct DetailsRefreshPill: View {
                     .foregroundStyle(.success)
                     .transition(reduceMotion ? .opacity : AnyTransition(.symbolEffect(.drawOn)))
 
-            // the inverse of the plus beside it, so the row reads as one
-            // vocabulary: added, nothing added, failed. not a tick - that reads
-            // as an achievement the source did not earn
+            // not a checkmark - that reads as an achievement the source
+            // did not earn
             case .unchanged:
                 Image(systemName: "minus.circle")
                     .foregroundStyle(.muted)
@@ -99,8 +84,6 @@ struct DetailsRefreshPill: View {
                     .foregroundStyle(.warning)
                     .transition(reduceMotion ? .opacity : AnyTransition(.symbolEffect(.drawOn)))
 
-            // stopped, not broken - the same muted weight as "nothing new",
-            // because neither is something the reader has to act on
             case .cancelled:
                 Image(systemName: "xmark.circle")
                     .foregroundStyle(.muted)

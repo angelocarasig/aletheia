@@ -17,8 +17,8 @@ struct SourcePresetRow: View {
     @Environment(\.compositor) private var compositor
     @State private var vm: SourcePresetViewModel?
 
-    // handed one only by previews, which drive the phases by hand. supplying it
-    // is also what tells `task` not to fetch
+    // vm handed in only by previews, which drive phases by hand - supplying it
+    // also tells .task not to fetch
     init(
         source: Source,
         preset: SourcePreset,
@@ -47,10 +47,6 @@ struct SourcePresetRow: View {
         .padding(dimensions.spacing.space16)
         .background(.surface)
         .clipShape(.rect(cornerRadius: dimensions.radius.radius12))
-        // a model already here means the row is coming back after scrolling
-        // away, so it picks its observation up rather than fetching again - and
-        // it is the same branch a preview arrives on, which is what keeps a
-        // preview off the network
         .task {
             guard vm == nil else {
                 vm?.resume()
@@ -106,12 +102,8 @@ struct SourcePresetRow: View {
             case .pending:
                 Skeleton
             case .empty:
-                // a preset is a standing request the source answers for itself,
-                // so an empty one is the source having nothing to say rather
-                // than a query that matched nothing - there is no filter here to
-                // clear and no text to correct. that leaves asking again as the
-                // only move, which is why this carries the same action as the
-                // failed branch instead of being a dead end
+                // a preset is a standing request, not a user query - there's no
+                // filter to clear, so retry is the only move
                 Unavailable {
                     ContentUnavailableView {
                         Label("No Results", systemImage: "magnifyingglass")
@@ -131,13 +123,10 @@ struct SourcePresetRow: View {
                         ContentUnavailableView {
                             Label(failure.title, systemImage: "exclamationmark.triangle")
                         } description: {
-                            // empty when the error states a title and nothing
-                            // else, and ContentUnavailableView draws no gap for
-                            // an empty description - so this needs no branch
+                            // ContentUnavailableView draws no gap for an empty
+                            // description, so an empty failure.message needs no branch
                             Text(failure.message)
                         } actions: {
-                            // an offer, not furniture: a source that will never
-                            // answer this request gets no button
                             if failure.isRetryable {
                                 Button("Retry") { Task { await vm?.load() } }
                             }
@@ -189,11 +178,7 @@ struct SourcePresetRow: View {
         .scrollTargetBehavior(.viewAligned)
     }
 
-    // a floor rather than a fixed height: the two branches that use this hold
-    // different amounts - a glyph, a title, a sentence and a button between them
-    // - and a box pinned to the shorter one clips the taller at larger text
-    // sizes. nothing here declares its height for a scroll offset the way the
-    // reader's separator does, so it is free to grow
+    // minHeight not height - a fixed box clips the taller branch at larger text sizes
     private func Unavailable<Content: View>(@ViewBuilder content: () -> Content) -> some View {
         content()
             .frame(maxWidth: .infinity)
@@ -201,11 +186,8 @@ struct SourcePresetRow: View {
     }
 }
 
-// MARK: - Previews
-
-// one preview rather than four, because the thing worth looking at is the
-// crossfade BETWEEN the branches: they are one animation keyed to one value, and
-// four static previews show the states while hiding the only part that can break
+// one preview rather than four - the thing worth seeing is the crossfade
+// BETWEEN branches, which static previews would hide
 #if DEBUG
     private struct PresetPreview: View {
         private static let stubs: [SeriesStub] = [
@@ -220,8 +202,6 @@ struct SourcePresetRow: View {
             ("Content", .loaded(stubs)),
             ("Empty", .loaded([])),
             ("Failed", .failed(Failure(NetworkError.offline, fallback: "Couldn't Load"))),
-            // the other half of the failed branch: a reason that states a title and
-            // nothing under it, and one that does not earn a retry
             (
                 "Failed, terminal",
                 .failed(.init(title: "Couldn't Load", message: "", isRetryable: false))
@@ -250,8 +230,7 @@ struct SourcePresetRow: View {
                         onOpen: {},
                         onOpenSeries: { _ in }
                     )
-                    // the row keeps its identity across the change, or SwiftUI
-                    // replaces the whole thing and the branch transition never runs
+                    // stable id or SwiftUI replaces the view and the branch transition never runs
                     .id("row")
                 }
 

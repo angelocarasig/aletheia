@@ -30,9 +30,8 @@ struct ReaderScreen: View {
     }
 
     var body: some View {
-        // read here rather than inside the alert's binding: a read in a getter
-        // runs when SwiftUI asks for the value rather than while the body is
-        // evaluating, so it is not a dependency and the alert would never open
+        // read here, not inside the alert's binding - a read in a getter is not
+        // a body dependency, and the alert would never open
         let save = vm?.pageSave
 
         return ZStack {
@@ -51,8 +50,6 @@ struct ReaderScreen: View {
                         .transition(.opacity)
                 }
             default:
-                // a whole screen of content is about to land, so it gets the
-                // shape it will take rather than a spinner over nothing
                 ReaderSkeleton()
                     .transition(.opacity)
             }
@@ -121,8 +118,6 @@ struct ReaderScreen: View {
         .sheet(item: Binding(get: { vm?.explainingGap }, set: { vm?.explainingGap = $0 })) { gap in
             ReaderGapSheet(gap: gap)
         }
-        // a page saved leaves no trace on this screen - the page is still there
-        // and still looks the same - so the alert is the whole of the answer
         .alert(
             save?.title ?? "",
             isPresented: Binding(get: { save != nil }, set: { if !$0 { vm?.pageSave = nil } }),
@@ -130,8 +125,6 @@ struct ReaderScreen: View {
         ) { _ in
             Button("OK", role: .cancel) {}
         } message: { save in
-            // empty on success, and an alert draws no gap for an empty message,
-            // so this needs no branch
             Text(save.message)
         }
         .sheet(isPresented: $showingSettings) {
@@ -155,8 +148,6 @@ struct ReaderScreen: View {
                 )
             }
         }
-        // held for the reader rather than for the app, so leaving the screen by
-        // any route hands it back below
         .task(id: vm?.engine?.configuration.keepScreenOn) {
             UIApplication.shared.isIdleTimerDisabled =
                 vm?.engine?.configuration.keepScreenOn ?? false
@@ -166,9 +157,8 @@ struct ReaderScreen: View {
             guard let vm else { return }
             Task { await vm.close() }
         }
-        // .background commits progress and ends the sitting; .active starts the
-        // next one. .inactive stays untouched - a notification shade or a call
-        // banner is not the end of a sitting
+        // .inactive stays untouched - a notification shade or a call banner is
+        // not the end of a sitting
         .onChange(of: scenePhase) { _, phase in
             guard let vm else { return }
             switch phase {
@@ -196,8 +186,8 @@ extension ReaderScreen {
                     .ignoresSafeArea()
                     .grayscale(engine.configuration.grayscale ? 1 : 0)
                     .overlay {
-                        // difference against white IS an inversion, and unlike
-                        // .colorInvert() it has a strength, so it can be off
+                        // difference against white is an inversion, and unlike
+                        // .colorInvert() it has a strength, so it can be dialled off
                         Color.white
                             .blendMode(.difference)
                             .opacity(engine.configuration.inverted ? 1 : 0)
@@ -205,10 +195,6 @@ extension ReaderScreen {
                             .allowsHitTesting(false)
                     }
                     .overlay {
-                        // one overlay, two directions: the sign picks which
-                        // channel gets pulled down and the magnitude is the
-                        // strength, so neutral is a real zero rather than a
-                        // third tone that happens to be colourless
                         let warmth = engine.configuration.warmth
                         let tone =
                             warmth < 0
@@ -235,9 +221,6 @@ extension ReaderScreen {
                         .transition(.opacity)
                 }
 
-                // deliberately outside the overlay branch: a paged mode turns
-                // its own page, and you have to be able to see that coming with
-                // the chrome down
                 if engine.isAutoScrolling, engine.configuration.mode.isPaged {
                     ReaderCountdown(progress: engine.autoAdvanceProgress)
                         .transition(.opacity)
@@ -263,8 +246,6 @@ extension ReaderScreen {
                         onFilters: { showingFilters = true },
                         onSpeedChange: { vm.setAutoScrollSpeed($0) },
                         onIntervalChange: { vm.setAutoAdvanceInterval($0) },
-                        // deferred screens. present as real controls so the
-                        // chrome is laid out for them, and say so when tapped
                         onChapters: { showingChapters = true },
                         onSources: { showingSources = true },
                         onSettings: { showingSettings = true },
@@ -276,8 +257,7 @@ extension ReaderScreen {
 
             }
             // taps arrive from UIKit in window space and are handled the moment
-            // they land. keeping the frame in step here is all the conversion
-            // needs, and avoids routing a tap through observable state
+            // they land - keeping this frame in step is all the conversion needs
             .onGeometryChange(for: CGRect.self) { proxy in
                 proxy.frame(in: .global)
             } action: { frame in
@@ -311,8 +291,6 @@ extension ReaderScreen {
         } description: {
             Text(failure.message)
         } actions: {
-            // Go Back always stands - the reader is pushed, so leaving is the
-            // one action that is always available and always correct here
             Button("Go Back") { dismiss() }
         }
     }

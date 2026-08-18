@@ -13,14 +13,11 @@ import SwiftUI
 @Observable
 final class SourcesViewModel {
     private let database: DatabaseClient
-    // adultOnly is a descriptor fact, not a column - the row cannot answer it
     private let registry: Compositor.Registry
     private var task: Task<Void, Never>?
 
     private(set) var sources: [SourceRecord] = []
 
-    // while false, adultOnly sources are absent from every section rather than
-    // sunk or badged - absence is the whole gate
     var bypassAdult = Preferences.Default.bypassAdultSources
 
     private var visible: [SourceRecord] {
@@ -36,9 +33,8 @@ final class SourcesViewModel {
         self.registry = registry
     }
 
-    // adult sources sink to the bottom of whichever section they are in, rather
-    // than to the bottom of the screen - a pinned adult source is still pinned,
-    // and moving it out of its section would be overriding a choice you made
+    // sinks adult sources within the given section, not to the bottom of the
+    // screen - callers must pass an already section-filtered list
     private func ordered(_ records: [SourceRecord]) -> [SourceRecord] {
         records.sorted { lhs, rhs in
             let left = isAdult(lhs)
@@ -116,8 +112,6 @@ final class SourcesViewModel {
         let reader = database.reader
 
         return AsyncStream { continuation in
-            // uninstalled rows are kept so a series can still name the source it
-            // came from, but there is nothing here to browse or pin
             let observation = ValueObservation.tracking { db in
                 try SourceRecord
                     .filter(SourceRecord.Columns.installed == true)

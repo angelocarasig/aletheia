@@ -7,11 +7,6 @@
 
 import SwiftUI
 
-// scaffold only - no schedule, no background task, no write to
-// RecentBackupsScreen's own list yet. exists so Settings > Migrations >
-// Auto Backup has somewhere real to go rather than a dead button. when
-// built, this is what puts entries in Recent Backups without a reader
-// ever opening BackupExportScreen by hand
 struct AutoBackupScreen: View {
     var body: some View {
         ContentUnavailableView {

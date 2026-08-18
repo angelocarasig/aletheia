@@ -8,8 +8,6 @@
 import Foundation
 import GRDB
 
-/// Lightweight view for displaying series entries in lists with unread counts.
-/// Uses BestChapterView to efficiently calculate deduplicated chapter counts.
 internal struct EntryView: ViewRecord {
     let seriesId: Int64
     let sourceId: Int64?
@@ -26,7 +24,6 @@ internal struct EntryView: ViewRecord {
     let publication: Publication?
     let unreadCount: Int
 
-    // date fields for sorting
     let addedDate: Date
     let updatedDate: Date
     let lastReadDate: Date
@@ -105,14 +102,11 @@ extension EntryView {
                     m.inLibrary,
                     m.\(SeriesRecord.Columns.status.name) as status,
 
-                    -- one pick each, else whatever the primary origin says. separate
-                    -- because the best publication authority is often the worst
-                    -- classification one
+                    -- one pick each, else whatever the primary origin says - see
+                    -- SeriesRecord.preferredClassificationId/preferredPublicationId
                     mc.\(MetadataRecord.Columns.classification.name) as classification,
                     mp.\(MetadataRecord.Columns.publication.name) as publication,
 
-                    -- unread count from best chapters (rank = 1 only)
-                    -- respects showHalfChapters preference
                     COALESCE(
                         (SELECT COUNT(*)
                          FROM \(BestChapterView.databaseTableName) bc
@@ -123,7 +117,6 @@ extension EntryView {
                         ), 0
                     ) as unreadCount,
 
-                    -- date fields for sorting
                     m.addedDate,
                     m.updatedDate,
                     m.lastReadDate,
@@ -148,9 +141,8 @@ extension EntryView {
                         LIMIT 1
                     )
 
-                -- the primary origin's own metadata row. at most one, since metadata
-                -- is unique per supplier, and it stands in for "what the primary
-                -- origin says" everywhere the old view used po.id directly
+                -- the primary origin's own metadata row - at most one, since
+                -- metadata is unique per supplier
                 LEFT JOIN \(MetadataRecord.databaseTableName) pm
                     ON pm.\(MetadataRecord.Columns.originId.name) = po.id
 
@@ -184,7 +176,6 @@ extension EntryView {
     }
 
     static func createIndexes(db: Database) throws {
-        // covering index for the per-supplier cover lookup
         try db.create(
             index: "idx_cover_seriesId_metadataId_id",
             on: CoverRecord.databaseTableName,
@@ -196,7 +187,6 @@ extension EntryView {
             ifNotExists: true
         )
 
-        // covering index for the per-supplier title lookup
         try db.create(
             index: "idx_title_seriesId_metadataId_id",
             on: TitleRecord.databaseTableName,
@@ -208,7 +198,6 @@ extension EntryView {
             ifNotExists: true
         )
 
-        // covering index for primary origin resolution
         try db.create(
             index: "idx_origin_series_priority_covering",
             on: OriginRecord.databaseTableName,

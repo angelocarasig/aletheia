@@ -9,10 +9,7 @@ import UIKit
 
 // the paged counterpart to AutoScroller. a paged collection view snaps whole
 // pages, so creeping the offset drags a page part-way across and lets paging
-// pull it back - what a page mode wants is a dwell and then one clean slide.
-//
-// same UIUpdateLink for the same reasons: frame-synchronised, no timer drift,
-// suspends with the app
+// pull it back - what a page mode wants is a dwell and then one clean slide
 @MainActor
 final class AutoAdvancer {
     private weak var view: UIView?
@@ -24,9 +21,9 @@ final class AutoAdvancer {
     private(set) var isRunning = false
     private(set) var interval: TimeInterval
 
-    // return false to stop. failing to move is not on its own a reason to -
-    // the next chapter may simply still be loading - so the decision belongs to
-    // whoever knows the chapter list
+    // return false to stop - failing to move is not on its own a reason to,
+    // the next chapter may simply still be loading, so the decision belongs
+    // to whoever knows the chapter list
     var onFire: (() -> Bool)?
     var onProgress: ((Double) -> Void)?
     var onReachedEnd: (() -> Void)?

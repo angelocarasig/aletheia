@@ -10,16 +10,6 @@ import GRDB
 import Tagged
 
 extension Compositor {
-    // what the recommender actually put in front of the reader, and whether it
-    // was acted on. nothing else in the database can answer that: every other
-    // stage of the funnel - added, read, completed, dropped - is already a fact
-    // about a series the reader has, and those only exist once a recommendation
-    // has already worked
-    //
-    // deliberately not a view model concern. a rail is rendered from three
-    // different screens' worth of state and a view model that owned this would
-    // record what IT knew rather than what was shown, which is the same class of
-    // error as counting an array instead of counting a screen
     final class Impressions: Sendable {
         private let database: DatabaseClient
         private let writer: Writer
@@ -29,15 +19,11 @@ extension Compositor {
             self.writer = Writer(database: database)
         }
 
-        // one render of a rail. every card shown under it belongs to this id, so
-        // the set the reader chose between is recoverable - three rows without it
-        // are three unrelated events rather than one choice
         static func batch() -> String { UUID().uuidString }
 
-        // a card became visible. NOT a card that entered the array - the rail
-        // holds twenty and about three are on screen, so logging the array would
-        // put "never seen" and "seen and passed over" back into one bucket, which
-        // is the entire reason this table exists
+        // "shown" means visible on screen, NOT present in the rail's backing array -
+        // the rail holds twenty and about three are visible at once. logging the
+        // array would merge "never seen" and "seen and passed over"
         func shown(
             _ recommendation: Recommendation,
             rank: Int,
@@ -67,16 +53,14 @@ extension Compositor {
             Task { await writer.enqueue(record) }
         }
 
-        // the reader opened it. keyed by what the caller already has rather than
-        // by row id, so nothing has to be threaded back out of the write
         func tapped(catalogId: CatalogID, batchId: String) {
             Task { await writer.tapped(catalogId: Int64(catalogId.rawValue), batchId: batchId) }
         }
 
         // the seed's catalogue row, kept so a recommendation shown today can be
-        // joined to a series added next week. the recommender resolves this on
-        // every rail and used to discard it; writing it only when it CHANGES
-        // keeps an unchanged series out of the writer queue entirely
+        // joined to a series added next week. the write's own WHERE clause
+        // (below) makes an unchanged value a no-op UPDATE rather than skipping
+        // the call
         func stamp(catalogId: CatalogID?, for series: SeriesRecord.ID) {
             guard let catalogId else { return }
             Task { await writer.stamp(catalogId: Int64(catalogId.rawValue), for: series) }
@@ -86,10 +70,10 @@ extension Compositor {
         // whether it was suggesting something new. read once per result set - a
         // rail draws twenty cards and this is one query
         //
-        // only stamped series are here, which is exactly right rather than a gap:
-        // Details is the only place inLibrary is ever set, and every Details open
-        // resolves the seed - so a series can only enter the library by way of the
-        // screen that stamps it
+        // only stamped series are here. Details is what stamps catalogId in the
+        // normal add flow; a backup-restored series sets inLibrary directly
+        // (LibraryBackupRestorer) and is not counted here until its next
+        // Details open resolves the seed
         func owned() async -> Set<CatalogID> {
             do {
                 return try await database.reader.read { db in
@@ -119,13 +103,8 @@ extension Compositor {
 
 extension Compositor.Impressions {
     // cards cross the visibility threshold in bursts - a flick through a rail is
-    // a dozen in under a second - and one transaction each would be a dozen
-    // writer-queue entries competing with whatever else is running. buffered and
-    // flushed as one
-    //
-    // the dedupe is per batch, not global: the same card scrolled off and back on
-    // is one impression for that render, and a genuinely new render gets a new
-    // batch id and is allowed to record it again
+    // a dozen in under a second - so writes are buffered and flushed as one
+    // transaction instead of one per card
     fileprivate actor Writer {
         private let database: DatabaseClient
         private var pending: [RecommendationImpressionRecord] = []
@@ -154,8 +133,8 @@ extension Compositor.Impressions {
             }
             guard flush == nil else { return }
             flush = Task { [weak self] in
-                // a coalescing window, not a delay waiting on state: the buffer is
-                // complete whenever it is read, and this only decides how often
+                // a coalescing window, not a delay waiting on state - the buffer is
+                // complete whenever it's read, this only decides how often
                 try? await Task.sleep(for: Limits.window)
                 await self?.drain()
             }
@@ -170,16 +149,13 @@ extension Compositor.Impressions {
                 try await database.writer.write { db in
                     for var record in batch { try record.insert(db) }
                 }
-                // success has to say so. a table that only logs failure cannot be
-                // told apart from one nothing ever calls, which is how a feature
-                // ships, gets documented as shipped, and never once runs
                 AppLog.shared.log(
                     "shown \(batch.count) - \(batch.map { "\($0.rank):\($0.catalogTitle.prefix(18))" }.joined(separator: ", "))",
                     category: "impressions")
             } catch {
-                // an impression is evidence, not state - losing one costs a row in
-                // an analysis nobody is running yet, and retrying would put a
-                // failing write in front of everything the reader IS waiting for
+                // dropped rather than retried - an impression is evidence, not
+                // state, and a retry here would queue behind writes the reader is
+                // actually waiting on
                 AppLog.shared.log(
                     "dropped \(batch.count) impression(s) - \(error)",
                     level: .error, category: "impressions")
@@ -187,8 +163,8 @@ extension Compositor.Impressions {
         }
 
         func tapped(catalogId: Int64, batchId: String) async {
-            // ahead of the update, or a tap inside the coalescing window updates a
-            // row that has not been inserted yet and silently does nothing
+            // must drain first - a tap inside the coalescing window would otherwise
+            // update a row that has not been inserted yet and silently do nothing
             await drain()
             do {
                 try await database.writer.write { db in
@@ -222,7 +198,6 @@ extension Compositor.Impressions {
                               AND (\(SeriesRecord.Columns.catalogId.name) IS NULL
                                    OR \(SeriesRecord.Columns.catalogId.name) <> ?)
                             """, arguments: [catalogId, series.rawValue, catalogId])
-                    // 0 changed is the ordinary case - it is already stamped
                     if db.changesCount > 0 {
                         AppLog.shared.log(
                             "stamped series \(series.rawValue) as catalog \(catalogId)",

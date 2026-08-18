@@ -14,8 +14,8 @@ actor AuthRequester {
     private var refreshTasks: [String: Task<SourceCredential, Error>] = [:]
     private var lastRefresh: [String: Date] = [:]
 
-    // long enough that a screenful of rows shares one answer, short enough that
-    // the reader retrying by hand a moment later gets a real attempt
+    // long enough that a screenful of rows shares one answer, short enough that a
+    // reader retrying by hand a moment later gets a real attempt
     private static let refreshCooldown: TimeInterval = 30
 
     init(network: NetworkConfiguration, capturer: any AuthCapturing, log: AppLog) {
@@ -29,9 +29,6 @@ actor AuthRequester {
     {
         let slug = source.descriptor.slug
 
-        // deliberately silent. this is the steady state and fires once per
-        // request, which buried everything worth reading under five identical
-        // lines at a time. the refresh below is the state change worth logging
         if let cached = try? Keychain.sources.load(SourceCredential.self, account: slug),
             cached.isValid()
         {
@@ -63,18 +60,13 @@ actor AuthRequester {
             return (data, response)
         }
 
-        // a credential minted seconds ago and refused is the wall saying no to
-        // us, not an expiry - so capturing again produces the same cookies and
-        // the same 403, once per request. five preset rows meant five captures
-        // and four verification sheets in thirty seconds. inside the window the
-        // challenge is handed back as an ordinary failure, which is the honest
-        // answer: we cannot get through right now
-        // what we actually put on the wire, at the one moment it is worth
-        // knowing: a wall refusing a credential we believe we sent is either a
-        // credential that never went out or one the wall does not accept, and
-        // nothing else in this chain can tell those apart. names only - the
-        // clearance itself is a secret and the log is not
+        // a credential minted seconds ago and refused is the wall saying no, not
+        // an expiry - recapturing immediately produces the same cookies and the
+        // same refusal. previously stampeded 5 preset rows into 4 verification
+        // sheets in 30s, so a repeat within cooldown returns as an ordinary
+        // failure instead (see below)
         let slug = source.descriptor.slug
+        // names only, never values - the credential is secret, the log is not
         log.log(
             "[\(slug)] challenged \(request.url?.path() ?? "/") - sent \(describe(authed))",
             category: "auth")
@@ -99,8 +91,6 @@ actor AuthRequester {
             .split(separator: ";")
             .compactMap { $0.split(separator: "=").first?.trimmingCharacters(in: .whitespaces) }
             .sorted()
-        // the shared jar should be empty now that the session declines cookies.
-        // it is logged anyway because "empty" is the assertion being made
         let ambient = request.url.flatMap { HTTPCookieStorage.shared.cookies(for: $0) } ?? []
 
         return "headers [\(headers.keys.sorted().joined(separator: ", "))]"
@@ -123,8 +113,8 @@ actor AuthRequester {
             try await capturer.capture(for: specification)
         }
         refreshTasks[slug] = task
-        // stamped whatever the outcome: a capture that failed is still a capture
-        // this source just spent, and the cooldown exists to stop the spending
+        // lastRefresh is stamped regardless of outcome - the cooldown above must
+        // apply to a failed capture too, not just a successful one
         defer {
             refreshTasks[slug] = nil
             lastRefresh[slug] = Date()

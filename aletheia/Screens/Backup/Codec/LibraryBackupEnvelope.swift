@@ -17,7 +17,7 @@ enum LibraryBackupEnvelope {
     static let currentVersion: UInt16 = 1
 
     private static let magic: [UInt8] = Array("ALTH".utf8)
-    private static let headerSize = 10  // magic(4) + version(2) + originalSize(4)
+    private static let headerSize = 10
 
     enum EnvelopeError: Error, Equatable {
         case truncated

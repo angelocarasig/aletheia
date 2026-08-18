@@ -27,9 +27,6 @@ final class PageCell: UICollectionViewCell {
     var onZoomChanged: ((Bool) -> Void)?
     var onSized: ((ReaderPage, CGSize) -> Void)?
     var onRetry: ((ReaderPage) -> Void)?
-    // copy needs nothing but the image, so it stays here. sharing needs a
-    // presenter and the chapter's name and saving needs somewhere to say whether
-    // it worked, none of which a cell has
     var onShare: ((UIImage, ReaderPage) -> Void)?
     var onSave: ((UIImage) -> Void)?
 
@@ -227,8 +224,6 @@ extension PageCell: UIScrollViewDelegate {
         let zoomed = scrollView.zoomScale > Layout.minimumZoom
         scrollView.isScrollEnabled = zoomed
 
-        // fires once per edge rather than once per frame of the pinch, each of
-        // which would otherwise spawn a task and a state transition
         guard zoomed != reportedZoom else { return }
         reportedZoom = zoomed
         onZoomChanged?(zoomed)

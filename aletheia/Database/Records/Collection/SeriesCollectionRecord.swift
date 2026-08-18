@@ -49,8 +49,6 @@ extension SeriesCollectionRecord {
     }
 
     static func createIndexes(db: Database) throws {
-        // reading a collection's members, and the cascade when one is deleted.
-        // ordered, because the order column is what the collection is arranged by
         try db.create(
             index: "idx_series_collection_collectionId", on: databaseTableName,
             columns: [

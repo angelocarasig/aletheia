@@ -7,21 +7,9 @@
 
 import SwiftUI
 
-// shaped after the system field on iOS 26: the input is one capsule and the clear
-// action is a SEPARATE circle beside it, not a glyph living inside the field.
-//
-// two surfaces rather than one is the whole point - an inline xmark competes with
-// the text for the same space and grows the field's tap target into something
-// that does two different things depending on where you land
 struct Searchbar: View {
-    // where the same query goes when this field is not enough - sources search
-    // hands off to every source, library search hands off to sources. not a
-    // submit: nothing here commits what was typed, it re-runs it somewhere wider
     struct Handoff {
         var icon: String
-        // a tint ON the glass, not a fill behind it. a solid colour here reads as
-        // an iOS 18 filled row and, worse, stops the surface sampling what it
-        // sits over - which is the whole of what makes it glass
         var tint: Color?
         var label: (String) -> String
         var onSelect: (String) -> Void
@@ -46,18 +34,15 @@ struct Searchbar: View {
         static let settle: Animation = .snappy(duration: 0.3)
         static let appear: AnyTransition = .scale(scale: 0.94, anchor: .top)
             .combined(with: .opacity)
-        // grows out of the field's trailing edge rather than fading in place
         static let reveal: AnyTransition = .scale(scale: 0.6, anchor: .leading)
             .combined(with: .opacity)
     }
 
     @Binding var searchText: String
     var placeholder: String
-    // nil takes glass. a caller passing a colour is saying "the surface is mine" -
-    // .clear means the parent already drew one and this should add nothing
+    // nil takes glass; a caller passing a colour opts out of glass entirely
     var backgroundColor: Color?
-    // a tint on the field's own glass, for callers marking the field itself -
-    // an adult-only source's danger wash. ignored when backgroundColor is set
+    // ignored when backgroundColor is set
     var tint: Color?
     var handoff: Handoff?
 
@@ -77,8 +62,8 @@ struct Searchbar: View {
 
     var body: some View {
         VStack(spacing: dimensions.spacing.space8) {
-            // spacing below the stack's own, or the two shapes blend into one
-            // capsule at rest and the separation is lost
+            // spacing below the stack's own, or GlassEffectContainer merges the
+            // two shapes into one capsule at rest
             GlassEffectContainer(spacing: dimensions.spacing.space4) {
                 HStack(spacing: dimensions.spacing.space8) {
                     Field
@@ -95,9 +80,8 @@ struct Searchbar: View {
                     .transition(Motion.appear)
             }
         }
-        // keyed on emptiness, not the text: the clear button and the handoff row
-        // appearing are the events worth animating, and every keystroke was
-        // re-running it
+        // keyed on emptiness, not the text - keying on searchText re-ran the
+        // animation on every keystroke
         .animation(Motion.settle, value: searchText.isEmpty)
     }
 }
@@ -130,13 +114,11 @@ extension Searchbar {
         .padding(.horizontal, dimensions.spacing.space16)
         .frame(height: dimensions.touchTarget)
         .contentShape(.capsule)
-        // the whole capsule focuses the field, not just the glyphs in it
         .onTapGesture { focused = true }
         .scrollDismissesKeyboard(.immediately)
     }
 
-    // a circle, matching the system's trailing action. nothing sets a foreground:
-    // glass resolves its own content colour from what it samples
+    // no foregroundStyle set - glass resolves its own content colour
     fileprivate var Clear: some View {
         Image(systemName: "xmark")
             .font(.system(size: dimensions.size.icon16, weight: .semibold))
@@ -168,9 +150,6 @@ extension Searchbar {
                 .font(.caption.weight(.bold))
                 .foregroundStyle(.secondary)
         }
-        // nothing here sets a foreground colour beyond the chevron's secondary:
-        // glass resolves its own light or dark appearance and vends a matching
-        // content colour, and pinning one only ever matches by luck
         .padding(.horizontal, dimensions.spacing.space16)
         .padding(.vertical, dimensions.spacing.space12)
         .frame(minHeight: dimensions.touchTarget)
@@ -182,9 +161,6 @@ extension Searchbar {
         }
     }
 
-    // .regular rather than .clear: this sits over the app's own content, not over
-    // media, so it should adapt to what is behind it. interactive because it is a
-    // button and the press response is the affordance
     fileprivate func glass(for handoff: Handoff) -> Glass {
         guard let tint = handoff.tint else { return .regular.interactive() }
         return .regular.tint(tint).interactive()

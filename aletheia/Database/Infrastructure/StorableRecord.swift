@@ -8,13 +8,10 @@
 import Foundation
 import GRDB
 
-// a record whose bytes can live on disk as well as in the database.
-//
-// url and path are not two spellings of the same thing. url is where the record
-// lives on the web - for a cover that is the downloadable asset itself, for a
-// chapter it is the page a reader would open, and its actual images come from
-// the source. path is where the bytes landed locally, relative to the app group
-// container. nothing may assume url is directly downloadable
+// url and path are not two spellings of the same thing. for a cover, url is the
+// downloadable asset itself; for a chapter, url is the page a reader would
+// open, not an image - its pages come from the source instead. path is where
+// the bytes landed locally. nothing may assume url is directly downloadable
 protocol StorableRecord: DatabaseRecord {
     var url: URL { get }
     var path: String? { get set }

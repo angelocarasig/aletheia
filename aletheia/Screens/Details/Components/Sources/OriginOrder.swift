@@ -7,12 +7,8 @@
 
 import SwiftUI
 
-// which site's copy of a series wins: its title, cover and description, and its
-// chapters wherever two sources carry the same number. the Sources section and
-// the Chapters header both present this, which is why it is not private to either.
-//
-// staged rather than written per drag - reordering is one gesture with several
-// intermediate states, none of which the user means to commit
+// presented from both the Sources section and the Chapters header, which is
+// why it is not private to either
 struct OriginOrder: View {
     let origins: [DetailsSources.Origin]
     var onCommit: ([Int64]) -> Void
@@ -49,11 +45,9 @@ struct OriginOrder: View {
                     }
                 }
             }
-            // always active, so the handles are there without an Edit button
+            // forced active - the drag handles show without a separate Edit button
             .environment(\.editMode, .constant(.active))
             .navigationTitle("Source Priority")
-            // the rule this list enforces, where it is read rather than scrolled
-            // past - a footer under a drag list is the last thing anyone sees
             .navigationSubtitle("Top source supplies the title, cover and chapters")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

@@ -8,8 +8,6 @@
 import Foundation
 import GRDB
 import Observation
-// for withAnimation only - the search result arrives from a task, so nothing in
-// the view is in a position to wrap the mutation that reflows the grid
 import SwiftUI
 import Tagged
 
@@ -18,20 +16,13 @@ import Tagged
 final class LibraryViewModel {
     private let database: DatabaseClient
     private let assets: Compositor.Assets
-    // sources are code-defined, so their artwork comes from the registry rather
-    // than from the row
     private let registry: Compositor.Registry
 
     private(set) var entries: [Entry] = []
     private(set) var collections: [Collection] = []
 
-    // only what the library actually carries - offering a tag no owned series has
-    // is an option that can only ever return nothing
     private(set) var tags: [Option<TagRecord.ID>] = []
     private(set) var sources: [Option<SourceRecord.ID>] = []
-    // empty when nothing in the library is linked, which is what hides the group
-    // rather than offering three chips that can only return the whole library or
-    // none of it
     private(set) var trackers: [TrackerFilter] = []
 
     private var tagMembership: [SeriesRecord.ID: Set<TagRecord.ID>] = [:]
@@ -41,16 +32,10 @@ final class LibraryViewModel {
     private(set) var isSaving = false
     private(set) var failure: Failure?
 
-    // a collection is a subset of the library, not a place - selecting one filters
-    // the grid in place rather than pushing anywhere. single-select on purpose:
-    // a chip's count reads as "how many of what I am looking at are in here",
-    // which only makes sense against one
     var selectedCollection: CollectionRecord.ID?
 
     var searchText = ""
 
-    // written straight back to defaults: an order you picked and lost on the next
-    // launch is a decision the app threw away
     var sort: LibrarySort = Preferences.Default.librarySort {
         didSet {
             UserDefaults.standard.set(sort.rawValue, forKey: Preferences.Key.librarySort)
@@ -63,9 +48,8 @@ final class LibraryViewModel {
         }
     }
 
-    // every collection's members, including series not in the library - the grid
-    // intersects them away on its own, and a raw map stays correct if a series
-    // leaves and rejoins the library
+    // includes members not currently in the library - the intersection happens at
+    // read time so this stays correct if a series leaves and rejoins
     private var membership: [CollectionRecord.ID: Set<SeriesRecord.ID>] = [:]
 
     // nil is "no query", empty is "a query that matched nothing" - collapsing the
@@ -89,8 +73,8 @@ final class LibraryViewModel {
             ascending = defaults.bool(forKey: Preferences.Key.librarySortAscending)
         }
 
-        // a stored filter naming a case that no longer exists decodes to nothing
-        // rather than throwing the whole library into an unfilterable state
+        // a stored filter naming a case that no longer exists decodes to nothing,
+        // not a decode failure that would leave the library unfilterable
         if let data = defaults.data(forKey: Preferences.Key.libraryFilter),
             let stored = try? JSONDecoder().decode(LibraryFilter.self, from: data)
         {
@@ -100,9 +84,6 @@ final class LibraryViewModel {
 
     var isEmpty: Bool { entries.isEmpty }
 
-    // the navigation title is the collection picker's own label, so it has to say
-    // which collection you are in - a title that always reads "Library" makes the
-    // menu chevron look decorative
     var title: String {
         guard let selectedCollection,
             let collection = collections.first(where: { $0.id == selectedCollection })
@@ -122,8 +103,6 @@ final class LibraryViewModel {
         selectedCollection != nil || !searchText.isEmpty || filter.isActive
     }
 
-    // both narrowings are set intersections against ids, so order does not matter
-    // and neither re-reads the database
     var filtered: [Entry] {
         var result = entries
 
@@ -157,9 +136,9 @@ final class LibraryViewModel {
         isLoading = true
         defer { isLoading = false }
 
-        // the exclusion rides in the query rather than trimming the result, so the
-        // filter vocabularies below are built from the same rows the grid draws -
-        // a hidden series must not put its tags and sources in the filter sheet
+        // excluded in the query, not trimmed after - the filter vocabularies below
+        // are built from these same rows, so a hidden series must not leak into
+        // the tag/source filter options
         let adultSlugs = AdultGate.slugs(in: registry)
 
         do {
@@ -198,9 +177,8 @@ final class LibraryViewModel {
         await loadCollections()
     }
 
-    // the two filter groups that are relationships rather than columns. read in
-    // one pass and pivoted in memory: the alternative is a join per filter change,
-    // and the library is bounded by what you own
+    // pivoted in memory rather than joined per filter change - the library is
+    // bounded by what you own, so one pass here is cheaper than a query per filter
     private func loadVocabularies() async {
         let library = Set(entries.map(\.id))
         guard !library.isEmpty else {
@@ -240,9 +218,6 @@ final class LibraryViewModel {
 
             let ownedOrigins = origins.filter { library.contains($0.seriesId) }
 
-            // a disconnected origin still says something about the series - it is
-            // the one you can no longer refresh - so it maps to a reserved id
-            // rather than being dropped
             sourceMembership = Dictionary(grouping: ownedOrigins, by: \.seriesId)
                 .mapValues { group in
                     Set(group.map { $0.sourceId ?? LibraryFilter.detachedSource })
@@ -261,10 +236,8 @@ final class LibraryViewModel {
                 }
                 .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
 
-            // last, always: it is a state rather than a source, and sorting it
-            // among the names would put it under D. shown even when nothing is
-            // disconnected - it is how you check, and an option that appears only
-            // once the problem exists cannot be used to confirm it does not
+            // always appended, even when nothing is disconnected - an option shown
+            // only once the problem exists could never confirm the problem's absence
             options.append(Option(id: LibraryFilter.detachedSource, name: "Disconnected"))
 
             sources = options
@@ -273,10 +246,9 @@ final class LibraryViewModel {
             trackerMembership = Dictionary(grouping: ownedLinks, by: \.seriesId)
                 .mapValues { Set($0.map(\.tracker)) }
 
-            // the whole group, or none of it. a service nothing is linked to
-            // still earns its chip once anything is - the question "which of
-            // these are on AniList and which are on neither" needs both sides
-            // present to be askable
+            // all-or-nothing, unlike tags and sources - a service nothing is
+            // linked to still needs its own chip so "linked here" and "linked
+            // nowhere" are both askable
             trackers = trackerMembership.isEmpty ? [] : TrackerFilter.ordered
         } catch {
             AppLog.shared.log(
@@ -284,8 +256,6 @@ final class LibraryViewModel {
         }
     }
 
-    // separate from the grid read: collections change on their own schedule, and
-    // creating one has to refresh the chips without re-reading every series
     func loadCollections() async {
         do {
             let (records, links) = try await database.reader.read { db in
@@ -300,8 +270,8 @@ final class LibraryViewModel {
             membership = Dictionary(grouping: links, by: \.collectionId)
                 .mapValues { Set($0.map(\.seriesId)) }
 
-            // the count is what the chip will actually show you, so it is measured
-            // against the library rather than the raw membership row count
+            // against the library, not the raw membership count - membership
+            // includes series that have since left the library
             let library = Set(entries.map(\.id))
             collections = records.compactMap { record in
                 guard let id = record.id else { return nil }
@@ -317,9 +287,8 @@ final class LibraryViewModel {
         }
     }
 
-    // one MATCH against the fts5 view, which already indexes every title, every
-    // origin's synopsis and every tag - the grid's own title is only one of them,
-    // so an in-memory compare would silently search less than it claims to
+    // MATCH against fts5, which also indexes origin synopses and tags - an
+    // in-memory title compare would silently search less than advertised
     func search() async {
         let text = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
 
@@ -330,8 +299,6 @@ final class LibraryViewModel {
 
         do {
             let found = try await database.reader.read { db -> Set<SeriesRecord.ID> in
-                // prefix matching, so results narrow as you type rather than only
-                // landing on whole words
                 guard let pattern = FTS5Pattern(matchingAllPrefixesIn: text) else { return [] }
 
                 let ids = try Int64.fetchAll(
@@ -344,8 +311,8 @@ final class LibraryViewModel {
                 return Set(ids.map { SeriesRecord.ID(rawValue: $0) })
             }
 
-            // the caller re-runs this on every keystroke and cancels the last one:
-            // a late result must not overwrite a newer query's
+            // the caller cancels the previous task on every keystroke - a late
+            // result must not overwrite a newer query's
             guard !Task.isCancelled else { return }
             withAnimation(.smooth) { matches = found }
         } catch {
@@ -390,18 +357,12 @@ extension LibraryViewModel {
         let lastReadDate: Date
     }
 
-    // a filter option that is a row somewhere rather than an enum case - the id is
-    // what gets stored, the name is only ever displayed
     struct Option<Key: Hashable>: Identifiable, Hashable {
         let id: Key
         let name: String
-        // the source's own artwork, resolved from the registry. nil for anything
-        // that is a value rather than a thing
         var artwork: ImageResource? = nil
     }
 
-    // the id is typed, so a chip selection compares against it directly and no
-    // caller has to unwrap
     struct Collection: Identifiable, Hashable {
         let id: CollectionRecord.ID
         let name: String

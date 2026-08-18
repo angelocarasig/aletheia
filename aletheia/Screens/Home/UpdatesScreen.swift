@@ -8,17 +8,13 @@
 import SwiftUI
 import Tagged
 
-// every series that moved, where Home shows the first three. the rows behave
-// exactly as they do there - tapping one opens the chapter, not a screen about
-// the chapter - so arriving here changes how much you can see and nothing else
 struct UpdatesScreen: View {
     @Environment(\.compositor) private var compositor
     @Environment(\.dimensions) private var dimensions
 
     @State private var vm: UpdatesViewModel?
-    // the destinations are declared here rather than inherited: this screen is
-    // pushed with navigationDestination(isPresented:), and a value push from
-    // inside one of those lands beneath it
+    // declared here, not inherited from the parent: a value push from inside a
+    // navigationDestination(isPresented:) screen lands beneath it if declared above
     @State private var reading: ReadingTarget?
     @State private var route: SeriesEntry?
 
@@ -123,9 +119,6 @@ extension UpdatesScreen {
                             obscured: obscured && entry.adult
                         )
                         .contentShape(.rect)
-                        // the series, matching the shelf on Home this screen is
-                        // the full list of. reading the chapter is the deliberate
-                        // action rather than the accidental one
                         .tappable {
                             route = .library(entry.id)
                         }

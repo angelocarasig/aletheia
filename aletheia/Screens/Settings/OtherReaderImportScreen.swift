@@ -7,10 +7,6 @@
 
 import SwiftUI
 
-// scaffold only - no reader's export format is picked yet (Tachiyomi/Mihon
-// backup, Paperback JSON, whatever else eventually). exists so Settings >
-// Migrations > From Another Reader has somewhere real to go rather than a
-// dead button
 struct OtherReaderImportScreen: View {
     var body: some View {
         ContentUnavailableView {

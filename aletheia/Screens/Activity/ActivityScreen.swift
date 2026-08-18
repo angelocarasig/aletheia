@@ -8,11 +8,6 @@
 import SwiftUI
 import Tagged
 
-// what happened, newest first - one row per series per day, merged from the
-// reading log. the transient "Now" slot above the feed is reserved for live
-// operations (library refresh, downloads) and stays empty until those
-// subsystems exist; live tasks never become feed rows.
-// see docs/features/background-activity.md
 struct ActivityScreen: View {
     @Environment(\.compositor) private var compositor
     @Environment(\.dimensions) private var dimensions
@@ -29,10 +24,6 @@ struct ActivityScreen: View {
         static let skeletonRowHeight: CGFloat = 64
     }
 
-    // no empty state: the status rows are facts that always exist - the library
-    // has been checked or it has not - so there is nothing this screen can be
-    // empty OF. it had one while it carried a reading feed, which it no longer
-    // does
     private var phase: LoadPhase {
         if let vm {
             if vm.failure != nil {
@@ -85,14 +76,9 @@ struct ActivityScreen: View {
             .navigationDestination(isPresented: $showingDownloads) {
                 DownloadQueueScreen(downloads: compositor.downloads)
             }
-            // the same screen Home pushes, not a second one: a feed of what
-            // arrived has one owner, and this is a second door onto it
             .navigationDestination(isPresented: $showingUpdates) {
                 UpdatesScreen()
             }
-            // the account screen rather than a per-series list: a dead account is
-            // one fact about one service, and signing in is the only thing that
-            // resolves it
             .navigationDestination(isPresented: $showingTracking) {
                 TrackingScreen()
             }
@@ -109,19 +95,9 @@ struct ActivityScreen: View {
 // MARK: - Status
 
 extension ActivityScreen {
-    // one scroll for both halves. the operational rows lead because they are the
-    // only thing here that can need acting on - a failing source found while
-    // scrolling past it is the tab working, and a status block pinned above a
-    // scrolling chart would make it chrome the eye stops reading
     fileprivate func Status(_ snapshot: ActivityViewModel.Snapshot) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: dimensions.spacing.space24) {
-                // titled now that it shares the screen with reading history:
-                // unlabelled, the status rows read as a preamble to the charts
-                // rather than as their own subject. "Now" rather than "Library",
-                // which is the first card's own name - a header repeating the
-                // row under it says one of them is redundant, and it is not the
-                // row
                 VStack(alignment: .leading, spacing: dimensions.spacing.space12) {
                     SectionHeader("Now")
 
@@ -134,18 +110,11 @@ extension ActivityScreen {
             .padding(.vertical, dimensions.spacing.space16)
         }
         .scrollIndicators(.hidden)
-        // content was passing under the translucent nav and tab bars and staying
-        // legible-ish through them, which is worse than either hiding or showing
-        // it: a section header parked under the bar is unreadable at partial
-        // opacity with no cue that it is scrolled-off rather than missing
+        // hard top edge keeps a scrolled-under header from sitting unreadable at partial opacity
         .scrollEdgeEffectStyle(.hard, for: .top)
         .scrollEdgeEffectStyle(.soft, for: .bottom)
     }
 
-    // always present, settled on facts while nothing runs, and taken over by the
-    // live run when there is one. the numbers come from the runner's observable
-    // model; the facts come from columns, which is what makes a run that
-    // happened while the app was closed still leave a trace here
     fileprivate func Now(_ snapshot: ActivityViewModel.Snapshot) -> some View {
         let refresh = compositor.refresh
         let downloads = compositor.downloads
@@ -161,9 +130,7 @@ extension ActivityScreen {
                         total: refresh.total
                     )
                     : .idle(lastChecked: snapshot.lastChecked),
-                // chapters rather than pages, and from the stored counters rather
-                // than a fold over the queue: summing every item's progress here
-                // would subscribe this row to all of them
+                // stored counters, not a fold over the queue - avoids subscribing this row to every item
                 downloads: queued > 0
                     ? .active(
                         chapters: queued,
@@ -173,19 +140,12 @@ extension ActivityScreen {
                     )
                     : .idle(stored: snapshot.downloadedChapters),
                 failing: snapshot.failingSources,
-                // read live from the credentials rather than from the snapshot:
-                // this is keychain state, not a column, and it changes on a
-                // sign-in that no database write accompanies
+                // keychain state, not a column - a sign-in changes this with no accompanying db write
                 signedOut: Tracker.allCases.filter(compositor.trackers.needingSignIn.contains)
             ),
             onCancelRefresh: { refresh.cancel() },
-            // what the walk produced, which is the question the row's own
-            // "Checked 2 hours ago" raises and could not answer
             onOpenUpdates: { showingUpdates = true },
             onOpenDownloads: { showingDownloads = true },
-            // the count is the awareness; the list is the attribution and the
-            // retry. a series can be healthy on one source and dead on another,
-            // so naming the series alone would not be enough to act on
             onOpenFailures: { showingFailures = true },
             onOpenTracking: { showingTracking = true }
         )

@@ -7,30 +7,23 @@
 
 import Foundation
 
-// what a view model hands a view when something went wrong. the error types
-// already know how to describe themselves - this is only the shape that carries
-// it across the boundary, so no screen ever sees an Error again
+// the shape that carries an error across the view model/view boundary - no
+// screen ever sees an Error directly
 struct Failure: Equatable, Sendable {
     let title: String
     let message: String
-
-    // whether offering a retry is honest. a chapter with no pages will never
-    // have any, and a button that cannot work is worse than no button
     let isRetryable: Bool
 
-    // one line for a slot that has room for one - a queue row's reason, a
-    // ReaderError's failureReason. message is empty when the type states a title
-    // and nothing else, and an empty sentence is worse than a repeated one
+    // falls back to title rather than an empty string - an empty sentence is
+    // worse than a repeated one
     var sentence: String {
         message.isEmpty ? title : message
     }
 }
 
 extension Failure {
-    // the whole point: an error that describes itself is used verbatim, and one
-    // that does not falls back to something a person can still read. never
-    // String(describing:) - that prints the case and its associated values,
-    // which is debugger output rather than a sentence
+    // never String(describing:) as a fallback - that prints the case and its
+    // associated values, which is debugger output, not a sentence
     init(_ error: Error, fallback: String = "Something Went Wrong") {
         if let describable = error as? DescribableError {
             title = describable.errorDescription ?? fallback
@@ -41,10 +34,8 @@ extension Failure {
             message = localized.failureReason ?? localized.recoverySuggestion ?? ""
             isRetryable = true
         } else {
-            // an error that never learned to describe itself is internal by
-            // definition - a database error's text is sql, not a sentence. the
-            // detail goes to the log so it is never lost, and the screen gets
-            // words a person can act on
+            // e.g. a database error's text is sql, not a sentence - detail goes
+            // to the log, the screen gets words a person can act on
             title = fallback
             message = "Something unexpected went wrong. Please try again."
             isRetryable = true
@@ -55,16 +46,13 @@ extension Failure {
     }
 }
 
-// the contract an error type opts into to be shown. errorDescription is the
-// title and failureReason is the sentence under it, which is what Foundation
-// already means by them
+// errorDescription is the title, failureReason is the sentence under it
 protocol DescribableError: LocalizedError {
     var isRetryable: Bool { get }
 }
 
 extension DescribableError {
-    // retrying a read is harmless, so an unstated answer offers the button - a
-    // dead end costs more than a button that turns out not to help. types with
-    // permanent cases say so explicitly
+    // defaults true - a dead-end button costs more than one that turns out
+    // not to help. types with permanent failures say so explicitly
     var isRetryable: Bool { true }
 }

@@ -7,11 +7,8 @@
 
 import SwiftUI
 
-// the source icon's destination. scoped to ONE chapter on purpose - "this scan is
-// unreadable, who else has it" is only ever asked about the page in front of you,
-// and the durable answer already lives in origin and scanlator priority.
-//
-// the swap lasts the session. reopening the reader goes back to your ranking
+// scoped to this session - reopening the reader goes back to origin/scanlator
+// priority ranking
 struct ReaderSourceSwitcher: View {
     let slot: ChapterSlot?
     let active: ChapterRecord.ID?
@@ -34,9 +31,8 @@ struct ReaderSourceSwitcher: View {
         static let skeletonRows = 6
     }
 
-    // one entry per source, holding every scanlator that source has for this
-    // chapter. built by walking the options in place so best_chapter's ranking
-    // survives - both between sources and between scanlators inside one
+    // walks options in place, so best_chapter's ranking survives between
+    // sources and between scanlators within one
     private struct Source: Identifiable {
         let id: OriginRecord.ID
         let name: String
@@ -66,7 +62,6 @@ struct ReaderSourceSwitcher: View {
     var body: some View {
         NavigationStack {
             Content
-                // reads straight into the list: every row completes the sentence
                 .navigationTitle("Read From")
                 .navigationSubtitle(subtitle)
                 .navigationBarTitleDisplayMode(.inline)
@@ -115,8 +110,6 @@ extension ReaderSourceSwitcher {
             SheetSkeleton(rows: Layout.skeletonRows)
                 .transition(.opacity)
         case .empty, .failed:
-            // not an error - one source having the chapter is the normal case for
-            // most series, and there is nothing to choose between
             ContentUnavailableView(
                 "Only One Source",
                 systemImage: "square.stack.3d.up.slash",
@@ -134,8 +127,6 @@ extension ReaderSourceSwitcher {
                 ForEach(sources(of: slot)) { source in
                     SourceRow(source)
 
-                    // a source with one scanlator has nothing to expand into, so
-                    // its row IS the choice and no chevron appears
                     if source.options.count > 1, expanded.contains(source.id) {
                         ForEach(source.options) { option in
                             ScanlatorRow(option)
@@ -149,8 +140,6 @@ extension ReaderSourceSwitcher {
         .scrollContentBackground(.hidden)
         .animation(Layout.expand, value: expanded)
         .animation(.settle, value: active)
-        // the source you are reading from opens on its own, so the scanlator in
-        // use is visible without hunting for it
         .onAppear {
             guard let source = sources(of: slot).first(where: { holds($0) }) else { return }
             expanded.insert(source.id)
@@ -169,9 +158,8 @@ extension ReaderSourceSwitcher {
                     .fontWeight(.semibold)
                     .lineLimit(1)
 
-                // branches, not a ternary: a ternary with a String on either side
-                // erases the whole expression to String, and Text(String) renders
-                // inflection markup verbatim. the literal has to reach Text intact
+                // branches, not a ternary - a ternary erases both sides to
+                // String, and Text(String) renders the inflection markup verbatim
                 Group {
                     if many {
                         Text("^[\(source.options.count) scanlator](inflect: true)")
@@ -221,9 +209,6 @@ extension ReaderSourceSwitcher {
         }
         .padding(dimensions.spacing.space12)
         .padding(.leading, Layout.indent)
-        // the fill alone marks the serving row: a session swap is where you
-        // are, not a stored preference, so it takes the position marker and
-        // not the checkmark (selection-language.md)
         .background { Highlight(option.id == active) }
         .contentShape(.rect)
         .accessibilityAddTraits(option.id == active ? .isSelected : [])
@@ -234,8 +219,6 @@ extension ReaderSourceSwitcher {
         .transition(.opacity.combined(with: .move(edge: .top)))
     }
 
-    // a download belongs to one row, not to a chapter number - so when ranking
-    // moves, this is the screen that shows which row still holds the bytes
     @ViewBuilder
     fileprivate func Stored(_ shown: Bool) -> some View {
         if shown {
@@ -269,8 +252,6 @@ extension ReaderSourceSwitcher {
         }
     }
 
-    // whether the option in use belongs to this source, which is what lets a
-    // collapsed row still show that it is the one being read
     private func holds(_ source: Source) -> Bool {
         source.options.contains { $0.id == active }
     }
@@ -279,18 +260,16 @@ extension ReaderSourceSwitcher {
 // MARK: - Copy
 
 extension ReaderSourceSwitcher {
-    // Text, not String: navigationSubtitle takes either and the String overload
-    // renders inflection markup verbatim. counts SOURCES, not options - four
-    // scanlators on one site is one place to read from, not four
+    // counts SOURCES, not options - four scanlators on one site is one place to
+    // read from, not four
     fileprivate var subtitle: Text {
         guard let slot else { return Text("") }
 
         let count = Set(slot.options.map(\.originId)).count
         guard count > 1 else { return Text("Chapter \(number(slot.number))") }
 
-        // one literal rather than concatenated Texts: Text's + is deprecated on
-        // iOS 26, and interpolation keeps the whole thing a single key, which is
-        // what the inflection markup needs to resolve
+        // one interpolated literal, not concatenated Texts - Text's + is
+        // deprecated on iOS 26 and would split the inflection key
         return Text("Chapter \(number(slot.number)) · ^[\(count) source](inflect: true)")
     }
 
@@ -298,7 +277,6 @@ extension ReaderSourceSwitcher {
         value.formatted(.number.precision(.fractionLength(0...2)))
     }
 
-    // the scanlator is the reason to pick one of these over another, so it leads
     fileprivate func meta(_ option: ChapterSlot.Option) -> String {
         [option.scanlator, option.language.flag]
             .filter { !$0.isEmpty }

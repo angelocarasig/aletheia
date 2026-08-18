@@ -181,8 +181,6 @@ actor V01Recommender: RecommenderService {
 
     // MARK: loading
 
-    // lazy and held. mapping is nearly free so there is nothing to gain from
-    // loading eagerly, and nothing to gain from ever letting it go
     private func state() throws -> Loaded {
         if let loaded { return loaded }
         if let failure { throw failure }

@@ -36,7 +36,7 @@ enum LanguageCode: String, Codable, Sendable, Hashable, CaseIterable {
 }
 
 extension LanguageCode {
-    // the order every series is seeded with at creation. rows for all four
-    // exist from day one; the reader only ever reorders them
+    // seed order for every series's language-priority rows at creation - all
+    // four exist from day one, the reader only ever reorders them
     static let defaultPriority: [LanguageCode] = [.english, .japanese, .chinese, .korean]
 }

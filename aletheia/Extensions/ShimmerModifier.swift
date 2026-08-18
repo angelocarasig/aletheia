@@ -21,17 +21,13 @@ private struct Shimmer: ViewModifier {
     @ViewBuilder
     func body(content: Content) -> some View {
         if reduceMotion {
-            // a looping sweep is exactly the "automatic and repetitive
-            // animation" reduce motion asks to remove - hold a steady dim
             content.opacity(0.55)
         } else {
             content
                 .mask(
-                    // the animation belongs to the gradient, not to what is being
-                    // masked. on the outside it also owns whatever layout is still
-                    // settling when isInitial flips - lazy cards arriving, a
-                    // containerRelativeFrame resolving - and repeatForever replays
-                    // that change for as long as the skeleton is on screen
+                    // animation is on the gradient, not the masked content - it
+                    // keeps replaying on isInitial for as long as the skeleton
+                    // is on screen, including lazy cards mounting in later
                     LinearGradient(
                         colors: [.black.opacity(0.4), .black, .black.opacity(0.4)],
                         startPoint: isInitial ? .init(x: -0.3, y: -0.3) : .init(x: 1, y: 1),

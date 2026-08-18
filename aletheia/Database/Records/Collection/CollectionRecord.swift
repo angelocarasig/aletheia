@@ -34,9 +34,9 @@ extension CollectionRecord {
         static let updatedDate = Column(CodingKeys.updatedDate)
     }
 
-    // names the library already uses for itself - "All" is the unfiltered chip and
-    // "Library" is what the title falls back to, so either one as a collection
-    // makes the current selection unreadable. lowercase, matched case-insensitively
+    // "All" is the unfiltered chip and "Library" is what the title falls back to,
+    // so either one as a collection makes the current selection unreadable.
+    // lowercase, matched case-insensitively
     static let reservedNames: Set<String> = ["all", "library"]
 
     static func isReserved(_ name: String) -> Bool {
@@ -45,8 +45,8 @@ extension CollectionRecord {
 
     static func createTable(db: Database) throws {
         // built from reservedNames so the constraint and the swift check cannot
-        // drift apart. enforced here rather than only at the form because any
-        // future import or sync path writes rows the form never sees
+        // drift apart - enforced at the db level since a future import or sync
+        // path could write rows the form never sees
         let reserved = reservedNames.sorted().map { "'\($0)'" }.joined(separator: ", ")
 
         try db.create(table: databaseTableName, options: [.ifNotExists]) { t in
@@ -65,7 +65,6 @@ extension CollectionRecord {
     }
 
     static func createIndexes(db: Database) throws {
-        // sorting collections by name for display
         try db.create(
             index: "idx_collection_name", on: databaseTableName, columns: [Columns.name.name],
             ifNotExists: true)

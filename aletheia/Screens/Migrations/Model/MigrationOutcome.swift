@@ -7,15 +7,9 @@
 
 import Foundation
 
-// what Save produced, mirroring MetadataOutcome's shape - a row that
-// finished says how, not just that it did.
-//
-// `failed`/`cancelled` do not move a row out of the working set on their
-// own - the reader sees the reason and a Skip button, and skipped is the
-// only outcome, besides saved, that actually leaves a row behind. this is
-// deliberate: a save failure is very often transient (a token expired, a
-// source hiccuped), and moving the row away before the reader has seen why
-// would bury it
+// failed/cancelled do not leave the working set on their own - only skipped
+// and saved do. deliberate: a save failure is often transient (expired
+// token, source hiccup), so the row stays visible until the reader skips it
 enum MigrationOutcome: Equatable, Sendable {
     case saved
     case failed(String)

@@ -8,16 +8,12 @@
 import Kingfisher
 import SwiftUI
 
-// a recently added series at the size the art deserves. Library shows many
-// covers small; Home shows a few large, and says when each one arrived - the
-// difference is scale and recency, not another poster wall
 struct AddedCard: View {
     let title: String?
     let cover: URL?
     let unreadCount: Int
     let addedDate: Date?
-    // resolved by the caller from the preference and the reveal together, so the
-    // card never reads either and a rail cannot disagree with itself
+    // resolved by the caller, not read here - keeps every card in a rail agreeing
     var obscured: Bool = false
 
     @Environment(\.dimensions) private var dimensions

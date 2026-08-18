@@ -20,20 +20,9 @@ private enum MigrationRowLayout {
     static let savedCoverAspect: CGFloat = 11 / 16
 }
 
-// one queue row, generic over the entry type - the same shape
-// TrackerRestoreRowView uses (idle/searching/found/notFound/failed/saving/
-// saved, one glass card, one Save-or-Skip slot), stripped of everything
-// that only meant something for a tracker's own list: no remoteStatus badge,
-// no progress bar, no "already linked" precheck state - none of the flows
-// that reach this view populate one. shared by source migration,
-// disconnected migration, and backup import - tracker restore keeps its
-// own bespoke row, since it is the one flow with real per-entry fields
-// (progress, totalChapters, remoteStatus) to show
 struct MigrationRowView<Entry: MigrationEntry>: View {
     let row: MigrationRow<Entry>
     let sourcesBySlug: [String: Source]
-    // "Moved" reads right for a source migration; a different flow names
-    // its own saved state (backup import: "Restored")
     var savedLabel: String = "Moved"
     let onSelect: (MigrationCandidate) -> Void
     let onSave: () -> Void
@@ -208,11 +197,6 @@ struct MigrationRowView<Entry: MigrationEntry>: View {
         }
     }
 
-    // a mix of both halves of what a saved row knows: the candidate's own
-    // cover (what the source showed for it), and which source it landed on
-    // - no progress bar here, unlike tracker restore's SavedSummary, since
-    // progress was copied from a real local origin rather than a number the
-    // reader might want to double check
     private func SavedSummary(_ selected: MigrationCandidate?) -> some View {
         HStack(spacing: dimensions.spacing.space12) {
             SavedCover(selected?.stub.cover)

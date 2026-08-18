@@ -50,9 +50,8 @@ struct DetailsMerge: View {
                 }
                 .containerBackground(.clear, for: .navigation)
         }
-        // keyed on the text, so swiftui cancels the in-flight query itself when
-        // the next keystroke lands - no debounce clock to keep. the empty first
-        // value doubles as the initial similarity load
+        // .task(id:) cancels the in-flight query itself on each keystroke - no
+        // debounce needed; the empty first value doubles as the initial load
         .task(id: searchText) {
             await onSearch(searchText)
         }
@@ -70,8 +69,6 @@ extension DetailsMerge {
 
             Results
         }
-        // the animation lives on the surviving container - keyed on a bare
-        // group it goes dead or partial
         .animation(.settle, value: phase)
     }
 
@@ -129,8 +126,6 @@ extension DetailsMerge {
                     .multilineTextAlignment(.leading)
 
                 HStack(spacing: dimensions.spacing.space4) {
-                    // step 11 is the text step - step 9 cannot hold contrast
-                    // as small type
                     Text("\(candidate.match)% match")
                         .fontWeight(.semibold)
                         .foregroundStyle(Palette.brandText)
@@ -163,8 +158,6 @@ extension DetailsMerge {
     }
 }
 
-// what the two series claim about themselves, side by side - the reader decides
-// whether these really are the same story before anything is committed
 private struct MergeComparison: View {
     let source: DetailsMerge.Side
     let target: DetailsMerge.Candidate
@@ -196,8 +189,6 @@ private struct MergeComparison: View {
         .navigationTitle("Review Merge")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            // the forward step rides the navbar accent - the same seat the
-            // disambiguation sheet gives its confirm
             ToolbarItem(placement: .topBarTrailing) {
                 NavigationLink(value: DetailsMerge.Confirmation(target: target)) {
                     Image(systemName: "checkmark")
@@ -303,8 +294,8 @@ private struct MergeComparison: View {
 
     private var Differences: some View {
         VStack(alignment: .leading, spacing: dimensions.spacing.space8) {
-            // the receiving series keeps its own details - what merges in adds
-            // titles to the pool and never overwrites a pick
+            // target keeps its own picks - what merges in adds to the pool,
+            // never overwrites one
             Difference("Title", from: source.title, into: target.title)
             Difference("Authors", from: source.authors, into: target.authors)
             Difference("Status", from: source.status.label, into: target.status.label)
@@ -332,17 +323,12 @@ private struct MergeComparison: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(dimensions.spacing.space12)
-            // standard material, not glass - content-layer chrome is barred from
-            // liquid glass, and the material gives the same read legally
             .background(
                 .ultraThinMaterial,
                 in: .rect(cornerRadius: dimensions.radius.radius16, style: .continuous))
         }
     }
 
-    // a diff hunk: removed line on the red pairing, added line on the green,
-    // text on the 11-step so the colour is readable rather than decorative.
-    // the glyph is the second channel beside the colour
     @ViewBuilder
     private func Value(_ text: String, glyph: String, tone: Palette.Tone, role: String) -> some View
     {
@@ -360,8 +346,6 @@ private struct MergeComparison: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, dimensions.spacing.space8)
         .padding(.vertical, dimensions.spacing.space4)
-        // the 3-step is a filled surface; at quarter strength it reads as a wash
-        // under the text instead of a filled chip fighting it
         .background(
             tone.subtle.opacity(Layout.hunkOpacity),
             in: .rect(cornerRadius: dimensions.radius.radius8, style: .continuous)
@@ -371,8 +355,6 @@ private struct MergeComparison: View {
     }
 }
 
-// the last stop - what the merge does, stated plainly, with the destructive
-// confirm kept behind one more tap
 private struct MergeConfirm: View {
     let source: DetailsMerge.Side
     let target: DetailsMerge.Candidate
@@ -383,7 +365,6 @@ private struct MergeConfirm: View {
     @State private var committed = false
 
     private enum Layout {
-        // matches the comparison step - the covers are the recognition anchor here
         static let coverWidth: CGFloat = 100
         static let bulletWidth: CGFloat = 24
         static let titleLines = 2
@@ -410,7 +391,6 @@ private struct MergeConfirm: View {
                 .padding(.horizontal, dimensions.screenMargin)
                 .padding(.bottom, dimensions.spacing.space8)
         }
-        // one haptic for the whole flow, on the destructive commit itself
         .sensoryFeedback(.impact(weight: .heavy), trigger: committed)
         .alert(
             "Merge into \(target.title)?",
@@ -426,9 +406,6 @@ private struct MergeConfirm: View {
         }
     }
 
-    // the two series one more time, as artwork rather than names alone - the
-    // decision is a screen behind by now and covers are what the reader knows.
-    // the badges repeat the comparison step's, so the steps read as one flow
     private var Pair: some View {
         HStack(alignment: .top, spacing: dimensions.spacing.space16) {
             PairSide(
@@ -487,9 +464,6 @@ private struct MergeConfirm: View {
         .accessibilityLabel("\(role): \(title)")
     }
 
-    // what moves, as data rows rather than prose - a label and its number is
-    // how every other surface in the app states a fact. the deletion sits
-    // apart because it is the one line that cannot be walked back
     private var OutcomeCard: some View {
         VStack(alignment: .leading, spacing: 0) {
             Outcome(
@@ -587,15 +561,12 @@ private struct MergeConfirm: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, dimensions.spacing.space8)
         }
-        // the tint rides the surface, never the glyph - and red is the honest
-        // colour for a commit whose last line is a deletion
         .buttonStyle(.glassProminent)
         .tint(Palette.danger)
         .buttonBorderShape(.roundedRectangle(radius: dimensions.radius.radius16))
     }
 }
 
-// one cover construction for the row and both cards, so they cannot drift apart
 private struct MergeCover: View {
     let url: URL?
     let referer: URL?
@@ -628,8 +599,6 @@ private struct MergeCover: View {
 }
 
 extension DetailsMerge {
-    // the merging-away side, described once by the caller rather than through
-    // loose parameters
     struct Side: Hashable {
         let title: String
         let authors: String?
@@ -645,8 +614,8 @@ extension DetailsMerge {
 
     typealias Candidate = DetailsComposer.Identity.Match
 
-    // wraps the target so the confirm step is its own navigation value - pushing
-    // a Candidate again would land back on the comparison
+    // wraps target as its own nav value - reusing Candidate for confirmation
+    // would collide with the comparison destination in the NavigationStack
     struct Confirmation: Hashable {
         let target: Candidate
     }

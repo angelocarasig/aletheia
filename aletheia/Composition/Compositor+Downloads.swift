@@ -10,17 +10,13 @@ import GRDB
 import Observation
 import Tagged
 
-// one chapter's live state, and a class rather than a struct in a dictionary on
-// purpose. observation records which property of which INSTANCE a body read, so
-// a struct entry cannot be touched without writing to the collection that holds
-// it - one page landing would invalidate the queue screen, every details row and
-// the now section, ten times a second. v2 shipped exactly that shape
-// (DownloadCoordinator.downloadProgress: a struct holding an array of per-chapter
-// structs behind one observable property).
+// class not struct: Observation tracks per-instance property reads, so a struct
+// entry in the dictionary would invalidate every reader on any page landing. v2
+// shipped exactly that (DownloadCoordinator.downloadProgress: a struct array
+// behind one observable property).
 //
-// the rule at the call site: ask the collection WHICH download, ask the item HOW
-// FAR. `queue.index[id]?.pagesDone` inline is a collection read wearing an item
-// read's clothing
+// call site rule: ask the collection WHICH download, ask the item HOW FAR -
+// `queue.index[id]?.pagesDone` inline reads the collection, not the item
 @MainActor
 @Observable
 final class Download: Identifiable {
@@ -55,9 +51,8 @@ final class Download: Identifiable {
         return false
     }
 
-    // observation fires on assignment rather than on change, so a setter writing
-    // the value it already holds still invalidates everything reading it. this is
-    // mihon's .distinctUntilChanged() written by hand
+    // Observation fires on assignment, not on change, so the guard below is a
+    // hand-rolled distinctUntilChanged
     func advance(_ done: Int, of total: Int) {
         if state != .downloading { state = .downloading }
         guard done != pagesDone || total != pagesTotal else { return }
@@ -77,9 +72,6 @@ final class Download: Identifiable {
         state = .failed(reason)
     }
 
-    // the same row going back to the start of the queue rather than a new one:
-    // the pages already on disk are what makes a retry nearly free, so what is
-    // cleared is the reason and the counters, never the identity
     func requeue() {
         guard state != .queued else { return }
         state = .queued
@@ -89,8 +81,6 @@ final class Download: Identifiable {
 }
 
 extension Compositor {
-    // what screens hold. the same facade-plus-worker shape as Refresh and Assets:
-    // this owns membership and the numbers, the actor below owns the work
     @MainActor
     @Observable
     final class Downloads {
@@ -99,32 +89,26 @@ extension Compositor {
         private let worker: ChapterDownloader
         private let log: AppLog
 
-        // membership. changes on enqueue, finish and cancel - seconds apart at
-        // worst - so every row that reads it redrawing is affordable. progress
-        // deliberately does not live here
         private(set) var order: [Download] = []
         private(set) var index: [ChapterRecord.ID: Download] = [:]
 
-        // coarse on purpose, and stored rather than derived: folding `order` to
-        // compute these would read every item's progress and put the storm back
+        // stored rather than derived: folding `order` to compute these would read
+        // every item's progress and put the invalidation storm back
         private(set) var completed = 0
         private(set) var failures = 0
         private(set) var total = 0
 
         @ObservationIgnored private var run: Task<Void, Never>?
         @ObservationIgnored private var pending: [Work] = []
-        // in-flight chapters per source slug, which is what caps concurrency
         @ObservationIgnored private var inFlight: [String: Int] = [:]
         @ObservationIgnored private var slots: [Int64: String] = [:]
         @ObservationIgnored private var drift: [Int64: Int64] = [:]
         @ObservationIgnored private var halted = false
 
-        // lazy rather than built in init: the init is nonisolated so Compositor
-        // can construct this off the main actor, and these closures capture self
+        // lazy since these closures capture self, which the nonisolated init cannot
         //
-        // pages are real progress and tick every few seconds, but the head of a
-        // run is three chapters all fetching page lists at once and a mangafire
-        // page list is a ~24s render. that gap is what the drift covers
+        // three chapters fetching page lists at once with nothing to report yet is
+        // a real gap - a mangafire page list is a ~24s render - which drift covers
         @ObservationIgnored private lazy var task = ContinuedTask(
             identifier: Constants.Tasks.downloads,
             log: log,
@@ -147,20 +131,16 @@ extension Compositor {
         var isRunning: Bool { run != nil }
 
         private enum Limits {
-            // chapters at one source. pages inside a chapter are serial, so a
-            // chapter in flight is exactly one request at its host and three is
-            // exactly HostGate's per-host cap - nothing parks at the gate, and
-            // adding page parallelism would only queue behind it
+            // pages within a chapter are serial, so one chapter in flight is one
+            // request at its host - 3 matches HostGate's per-host cap exactly, so
+            // nothing parks at the gate and more page parallelism would only queue behind it
             static let width = 3
 
-            // units per chapter, so a chapter whose page list has not landed can
-            // still report movement rather than nothing
             static let scale: Int64 = 1000
             static let ceiling: Int64 = 900
         }
 
-        // nonisolated for the same reason Refresh's is: Compositor is built off
-        // the main actor during bootstrap
+        // nonisolated so Compositor can build this off the main actor during bootstrap
         nonisolated init(
             database: DatabaseClient,
             registry: Registry,
@@ -179,9 +159,6 @@ extension Compositor {
             enqueue(chapters: [id])
         }
 
-        // a failed chapter stays in the queue carrying its reason, so asking for
-        // it again is a retry rather than a second entry - one path, whether the
-        // ask came from the chapter row's button or from the bulk action
         func enqueue(chapters ids: [ChapterRecord.ID]) {
             let wanted = ids.filter { index[$0] == nil || index[$0]?.isFailed == true }
             guard !wanted.isEmpty else { return }
@@ -193,9 +170,6 @@ extension Compositor {
             }
         }
 
-        // every unread chapter the series can serve, ranked the way the chapter
-        // list ranks them - downloading a copy the reader would never pick is
-        // storage spent on nothing
         func enqueue(unreadFor series: SeriesRecord.ID) {
             Task { [weak self] in
                 guard let self else { return }
@@ -210,15 +184,14 @@ extension Compositor {
             let retried = work.filter { index[$0.id]?.isFailed == true }
             guard !fresh.isEmpty || !retried.isEmpty else { return }
 
-            // one append rather than one per chapter: forty individual appends
-            // are forty full invalidations of everything holding the queue
+            // batched: one append rather than one invalidation per chapter
             let items = fresh.map { Download(id: $0.id, title: $0.title, series: $0.series) }
             order.append(contentsOf: items)
             for item in items { index[item.id] = item }
             total += fresh.count
 
-            // a retry is already counted in `total` - it never left the queue -
-            // so only the failure it recorded comes back off
+            // a retry never left the queue, so it's already counted in `total` -
+            // only its recorded failure comes back off
             for item in retried {
                 index[item.id]?.requeue()
                 failures = max(0, failures - 1)
@@ -257,9 +230,6 @@ extension Compositor {
             Task { [worker] in await worker.cancelAll() }
         }
 
-        // clearing the path is the whole deletion: the sweep takes the files on
-        // its next pass, so removing a download and collecting an orphan are one
-        // code path rather than two ways to delete a file
         func delete(chapter id: ChapterRecord.ID) {
             Task { [weak self] in
                 guard let self else { return }
@@ -280,9 +250,8 @@ extension Compositor {
 
         // MARK: Launch
 
-        // the queue survives a kill because intent does not rebuild: page totals
-        // and pages-already-done both come back for free, but "i asked for these
-        // forty" is not something a person can reconstruct
+        // progress state is derivable, but "these forty chapters were queued" is not -
+        // only the intent list needs to survive a kill
         func restore() {
             guard !Constants.App.isPreview else { return }
             let ids =
@@ -335,9 +304,8 @@ extension Compositor {
             while let work = take() {
                 dispatch(work)
 
-                // the item is captured rather than looked up inside the closure:
-                // the lookup is a read of `index`, and doing it per page would
-                // subscribe this work to membership it does not care about
+                // captured rather than looked up inside the closure - reading
+                // `index` per page would subscribe this task to membership changes
                 let item = index[work.id]
                 group.addTask { [worker] in
                     await worker.store(work) { done, total in
@@ -385,9 +353,8 @@ extension Compositor {
                     category: "downloads")
 
             case .noSpace(let id):
-                // one clear stop rather than the whole queue failing the same way
-                // forty times over. what remains stays queued and durable, so
-                // freeing space and starting again resumes all of it
+                // halt rather than let every remaining chapter fail the same way -
+                // what's left stays queued, so freeing space resumes it all
                 halted = true
                 failures += 1
                 release(id)
@@ -405,12 +372,10 @@ extension Compositor {
             slots = [:]
             drift = [:]
 
-            // a retry admitted in the window between the walk draining and this
-            // clearing `run` finds drain() guarded and has nothing to pick it up
+            // a retry admitted between walk() finishing and `run` clearing here
+            // would otherwise find drain() guarded with nothing to pick it up
             guard pending.isEmpty else { return drain() }
 
-            // failures stay on screen with their reason and a retry; once the
-            // queue is genuinely empty the counters go back to nothing
             if order.isEmpty {
                 total = 0
                 completed = 0
@@ -434,9 +399,7 @@ extension Compositor {
             inFlight[slug] = max(0, (inFlight[slug] ?? 1) - 1)
         }
 
-        // a chapter in flight counts for however much of it has landed, and for
-        // its drift while its page list is still being fetched. monotonic by
-        // construction: NSProgress going backwards reads worse than not moving
+        // monotonic by construction - NSProgress going backwards reads worse than not moving
         private var units: Int64 {
             let live = order.reduce(Int64(0)) { running, item in
                 guard slots[item.id.rawValue] != nil else { return running }
@@ -487,7 +450,6 @@ extension Compositor.Downloads {
                 try Self.rows(for: ids, in: db)
             }) ?? []
 
-        // order follows what was asked for, not what the query returned
         let byId = Dictionary(uniqueKeysWithValues: rows.map { ($0.id, $0) })
 
         return ids.compactMap { id -> Work? in
@@ -520,8 +482,6 @@ extension Compositor.Downloads {
         }) ?? []
     }
 
-    // already-downloaded chapters are filtered here rather than skipped later, so
-    // a queue never shows work it has nothing to do
     nonisolated private static func rows(for ids: [ChapterRecord.ID], in db: Database) throws
         -> [Row]
     {
@@ -590,16 +550,13 @@ extension Compositor.Downloads {
 
 // MARK: - The worker
 
-// the unit, and the only thing that writes a chapter's path. work is owned here
-// rather than by whoever asked for it, so a screen that goes away two seconds
-// after tapping download does not cancel it
 actor ChapterDownloader {
     private let database: DatabaseClient
     private let store: any AssetStoring
     private let log: AppLog
 
-    // unstructured on purpose: a task group's children cannot be cancelled
-    // individually, and cancel is per chapter
+    // unstructured on purpose - a task group's children can't be cancelled
+    // individually, and cancel here is per chapter
     private var running: [Int64: Task<Outcome, Never>] = [:]
 
     init(database: DatabaseClient, store: any AssetStoring, log: AppLog) {
@@ -616,8 +573,7 @@ actor ChapterDownloader {
     }
 
     private enum Limits {
-        // mihon's floor, and mihon is the only surveyed app that checks at all.
-        // enospc mid-write is the exact cause of an unreadable download
+        // mihon's floor - ENOSPC mid-write is what causes an unreadable download
         static let freeSpace: Int64 = 200 * 1024 * 1024
     }
 
@@ -627,8 +583,8 @@ actor ChapterDownloader {
     ) async -> Outcome {
         if let existing = running[work.id.rawValue] { return await existing.value }
 
-        // Self.perform is nonisolated, so this hops off the actor immediately and
-        // chapters genuinely run alongside each other
+        // perform is nonisolated, so this hops off the actor immediately - chapters
+        // genuinely run alongside each other rather than serializing on it
         let task = Task { [store, database] in
             await Self.perform(work, store: store, database: database, onProgress: onProgress)
         }
@@ -647,7 +603,6 @@ actor ChapterDownloader {
         running.values.forEach { $0.cancel() }
     }
 
-    // deletion is a single write: the files go on the sweep's next pass
     func forget(_ ids: [ChapterRecord.ID]) async {
         do {
             try await database.writer.write { db in
@@ -670,9 +625,9 @@ actor ChapterDownloader {
                 try ChapterRecord.stored(in: db)
             }
 
-            // a queued chapter's directory carries no path - path is stamped on
-            // completion - so it is an orphan by the sweep's own definition.
-            // without this union the first launch during a download deletes it
+            // a queued chapter has no path yet - stamped only on completion - so it
+            // reads as an orphan without this union, and the first launch during a
+            // download would delete it
             let working = try await database.reader.read { db in
                 try Self.locations(for: queued, in: db)
             }
@@ -717,9 +672,6 @@ extension ChapterDownloader {
                 return .failed(id: work.id, reason: "This chapter has no pages.")
             }
 
-            // the page list is the first thing worth reporting: a chapter that
-            // says nothing until its first image lands is silence the system
-            // reads as a stall
             onProgress(0, pages.count)
 
             let asset = Asset(
@@ -733,9 +685,9 @@ extension ChapterDownloader {
                 onProgress(done, total)
             }
 
-            // path last, and only on a whole chapter. it is the completion
-            // marker, which is why pages can be written straight to their final
-            // home rather than staged and moved
+            // path is the completion marker for the whole chapter - stamped only
+            // after every page lands, which is why they can be written straight
+            // to their final home instead of staged and moved
             try await database.writer.write { db in
                 _ =
                     try ChapterRecord
@@ -766,8 +718,8 @@ extension ChapterDownloader {
         Failure(error, fallback: "Couldn't download").sentence
     }
 
-    // the directory a queued chapter will write into, which is derivable without
-    // it existing yet - Asset.location is a pure function of the key
+    // Asset.location is a pure function of the key, so a queued chapter's eventual
+    // directory can be computed before it exists
     nonisolated private static func locations(
         for ids: [ChapterRecord.ID],
         in db: Database

@@ -41,8 +41,8 @@ extension SeriesAuthorRecord {
     }
 
     static func createIndexes(db: Database) throws {
-        // same shape as series_tag: the unique key covers seriesId, this covers
-        // every series by an author and the cascade when an author goes
+        // same shape as series_tag - the unique key covers seriesId, this covers
+        // the reverse lookup and the cascade when an author goes
         try db.create(
             index: "idx_series_author_authorId", on: databaseTableName,
             columns: [Columns.authorId.name], ifNotExists: true)

@@ -7,13 +7,6 @@
 
 import SwiftUI
 
-// signing in to a service that has no browser grant. a redirect proves a token by
-// construction and a paste proves nothing, so this screen does the proving: the
-// commit validates against the service and only a real account dismisses it.
-//
-// staged rather than instant-apply, which is the DetailsDisambiguation precedent -
-// a commit that reaches a remote account confirms first.
-// see docs/features/tracker-mangabaka.md §2.1
 struct TrackerTokenSheet: View {
     let tracker: Tracker
     var onSubmit: (String) async -> Failure?
@@ -32,8 +25,6 @@ struct TrackerTokenSheet: View {
         static let tile: CGFloat = 44
     }
 
-    // the prefix is the one thing that can be checked without spending a request,
-    // so a wrong string is turned away at the field rather than at the service
     private var valid: Bool {
         token
             .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -80,8 +71,6 @@ struct TrackerTokenSheet: View {
                 .frame(width: Layout.tile, height: Layout.tile)
                 .clipShape(.rect(cornerRadius: dimensions.radius.radius8, style: .continuous))
 
-            // the asymmetry with the other two is the only thing here a reader
-            // could not guess, so it is said once and plainly
             Text(
                 "\(tracker.name) doesn't offer a sign-in button. You create a token on their site and paste it here."
             )
@@ -104,15 +93,8 @@ struct TrackerTokenSheet: View {
                     .primary.opacity(Layout.fillOpacity),
                     in: .rect(cornerRadius: dimensions.radius.radius12, style: .continuous)
                 )
-                // a failure belongs to the value that caused it, so typing clears
-                // it rather than leaving a stale reason under a changed token
                 .onChange(of: token) { reason = nil }
 
-            // title, not message. Failure puts errorDescription in the first and
-            // failureReason in the second, and for a rejection the second is a
-            // fixed sentence about the service refusing - so reading message here
-            // showed every failure as "The service refused the change" and buried
-            // the one line that said what to do about it
             if let reason {
                 Banner(
                     title: Text(reason.title),
@@ -129,10 +111,6 @@ struct TrackerTokenSheet: View {
             Text("Where to find it")
                 .font(.footnote.weight(.medium))
 
-            // the token lives in a tab of the settings page rather than at its own
-            // address, so the link points at the page and the sentence names the
-            // rest. a link that lands somewhere that does not exist is worse than
-            // one step of reading
             Text(
                 "Open your MangaBaka account settings, create a token, and make sure it can write to your library. A read-only token can't record what you finish."
             )
@@ -182,8 +160,6 @@ struct TrackerTokenSheet: View {
             saving = true
             defer { saving = false }
 
-            // nil is success. the sheet stays open on a failure so the token is
-            // still there to correct - a dismiss would take the paste with it
             if let failure = await onSubmit(token.trimmingCharacters(in: .whitespacesAndNewlines)) {
                 reason = failure
             } else {

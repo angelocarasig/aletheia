@@ -8,18 +8,14 @@
 import Foundation
 
 enum TrackerError: DescribableError, Equatable {
-    // the client id constant is empty - the app was built without one
     case notConfigured
     case signedOut
-    // the token is gone or dead and refreshing cannot fix it. anilist reports
-    // this as a 400 and myanimelist as a 401, so status codes alone misread one
-    // of them as our bug
+    // anilist reports this as a 400 and myanimelist as a 401, so status codes
+    // alone misread one of them as our bug
     case reauthenticationRequired
     case throttled(retryAfter: TimeInterval?)
     case cancelled
     case rejected(String)
-    // the service answered, and its answer is that this entry does not exist -
-    // merged away, deleted, or an id pasted from somewhere it never applied
     case notFound
     case unavailable
 

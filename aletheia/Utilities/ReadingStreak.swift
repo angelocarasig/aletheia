@@ -7,10 +7,8 @@
 
 import Foundation
 
-// runs of consecutive reading days, walked over localDayKey sets in swift -
-// sql returns only the sparse days, the app owns the calendar. day identity,
-// never elapsed seconds: dst gives 23- and 25-hour days and a seconds-based
-// run breaks on both
+// day identity, never elapsed seconds - dst gives 23- and 25-hour days and a
+// seconds-based run breaks on both
 enum ReadingStreak {
     // consecutive days ending today - or yesterday, so a run is not reported
     // broken before today has had a chance to happen

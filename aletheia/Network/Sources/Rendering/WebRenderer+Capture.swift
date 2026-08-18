@@ -8,8 +8,8 @@
 import Foundation
 
 extension WebRenderer {
-    // taps the page's own traffic. sources whose responses are encrypted on the
-    // wire get nothing useful here - they hook their own decryption boundary
+    // taps the page's own traffic - a source whose responses are encrypted on the
+    // wire gets nothing useful here and has to hook its own decryption boundary
     // through a preload instead
     enum Capture {
         static func take(from bridge: Bridge) async throws -> String? {
@@ -45,17 +45,8 @@ extension WebRenderer {
             return "\"\(escaped)\""
         }
 
-        // wraps fetch and XMLHttpRequest so every response whose url contains
-        // `pattern` has its body pushed onto a queue that take() drains one at a
-        // time. injected at documentStart, which is the only moment the page's
-        // own code has not yet captured a reference to the originals.
-        //
         // the fetch branch reads a clone(), so the page still gets an unconsumed
-        // body. an install guard makes re-injection on the same document a no-op.
-        //
-        // what lands here is whatever went over the wire: a source that encrypts
-        // its responses yields ciphertext, and has to tap its own decryption
-        // boundary through a preload instead.
+        // body. an install guard makes re-injection on the same document a no-op
         static func script(matching pattern: String) -> String {
             """
             (function(){
