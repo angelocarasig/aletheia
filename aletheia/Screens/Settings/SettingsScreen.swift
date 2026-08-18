@@ -17,7 +17,7 @@ struct SettingsScreen: View {
     @State private var showingTracking = false
     @State private var showingRefresh = false
     @State private var showingMetadataRefresh = false
-    @State private var showingBackupRestore = false
+    @State private var showingMigrations = false
     @State private var showingLogs = false
     @State private var showingImpressions = false
 
@@ -62,10 +62,10 @@ struct SettingsScreen: View {
                     ) { showingImpressions = true }
 
                     Card(
-                        "Backup & Restore",
+                        "Migrations",
                         systemImage: "externaldrive.badge.timemachine",
-                        detail: "Move your library in or out"
-                    ) { showingBackupRestore = true }
+                        detail: "Move series in, out, or between sources"
+                    ) { showingMigrations = true }
                 }
 
                 VStack(alignment: .leading, spacing: dimensions.spacing.space12) {
@@ -91,7 +91,7 @@ struct SettingsScreen: View {
         .navigationDestination(isPresented: $showingTracking) { TrackingScreen() }
         .navigationDestination(isPresented: $showingRefresh) { RefreshSettingsScreen() }
         .navigationDestination(isPresented: $showingMetadataRefresh) { MetadataRefreshSettingsScreen() }
-        .navigationDestination(isPresented: $showingBackupRestore) { BackupRestoreScreen() }
+        .navigationDestination(isPresented: $showingMigrations) { MigrationsScreen() }
         .navigationDestination(isPresented: $showingLogs) { LogScreen() }
         .navigationDestination(isPresented: $showingImpressions) { ImpressionsScreen() }
         .task { compositor.trackers.hydrate() }

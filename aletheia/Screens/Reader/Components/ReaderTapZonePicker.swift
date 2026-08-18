@@ -56,12 +56,12 @@ private extension ReaderTapZonePicker {
     var Content: some View {
         ScrollView {
             LazyVStack(spacing: Layout.rowSpacing) {
+                FlipRow
+                    .padding(.bottom, dimensions.spacing.space12)
+
                 ForEach(ReaderTapZones.Layout.allCases) { option in
                     Row(option)
                 }
-
-                FlipRow
-                    .padding(.top, dimensions.spacing.space12)
             }
             .padding(.horizontal, dimensions.screenMargin)
             .padding(.bottom, dimensions.spacing.space24)

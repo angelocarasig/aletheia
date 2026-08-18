@@ -150,8 +150,10 @@ struct LiveTrackerRestoreCommitter: TrackerRestoreCommitting {
 // a restore session pulls from exactly one tracker, so every entry.remoteStatus
 // in it is that tracker's own raw vocabulary - this is the one place that
 // vocabulary is not already known statically, so the dispatch lives here
-// rather than on Status itself
-private extension Status {
+// rather than on Status itself. internal rather than private: TrackerRestoreRowView
+// is a second caller, mapping the same raw string to show a saved row's status
+// in the app's own vocabulary rather than the tracker's
+extension Status {
     init?(raw: String, for tracker: Tracker) {
         switch tracker {
         case .anilist: self.init(anilist: raw)

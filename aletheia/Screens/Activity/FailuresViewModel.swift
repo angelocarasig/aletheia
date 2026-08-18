@@ -99,6 +99,18 @@ final class FailuresViewModel {
         )
     }
 
+    // a section's whole blast radius in one tap rather than one row at a time.
+    // fanned out concurrently rather than awaited in sequence - each retry
+    // already goes through the same host-gated refresher a library run does,
+    // so the gate is what paces requests to a shared host, not this loop
+    func retryAll(_ entries: [Entry]) async {
+        await withTaskGroup(of: Void.self) { group in
+            for entry in entries where !retrying.contains(entry.id) {
+                group.addTask { await self.retry(entry) }
+            }
+        }
+    }
+
     nonisolated private static func stored(in db: Database) throws -> [Entry] {
         let sql = """
             SELECT

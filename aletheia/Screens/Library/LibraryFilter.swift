@@ -18,16 +18,21 @@ import SwiftUI
 // filter panel does and what people expect without being told: reading OR
 // planning, AND ongoing
 struct LibraryFilter: Equatable, Codable {
-    var statuses: Set<Status> = []
-    var publications: Set<Publication> = []
-    var classifications: Set<Classification> = []
+    // status, publication and classification carry real opposites - "not
+    // dropped" or "not hiatus" is as normal a thing to want as "is reading" - so
+    // all three are tri-state. read progress is derived per-entry from dates and
+    // counts rather than stored, and "not unread" reads as a strange thing to
+    // ask for, so it stays a plain include-only set
+    var statuses = TriSet<Status>()
+    var publications = TriSet<Publication>()
+    var classifications = TriSet<Classification>()
     var readStates: Set<ReadState> = []
 
     // by id, not by name: a tag renamed upstream keeps the filter pointing at the
     // same tag, and a deleted one drops out on its own
-    var tags: Set<TagRecord.ID> = []
-    var sources: Set<SourceRecord.ID> = []
-    var trackers: Set<TrackerFilter> = []
+    var tags = TriSet<TagRecord.ID>()
+    var sources = TriSet<SourceRecord.ID>()
+    var trackers = TriSet<TrackerFilter>()
 
     // rowids are positive and autoincrementing, so a negative one can never
     // collide with a real source. stands for "this series has an origin whose
@@ -53,7 +58,7 @@ struct LibraryFilter: Equatable, Codable {
     // now, and a predicate that reads the clock itself answers differently for
     // each entry in the same pass
     func matches(_ entry: LibraryViewModel.Entry, asOf: Date) -> Bool {
-        if !statuses.isEmpty, !statuses.contains(entry.status) {
+        if !statuses.matches(entry.status) {
             return false
         }
 
@@ -64,14 +69,14 @@ struct LibraryFilter: Equatable, Codable {
         // a series with no origins has nothing to compare, so any filter on
         // origin-owned metadata excludes it rather than letting it through
         if !publications.isEmpty {
-            guard let publication = entry.publication, publications.contains(publication) else {
+            guard let publication = entry.publication, publications.matches(publication) else {
                 return false
             }
         }
 
         if !classifications.isEmpty {
             guard let classification = entry.classification,
-                  classifications.contains(classification)
+                  classifications.matches(classification)
             else { return false }
         }
 
@@ -86,17 +91,21 @@ struct LibraryFilter: Equatable, Codable {
         sourceIDs: Set<SourceRecord.ID>,
         linked: Set<Tracker>
     ) -> Bool {
-        if !tags.isEmpty, tags.isDisjoint(with: tagIDs) {
+        if !tags.matchesAny(tagIDs) {
             return false
         }
 
-        if !sources.isEmpty, sources.isDisjoint(with: sourceIDs) {
+        if !sources.matchesAny(sourceIDs) {
             return false
         }
 
         // ORed like every other group, which is what makes anilist + untracked
         // mean "linked there, or linked nowhere" rather than a contradiction
-        if !trackers.isEmpty, !trackers.contains(where: { $0.matches(linked) }) {
+        if !trackers.excluded.isEmpty, trackers.excluded.contains(where: { $0.matches(linked) }) {
+            return false
+        }
+
+        if !trackers.included.isEmpty, !trackers.included.contains(where: { $0.matches(linked) }) {
             return false
         }
 
@@ -104,13 +113,62 @@ struct LibraryFilter: Equatable, Codable {
     }
 
     mutating func clear() {
-        statuses = []
-        publications = []
-        classifications = []
+        statuses = TriSet()
+        publications = TriSet()
+        classifications = TriSet()
         readStates = []
-        tags = []
-        sources = []
-        trackers = []
+        tags = TriSet()
+        sources = TriSet()
+        trackers = TriSet()
+    }
+}
+
+// off, then included, then excluded, then off again - a group narrows to what
+// it includes, hides what it excludes, and excluding always wins when the same
+// option somehow ended up in both. an empty TriSet means "not filtering on
+// this", the same rule the plain Set groups already followed
+struct TriSet<Element: Hashable & Codable>: Equatable, Codable {
+    var included: Set<Element> = []
+    var excluded: Set<Element> = []
+
+    enum State { case off, included, excluded }
+
+    var isEmpty: Bool { included.isEmpty && excluded.isEmpty }
+    var count: Int { included.count + excluded.count }
+
+    func contains(_ element: Element) -> Bool {
+        included.contains(element) || excluded.contains(element)
+    }
+
+    func state(for element: Element) -> State {
+        if included.contains(element) { return .included }
+        if excluded.contains(element) { return .excluded }
+        return .off
+    }
+
+    mutating func cycle(_ element: Element) {
+        if included.contains(element) {
+            included.remove(element)
+            excluded.insert(element)
+        } else if excluded.contains(element) {
+            excluded.remove(element)
+        } else {
+            included.insert(element)
+        }
+    }
+
+    // a single column value against the group - status, publication, classification
+    func matches(_ value: Element) -> Bool {
+        if excluded.contains(value) { return false }
+        if !included.isEmpty, !included.contains(value) { return false }
+        return true
+    }
+
+    // a relationship an entry can carry more than one of - tags, sources
+    func matchesAny(_ values: Set<Element>) -> Bool {
+        if !excluded.isDisjoint(with: values) { return false }
+        if !included.isEmpty, included.isDisjoint(with: values) { return false }
+        return true
     }
 }
 

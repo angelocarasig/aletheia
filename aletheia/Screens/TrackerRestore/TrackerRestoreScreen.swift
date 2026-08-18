@@ -41,6 +41,7 @@ struct TrackerRestoreScreen: View {
                 ForEach(composer.currentPageRows) { row in
                     TrackerRestoreRowView(
                         row: row,
+                        tracker: composer.selectedTracker,
                         sourcesBySlug: composer.sourcesBySlug,
                         onSelect: { candidate in composer.select(candidate, for: row.id) },
                         onSave: { Task { await composer.save(row.id) } },

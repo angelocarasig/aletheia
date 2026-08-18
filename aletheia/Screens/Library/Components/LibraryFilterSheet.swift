@@ -283,6 +283,95 @@ struct LibraryFilterSheet: View {
         .animation(Motion.settle, value: shown.map { $0[keyPath: id] })
     }
 
+    // status, publication, rating, tags, sources and trackers - a tap cycles
+    // off -> included -> excluded -> off, the same grammar the source refine
+    // sheet already uses for a remote source's own multi-select filters
+    private func Group<Option: Hashable, Key: Hashable>(
+        _ title: String,
+        icon: String,
+        options: [Option],
+        id: KeyPath<Option, Key>,
+        label: KeyPath<Option, String>,
+        artwork: KeyPath<Option, ImageResource?>? = nil,
+        searchFirst: Bool = false,
+        selection: Binding<TriSet<Key>>
+    ) -> some View {
+        let isOpen = expanded.contains(title)
+        let shown = visible(
+            options,
+            in: title,
+            id: id,
+            label: label,
+            searchFirst: searchFirst,
+            selection: selection
+        )
+
+        return VStack(alignment: .leading, spacing: dimensions.spacing.space12) {
+            Header(title, icon: icon, count: selection.wrappedValue.count, isOpen: isOpen)
+                .contentShape(.rect)
+                .tappable {
+                    withAnimation(Motion.settle) { expanded.toggle(title) }
+                }
+
+            if isOpen {
+                if searchFirst || options.count > Threshold.searchable {
+                    Searchbar(
+                        searchText: Binding(
+                            get: { searches[title] ?? "" },
+                            set: { searches[title] = $0 }
+                        ),
+                        placeholder: "Search \(options.count) \(title.lowercased())"
+                    )
+                }
+
+                if shown.isEmpty {
+                    Text(searches[title]?.isEmpty == false ? "No matches" : "Type to find a tag")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .transition(.opacity)
+                } else {
+                    FlowLayout(spacing: dimensions.spacing.space8) {
+                        ForEach(shown, id: id) { option in
+                            let key = option[keyPath: id]
+                            let state = selection.wrappedValue.state(for: key)
+
+                            FilterChip(
+                                label: option[keyPath: label],
+                                tint: tint(for: state),
+                                glyph: glyph(for: state),
+                                artwork: artwork.flatMap { option[keyPath: $0] },
+                                strikethrough: state == .excluded
+                            ) {
+                                withAnimation(Motion.settle) { selection.wrappedValue.cycle(key) }
+                            }
+                            .accessibilityAddTraits(state == .included ? [.isSelected] : [])
+                            .transition(Motion.chip)
+                        }
+                    }
+                }
+            }
+        }
+        .padding(dimensions.spacing.space12)
+        .background(.primary.opacity(0.04), in: .rect(cornerRadius: dimensions.radius.radius16))
+        .animation(Motion.settle, value: shown.map { $0[keyPath: id] })
+    }
+
+    private func tint(for state: TriSet<some Hashable>.State) -> Color? {
+        switch state {
+        case .off: nil
+        case .included: Palette.brand
+        case .excluded: .danger
+        }
+    }
+
+    private func glyph(for state: TriSet<some Hashable>.State) -> String? {
+        switch state {
+        case .off: nil
+        case .included: "checkmark"
+        case .excluded: "minus"
+        }
+    }
+
     // whatever is chosen always survives the cut - a filter you cannot see is a
     // filter you cannot turn off
     private func visible<Option: Hashable, Key: Hashable>(
@@ -300,6 +389,30 @@ struct LibraryFilterSheet: View {
             // a vocabulary in the hundreds opens empty: showing the first sixty of
             // four hundred is an arbitrary sample pretending to be a menu. what
             // stays is whatever is chosen, which is the one thing always needed
+            guard !searchFirst else { return chosen }
+            guard options.count > Threshold.shown else { return options }
+
+            let rest = options.filter { !selection.wrappedValue.contains($0[keyPath: id]) }
+            return chosen + rest.prefix(Threshold.shown - chosen.count)
+        }
+
+        return options.filter { $0[keyPath: label].localizedCaseInsensitiveContains(query) }
+    }
+
+    // the tri-state groups: same shape as the group above, chosen means
+    // included-or-excluded rather than just contains
+    private func visible<Option: Hashable, Key: Hashable>(
+        _ options: [Option],
+        in title: String,
+        id: KeyPath<Option, Key>,
+        label: KeyPath<Option, String>,
+        searchFirst: Bool,
+        selection: Binding<TriSet<Key>>
+    ) -> [Option] {
+        let query = (searches[title] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let chosen = options.filter { selection.wrappedValue.contains($0[keyPath: id]) }
+
+        guard !query.isEmpty else {
             guard !searchFirst else { return chosen }
             guard options.count > Threshold.shown else { return options }
 

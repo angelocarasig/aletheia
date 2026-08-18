@@ -224,10 +224,13 @@ final class HomeViewModel {
     // what arrived while you were away, which is the question every reader in
     // the ecosystem opens their app to answer and the one this screen could not.
     //
-    // the discriminator is `c.addedDate > s.addedDate`: chapters that landed
-    // AFTER the series was yours. without it, adding a 400-chapter series posts
-    // 400 updates - those are a backlog, not news, and the backlog is what
-    // Recently Added is for.
+    // the discriminator is `c.publishedDate > s.addedDate`: chapters the source
+    // actually released AFTER the series was yours. without it, adding a
+    // 400-chapter series posts 400 updates - those are a backlog, not news, and
+    // the backlog is what Recently Added is for. publishedDate rather than
+    // addedDate because a backfilled chapter that lands in the local db today
+    // is not news just for arriving today - it was published whenever the
+    // source says it was
     //
     // ranked through best_chapter so a series carried by three sources counts a
     // chapter once, and filtered to unread so a row never says "3 new" about
@@ -241,14 +244,14 @@ final class HomeViewModel {
             SELECT
                 bc.seriesId AS seriesId,
                 COUNT(*) AS count,
-                MAX(c.\(ChapterRecord.Columns.addedDate.name)) AS latest
+                MAX(c.\(ChapterRecord.Columns.publishedDate.name)) AS latest
             FROM \(BestChapterView.databaseTableName) bc
             JOIN \(ChapterRecord.databaseTableName) c ON c.id = bc.chapterId
             JOIN \(SeriesRecord.databaseTableName) s ON s.id = bc.seriesId
             WHERE bc.rank = 1
               AND (bc.showHalfChapters = 1 OR bc.number = CAST(bc.number AS INTEGER))
               AND s.\(SeriesRecord.Columns.inLibrary.name) = 1
-              AND c.\(ChapterRecord.Columns.addedDate.name) > s.\(SeriesRecord.Columns.addedDate.name)
+              AND c.\(ChapterRecord.Columns.publishedDate.name) > s.\(SeriesRecord.Columns.addedDate.name)
               AND c.\(ChapterRecord.Columns.progress.name) < 1.0
             GROUP BY bc.seriesId
             ORDER BY latest DESC

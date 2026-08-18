@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import Kingfisher
 
 // one queue row. icon/message vocabulary mirrors DetailsMetadataRefreshPill's
 // for the same states, so a reader who has seen one recognises the other.
@@ -21,6 +22,12 @@ import SwiftUI
 // TrackerRestoreCandidatePicker for the rest, and for editing the query
 struct TrackerRestoreRowView: View {
     let row: TrackerRestoreRow
+    // which tracker this whole session is pulling from - needed only to map
+    // row.entry.remoteStatus (that tracker's own raw vocabulary) to Status
+    // for SavedSummary. every row in a session shares one tracker, so this
+    // is a session-level fact handed down rather than something the row
+    // itself carries
+    let tracker: Tracker
     let sourcesBySlug: [String: Source]
     let onSelect: (TrackerRestoreCandidate) -> Void
     let onSave: () -> Void
@@ -37,6 +44,8 @@ struct TrackerRestoreRowView: View {
         static let carouselVisible = 3
         static let previewCount = 8
         static let tint: Double = 0.25
+        static let savedCoverWidth: CGFloat = 64
+        static let savedCoverAspect: CGFloat = 11 / 16
     }
 
     var body: some View {
@@ -49,8 +58,11 @@ struct TrackerRestoreRowView: View {
                 StatusIcon
 
                 // lives beside the title it belongs to, not a second row of
-                // its own - the carousel below has results, not a headline
-                if case .found = row.match {
+                // its own - the carousel below has results, not a headline.
+                // gone once saved - the picked candidate is a fact by then,
+                // not a choice, and this chevron is what opens the picker a
+                // reader could use to change it
+                if case .found = row.match, row.outcome != .saved {
                     Image(systemName: "chevron.right")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.secondary)
@@ -78,8 +90,20 @@ struct TrackerRestoreRowView: View {
                             .transition(.opacity)
 
                     case let .found(candidates, selected):
-                        ResultsCarousel(candidates, selected: selected)
-                            .transition(.opacity)
+                        // once saved this is a one-and-done operation: the
+                        // commit already created a series, fetched its
+                        // chapters and linked the tracker, so the carousel's
+                        // own onSelect tap - which would otherwise just swap
+                        // a preference - is what undoes real work here.
+                        // shown instead as the flat, non-interactive summary
+                        // AlreadyLinkedPrompt uses for the same reason
+                        if row.outcome == .saved {
+                            SavedSummary(selected)
+                                .transition(.opacity)
+                        } else {
+                            ResultsCarousel(candidates, selected: selected)
+                                .transition(.opacity)
+                        }
 
                     case .notFound:
                         NoMatchPrompt
@@ -255,6 +279,78 @@ struct TrackerRestoreRowView: View {
         .frame(height: Layout.promptHeight)
     }
 
+    // a mix of both halves of what a saved row knows, stated rather than
+    // offered - no tap target: the candidate's own cover (what the source
+    // showed for it - nothing here reads back the library's own final
+    // pooled cover, since the commit never hands its seriesId back), and the
+    // tracker's own progress/status, as a Badge pill (the same component
+    // DetailsSources' own DISCONNECTED tag uses) and a real progress bar
+    // (matching DetailsDisambiguation's own read/total ProgressView,
+    // .tint(.brand) included) rather than plain text. title is deliberately
+    // not repeated - the row's own header above already carries
+    // row.entry.title for every state, saved included, and restating it
+    // here is the redundancy CLAUDE.md's own rule warns against
+    private func SavedSummary(_ selected: TrackerRestoreCandidate?) -> some View {
+        let status = Status(raw: row.entry.remoteStatus, for: tracker) ?? .planning
+
+        return HStack(spacing: dimensions.spacing.space12) {
+            SavedCover(selected?.stub.cover)
+
+            VStack(alignment: .leading, spacing: dimensions.spacing.space8) {
+                Badge(text: status.label, tone: status.tone, size: .compact)
+
+                VStack(alignment: .leading, spacing: dimensions.spacing.space4) {
+                    if let total = row.entry.totalChapters, total > 0 {
+                        ProgressView(value: Double(row.entry.progress), total: Double(total))
+                            .tint(.brand)
+                    }
+
+                    ProgressText
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    // two branches rather than one String built with `??` - a coalesce into
+    // plain String is what already broke inflection markup once on this
+    // screen (docs/findings.md), since LocalizedStringKey parsing only
+    // applies to a literal handed to Text(_:) directly
+    @ViewBuilder
+    private var ProgressText: some View {
+        if let total = row.entry.totalChapters, total > 0 {
+            Text("\(row.entry.progress) of \(total)")
+        } else {
+            Text("^[\(row.entry.progress) chapter](inflect: true) read")
+        }
+    }
+
+    // bigger than a list-row thumbnail on purpose - this is the one piece of
+    // real artwork a saved row has left once the carousel is gone, so it
+    // carries more of the card's visual weight than an icon-scale image would
+    private func SavedCover(_ url: URL?) -> some View {
+        Color.clear
+            .aspectRatio(Layout.savedCoverAspect, contentMode: .fit)
+            .frame(width: Layout.savedCoverWidth)
+            .overlay {
+                if let url {
+                    KFImage(url)
+                        .resizable()
+                        .placeholder { Rectangle().fill(.primary.opacity(0.1)) }
+                        .fade(duration: 0.25)
+                        .scaledToFill()
+                } else {
+                    Rectangle().fill(.primary.opacity(0.1))
+                }
+            }
+            .clipShape(.rect(cornerRadius: dimensions.radius.radius12))
+            .clipped()
+    }
+
     // nothing has happened yet - the whole centre is the one thing to do
     private var SearchPrompt: some View {
         VStack(spacing: dimensions.spacing.space4) {
@@ -415,7 +511,16 @@ private struct RowPreview: View {
         // behaviour
         ("Found, exact match auto-selected", TrackerRestoreRow(entry: entry(4, "Chainsaw Man"), match: .found(exact, selected: exact[0]))),
         ("Saving", TrackerRestoreRow(entry: entry(5, "Chainsaw Man"), match: .found(exact, selected: exact[0]), saving: true)),
-        ("Saved", TrackerRestoreRow(entry: entry(6, "Chainsaw Man"), match: .found(exact, selected: exact[0]), outcome: .saved)),
+        (
+            "Saved",
+            TrackerRestoreRow(
+                // a real total, unlike the other fixtures' - SavedSummary's
+                // "N of total" branch has nothing else to preview it with
+                entry: TrackerImportEntry(id: 6, title: "Chainsaw Man", cover: nil, progress: 97, remoteStatus: "CURRENT", totalChapters: 156),
+                match: .found(exact, selected: exact[0]),
+                outcome: .saved
+            )
+        ),
         ("Not found", TrackerRestoreRow(entry: entry(7, "A Fabricated Title"), match: .notFound)),
         ("Search failed", TrackerRestoreRow(entry: entry(8, "One Piece"), match: .failed("Every source failed to respond."))),
         (
@@ -457,6 +562,7 @@ private struct RowPreview: View {
 
             TrackerRestoreRowView(
                 row: state.row,
+                tracker: .anilist,
                 sourcesBySlug: Self.sourcesBySlug,
                 onSelect: { _ in },
                 onSave: {},

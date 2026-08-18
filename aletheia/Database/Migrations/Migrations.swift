@@ -37,6 +37,7 @@ enum Migrations {
     ) {
         registerV1_0_0(with: &migrator, records: records, views: views)
         registerV1_0_1(with: &migrator, records: records, views: views)
+        registerV1_0_2(with: &migrator)
     }
 
     // MARK: - v1.0.0: initial schema (all tables + views). CLOSED - do not edit
@@ -72,6 +73,41 @@ enum Migrations {
             for view in views {
                 try view.createIndexes(db: db)
             }
+        }
+    }
+
+    // MARK: - v1.0.2: backfill series.updatedDate from real chapter publish dates. CLOSED - do not edit
+
+    // series.updatedDate used to freeze at row-creation time forever. now that it
+    // tracks the newest chapter's publishedDate going forward, existing rows need
+    // one correction to match - series with no chapters are left alone, since
+    // there is nothing to derive a date from
+    //
+    // table/column names are spelled out literally rather than through
+    // SeriesRecord/ChapterRecord/OriginRecord's Columns - those track whatever
+    // the record looks like today, but this migration is frozen to what the
+    // schema looked like at v1.0.2. a later rename must not silently rewrite
+    // history that already shipped
+    private static func registerV1_0_2(
+        with migrator: inout DatabaseMigrator
+    ) {
+        let name = DatabaseVersion(1, 0, 2).createMigrationName(description: "backfill_series_updatedDate")
+        migrator.registerMigration(name) { db in
+            try db.execute(sql: """
+                UPDATE series
+                SET updatedDate = (
+                    SELECT MAX(c.publishedDate)
+                    FROM chapter c
+                    JOIN origin o ON o.id = c.originId
+                    WHERE o.seriesId = series.id
+                )
+                WHERE EXISTS (
+                    SELECT 1
+                    FROM chapter c
+                    JOIN origin o ON o.id = c.originId
+                    WHERE o.seriesId = series.id
+                )
+                """)
         }
     }
 }

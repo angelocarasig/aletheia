@@ -103,7 +103,7 @@ private extension FailuresScreen {
                 LazyVStack(alignment: .leading, spacing: dimensions.spacing.space24) {
                     ForEach(vm.sections(by: grouping)) { section in
                         VStack(alignment: .leading, spacing: dimensions.spacing.space12) {
-                            Header(section)
+                            Header(section, vm: vm)
 
                             ForEach(section.entries) { entry in
                                 Row(entry, vm: vm)
@@ -150,41 +150,57 @@ private extension FailuresScreen {
     // three chevrons pointing at one destination is three promises of somewhere
     // different to go
     @ViewBuilder
-    func Header(_ section: FailuresViewModel.Section) -> some View {
+    func Header(_ section: FailuresViewModel.Section, vm: FailuresViewModel) -> some View {
         if grouping == .series, let entry = section.entries.first {
-            HeaderContent(section)
+            HeaderContent(section, vm: vm)
                 .contentShape(.rect)
                 .tappable { route = SeriesEntry.library(SeriesRecord.ID(rawValue: entry.seriesId)) }
                 .accessibilityHint("Opens the series")
         } else {
-            HeaderContent(section)
+            HeaderContent(section, vm: vm)
         }
     }
 
-    func HeaderContent(_ section: FailuresViewModel.Section) -> some View {
+    func HeaderContent(_ section: FailuresViewModel.Section, vm: FailuresViewModel) -> some View {
         HStack(spacing: dimensions.spacing.space8) {
-            // a source section shows the source's mark; a series section shows
-            // the series' cover, which is the fastest way anyone recognises one
-            if let slug = section.sourceSlug {
-                if let icon = compositor.registry.source(slug: slug)?.descriptor.icon {
-                    Image(icon)
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: Layout.headerIconSize, height: Layout.headerIconSize)
-                        .clipShape(.rect(cornerRadius: dimensions.radius.radius4))
+            // combined into one VoiceOver label - but scoped to only this
+            // decorative half, not the whole header, because RetryAllButton
+            // sits beside it and a Button folded into
+            // .accessibilityElement(children: .combine) loses its own action
+            HStack(spacing: dimensions.spacing.space8) {
+                // a source section shows the source's mark; a series section
+                // shows the series' cover, which is the fastest way anyone
+                // recognises one
+                if let slug = section.sourceSlug {
+                    if let icon = compositor.registry.source(slug: slug)?.descriptor.icon {
+                        Image(icon)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: Layout.headerIconSize, height: Layout.headerIconSize)
+                            .clipShape(.rect(cornerRadius: dimensions.radius.radius4))
+                    }
+                } else if let entry = section.entries.first {
+                    HeaderCover(entry)
                 }
-            } else if let entry = section.entries.first {
-                HeaderCover(entry)
+
+                Text(section.title)
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                    .lineLimit(1)
+
+                Spacer(minLength: 0)
+
+                Count(section)
             }
+            .accessibilityElement(children: .combine)
 
-            Text(section.title)
-                .font(.subheadline)
-                .fontWeight(.semibold)
-                .lineLimit(1)
-
-            Spacer(minLength: 0)
-
-            Count(section)
+            // one row's own Retry already covers a section of one - this is
+            // for the case that made grouping worth having in the first
+            // place, six series behind one dead source or six sources behind
+            // one missing series
+            if section.count > 1 {
+                RetryAllButton(section, vm: vm)
+            }
 
             if grouping == .series {
                 Image(systemName: "chevron.right")
@@ -193,7 +209,30 @@ private extension FailuresScreen {
             }
         }
         .frame(minHeight: dimensions.touchTarget)
-        .accessibilityElement(children: .combine)
+    }
+
+    // its own tap target, same reason Retry is a Button inside RowCard's own
+    // tappable card rather than layered over it - grouped by series the
+    // whole header already navigates, and this must win against that rather
+    // than trigger it
+    @ViewBuilder
+    func RetryAllButton(_ section: FailuresViewModel.Section, vm: FailuresViewModel) -> some View {
+        let retrying = section.entries.contains { vm.retrying.contains($0.id) }
+
+        if retrying {
+            ProgressView()
+                .controlSize(.small)
+        } else {
+            Text("Retry All")
+                .font(.caption)
+                .fontWeight(.medium)
+                .foregroundStyle(.brand)
+                .padding(.horizontal, dimensions.spacing.space12)
+                .padding(.vertical, dimensions.spacing.space4)
+                .background(.brand.opacity(0.1), in: .capsule)
+                .tappable { Task { await vm.retryAll(section.entries) } }
+                .accessibilityLabel("Retry all \(section.count) failures")
+        }
     }
 
     @ViewBuilder

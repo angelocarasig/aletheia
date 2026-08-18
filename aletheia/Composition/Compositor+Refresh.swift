@@ -1017,6 +1017,10 @@ actor OriginRefresher {
                 // before seeding existed - a saved order is never touched
                 if let origin = try OriginRecord.fetchOne(db, key: originId.rawValue) {
                     try SeriesLanguagePriorityRecord.seedDefaults(for: origin.seriesId, in: db)
+
+                    if inserted > 0 {
+                        try Self.touchUpdatedDate(seriesId: origin.seriesId, in: db)
+                    }
                 }
 
                 return inserted
@@ -1187,5 +1191,32 @@ extension OriginRefresher {
         }
 
         return inserted
+    }
+
+    // Library's "Last Updated" sort and Home's "New Chapters" both key off
+    // recency, so this recomputes from scratch across every origin rather than
+    // taking the max of old-vs-new - the only way both stay honest when a
+    // second source's chapters land, or a republished date corrects one down
+    @discardableResult
+    nonisolated fileprivate static func touchUpdatedDate(
+        seriesId: SeriesRecord.ID,
+        in db: Database
+    ) throws -> Bool {
+        let latest = try Date.fetchOne(
+            db,
+            sql: """
+                SELECT MAX(c.\(ChapterRecord.Columns.publishedDate.name))
+                FROM \(ChapterRecord.databaseTableName) c
+                JOIN \(OriginRecord.databaseTableName) o ON o.id = c.\(ChapterRecord.Columns.originId.name)
+                WHERE o.\(OriginRecord.Columns.seriesId.name) = ?
+                """,
+            arguments: [seriesId.rawValue]
+        )
+        guard let latest else { return false }
+
+        guard var series = try SeriesRecord.fetchOne(db, key: seriesId.rawValue) else { return false }
+        return try series.updateChanges(db) {
+            $0.updatedDate = latest
+        }
     }
 }
