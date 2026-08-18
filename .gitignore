@@ -1,6 +1,8 @@
 /CLAUDE.md
 /docs
 /aletheia/Resources/Models
+/aletheia/Aletheia.docc/.docc-build
+*.doccarchive
 
 # zed + xcede
 /buildServer.json
