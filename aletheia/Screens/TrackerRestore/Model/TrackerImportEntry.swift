@@ -6,11 +6,12 @@
 //
 
 import Foundation
+import Tagged
 
 // one row of a tracker's list, before anything local exists for it. never
 // persisted - this is session-only working data, gone the moment the screen
 // closes unless it was Saved
-struct TrackerImportEntry: Identifiable, Sendable, Hashable {
+struct TrackerImportEntry: MigrationEntry {
     let id: Int64
     let title: String
     let cover: URL?
@@ -22,4 +23,8 @@ struct TrackerImportEntry: Identifiable, Sendable, Hashable {
     // TrackerRestoreCommitting.swift)
     let remoteStatus: String
     let totalChapters: Int?
+
+    // a tracker's list describes what is out there, not what is already in
+    // the library - Save always has to resolve or mint the series itself
+    var existingSeriesId: SeriesRecord.ID? { nil }
 }

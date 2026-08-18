@@ -1,40 +1,51 @@
 //
-//  TrackerRestoreComposer.swift
+//  MigrationComposer.swift
 //  aletheia
 //
-//  Created by Angelo Carasig on 17/8/26.
+//  Created by Angelo Carasig on 18/8/26.
 //
 
 import Foundation
-import GRDB
 import Observation
 import SwiftUI
 
-// owns the whole restore flow's state - which tracker, which sources, the
-// rows pulled from it, and every action the two screens drive. one composer
-// rather than one per screen because the setup step's answers (tracker,
-// sources) are exactly what the queue step needs, and passing them through
-// init rather than a shared composer would mean re-deriving them
+// file-scope rather than nested - a static stored property is not allowed
+// inside a type nested in a generic type
+private enum MigrationComposerLayout {
+    static let pageSize = 20
+}
+
+// owns one migration session's whole state - the rows pulled from its
+// source, which sources they search against, and every action the queue
+// screen drives. generic over the entry type, so tracker restore, source
+// migration and disconnected-source migration all run the same queue,
+// pagination, search and save/skip machinery through their own source and
+// committer rather than three copies of it.
+//
+// takes exactly one already-resolved MigrationSource - unlike the tracker
+// restore composer this replaces, there is no live re-selection of "which
+// source pulls the entries" inside the composer itself. a flow that offers
+// that choice (tracker restore's own tracker picker) makes it on its own
+// setup screen, as plain local state, and only resolves the concrete source
+// once Start is tapped
 @MainActor
 @Observable
-final class TrackerRestoreComposer {
-    private let importSources: [Tracker: TrackerImportSource]
-    private let searching: TrackerRestoreSearching
-    private let committing: TrackerRestoreCommitting
-    private let registry: Compositor.Registry
-    private let database: DatabaseClient
+final class MigrationComposer<Entry: MigrationEntry> {
+    private let source: any MigrationSource<Entry>
+    private let searching: any MigrationSearching
+    private let committing: any MigrationCommitting<Entry>
+    // an entry the precheck already resolved locally, before any search runs
+    // - the same guard tracker restore uses against "this remoteId is
+    // already linked", generalized to whatever a given flow needs to check.
+    // defaults to finding nothing, since not every flow needs one
+    private let precheck: ([Entry]) async -> Set<Entry.ID>
     private let log: AppLog
 
     private(set) var availableSources: [Source]
     var selectedSourceSlugs: Set<String>
 
-    // which of the offered trackers Start pulls from - a plain var rather
-    // than a picker sheet's own state, since the whole session is one pull
-    // from one tracker
-    var selectedTracker: Tracker
-
     private(set) var loading = false
-    private(set) var rows: [TrackerRestoreRow] = []
+    private(set) var rows: [MigrationRow<Entry>] = []
     private(set) var loadFailure: String?
 
     var page = 0
@@ -42,45 +53,36 @@ final class TrackerRestoreComposer {
         didSet { guard filter != oldValue else { return }; page = 0 }
     }
 
-    private enum Layout {
-        static let pageSize = 20
-    }
+    // the pill label for a precheck-matched row - "Already Linked" reads
+    // right for tracker restore, a different flow names its own precheck
+    private let precheckLabel: String
 
     // pills over the working set, not a fourth "all" - a saved or skipped row
     // has nothing left to do, so there is no view that needs to show every
     // row at once
-    enum RowFilter: String, CaseIterable, Identifiable, Equatable {
+    enum RowFilter: CaseIterable, Identifiable, Hashable {
         case remaining
-        case linked
+        case precheckMatched
         case saved
         case failed
 
-        var id: String { rawValue }
-
-        var label: String {
-            switch self {
-            case .remaining: "Remaining"
-            case .linked: "Already Linked"
-            case .saved: "Saved"
-            case .failed: "Failed"
-            }
-        }
+        var id: Self { self }
     }
 
     init(
-        importSources: [TrackerImportSource],
-        searching: TrackerRestoreSearching,
-        committing: TrackerRestoreCommitting,
+        source: any MigrationSource<Entry>,
+        searching: any MigrationSearching,
+        committing: any MigrationCommitting<Entry>,
         registry: Compositor.Registry,
-        database: DatabaseClient,
+        precheck: @escaping ([Entry]) async -> Set<Entry.ID> = { _ in [] },
+        precheckLabel: String = "Already Linked",
         log: AppLog = .shared
     ) {
-        self.importSources = Dictionary(uniqueKeysWithValues: importSources.map { ($0.tracker, $0) })
-        self.selectedTracker = importSources.first?.tracker ?? .anilist
+        self.source = source
         self.searching = searching
         self.committing = committing
-        self.registry = registry
-        self.database = database
+        self.precheck = precheck
+        self.precheckLabel = precheckLabel
         self.log = log
 
         // the same existence gate SearchViewModel's own source list uses -
@@ -91,7 +93,7 @@ final class TrackerRestoreComposer {
             && defaults.bool(forKey: Preferences.Key.includeAdultSources)
         self.availableSources = unlocked ? registry.sources : registry.sources.filter { !$0.descriptor.adultOnly }
 
-        // nothing pre-checked - restoring a whole library is a real decision
+        // nothing pre-checked - migrating a whole library is a real decision
         // about where its chapters come from, not a default to accept
         self.selectedSourceSlugs = []
     }
@@ -107,33 +109,42 @@ final class TrackerRestoreComposer {
         Dictionary(uniqueKeysWithValues: availableSources.map { ($0.descriptor.slug, $0) })
     }
 
+    func label(for filter: RowFilter) -> String {
+        switch filter {
+        case .remaining: "Remaining"
+        case .precheckMatched: precheckLabel
+        case .saved: "Saved"
+        case .failed: "Failed"
+        }
+    }
+
     // paginated over the current pill's rows, not the master list - a row
     // that just saved leaves this set on its own, which is what gives the
     // reader "a fresh 20" after clearing a page rather than a fixed window
     // that still shows what it already finished with
-    private var filteredRows: [TrackerRestoreRow] {
+    private var filteredRows: [MigrationRow<Entry>] {
         switch filter {
-        case .remaining: rows.filter { !$0.alreadyLinked && !$0.isSettled }
-        case .linked: rows.filter { $0.alreadyLinked }
+        case .remaining: rows.filter { !$0.precheckMatched && !$0.isSettled }
+        case .precheckMatched: rows.filter { $0.precheckMatched }
         case .saved: rows.filter { $0.outcome == .saved }
         case .failed: rows.filter { if case .skipped = $0.outcome { true } else { false } }
         }
     }
 
     var pageCount: Int {
-        filteredRows.isEmpty ? 0 : (filteredRows.count + Layout.pageSize - 1) / Layout.pageSize
+        filteredRows.isEmpty ? 0 : (filteredRows.count + MigrationComposerLayout.pageSize - 1) / MigrationComposerLayout.pageSize
     }
 
-    var currentPageRows: [TrackerRestoreRow] {
-        let start = page * Layout.pageSize
+    var currentPageRows: [MigrationRow<Entry>] {
+        let start = page * MigrationComposerLayout.pageSize
         guard start < filteredRows.count else { return [] }
-        return Array(filteredRows[start..<min(start + Layout.pageSize, filteredRows.count)])
+        return Array(filteredRows[start..<min(start + MigrationComposerLayout.pageSize, filteredRows.count)])
     }
 
     func count(for filter: RowFilter) -> Int {
         switch filter {
-        case .remaining: rows.count { !$0.alreadyLinked && !$0.isSettled }
-        case .linked: rows.count { $0.alreadyLinked }
+        case .remaining: rows.count { !$0.precheckMatched && !$0.isSettled }
+        case .precheckMatched: rows.count { $0.precheckMatched }
         case .saved: savedCount
         case .failed: rows.count { if case .skipped = $0.outcome { true } else { false } }
         }
@@ -153,38 +164,19 @@ final class TrackerRestoreComposer {
     }
 
     func start() async {
-        guard !loading, let importSource = importSources[selectedTracker] else { return }
+        guard !loading else { return }
         loading = true
         defer { loading = false }
 
         do {
-            let entries = try await importSource.fetchLibrary()
-            let linked = try await alreadyLinkedRemoteIds(among: entries.map(\.id))
-            rows = entries.map { TrackerRestoreRow(entry: $0, alreadyLinked: linked.contains($0.id)) }
+            let entries = try await source.fetch()
+            let matched = await precheck(entries)
+            rows = entries.map { MigrationRow(entry: $0, precheckMatched: matched.contains($0.id)) }
             loadFailure = nil
         } catch {
-            loadFailure = Failure(error, fallback: "Couldn't load your list").sentence
-            log.log("restore fetchLibrary failed - \(error)", level: .error, category: "restore")
+            loadFailure = Failure(error, fallback: "Couldn't load the list").sentence
+            log.log("migration fetch failed - \(error)", level: .error, category: "migration")
         }
-    }
-
-    // a preventive check ahead of any search: a tracker's own list can carry
-    // an entry the reader already linked before this pull ran - by a
-    // previous restore, or by hand from Details - and creating a series for
-    // it a second time is exactly the origin-uniqueness crash this flow used
-    // to hit. those rows are marked rather than dropped, so they stay visible
-    // in their own pill instead of just vanishing from the count
-    private func alreadyLinkedRemoteIds(among remoteIds: [Int64]) async throws -> Set<Int64> {
-        guard !remoteIds.isEmpty else { return [] }
-
-        let tracker = selectedTracker
-        let rows = try await database.reader.read { db in
-            try SeriesTrackerRecord
-                .filter(SeriesTrackerRecord.Columns.tracker == tracker.rawValue)
-                .filter(remoteIds.contains(SeriesTrackerRecord.Columns.remoteId))
-                .fetchAll(db)
-        }
-        return Set(rows.map(\.remoteId))
     }
 
     // MARK: Queue
@@ -199,10 +191,10 @@ final class TrackerRestoreComposer {
         }
     }
 
-    // query defaults to the tracker's own title - the picker sheet is what
-    // lets a reader override it when the tracker's title is not what any
+    // query defaults to the entry's own title - the picker sheet is what
+    // lets a reader override it when the entry's title is not what any
     // installed source calls the series
-    func search(_ id: Int64, query: String? = nil) async {
+    func search(_ id: Entry.ID, query: String? = nil) async {
         guard let index = rows.firstIndex(where: { $0.id == id }) else { return }
         let title = query ?? rows[index].entry.title
         rows[index].match = .searching
@@ -216,20 +208,20 @@ final class TrackerRestoreComposer {
         rows[index].match = match
     }
 
-    func select(_ candidate: TrackerRestoreCandidate, for id: Int64) {
+    func select(_ candidate: MigrationCandidate, for id: Entry.ID) {
         guard let index = rows.firstIndex(where: { $0.id == id }) else { return }
         rows[index].match = .found(rows[index].match.candidates, selected: candidate)
         // picking a (possibly different) candidate is also a fresh attempt
         rows[index].outcome = nil
     }
 
-    func save(_ id: Int64) async {
+    func save(_ id: Entry.ID) async {
         guard let index = rows.firstIndex(where: { $0.id == id }),
               let candidate = rows[index].match.selected
         else { return }
 
         withAnimation(.settle) { rows[index].saving = true }
-        let outcome = await committing.commit(rows[index].entry, candidate: candidate, tracker: selectedTracker)
+        let outcome = await committing.commit(rows[index].entry, candidate: candidate)
 
         guard let index = rows.firstIndex(where: { $0.id == id }) else { return }
         // this is the mutation that can drop the row out of whatever pill is
@@ -246,7 +238,7 @@ final class TrackerRestoreComposer {
     // of Remaining and into the Failed pill, carrying whatever reason it
     // last gave (a save failure, "Stopped" for a cancelled attempt, or the
     // search's own dead end) so it is never silently lost
-    func skip(_ id: Int64) {
+    func skip(_ id: Entry.ID) {
         guard let index = rows.firstIndex(where: { $0.id == id }) else { return }
 
         // this is what moves the row out of Remaining and into Failed, so it

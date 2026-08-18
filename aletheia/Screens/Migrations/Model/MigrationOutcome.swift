@@ -1,8 +1,8 @@
 //
-//  TrackerRestoreOutcome.swift
+//  MigrationOutcome.swift
 //  aletheia
 //
-//  Created by Angelo Carasig on 17/8/26.
+//  Created by Angelo Carasig on 18/8/26.
 //
 
 import Foundation
@@ -16,7 +16,7 @@ import Foundation
 // deliberate: a save failure is very often transient (a token expired, a
 // source hiccuped), and moving the row away before the reader has seen why
 // would bury it
-enum TrackerRestoreOutcome: Equatable, Sendable {
+enum MigrationOutcome: Equatable, Sendable {
     case saved
     case failed(String)
     case skipped(String)

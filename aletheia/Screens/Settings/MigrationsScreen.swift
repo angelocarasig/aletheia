@@ -14,11 +14,22 @@ import SwiftUI
 // either; Import has the one real flow; Export is where a future CBZ/backup-
 // file export would land - see aletheia/CLAUDE.md's zlib note
 struct MigrationsScreen: View {
+    @Environment(\.compositor) private var compositor
     @Environment(\.dimensions) private var dimensions
 
     @State private var showingTrackerRestore = false
     @State private var showingSourceMigration = false
     @State private var showingDisconnectedMigration = false
+    @State private var showingOtherReaderImport = false
+    @State private var showingAletheiaBackupImport = false
+    @State private var showingBackupExport = false
+    @State private var showingCBZExport = false
+
+    // the same query DisconnectedSourceMigrationScreen's own composer
+    // pulls from, reused rather than a second existence-only version of it -
+    // false until proven otherwise, so the card never flashes enabled
+    // before a run has actually confirmed there is something to migrate
+    @State private var hasDisconnectedSources = false
 
     var body: some View {
         ScrollView {
@@ -40,7 +51,10 @@ struct MigrationsScreen: View {
                     Card(
                         "Disconnected Sources",
                         systemImage: "cable.connector.slash",
-                        detail: "Move a series off a source that's no longer installed"
+                        detail: hasDisconnectedSources
+                            ? "Move a series off a source that's no longer installed"
+                            : "No disconnected sources right now",
+                        enabled: hasDisconnectedSources
                     ) { showingDisconnectedMigration = true }
                 }
 
@@ -52,14 +66,38 @@ struct MigrationsScreen: View {
                     // the closest real one: the system's standard "pull data
                     // in from elsewhere" tray, not a document-specific glyph
                     Card(
-                        "Restore from Tracker",
+                        "From a Tracker",
                         systemImage: "tray.and.arrow.down",
                         detail: "Rebuild your library from a tracker's list"
                     ) { showingTrackerRestore = true }
+
+                    Card(
+                        "From Another Reader",
+                        systemImage: "square.and.arrow.down",
+                        detail: "Bring your library over from Tachiyomi, Mihon, or another reader"
+                    ) { showingOtherReaderImport = true }
+
+                    Card(
+                        "From an Aletheia Backup",
+                        systemImage: "shippingbox",
+                        detail: "Restore your library from your own exported backup"
+                    ) { showingAletheiaBackupImport = true }
                 }
 
                 VStack(alignment: .leading, spacing: dimensions.spacing.space12) {
                     SectionHeader("Export")
+
+                    Card(
+                        "To a Backup",
+                        systemImage: "shippingbox",
+                        detail: "Save your library to a file you can restore later"
+                    ) { showingBackupExport = true }
+
+                    Card(
+                        "To CBZ Archives",
+                        systemImage: "doc.zipper",
+                        detail: "Save chapters as CBZ archives"
+                    ) { showingCBZExport = true }
                 }
             }
             .padding(.horizontal, dimensions.screenMargin)
@@ -68,16 +106,44 @@ struct MigrationsScreen: View {
         .scrollEdgeEffectStyle(.soft, for: .bottom)
         .navigationTitle("Migrations")
         .navigationBarTitleDisplayMode(.inline)
-        .navigationDestination(isPresented: $showingSourceMigration) {
-            SourceMigrationScreen()
+        .task { await refreshDisconnectedCheck() }
+        // reruns whenever the migration sheet closes - a run just emptied
+        // the list, or the reader backed out having changed nothing either
+        // way, so the card's own state must not go stale until the screen
+        // itself is dismissed and reopened
+        .onChange(of: showingDisconnectedMigration) { _, showing in
+            guard !showing else { return }
+            Task { await refreshDisconnectedCheck() }
         }
-        .navigationDestination(isPresented: $showingDisconnectedMigration) {
-            DisconnectedSourceMigrationScreen()
+        .navigationDestination(isPresented: $showingOtherReaderImport) {
+            OtherReaderImportScreen()
         }
-        // a sheet rather than a push: restore is a self-contained process with
-        // its own setup step and queue, not a place inside Settings - closing
-        // it from the queue, two levels deep, just ends the sheet rather than
-        // popping back through setup first
+        .navigationDestination(isPresented: $showingAletheiaBackupImport) {
+            AletheiaBackupImportScreen()
+        }
+        .navigationDestination(isPresented: $showingBackupExport) {
+            BackupExportScreen()
+        }
+        .navigationDestination(isPresented: $showingCBZExport) {
+            CBZExportScreen()
+        }
+        // sheets rather than pushes, for the same reason across all three:
+        // each is a self-contained process with its own setup step and
+        // queue, not a place inside Settings - closing from the queue two
+        // levels deep just ends the sheet rather than popping back through
+        // setup first
+        .sheet(isPresented: $showingSourceMigration) {
+            NavigationStack {
+                SourceMigrationScreen(onFinish: { showingSourceMigration = false })
+            }
+            .interactiveDismissDisabled(true)
+        }
+        .sheet(isPresented: $showingDisconnectedMigration) {
+            NavigationStack {
+                DisconnectedSourceMigrationScreen(onFinish: { showingDisconnectedMigration = false })
+            }
+            .interactiveDismissDisabled(true)
+        }
         .sheet(isPresented: $showingTrackerRestore) {
             NavigationStack {
                 TrackerRestoreSetupScreen(onFinish: { showingTrackerRestore = false })
@@ -92,10 +158,16 @@ struct MigrationsScreen: View {
         }
     }
 
+    private func refreshDisconnectedCheck() async {
+        let entries = try? await DisconnectedOriginMigrationSource(database: compositor.database).fetch()
+        hasDisconnectedSources = !(entries?.isEmpty ?? true)
+    }
+
     private func Card(
         _ title: String,
         systemImage: String,
         detail: String,
+        enabled: Bool = true,
         action: @escaping () -> Void
     ) -> some View {
         HStack(spacing: dimensions.spacing.space12) {
@@ -113,6 +185,7 @@ struct MigrationsScreen: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
+                    .contentTransition(.opacity)
             }
 
             Spacer(minLength: 0)
@@ -128,7 +201,10 @@ struct MigrationsScreen: View {
             in: .rect(cornerRadius: dimensions.radius.radius12, style: .continuous)
         )
         .contentShape(.rect)
+        .opacity(enabled ? 1 : 0.5)
         .tappable(action: action)
+        .disabled(!enabled)
+        .animation(.settle, value: enabled)
     }
 
     private enum Layout {

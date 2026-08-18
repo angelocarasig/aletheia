@@ -15,19 +15,15 @@ import Tagged
 // separately. once the series exists and is in the library it stays that
 // way even if a later step fails - it is a real, if incomplete, library
 // entry the reader can retry chapters/tracking on later from Details itself
-protocol TrackerRestoreCommitting: Sendable {
-    func commit(
-        _ entry: TrackerImportEntry,
-        candidate: TrackerRestoreCandidate,
-        tracker: Tracker
-    ) async -> TrackerRestoreOutcome
-}
-
-struct LiveTrackerRestoreCommitter: TrackerRestoreCommitting {
+struct LiveTrackerRestoreCommitter: MigrationCommitting {
     let database: DatabaseClient
     let registry: Compositor.Registry
     let refresher: Compositor.Refresh
     let trackers: Compositor.Trackers
+    // fixed for the whole session - a restore session pulls from exactly
+    // one tracker, so this is a construction-time fact rather than a
+    // parameter every commit call would otherwise have to repeat
+    let tracker: Tracker
     let log: AppLog
 
     init(
@@ -35,20 +31,21 @@ struct LiveTrackerRestoreCommitter: TrackerRestoreCommitting {
         registry: Compositor.Registry,
         refresher: Compositor.Refresh,
         trackers: Compositor.Trackers,
+        tracker: Tracker,
         log: AppLog = .shared
     ) {
         self.database = database
         self.registry = registry
         self.refresher = refresher
         self.trackers = trackers
+        self.tracker = tracker
         self.log = log
     }
 
     func commit(
         _ entry: TrackerImportEntry,
-        candidate: TrackerRestoreCandidate,
-        tracker: Tracker
-    ) async -> TrackerRestoreOutcome {
+        candidate: MigrationCandidate
+    ) async -> MigrationOutcome {
         guard let source = registry.source(slug: candidate.sourceSlug) else {
             return .failed("That source is no longer installed.")
         }

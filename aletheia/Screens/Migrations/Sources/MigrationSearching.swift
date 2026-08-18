@@ -1,8 +1,8 @@
 //
-//  TrackerRestoreSearching.swift
+//  MigrationSearching.swift
 //  aletheia
 //
-//  Created by Angelo Carasig on 17/8/26.
+//  Created by Angelo Carasig on 18/8/26.
 //
 
 import Foundation
@@ -10,30 +10,32 @@ import Foundation
 // title search across a fixed set of already-installed sources, for a fixed
 // title - not the live-typing debounced search SearchViewModel is built for,
 // so this does not reuse that type, only the same source.search(_:) call it
-// makes (Screens/Search/SearchViewModel.swift)
-protocol TrackerRestoreSearching: Sendable {
-    func search(title: String, in sources: [Source]) async -> TrackerRestoreMatch
+// makes (Screens/Search/SearchViewModel.swift). shared by every migration
+// flow unchanged - none of it is specific to where the title came from
+protocol MigrationSearching: Sendable {
+    func search(title: String, in sources: [Source]) async -> MigrationMatch
 }
 
 // a candidate is pre-selected when its title exactly matches (case- and
 // diacritic-insensitive) and it is the only one that does - the same "an
 // exact string match is worth trusting to pre-fill, never to silently
 // commit" line trackers.md Q4 already draws. Save still requires its own tap
-struct LiveTrackerRestoreSearcher: TrackerRestoreSearching {
+struct LiveMigrationSearcher: MigrationSearching {
     private let log: AppLog
 
     init(log: AppLog = .shared) {
         self.log = log
     }
 
-    // a bounded wait per source, not a race-condition sleep: restore fans out
-    // to every selected source at once, and one scraped source with no
-    // timeout of its own must never hold up every other row behind it
+    // a bounded wait per source, not a race-condition sleep: a migration
+    // session fans out to every selected source at once, and one scraped
+    // source with no timeout of its own must never hold up every other row
+    // behind it
     private enum Timing {
         static let perSource: Duration = .seconds(15)
     }
 
-    func search(title: String, in sources: [Source]) async -> TrackerRestoreMatch {
+    func search(title: String, in sources: [Source]) async -> MigrationMatch {
         guard !sources.isEmpty else { return .notFound }
 
         let query = SearchQuery(text: title, filters: [], sort: nil, page: 1)
@@ -48,9 +50,9 @@ struct LiveTrackerRestoreSearcher: TrackerRestoreSearching {
                         return (source.descriptor.slug, .success(page.items))
                     } catch {
                         log.log(
-                            "restore search timed out or failed for '\(source.descriptor.slug)' - \(error)",
+                            "migration search timed out or failed for '\(source.descriptor.slug)' - \(error)",
                             level: .error,
-                            category: "restore"
+                            category: "migration"
                         )
                         return (source.descriptor.slug, .failure(error))
                     }
@@ -62,13 +64,13 @@ struct LiveTrackerRestoreSearcher: TrackerRestoreSearching {
             return collected
         }
 
-        var candidates: [TrackerRestoreCandidate] = []
+        var candidates: [MigrationCandidate] = []
         var failureCount = 0
 
         for (sourceSlug, outcome) in results {
             switch outcome {
             case .success(let stubs):
-                candidates.append(contentsOf: stubs.map { TrackerRestoreCandidate(sourceSlug: sourceSlug, stub: $0) })
+                candidates.append(contentsOf: stubs.map { MigrationCandidate(sourceSlug: sourceSlug, stub: $0) })
             case .failure:
                 failureCount += 1
             }

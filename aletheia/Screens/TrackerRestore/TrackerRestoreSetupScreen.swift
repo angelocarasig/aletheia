@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import GRDB
 
 // the press state of a Step card, published by its own button style so the
 // label can read it - the same shape DetailsSetup.swift uses for its own
@@ -17,7 +18,10 @@ private extension EnvironmentValues {
 }
 
 private struct StepButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
+    // GRDB.Configuration also lives at module scope in this file (needed
+    // below for the raw tracker-link query), so the protocol's own
+    // Configuration typealias is spelled out rather than left bare
+    func makeBody(configuration: ButtonStyleConfiguration) -> some View {
         configuration.label
             .environment(\.stepPressed, configuration.isPressed)
             .scaleEffect(configuration.isPressed ? 0.95 : 1)
@@ -29,16 +33,19 @@ private struct StepButtonStyle: ButtonStyle {
 // two steps, pushed rather than shown together: which tracker, then which
 // sources. nothing here writes to the database - the first write anywhere in
 // this flow is a row's own Save, on the queue screen Start pushes to once
-// composer.start() (LiveTrackerImportSource, see TrackerImportSource) comes
+// composer.start() (LiveTrackerImportSource, see MigrationSource) comes
 // back with rows
 //
-// the composer is built lazily here rather than handed in, the same shape
-// DetailsScreen builds DetailsComposer - it needs the compositor from the
-// environment, which is not available at a call site constructing this view
+// which tracker is a plain local choice, not composer state - unlike the
+// old per-flow composer, MigrationComposer takes one already-resolved
+// source, so nothing about the pull can be decided until this step answers
+// it. the composer itself is only built once a tracker is chosen, right
+// before the Sources step needs one to search across
 struct TrackerRestoreSetupScreen: View {
     var onFinish: () -> Void
 
-    @State private var composer: TrackerRestoreComposer?
+    @State private var selectedTracker: Tracker?
+    @State private var composer: MigrationComposer<TrackerImportEntry>?
     @State private var showingQueue = false
     @State private var connecting = false
 
@@ -59,31 +66,35 @@ struct TrackerRestoreSetupScreen: View {
     private static let bulkListable: Set<Tracker> = [.anilist, .myAnimeList, .mangaBaka]
 
     var body: some View {
-        Group {
-            if let composer {
-                TrackerStep(composer)
-            } else {
-                ProgressView()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+        TrackerStep
+            .task {
+                guard selectedTracker == nil else { return }
+                selectedTracker = restorableTrackers.first
             }
-        }
-        .task {
-            guard composer == nil else { return }
-            composer = TrackerRestoreComposer(
-                importSources: restorableTrackers.map {
-                    LiveTrackerImportSource(tracker: $0, trackers: compositor.trackers)
-                },
-                searching: LiveTrackerRestoreSearcher(),
-                committing: LiveTrackerRestoreCommitter(
-                    database: compositor.database,
+            // rebuilds whenever the chosen tracker changes - construction is
+            // pure (no I/O until Start), so there is nothing to preserve by
+            // patching an existing instance instead. any source selection
+            // already made resets with it, the same way switching trackers
+            // reset nothing else about the flow either
+            .task(id: selectedTracker) {
+                guard let selectedTracker else { composer = nil; return }
+                composer = MigrationComposer(
+                    source: LiveTrackerImportSource(tracker: selectedTracker, trackers: compositor.trackers),
+                    searching: LiveMigrationSearcher(),
+                    committing: LiveTrackerRestoreCommitter(
+                        database: compositor.database,
+                        registry: compositor.registry,
+                        refresher: compositor.refresh,
+                        trackers: compositor.trackers,
+                        tracker: selectedTracker
+                    ),
                     registry: compositor.registry,
-                    refresher: compositor.refresh,
-                    trackers: compositor.trackers
-                ),
-                registry: compositor.registry,
-                database: compositor.database
-            )
-        }
+                    precheck: { [database = compositor.database] entries in
+                        await Self.alreadyLinkedRemoteIds(among: entries.map(\.id), tracker: selectedTracker, database: database)
+                    },
+                    precheckLabel: "Already Linked"
+                )
+            }
     }
 
     // only a tracker this account is actually signed in to can ever be
@@ -102,20 +113,42 @@ struct TrackerRestoreSetupScreen: View {
         signedInTrackers.filter { Self.bulkListable.contains($0) }
     }
 
+    // a preventive check ahead of any search: a tracker's own list can carry
+    // an entry the reader already linked before this pull ran - by a
+    // previous restore, or by hand from Details - and creating a series for
+    // it a second time is exactly the origin-uniqueness crash this flow used
+    // to hit. those rows are marked rather than dropped, so they stay visible
+    // in their own pill instead of just vanishing from the count
+    private static func alreadyLinkedRemoteIds(
+        among remoteIds: [Int64],
+        tracker: Tracker,
+        database: DatabaseClient
+    ) async -> Set<Int64> {
+        guard !remoteIds.isEmpty else { return [] }
+
+        let rows = try? await database.reader.read { db in
+            try SeriesTrackerRecord
+                .filter(SeriesTrackerRecord.Columns.tracker == tracker.rawValue)
+                .filter(remoteIds.contains(SeriesTrackerRecord.Columns.remoteId))
+                .fetchAll(db)
+        }
+        return Set((rows ?? []).map(\.remoteId))
+    }
+
     // MARK: Step 1 - Tracker
 
     // the first page because it decides everything the second one needs -
     // which sources even apply is not tracker-specific today, but the pull
     // itself is, and there is nothing to search for until it has run
-    private func TrackerStep(_ composer: TrackerRestoreComposer) -> some View {
-        TrackerStepContent(composer)
+    private var TrackerStep: some View {
+        TrackerStepContent
             .modifier(
                 Chrome(
                     title: "Restore from Tracker",
                     subtitle: Text("Choose which tracker to pull your library from."),
                     onClose: onFinish
                 ) {
-                    if !restorableTrackers.isEmpty {
+                    if !restorableTrackers.isEmpty, let composer {
                         NavigationLink {
                             SourcesStep(composer)
                         } label: {
@@ -134,16 +167,16 @@ struct TrackerRestoreSetupScreen: View {
     }
 
     @ViewBuilder
-    private func TrackerStepContent(_ composer: TrackerRestoreComposer) -> some View {
+    private var TrackerStepContent: some View {
         if restorableTrackers.isEmpty {
             NoAccounts
         } else {
             ScrollView {
                 VStack(alignment: .leading, spacing: dimensions.spacing.space12) {
                     ForEach(signedInTrackers) { tracker in
-                        TrackerRow(composer, tracker)
+                        TrackerRow(tracker)
                     }
-                    .sensoryFeedback(.selection, trigger: composer.selectedTracker)
+                    .sensoryFeedback(.selection, trigger: selectedTracker)
                 }
                 .padding(.horizontal, dimensions.screenMargin)
                 .padding(.top, dimensions.spacing.space8)
@@ -182,9 +215,9 @@ struct TrackerRestoreSetupScreen: View {
     // "no working else" a source protocol opt-in would require. the signed-in
     // username underneath is the same fact TrackingScreen's own card shows -
     // this list is only ever signed-in trackers, so an account always exists
-    private func TrackerRow(_ composer: TrackerRestoreComposer, _ tracker: Tracker) -> some View {
+    private func TrackerRow(_ tracker: Tracker) -> some View {
         let restorable = Self.bulkListable.contains(tracker)
-        let chosen = restorable && composer.selectedTracker == tracker
+        let chosen = restorable && selectedTracker == tracker
 
         return HStack(spacing: dimensions.spacing.space12) {
             Image(tracker.icon)
@@ -228,14 +261,14 @@ struct TrackerRestoreSetupScreen: View {
         .contentShape(.rect)
         .tappable {
             guard restorable else { return }
-            composer.selectedTracker = tracker
+            selectedTracker = tracker
         }
         .accessibilityAddTraits(chosen ? .isSelected : [])
     }
 
     // MARK: Step 2 - Sources
 
-    private func SourcesStep(_ composer: TrackerRestoreComposer) -> some View {
+    private func SourcesStep(_ composer: MigrationComposer<TrackerImportEntry>) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: dimensions.spacing.space12) {
                 ForEach(composer.availableSources, id: \.descriptor.slug) { source in
@@ -267,7 +300,9 @@ struct TrackerRestoreSetupScreen: View {
             }
         )
         .navigationDestination(isPresented: $showingQueue) {
-            TrackerRestoreScreen(composer: composer, onFinish: onFinish)
+            if let selectedTracker {
+                TrackerRestoreScreen(composer: composer, tracker: selectedTracker, onFinish: onFinish)
+            }
         }
     }
 
@@ -280,7 +315,7 @@ struct TrackerRestoreSetupScreen: View {
     // because this screen is exactly where a reader is choosing between
     // sources that may look alike. deliberately not SourcePing - that answers
     // "is it up right now", which is a different question from "what is this"
-    private func SourceRow(_ composer: TrackerRestoreComposer, _ source: Source) -> some View {
+    private func SourceRow(_ composer: MigrationComposer<TrackerImportEntry>, _ source: Source) -> some View {
         let selected = composer.selectedSourceSlugs.contains(source.descriptor.slug)
 
         return HStack(spacing: dimensions.spacing.space12) {
@@ -332,10 +367,8 @@ struct TrackerRestoreSetupScreen: View {
     // composer.start() and only push once real rows come back - the same
     // "Button styled like the Step card it sits beside" DetailsSetup's own
     // Finish() is, for the same reason (dismiss() there, an async gate here)
-    private func StartButton(_ composer: TrackerRestoreComposer) -> some View {
-        let canStart = restorableTrackers.contains(composer.selectedTracker)
-            && !composer.selectedSourceSlugs.isEmpty
-            && !composer.loading
+    private func StartButton(_ composer: MigrationComposer<TrackerImportEntry>) -> some View {
+        let canStart = !composer.selectedSourceSlugs.isEmpty && !composer.loading
 
         return Button {
             Task {

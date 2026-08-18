@@ -1,33 +1,34 @@
 //
-//  TrackerRestoreRow.swift
+//  MigrationRow.swift
 //  aletheia
 //
-//  Created by Angelo Carasig on 17/8/26.
+//  Created by Angelo Carasig on 18/8/26.
 //
 
 import Foundation
 
-// one queue row: the tracker's own facts plus everything this screen has
+// one queue row: the entry's own facts plus everything this screen has
 // learned about it since. `saving`/`outcome` are separate from `match`
 // because a row can be re-searched after a failed save without losing what
 // was found
-struct TrackerRestoreRow: Identifiable, Sendable {
-    let entry: TrackerImportEntry
-    // set once, when the row is built: this exact tracker + remoteId was
-    // already linked to a local series before this pull ran - by a previous
-    // restore, or by hand from Details. never searched, selected, or saved -
-    // it exists to be seen in its own pill, not acted on again
-    var alreadyLinked = false
-    var match: TrackerRestoreMatch = .idle
+struct MigrationRow<Entry: MigrationEntry>: Identifiable, Sendable {
+    let entry: Entry
+    // set once, when the row is built: an upfront precheck already found a
+    // local match for this entry before search ever ran - a tracker restore
+    // row already linked by a previous session, a source-migration row
+    // already carrying the target source. never searched, selected, or
+    // saved - it exists to be seen in its own pill, not acted on again
+    var precheckMatched = false
+    var match: MigrationMatch = .idle
     var saving = false
-    var outcome: TrackerRestoreOutcome?
+    var outcome: MigrationOutcome?
 
-    var id: Int64 { entry.id }
+    var id: Entry.ID { entry.id }
 
     // Save is the first attempt only - once it has failed once, the slot
     // where it lived becomes Skip instead (canSkip), not a repeated Save
     var canSave: Bool {
-        !alreadyLinked && match.selected != nil && !saving && outcome == nil
+        !precheckMatched && match.selected != nil && !saving && outcome == nil
     }
 
     // a row is skippable whenever it has hit a dead end it can't recover
@@ -35,7 +36,7 @@ struct TrackerRestoreRow: Identifiable, Sendable {
     // came back with nothing or that failed outright. saved/skipped rows
     // have already left the working set and offer nothing further
     var canSkip: Bool {
-        guard !alreadyLinked else { return false }
+        guard !precheckMatched else { return false }
 
         switch outcome {
         case .failed, .cancelled: return true

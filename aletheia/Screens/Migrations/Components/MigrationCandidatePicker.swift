@@ -1,8 +1,8 @@
 //
-//  TrackerRestoreCandidatePicker.swift
+//  MigrationCandidatePicker.swift
 //  aletheia
 //
-//  Created by Angelo Carasig on 17/8/26.
+//  Created by Angelo Carasig on 18/8/26.
 //
 
 import SwiftUI
@@ -11,14 +11,14 @@ import SwiftUI
 // SourceCard in a grid, plus the query that found them, editable in place.
 // tapping a card commits the pick and closes - there is nothing else to
 // confirm, the same one-step choice DetailsTrackerLink already uses
-struct TrackerRestoreCandidatePicker: View {
-    let entry: TrackerImportEntry
-    let candidates: [TrackerRestoreCandidate]
-    let selected: TrackerRestoreCandidate?
+struct MigrationCandidatePicker: View {
+    let title: String
+    let candidates: [MigrationCandidate]
+    let selected: MigrationCandidate?
     let sourcesBySlug: [String: Source]
     let searching: Bool
     let onSearch: (String) -> Void
-    let onSelect: (TrackerRestoreCandidate) -> Void
+    let onSelect: (MigrationCandidate) -> Void
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.dimensions) private var dimensions
@@ -26,22 +26,22 @@ struct TrackerRestoreCandidatePicker: View {
     @State private var query: String
 
     init(
-        entry: TrackerImportEntry,
-        candidates: [TrackerRestoreCandidate],
-        selected: TrackerRestoreCandidate?,
+        title: String,
+        candidates: [MigrationCandidate],
+        selected: MigrationCandidate?,
         sourcesBySlug: [String: Source],
         searching: Bool,
         onSearch: @escaping (String) -> Void,
-        onSelect: @escaping (TrackerRestoreCandidate) -> Void
+        onSelect: @escaping (MigrationCandidate) -> Void
     ) {
-        self.entry = entry
+        self.title = title
         self.candidates = candidates
         self.selected = selected
         self.sourcesBySlug = sourcesBySlug
         self.searching = searching
         self.onSearch = onSearch
         self.onSelect = onSelect
-        _query = State(initialValue: entry.title)
+        _query = State(initialValue: title)
     }
 
     private let columns = [GridItem(.adaptive(minimum: 110), spacing: 12)]
@@ -61,7 +61,7 @@ struct TrackerRestoreCandidatePicker: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                Searchbar(searchText: $query, placeholder: entry.title)
+                Searchbar(searchText: $query, placeholder: title)
                     .padding(.horizontal, dimensions.screenMargin)
                     .padding(.top, dimensions.spacing.space8)
                     .onSubmit { onSearch(query) }
@@ -76,7 +76,7 @@ struct TrackerRestoreCandidatePicker: View {
                         ContentUnavailableView {
                             Label("No Matches", systemImage: "magnifyingglass")
                         } description: {
-                            Text("Try a different title for \(entry.title).")
+                            Text("Try a different title for \(title).")
                         }
                         .transition(.opacity)
 
@@ -123,7 +123,7 @@ struct TrackerRestoreCandidatePicker: View {
         .accessibilityHidden(true)
     }
 
-    private func CandidateCard(_ candidate: TrackerRestoreCandidate) -> some View {
+    private func CandidateCard(_ candidate: MigrationCandidate) -> some View {
         let source = sourcesBySlug[candidate.sourceSlug]
 
         return SourceCard(stub: candidate.stub, referer: source?.descriptor.referer, selected: candidate == selected)

@@ -7,11 +7,12 @@
 
 import Foundation
 
-// the real TrackerImportSource - one call through the compositor, which owns
-// the token and the retry-once-on-reauth policy. generic over which tracker,
-// but only ever constructed for one that actually conforms to
-// BulkListingTracker - trackers.list(_:) throws .unavailable otherwise
-struct LiveTrackerImportSource: TrackerImportSource {
+// the real MigrationSource for a tracker restore - one call through the
+// compositor, which owns the token and the retry-once-on-reauth policy.
+// fixed to one tracker at construction time - the setup screen resolves
+// which before building this, only ever for one that actually conforms to
+// BulkListingTracker (trackers.list(_:) throws .unavailable otherwise)
+struct LiveTrackerImportSource: MigrationSource {
     let tracker: Tracker
 
     private let trackers: Compositor.Trackers
@@ -21,7 +22,7 @@ struct LiveTrackerImportSource: TrackerImportSource {
         self.trackers = trackers
     }
 
-    func fetchLibrary() async throws -> [TrackerImportEntry] {
+    func fetch() async throws -> [TrackerImportEntry] {
         let list = try await trackers.list(tracker)
         return list.map {
             TrackerImportEntry(
