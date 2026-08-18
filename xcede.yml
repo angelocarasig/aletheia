@@ -1,0 +1,18 @@
+scheme: aletheia
+buildwithxcode: false
+oslogenabled: true
+beautifier: xcbeautify --disable-logging -q
+swiftbeautifier: xcbeautify --disable-logging -q
+
+activeProfile: simulator
+
+switcherprofiles: [device, simulator]
+
+profiles:
+  device:
+    platform: device
+    device: "iPhone"
+
+  simulator:
+    platform: sim
+    device: "238F1894-AA26-45FC-A5B8-94FA0E9E3DDE"

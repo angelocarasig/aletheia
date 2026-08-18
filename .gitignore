@@ -1,3 +1,8 @@
 /CLAUDE.md
 /docs
 /aletheia/Resources/Models
+
+# zed + xcede (machine-local; xcede.yml and .zed/debug.json stay tracked)
+/buildServer.json
+/.xcede/
+/.xcede-switcher.json

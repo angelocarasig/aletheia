@@ -1,0 +1,9 @@
+[
+  {
+    "label": "SwiftDebug",
+    "adapter": "Swift",
+    "request": "launch",
+    "program": "xcede:",
+    "build": "SwiftBuild"
+  }
+]
