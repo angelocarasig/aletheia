@@ -58,7 +58,7 @@ struct AletheiaBackupImportScreen: View {
                     .labelStyle(.iconOnly)
             }
         }
-        .fileImporter(isPresented: $showingPicker, allowedContentTypes: [.data]) { result in
+        .fileImporter(isPresented: $showingPicker, allowedContentTypes: [.aletheiaBackup, .data]) { result in
             switch result {
             case let .success(url):
                 Task { await load(from: url) }

@@ -10,18 +10,26 @@ import UniformTypeIdentifiers
 
 // one action, one screen: build the whole library into a LibraryBackup
 // message (LibraryBackupBuilder), encode it (LibraryBackupCodec), hand the
-// file to the share sheet. nothing here writes to the database - export is
-// read-only by nature
+// file to the system's own document-export picker. nothing here writes to
+// the database - export is read-only by nature
+//
+// .fileExporter rather than ShareLink: ShareLink's own "Save to Files" is a
+// known, widely-reported platform bug with Transferable items (both
+// DataRepresentation and FileRepresentation - filed against multiple iOS
+// versions on Apple's developer forums), not something fixable from this
+// side. .fileExporter is Apple's own API for "save this to a location I
+// pick" and does not go through that path at all
 struct BackupExportScreen: View {
     @Environment(\.compositor) private var compositor
     @Environment(\.dimensions) private var dimensions
 
     @State private var phase: Phase = .idle
+    @State private var showingExporter = false
 
     private enum Phase: Equatable {
         case idle
         case exporting
-        case ready(LibraryBackupFile)
+        case ready(LibraryBackupDocument, filename: String)
         case failed(String)
     }
 
@@ -59,6 +67,24 @@ struct BackupExportScreen: View {
         .navigationTitle("Backup Your Library")
         .navigationBarTitleDisplayMode(.inline)
         .animation(.settle, value: phase)
+        .fileExporter(
+            isPresented: $showingExporter,
+            document: exportedDocument,
+            contentType: .aletheiaBackup,
+            defaultFilename: exportedFilename
+        ) { result in
+            if case let .failure(error) = result {
+                phase = .failed(Failure(error, fallback: "Couldn't save the backup").sentence)
+            }
+        }
+    }
+
+    private var exportedDocument: LibraryBackupDocument? {
+        if case let .ready(document, _) = phase { document } else { nil }
+    }
+
+    private var exportedFilename: String? {
+        if case let .ready(_, filename) = phase { filename } else { nil }
     }
 
     @ViewBuilder
@@ -78,10 +104,10 @@ struct BackupExportScreen: View {
             .frame(maxWidth: .infinity)
             .frame(minHeight: dimensions.touchTarget)
 
-        case let .ready(file):
-            ShareLink(item: file, preview: SharePreview(file.filename)) {
+        case .ready:
+            Button { showingExporter = true } label: {
                 HStack(spacing: dimensions.spacing.space8) {
-                    Image(systemName: "square.and.arrow.up")
+                    Image(systemName: "square.and.arrow.down")
                     Text("Save Backup")
                 }
             }
@@ -97,36 +123,13 @@ struct BackupExportScreen: View {
         do {
             let backup = try await LibraryBackupBuilder.build(database: compositor.database)
             let data = try LibraryBackupCodec.encode(backup)
-            phase = .ready(LibraryBackupFile(data: data))
+            let stamp = Date.now.formatted(.iso8601.year().month().day())
+            phase = .ready(LibraryBackupDocument(data: data), filename: "aletheia-backup-\(stamp)")
+            showingExporter = true
         } catch {
             phase = .failed(Failure(error, fallback: "Couldn't build the backup").sentence)
         }
     }
-}
-
-// a plain Data value has no filename or content type of its own - this is
-// what gives the share sheet both, so it offers "Save to Files" with a real
-// .althbackup extension rather than a generic "data" attachment
-private struct LibraryBackupFile: Transferable, Equatable {
-    let data: Data
-    let filename: String
-
-    init(data: Data) {
-        self.data = data
-        let stamp = Date.now.formatted(.iso8601.year().month().day())
-        self.filename = "aletheia-backup-\(stamp).althbackup"
-    }
-
-    static var transferRepresentation: some TransferRepresentation {
-        DataRepresentation(exportedContentType: .altheliaBackup) { file in
-            file.data
-        }
-        .suggestedFileName { $0.filename }
-    }
-}
-
-private extension UTType {
-    static let altheliaBackup = UTType(exportedAs: "moe.aletheia.backup", conformingTo: .data)
 }
 
 // MARK: - Previews
