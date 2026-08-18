@@ -11,9 +11,38 @@ import GRDB
 extension Compositor {
     struct Persistence: Sendable {
         private let database: DatabaseClient
+        private let registry: Registry
+        private let downloads: Downloads
 
-        init(database: DatabaseClient) {
+        init(database: DatabaseClient, registry: Registry, downloads: Downloads) {
             self.database = database
+            self.registry = registry
+            self.downloads = downloads
+        }
+
+        // only caller is backup restore - needs a genuinely empty db, not one merged into
+        func wipe() async throws {
+            AppLog.shared.log("wipe starting", category: "wipe")
+
+            await downloads.cancelAll()
+
+            let deleted = try await database.writer.write { db -> Int in
+                var total = 0
+                for record in DatabaseClient.allRecords.reversed() {
+                    total += try record.deleteAll(db)
+                }
+                return total
+            }
+
+            Keychain.sources.deleteAll()
+            Keychain.trackers.deleteAll()
+
+            await registry.seed()
+            await downloads.sweep()
+
+            AppLog.shared.log(
+                "wipe complete - \(deleted) row(s) cleared, credentials cleared, sources reseeded",
+                category: "wipe")
         }
 
         func clean() async {

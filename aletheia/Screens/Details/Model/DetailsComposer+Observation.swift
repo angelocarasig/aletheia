@@ -463,17 +463,18 @@ extension DetailsComposer {
         guard let originId = origin.id else { throw RecordError.missingIdentifier }
 
         let source = try SourceRecord.fetchOne(db, key: sourceId.rawValue)
-        var metadata = MetadataRecord(
-            seriesId: seriesId,
-            originId: originId,
-            supplier: MetadataRecord.supplier(
-                source: source?.slug ?? "\(sourceId.rawValue)", origin: detail.slug),
-            synopsis: detail.synopsis,
-            classification: detail.classification,
-            publication: detail.publication,
-            fetchedDate: .now
-        )
-        try metadata.insert(db)
+        let supplier = MetadataRecord.supplier(
+            source: source?.slug ?? "\(sourceId.rawValue)", origin: detail.slug)
+
+        // adopt re-finds the orphaned row from a prior removal instead of colliding with it
+        var metadata = try MetadataRecord.adopt(
+            seriesId: seriesId, supplier: supplier, originId: originId, in: db)
+        try metadata.updateChanges(db) {
+            $0.synopsis = detail.synopsis
+            $0.classification = detail.classification
+            $0.publication = detail.publication
+            $0.fetchedDate = .now
+        }
         guard let metadataId = metadata.id else { throw RecordError.missingIdentifier }
 
         var preferredTitleId: TitleRecord.ID?

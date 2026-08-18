@@ -25,7 +25,8 @@ final class DatabaseClient: Sendable {
 
     private static let path: URL = Constants.Paths.database
 
-    private static let allRecords: [any DatabaseRecord.Type] = [
+    // exposed for a full wipe to iterate in reverse (referrers before targets)
+    static let allRecords: [any DatabaseRecord.Type] = [
         SeriesRecord.self,
         SourceRecord.self,
         ScanlatorRecord.self,

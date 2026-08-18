@@ -152,7 +152,6 @@ struct BackupImportScreen: View {
                         rows: [
                             ("checkmark.circle", "Restored", summary.restoredCount),
                             ("bolt.slash", "Disconnected", summary.disconnectedCount),
-                            ("trash", "Removed", summary.removedCount),
                         ]
                     )
 
@@ -334,7 +333,8 @@ struct BackupImportScreen: View {
         let summary = await LibraryBackupRestorer.restore(
             backup,
             database: compositor.database,
-            registry: compositor.registry
+            registry: compositor.registry,
+            persistence: compositor.db
         )
         phase = .restored(summary)
     }
@@ -367,7 +367,6 @@ struct BackupImportScreen: View {
         private static let restoredSummary = LibraryBackupRestorer.Summary(
             restoredCount: 138,
             disconnectedCount: 3,
-            removedCount: 5,
             failures: [.init(title: "Some Series", reason: "Couldn't restore this series")]
         )
 

@@ -185,12 +185,12 @@ extension ImpressionsScreen {
 
         var widest: Int { positions.map(\.shown).max() ?? 0 }
 
-        struct Position {
+        struct Position: Sendable {
             let rank: Int
             let shown: Int
             let tapped: Int
         }
-        struct Batch {
+        struct Batch: Sendable {
             let batchId: String
             let seedTitle: String
             let shown: Int
@@ -260,8 +260,22 @@ extension ImpressionsScreen {
                             """, arguments: [Limits.rails])
 
                     return Snapshot(
-                        summary: summary, converted: converted,
-                        ranks: ranks, rails: rails)
+                        total: summary?["total"] ?? 0,
+                        distinct: summary?["distinct_titles"] ?? 0,
+                        batches: summary?["batches"] ?? 0,
+                        seeds: summary?["seeds"] ?? 0,
+                        tapped: summary?["tapped"] ?? 0,
+                        owned: summary?["owned"] ?? 0,
+                        converted: converted,
+                        positions: ranks.map {
+                            Position(rank: $0["rank"], shown: $0["shown"], tapped: $0["tapped"] ?? 0)
+                        },
+                        recent: rails.map {
+                            Batch(
+                                batchId: $0["batchId"], seedTitle: $0["seedTitle"],
+                                shown: $0["shown"], tapped: $0["tapped"] ?? 0,
+                                modelVersion: $0["modelVersion"], at: $0["at"])
+                        })
                 }
                 apply(loaded)
             } catch {
@@ -271,30 +285,29 @@ extension ImpressionsScreen {
             }
         }
 
+        // Row isn't Sendable - extract to typed fields before returning
         struct Snapshot: Sendable {
-            let summary: Row?
+            let total: Int
+            let distinct: Int
+            let batches: Int
+            let seeds: Int
+            let tapped: Int
+            let owned: Int
             let converted: Int
-            let ranks: [Row]
-            let rails: [Row]
+            let positions: [Position]
+            let recent: [Batch]
         }
 
         private func apply(_ s: Snapshot) {
-            total = s.summary?["total"] ?? 0
-            distinct = s.summary?["distinct_titles"] ?? 0
-            batches = s.summary?["batches"] ?? 0
-            seeds = s.summary?["seeds"] ?? 0
-            tapped = s.summary?["tapped"] ?? 0
-            owned = s.summary?["owned"] ?? 0
+            total = s.total
+            distinct = s.distinct
+            batches = s.batches
+            seeds = s.seeds
+            tapped = s.tapped
+            owned = s.owned
             converted = s.converted
-            positions = s.ranks.map {
-                Position(rank: $0["rank"], shown: $0["shown"], tapped: $0["tapped"] ?? 0)
-            }
-            recent = s.rails.map {
-                Batch(
-                    batchId: $0["batchId"], seedTitle: $0["seedTitle"],
-                    shown: $0["shown"], tapped: $0["tapped"] ?? 0,
-                    modelVersion: $0["modelVersion"], at: $0["at"])
-            }
+            positions = s.positions
+            recent = s.recent
         }
     }
 }

@@ -13,7 +13,6 @@ enum LibraryBackupRestorer {
     struct Summary: Equatable {
         var restoredCount = 0
         var disconnectedCount = 0
-        var removedCount = 0
         var failures: [Failure] = []
 
         struct Failure: Equatable {
@@ -26,11 +25,18 @@ enum LibraryBackupRestorer {
         _ backup: LibraryBackup,
         database: DatabaseClient,
         registry: Compositor.Registry,
+        persistence: Compositor.Persistence,
         log: AppLog = .shared
     ) async -> Summary {
         var summary = Summary()
 
-        await removeStaleLibraryMembers(backup, database: database, summary: &summary, log: log)
+        do {
+            try await persistence.wipe()
+        } catch {
+            log.log("backup restore couldn't wipe the database - \(error)", level: .error,
+                category: "backup")
+            return summary
+        }
 
         for entry in backup.series {
             guard let primary = entry.origins.min(by: { $0.priority < $1.priority }) else {
@@ -47,68 +53,6 @@ enum LibraryBackupRestorer {
         }
 
         return summary
-    }
-
-    // MARK: - Wipe
-
-    private static func removeStaleLibraryMembers(
-        _ backup: LibraryBackup,
-        database: DatabaseClient,
-        summary: inout Summary,
-        log: AppLog
-    ) async {
-        let backupKeys = Set(
-            backup.series.flatMap { entry in
-                entry.origins.map { "\($0.sourceSlug)::\($0.seriesSlug)" }
-            })
-
-        do {
-            let removed = try await database.writer.write { db -> Int in
-                let sourceSlugsById = Dictionary(
-                    uniqueKeysWithValues: try SourceRecord.fetchAll(db).compactMap { source in
-                        source.id.map { ($0, source.slug) }
-                    }
-                )
-
-                let librarySeries =
-                    try SeriesRecord
-                    .filter(SeriesRecord.Columns.inLibrary == true)
-                    .fetchAll(db)
-
-                var removed = 0
-                for series in librarySeries {
-                    guard let seriesId = series.id else { continue }
-                    let origins =
-                        try OriginRecord
-                        .filter(OriginRecord.Columns.seriesId == seriesId)
-                        .fetchAll(db)
-
-                    let matchesBackup = origins.contains { origin in
-                        guard let sourceId = origin.sourceId, let slug = sourceSlugsById[sourceId]
-                        else { return false }
-                        return backupKeys.contains("\(slug)::\(origin.slug)")
-                    }
-
-                    guard !matchesBackup else { continue }
-
-                    _ =
-                        try SeriesRecord
-                        .filter(key: seriesId.rawValue)
-                        .updateAll(
-                            db,
-                            SeriesRecord.Columns.inLibrary.set(to: false),
-                            SeriesRecord.Columns.addedDate.set(to: Date.distantPast)
-                        )
-                    removed += 1
-                }
-                return removed
-            }
-            summary.removedCount = removed
-        } catch {
-            log.log(
-                "backup restore couldn't clear stale library members - \(error)", level: .error,
-                category: "backup")
-        }
     }
 
     // MARK: - Source still installed

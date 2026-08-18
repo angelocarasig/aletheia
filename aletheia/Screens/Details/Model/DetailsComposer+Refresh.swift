@@ -134,7 +134,8 @@ extension DetailsComposer {
 
                     group.addTask { [refresher] in
                         if metadata {
-                            await refresher.metadata(
+                            // fire-and-forget - bulk walk doesn't track outcome like refreshMetadata() does
+                            _ = await refresher.metadata(
                                 source: source,
                                 seriesSlug: target.slug,
                                 originId: originId

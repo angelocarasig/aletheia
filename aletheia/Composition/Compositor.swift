@@ -72,6 +72,6 @@ struct Compositor: Sendable {
         self.recommender = V01Recommender()
         self.impressions = Impressions(database: database)
 
-        self.db = Persistence(database: database)
+        self.db = Persistence(database: database, registry: registry, downloads: self.downloads)
     }
 }

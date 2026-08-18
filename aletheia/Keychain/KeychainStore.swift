@@ -61,6 +61,14 @@ struct KeychainStore: Sendable {
         SecItemDelete(baseQuery(account: account) as CFDictionary)
     }
 
+    func deleteAll() {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+        ]
+        SecItemDelete(query as CFDictionary)
+    }
+
     private func baseQuery(account: String) -> [String: Any] {
         [
             kSecClass as String: kSecClassGenericPassword,
