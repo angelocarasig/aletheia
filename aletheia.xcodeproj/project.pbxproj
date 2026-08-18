@@ -23,6 +23,7 @@
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Info.plist,
+				Screens/Backup/Codec/LibraryBackup.proto,
 			);
 			target = 84F9DBF2300B56F500679291 /* aletheia */;
 		};

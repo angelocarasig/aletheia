@@ -1,0 +1,105 @@
+// LibraryBackup.proto
+// aletheia
+//
+// Schema for the library backup payload (docs/features/library-backup.md).
+// The compressed body that sits behind the magic+version header
+// (LibraryBackupEnvelope.swift) - this is version 1.
+//
+// Field numbers are permanent identity, not position: never reuse one,
+// never change a field's type, only ever add new fields, and `reserve` a
+// dropped field's number/name rather than let it be reassigned. This is
+// what lets an old backup keep decoding correctly against a newer build
+// with no version bump at all - the explicit envelope version is reserved
+// for changes this discipline cannot absorb (docs/features/library-backup.md §4).
+//
+// Every message below nests inside LibraryBackup rather than sitting at the
+// top level - SeriesEntry and ChapterEntry both collide with existing app
+// types (Models/SeriesEntry.swift, the source framework's own ChapterEntry
+// DTO). Nesting makes SwiftProtobuf generate LibraryBackup.SeriesEntry etc,
+// which sidesteps the collision instead of renaming around it.
+//
+// Regenerate with:
+//   protoc --swift_out=. LibraryBackup.proto
+// from this directory, after `brew install swift-protobuf` (adds
+// protoc-gen-swift to PATH). Commit the regenerated LibraryBackup.pb.swift
+// alongside any .proto change - there is no build-time codegen plugin wired
+// into this project, the generated file is checked in like any other source.
+
+syntax = "proto3";
+
+message LibraryBackup {
+  string exported_by_app_version = 1;
+  int64 exported_date = 2;        // unix seconds
+  repeated SeriesEntry series = 3;
+
+  message SeriesEntry {
+    string preferred_title = 1;
+    string status = 2;              // Status.rawValue
+    int64 added_date = 3;
+    int64 last_read_date = 4;
+    string orientation = 5;         // Orientation.rawValue
+    bool show_all_chapters = 6;
+    bool show_half_chapters = 7;
+
+    repeated OriginEntry origins = 8;
+    repeated string tags = 9;
+    repeated string authors = 10;
+    repeated string collections = 11;
+    repeated TrackerLink tracker_links = 12;
+
+    // advisory only - the model bundle a restore lands on may not be the
+    // one this was exported from (SeriesRecord.catalogId's own doc comment:
+    // "a title absent from v01 may exist in the next bundle"). a miss here
+    // is read the same as never-resolved, not an error
+    optional int64 catalog_id = 13;
+
+    message OriginEntry {
+      string source_slug = 1;
+      string series_slug = 2;
+      int32 priority = 3;
+      repeated ChapterEntry chapters = 4;
+    }
+
+    // the full chapter row, not just its progress - a restore must not
+    // depend on the source still carrying the same chapter list later.
+    // everything here maps straight onto ChapterRecord's own columns,
+    // minus what is local only (id, originId, path - a downloaded file's
+    // path is device-local and CBZ export's concern, not this one's)
+    message ChapterEntry {
+      double number = 1;
+      string slug = 2;
+      string title = 3;
+      string url = 4;
+      string language = 5;            // LanguageCode.rawValue
+      string scanlator = 6;           // name, portable - findOrCreate on import
+      int64 published_date = 7;
+      int64 added_date = 8;
+      double progress = 9;
+      optional int64 last_read_date = 10;
+    }
+
+    // the SeriesTrackerRecord snapshot, not just enough to identify the
+    // link - that row is deliberately denormalized so it renders fully
+    // (title, progress, status) with zero network access when the reader
+    // is signed out (docs/features/trackers.md: "No account table... the
+    // snapshot columns"). writing only the identity fields here would
+    // restore a link that shows blank until the next sync; writing the
+    // whole snapshot restores the same fully-rendered signed-out state the
+    // app already treats as normal
+    message TrackerLink {
+      string tracker = 1;             // Tracker.rawValue
+      int64 remote_id = 2;            // the media id
+      optional int64 remote_entry_id = 3; // the list-entry id, needed to
+                                           // resume push/pull after re-auth
+      string remote_title = 4;
+      optional string remote_status = 5;  // Status.rawValue - already the
+                                           // app's own vocabulary, not the
+                                           // tracker's raw one
+                                           // (SeriesTrackerRecord.remoteStatus
+                                           // is Status?, not a raw string)
+      int32 remote_progress = 6;
+      optional int32 remote_score = 7;    // canonical 0-100
+      optional int32 total_chapters = 8;
+    }
+  }
+}

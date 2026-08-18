@@ -39,6 +39,12 @@ final class MigrationComposer<Entry: MigrationEntry> {
     // already linked", generalized to whatever a given flow needs to check.
     // defaults to finding nothing, since not every flow needs one
     private let precheck: ([Entry]) async -> Set<Entry.ID>
+    // a row that already knows what it would search for - backup import's
+    // fast path, when an entry's original source is still installed: no
+    // live search call needed, the candidate is already known. defaults to
+    // idle, since tracker restore and source migration never know the
+    // destination ahead of time
+    private let initialMatch: (Entry) -> MigrationMatch
     private let log: AppLog
 
     private(set) var availableSources: [Source]
@@ -76,12 +82,14 @@ final class MigrationComposer<Entry: MigrationEntry> {
         registry: Compositor.Registry,
         precheck: @escaping ([Entry]) async -> Set<Entry.ID> = { _ in [] },
         precheckLabel: String = "Already Linked",
+        initialMatch: @escaping (Entry) -> MigrationMatch = { _ in .idle },
         log: AppLog = .shared
     ) {
         self.source = source
         self.searching = searching
         self.committing = committing
         self.precheck = precheck
+        self.initialMatch = initialMatch
         self.precheckLabel = precheckLabel
         self.log = log
 
@@ -171,7 +179,9 @@ final class MigrationComposer<Entry: MigrationEntry> {
         do {
             let entries = try await source.fetch()
             let matched = await precheck(entries)
-            rows = entries.map { MigrationRow(entry: $0, precheckMatched: matched.contains($0.id)) }
+            rows = entries.map {
+                MigrationRow(entry: $0, precheckMatched: matched.contains($0.id), match: initialMatch($0))
+            }
             loadFailure = nil
         } catch {
             loadFailure = Failure(error, fallback: "Couldn't load the list").sentence

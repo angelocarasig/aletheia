@@ -7,12 +7,19 @@
 
 import SwiftUI
 
-// the queue both source migration and disconnected migration push to - the
-// same Tagger shape TrackerRestoreScreen uses, over SourceMigrationRowView
-// instead. nothing here writes to the database directly - every write
-// happens inside OriginMigrationCommitter.commit
-struct OriginMigrationScreen: View {
-    let composer: MigrationComposer<SourceMigrationEntry>
+// file-scope rather than nested - a static stored property is not allowed
+// inside a type nested in a generic type
+private enum OriginMigrationScreenLayout {
+    static let scrollThreshold: CGFloat = 8
+}
+
+// the queue source migration, disconnected migration, and backup import all
+// push to - the same Tagger shape TrackerRestoreScreen uses, over the
+// generic MigrationRowView instead. nothing here writes to the database
+// directly - every write happens inside the composer's own MigrationCommitting
+struct OriginMigrationScreen<Entry: MigrationEntry>: View {
+    let composer: MigrationComposer<Entry>
+    var savedLabel: String = "Moved"
     let onFinish: () -> Void
 
     @State private var searchingAll = false
@@ -21,17 +28,14 @@ struct OriginMigrationScreen: View {
 
     @Environment(\.dimensions) private var dimensions
 
-    private enum Layout {
-        static let scrollThreshold: CGFloat = 8
-    }
-
     var body: some View {
         ScrollView {
             LazyVStack(spacing: dimensions.spacing.space12) {
                 ForEach(composer.currentPageRows) { row in
-                    SourceMigrationRowView(
+                    MigrationRowView(
                         row: row,
                         sourcesBySlug: composer.sourcesBySlug,
+                        savedLabel: savedLabel,
                         onSelect: { candidate in composer.select(candidate, for: row.id) },
                         onSave: { Task { await composer.save(row.id) } },
                         onSkip: { composer.skip(row.id) },
@@ -53,7 +57,7 @@ struct OriginMigrationScreen: View {
             geometry.contentOffset.y
         } action: { old, new in
             let delta = new - old
-            guard abs(delta) > Layout.scrollThreshold else { return }
+            guard abs(delta) > OriginMigrationScreenLayout.scrollThreshold else { return }
             withAnimation(.settle) {
                 if delta > 0, new > 0 {
                     pagerHidden = true
@@ -142,7 +146,7 @@ struct OriginMigrationScreen: View {
     private var FilterPills: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: dimensions.spacing.space8) {
-                ForEach(MigrationComposer<SourceMigrationEntry>.RowFilter.allCases) { filter in
+                ForEach(MigrationComposer<Entry>.RowFilter.allCases) { filter in
                     FilterPill(filter)
                 }
             }
@@ -151,7 +155,7 @@ struct OriginMigrationScreen: View {
         .padding(.top, dimensions.spacing.space8)
     }
 
-    private func FilterPill(_ filter: MigrationComposer<SourceMigrationEntry>.RowFilter) -> some View {
+    private func FilterPill(_ filter: MigrationComposer<Entry>.RowFilter) -> some View {
         let active = composer.filter == filter
         let count = composer.count(for: filter)
 

@@ -1,5 +1,5 @@
 //
-//  SourceMigrationRowView.swift
+//  MigrationRowView.swift
 //  aletheia
 //
 //  Created by Angelo Carasig on 18/8/26.
@@ -8,15 +8,33 @@
 import SwiftUI
 import Kingfisher
 
-// one queue row for source/disconnected migration - the same shape
+// file-scope rather than nested - a static stored property is not allowed
+// inside a type nested in a generic type
+private enum MigrationRowLayout {
+    static let sourceIconSize: CGFloat = 20
+    static let promptHeight: CGFloat = 64
+    static let carouselVisible = 3
+    static let previewCount = 8
+    static let tint: Double = 0.25
+    static let savedCoverWidth: CGFloat = 64
+    static let savedCoverAspect: CGFloat = 11 / 16
+}
+
+// one queue row, generic over the entry type - the same shape
 // TrackerRestoreRowView uses (idle/searching/found/notFound/failed/saving/
 // saved, one glass card, one Save-or-Skip slot), stripped of everything
 // that only meant something for a tracker's own list: no remoteStatus badge,
-// no progress bar, no "already linked" precheck state - this flow never
-// populates one
-struct SourceMigrationRowView: View {
-    let row: MigrationRow<SourceMigrationEntry>
+// no progress bar, no "already linked" precheck state - none of the flows
+// that reach this view populate one. shared by source migration,
+// disconnected migration, and backup import - tracker restore keeps its
+// own bespoke row, since it is the one flow with real per-entry fields
+// (progress, totalChapters, remoteStatus) to show
+struct MigrationRowView<Entry: MigrationEntry>: View {
+    let row: MigrationRow<Entry>
     let sourcesBySlug: [String: Source]
+    // "Moved" reads right for a source migration; a different flow names
+    // its own saved state (backup import: "Restored")
+    var savedLabel: String = "Moved"
     let onSelect: (MigrationCandidate) -> Void
     let onSave: () -> Void
     let onSkip: () -> Void
@@ -25,16 +43,6 @@ struct SourceMigrationRowView: View {
     @Environment(\.dimensions) private var dimensions
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var showingPicker = false
-
-    private enum Layout {
-        static let sourceIconSize: CGFloat = 20
-        static let promptHeight: CGFloat = 64
-        static let carouselVisible = 3
-        static let previewCount = 8
-        static let tint: Double = 0.25
-        static let savedCoverWidth: CGFloat = 64
-        static let savedCoverAspect: CGFloat = 11 / 16
-    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: dimensions.spacing.space8) {
@@ -138,7 +146,7 @@ struct SourceMigrationRowView: View {
         .padding(.vertical, dimensions.spacing.space8)
         .glassEffect(
             row.canSave
-                ? .regular.tint(Palette.brand.opacity(Layout.tint)).interactive()
+                ? .regular.tint(Palette.brand.opacity(MigrationRowLayout.tint)).interactive()
                 : .regular,
             in: .capsule
         )
@@ -158,7 +166,7 @@ struct SourceMigrationRowView: View {
         .foregroundStyle(.secondary)
         .padding(.horizontal, dimensions.spacing.space16)
         .padding(.vertical, dimensions.spacing.space8)
-        .glassEffect(.regular.tint(Palette.muted.opacity(Layout.tint)).interactive(), in: .capsule)
+        .glassEffect(.regular.tint(Palette.muted.opacity(MigrationRowLayout.tint)).interactive(), in: .capsule)
         .contentShape(.capsule)
         .tappable(action: onSkip)
     }
@@ -205,7 +213,7 @@ struct SourceMigrationRowView: View {
             SavedCover(selected?.stub.cover)
 
             VStack(alignment: .leading, spacing: dimensions.spacing.space4) {
-                Text("Moved")
+                Text(savedLabel)
                     .font(.caption)
                     .fontWeight(.semibold)
                     .foregroundStyle(.success)
@@ -224,8 +232,8 @@ struct SourceMigrationRowView: View {
 
     private func SavedCover(_ url: URL?) -> some View {
         Color.clear
-            .aspectRatio(Layout.savedCoverAspect, contentMode: .fit)
-            .frame(width: Layout.savedCoverWidth)
+            .aspectRatio(MigrationRowLayout.savedCoverAspect, contentMode: .fit)
+            .frame(width: MigrationRowLayout.savedCoverWidth)
             .overlay {
                 if let url {
                     KFImage(url)
@@ -251,7 +259,7 @@ struct SourceMigrationRowView: View {
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity)
-        .frame(height: Layout.promptHeight)
+        .frame(height: MigrationRowLayout.promptHeight)
         .contentShape(.rect)
         .tappable { onSearch(nil) }
     }
@@ -259,11 +267,11 @@ struct SourceMigrationRowView: View {
     private var SearchingPrompt: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             LazyHStack(spacing: dimensions.spacing.space8) {
-                ForEach(0..<Layout.carouselVisible, id: \.self) { _ in
+                ForEach(0..<MigrationRowLayout.carouselVisible, id: \.self) { _ in
                     SourceCard()
                         .containerRelativeFrame(
                             .horizontal,
-                            count: Layout.carouselVisible,
+                            count: MigrationRowLayout.carouselVisible,
                             spacing: dimensions.spacing.space8
                         )
                 }
@@ -300,7 +308,7 @@ struct SourceMigrationRowView: View {
     }
 
     private func ResultsCarousel(_ candidates: [MigrationCandidate], selected: MigrationCandidate?) -> some View {
-        let shown = candidates.prefix(Layout.previewCount)
+        let shown = candidates.prefix(MigrationRowLayout.previewCount)
 
         return VStack(alignment: .leading, spacing: dimensions.spacing.space8) {
             Subheadline(candidates, selected: selected)
@@ -318,7 +326,7 @@ struct SourceMigrationRowView: View {
                             .overlay(alignment: .topLeading) { SourceIcon(source) }
                             .containerRelativeFrame(
                                 .horizontal,
-                                count: Layout.carouselVisible,
+                                count: MigrationRowLayout.carouselVisible,
                                 spacing: dimensions.spacing.space8
                             )
                             .contentShape(.rect)
@@ -344,7 +352,7 @@ struct SourceMigrationRowView: View {
             Image(icon)
                 .resizable()
                 .scaledToFit()
-                .frame(width: Layout.sourceIconSize, height: Layout.sourceIconSize)
+                .frame(width: MigrationRowLayout.sourceIconSize, height: MigrationRowLayout.sourceIconSize)
                 .clipShape(.rect(cornerRadius: dimensions.radius.radius4))
                 .padding(dimensions.spacing.space4)
         }

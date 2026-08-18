@@ -118,20 +118,23 @@ struct MigrationsScreen: View {
         .navigationDestination(isPresented: $showingOtherReaderImport) {
             OtherReaderImportScreen()
         }
-        .navigationDestination(isPresented: $showingAletheiaBackupImport) {
-            AletheiaBackupImportScreen()
-        }
         .navigationDestination(isPresented: $showingBackupExport) {
             BackupExportScreen()
         }
         .navigationDestination(isPresented: $showingCBZExport) {
             CBZExportScreen()
         }
-        // sheets rather than pushes, for the same reason across all three:
+        // sheets rather than pushes, for the same reason across all four:
         // each is a self-contained process with its own setup step and
         // queue, not a place inside Settings - closing from the queue two
         // levels deep just ends the sheet rather than popping back through
         // setup first
+        .sheet(isPresented: $showingAletheiaBackupImport) {
+            NavigationStack {
+                AletheiaBackupImportScreen(onFinish: { showingAletheiaBackupImport = false })
+            }
+            .interactiveDismissDisabled(true)
+        }
         .sheet(isPresented: $showingSourceMigration) {
             NavigationStack {
                 SourceMigrationScreen(onFinish: { showingSourceMigration = false })
