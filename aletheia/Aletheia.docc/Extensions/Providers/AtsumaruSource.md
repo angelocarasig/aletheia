@@ -23,7 +23,7 @@ happens to be short.
 
 No field in the search index carries chapter-activity recency, so "recently updated" can't be a
 Typesense `sort_by` - it's a separate home-feed endpoint, wired as a `SourcePreset` route rather
-than a sort option (see <doc:BuildingASource>'s ranked-shelves distinction). Two traps in that one
+than a sort option (see <doc:aletheia/BuildingASource>'s ranked-shelves distinction). Two traps in that one
 endpoint: its `types` parameter looks optional but isn't - omitted, the route returns an empty
 list rather than everything - and `types` filters on `type` (Manga/Manhwa/Manhua/OEL), not
 `medium`, so it does nothing to exclude novels; the shelf's own client-side medium filter is what
@@ -57,10 +57,10 @@ form directly against the CDN gets one of them right and 404s the other.
 - **Tags are bundled, not fetched live** - a large vocabulary (thousands of tags) shipped as a
   static resource, trading freshness for costing nothing at runtime and letting the taxonomy
   participate honestly in the descriptor's fingerprint (it only changes when the app ships). See
-  <doc:HighCardinalityFilters>. The bundle's own sensitivity flag is drawn wide (gore and partial
+  <doc:aletheia/HighCardinalityFilters>. The bundle's own sensitivity flag is drawn wide (gore and partial
   nudity both carry it) and maps to the suggestive tier only, never the gate - the bundle's
   vocabulary and this app's adult-content vocabulary are deliberately different boundaries.
 - **Content rating comes from two fields.** A four-tier rating sourced from MangaBaka is
   authoritative; a separate boolean flag is the fallback for the minority of titles that field has
-  never rated. See <doc:AdultContent> - this is a rung-1 source, since the rating is a real
+  never rated. See <doc:aletheia/AdultContent> - this is a rung-1 source, since the rating is a real
   per-item field.

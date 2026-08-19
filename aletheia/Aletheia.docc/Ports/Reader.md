@@ -3,8 +3,8 @@
 Tracking the port of alethia-v2's reader engine into `Reader/` (engine) and `Screens/Reader/`
 (host). Reference repo: `/Users/admin/Repositories/alethia-v2/apps/ios`.
 
-Durable findings that came out of this port graduated into <doc:ReaderGeometry> and
-<doc:LiquidGlass> - read those for the compensation rules and glass mechanics rather than this
+Durable findings that came out of this port graduated into <doc:aletheia/ReaderGeometry> and
+<doc:aletheia/LiquidGlass> - read those for the compensation rules and glass mechanics rather than this
 file.
 
 ## What v2 actually was
@@ -35,7 +35,7 @@ section per chapter - keeping exact offset control and `performBatchUpdates` pre
 which is what every other shipping iOS comic reader surveyed (Aidoku, Suwatte, Mankai, Paperback)
 also converges on at the scroll surface, each independently. This is confirmed as what actually
 shipped: ``ChapterWindow``, ``ReaderController``, and the compensation machinery described in
-<doc:ReaderGeometry> are exactly this design, live in `Reader/Engine/`.
+<doc:aletheia/ReaderGeometry> are exactly this design, live in `Reader/Engine/`.
 
 Zoom is a `UIScrollView` inside the cell (`PageCell`), using two iOS 17.4+ properties
 (`transfersHorizontalScrollingToParent = false`, `contentAlignmentPoint`) that remove the manual
@@ -46,7 +46,7 @@ gesture-arbitration and centering math v2 needed.
 Of v2's 66 user-facing features, 56 needed no schema change at all and were phase 1. Sessions/
 history and external trackers both needed new tables and were deliberately deferred to later
 phases - both have since landed as real subsystems (reading history, and AniList/MyAnimeList/
-MangaBaka tracking; see <doc:Trackers>). Double-page spreads and six of nine tap-zone layouts
+MangaBaka tracking; see <doc:aletheia/Trackers>). Double-page spreads and six of nine tap-zone layouts
 remain deferred - confirmed still absent from `ReaderConfiguration` today.
 
 Bugs found in v2 and deliberately not ported: a `scrollToPage(animated: true)` no-op that
@@ -86,7 +86,7 @@ download path already got this right. That last one was fixed on the way in - th
   no schema change needed, since `ChapterRecord.path` and the asset-storing infrastructure already
   exist.
 - **Double-page spreads.** Deferred - needs page dimensions known before layout (see
-  <doc:PageDimensions>), which the tier-0/1 contract now supports for sources that carry them, but
+  <doc:aletheia/PageDimensions>), which the tier-0/1 contract now supports for sources that carry them, but
   the spread-detection and pagination logic itself isn't built.
 - **Six of nine tap-zone layouts.** Left/Right split, edge zones, and Kindle shipped; the rest are
   normalised rects away from being a data change rather than a code change.

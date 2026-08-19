@@ -149,7 +149,7 @@ origin points at an excluded source must not lose its chapters because the prefe
 
 A source can still ignore the gate - neither the helper nor a field on `SearchQuery` is
 compiler-enforced, so a new source that never calls `allowsAdult` returns adult content forever
-with nothing complaining. <doc:BuildingASource> is the standing checklist that's supposed to catch
+with nothing complaining. <doc:aletheia/BuildingASource> is the standing checklist that's supposed to catch
 this; treat it as load-bearing, not advisory.
 
 **Global search ignores `disabled`.** `SearchScreen` builds its fan-out from

@@ -59,7 +59,7 @@ with no user labelling at all.
 
 This is currently blocked in this app specifically: `series_tag` carries no provenance column, so
 there's no way to trace which source contributed which tag, which is what the precision/recall
-question needs. Unblocking it needs a schema change (see <doc:Schema>) adding a metadata reference
+question needs. Unblocking it needs a schema change (see <doc:aletheia/Schema>) adding a metadata reference
 to `series_tag`, mirroring how `title` already carries one.
 
 ## The personal model, kept deliberately small

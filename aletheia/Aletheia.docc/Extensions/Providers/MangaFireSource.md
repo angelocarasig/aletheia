@@ -4,7 +4,7 @@
 `MangaFireSigner` reimplements the site's request-signing scheme natively; there is no
 `WebRenderer` dependency anywhere in this source.
 
-See <doc:BuildingASource> for the lane vocabulary this page assumes.
+See <doc:aletheia/BuildingASource> for the lane vocabulary this page assumes.
 
 Everything below is perishable by nature (a third party's endpoints, signing scheme, and site
 behavior) - the code is truth when it disagrees with this page.
@@ -67,7 +67,7 @@ than colliding into duplicate-looking rows.
 a bogus value** rather than erroring - every other filter answers a bad value with a named 422.
 
 **There's no default content gate.** Omitting the rating parameter returns every rating including
-pornographic - see <doc:AdultContent>. This source is rung 2 on the adult-content ladder: the list
+pornographic - see <doc:aletheia/AdultContent>. This source is rung 2 on the adult-content ladder: the list
 payload carries no per-item rating (only the details endpoint does), so the request itself is what
 determines the batch, and the rating parameter is sent unconditionally, whitelisted to the clean
 tiers when the gate is shut.
@@ -81,11 +81,11 @@ referer.
 
 ## Cloudflare
 
-Conforms to `AuthenticatingSource` (see <doc:SourceAuth>), requiring `cf_clearance` as its one
+Conforms to `AuthenticatingSource` (see <doc:aletheia/SourceAuth>), requiring `cf_clearance` as its one
 required cookie, with a `session` cookie marked optional since the SPA doesn't reliably set it on
 first paint. WebKit solves the challenge without interaction, and on this tenant the resulting
 clearance is accepted by `URLSession` on the same device - the TLS-fingerprint binding
-<doc:SourceAuth> warns about doesn't apply here, though that shouldn't be assumed to generalize or
+<doc:aletheia/SourceAuth> warns about doesn't apply here, though that shouldn't be assumed to generalize or
 to hold forever for this tenant either. A bad signature also answers with a 403, which the default
 Cloudflare-challenge heuristic would misread - `isChallenge` checks the response body for the
 signing-specific error text first, so a signature bug doesn't get treated as (and re-triggers

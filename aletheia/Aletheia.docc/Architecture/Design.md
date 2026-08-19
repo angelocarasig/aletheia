@@ -15,7 +15,7 @@ than eyeballing it alone - see <doc:FeedbackIteration>.
 
 ## Loading and phase transitions
 
-Full doc: <doc:LoadingTransitions>
+Full doc: <doc:aletheia/LoadingTransitions>
 
 - Every loading surface derives **one `LoadPhase`** (`pending` / `empty` / `content` / `failed`,
   ``LoadPhase``) and both branches on it **and** animates on it. Never key the animation on a
@@ -72,7 +72,7 @@ Full doc: <doc:LiquidGlass>
 
 ## Selection language
 
-Full doc: <doc:SelectionLanguage>
+Full doc: <doc:aletheia/SelectionLanguage>
 
 One vocabulary, four meanings, no substitutions:
 
@@ -93,7 +93,7 @@ One vocabulary, four meanings, no substitutions:
 
 ## Section controls
 
-Full doc: <doc:SectionControls>
+Full doc: <doc:aletheia/SectionControls>
 
 - A sort control is a pop-up button - capsule showing the current value as text, neutral tint (a
   sort is always set, so permanent blue says nothing). There's no standard sort icon; sort takes
@@ -110,7 +110,7 @@ Full doc: <doc:SectionControls>
 
 ## Search and filter surfaces
 
-Full docs: <doc:SourceSearch>, <doc:HighCardinalityFilters>
+Full docs: <doc:aletheia/SourceSearch>, <doc:aletheia/HighCardinalityFilters>
 
 - One filter entry point, not peer rows per category; results are the hero.
 - Applied filters render as a chip row with a count, each chip removable in place - state must be
@@ -125,7 +125,7 @@ Full docs: <doc:SourceSearch>, <doc:HighCardinalityFilters>
 
 ## Adult content presentation
 
-Full doc: <doc:AdultContent>
+Full doc: <doc:aletheia/AdultContent>
 
 - Two mechanisms, never merged: the gate (which filter options are ticked) decides retrieval; the
   preference (`blurAdultContent`) decides presentation. The preference never shapes a request.
@@ -136,7 +136,7 @@ Full doc: <doc:AdultContent>
 
 ## Error presentation
 
-Full doc: <doc:Errors>
+Full doc: <doc:aletheia/Errors>
 
 - A view model hands a view a presentation value (title, message, retryability) - never a raw
   error. `String(describing:)` on an error is always wrong; the typed errors already carry the
@@ -156,7 +156,7 @@ Full doc: <doc:Errors>
 
 ## Cards, grids, and artwork
 
-Full doc: <doc:Library>
+Full doc: <doc:aletheia/Library>
 
 - One overlay per artwork, maximum. The unread count is the only thing on a library cover; red is
   correct - an unread count is a notification (items awaiting you, goes to zero), not ambient

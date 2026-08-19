@@ -1,7 +1,7 @@
 # Per-Source Search
 
 > Note: much of this research's "Direction" section overlaps with what's now built and documented
-> in <doc:BuildingASource> ("Ranked shelves are not sorts," "What the screen shows") - read that
+> in <doc:aletheia/BuildingASource> ("Ranked shelves are not sorts," "What the screen shows") - read that
 > first rather than this page for the current sort/shelf/preset contract. This page keeps the
 > platform-guidance reasoning and the ecosystem evidence specific to the per-source search screen
 > (`SearchScreen`'s focused variant, reached from a source's own toolbar) that isn't captured
@@ -29,13 +29,13 @@ library search inline rather than as app-level search - with the placeholder nam
 searched. Material follows placement automatically once `.searchable` is adopted: a toolbar-placed
 search field gets glass and scroll-edge effects for free, while one placed in the scroll region
 gets standard content styling - that split is mechanical, not a style choice, and matches this
-app's content-layer-stays-flat rule already in <doc:Design>. Apple also documents no
+app's content-layer-stays-flat rule already in <doc:aletheia/Design>. Apple also documents no
 preview-before-apply pattern for search filtering generally - live application on change is the
 documented default.
 
 Tri-state include/exclude, filter-count badges, and a filter-chip component all have zero direct
 Apple guidance or component coverage - whatever ships there is this app's own design decision,
-informed by <doc:SelectionLanguage>, not a platform answer.
+informed by <doc:aletheia/SelectionLanguage>, not a platform answer.
 
 ## What the reader-app ecosystem does with the exact same shape
 

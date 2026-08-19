@@ -47,7 +47,7 @@ bookmark is exactly the case this feature exists to serve.
 
 ## What it would take to build
 
-**The source contract** would be an opt-in refinement (see <doc:SourceProtocols>) - synchronous
+**The source contract** would be an opt-in refinement (see <doc:aletheia/SourceProtocols>) - synchronous
 and network-free by default, since every source can answer by parsing alone:
 
 ```swift
@@ -65,7 +65,7 @@ Routing candidates come from a source's declared base URL host for free; a sourc
 declare mirrors would need its own hosts list, entering the descriptor fingerprint since it's part
 of static identity. Multiple sources legitimately owning overlapping domains (an aggregator and a
 mirror) wants a picker, not first-match-wins - the existing disambiguation UI pattern
-(<doc:Details>) is the precedent.
+(<doc:aletheia/Details>) is the precedent.
 
 **The resolve path should reuse matching, not duplicate it**: parse the URL, build a
 `SeriesEntry.source(sourceSlug:stub:)`, and run it through the existing match flow rather than a

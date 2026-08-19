@@ -111,7 +111,7 @@ carry it as an opaque header map instead - cookie capture alone can't authentica
 
 ## Why WebKit-for-capture, URLSession-for-volume
 
-Running every page fetch through a real browser costs several seconds per call (see <doc:WebKit>).
+Running every page fetch through a real browser costs several seconds per call (see <doc:aletheia/WebKit>).
 Doing that only to mint a credential, then serving many cheap `URLSession` requests off that one
 credential, is the whole point of the split. The TLS caveat above is the price of it, worth paying
 by default because most tenants don't check - but a source that needs the browser for its data

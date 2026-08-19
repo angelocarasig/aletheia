@@ -14,7 +14,7 @@ is built.
 
 ## The contract, if built
 
-An opt-in refinement following the same shape as `AuthenticatingSource` (<doc:SourceProtocols>) -
+An opt-in refinement following the same shape as `AuthenticatingSource` (<doc:aletheia/SourceProtocols>) -
 detected by cast at the call site, leaving the descriptor and its fingerprint untouched:
 
 ```swift
@@ -48,7 +48,7 @@ the separator row gets no taps, tiers 2 and 3 never need to happen.
 ## Reader integration, if built
 
 The reader's end-of-chapter separator was explicitly designed with a reserved slot for content like
-this to arrive later without a redesign (<doc:ReaderGeometry>). Slot presence would follow the
+this to arrive later without a redesign (<doc:aletheia/ReaderGeometry>). Slot presence would follow the
 same invariant every other separator slot follows: present or absent based on a static fact (does
 the finished chapter's serving source conform to `CommentingSource`), never appearing or
 disappearing based on when a count happens to land, since separator heights are declared rather

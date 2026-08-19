@@ -1,7 +1,7 @@
 # Database Writes Under Load
 
 > Note: research only. The write-dispatcher and checkpoint-management plan below isn't built - the
-> app currently relies entirely on the configuration already described in <doc:Schema>'s gotchas
+> app currently relies entirely on the configuration already described in <doc:aletheia/Schema>'s gotchas
 > and the default GRDB write queue.
 
 How a bulk writer (library refresh, and eventually downloads) would share one SQLite writer

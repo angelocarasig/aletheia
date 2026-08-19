@@ -37,7 +37,7 @@ metadata
 ```
 
 `origin` itself carries no synopsis/classification/publication/fetch-date columns - it's purely
-chapter-provenance and fetch state, as <doc:Schema> describes. `title.originId`/`cover.originId`
+chapter-provenance and fetch state, as <doc:aletheia/Schema> describes. `title.originId`/`cover.originId`
 point at `metadataId` instead, and the two series-level preference FKs
 (`preferredSynopsisId`/`preferredClassificationId`/`preferredPublicationId`) target `metadata.id`.
 
@@ -131,7 +131,7 @@ per-origin loop; `metadata` is a third table in that same sweep and needed no ru
 ## Deliberately not built
 
 A manual delete affordance for an orphaned pool row (pools stay add-only by design - see
-<doc:Schema>'s history-table exception for the general shape of that tradeoff). Author identity
+<doc:aletheia/Schema>'s history-table exception for the general shape of that tradeoff). Author identity
 merging (name-order and romanization variants of the same person read as distinct rows today, and
 naive token-matching is unsafe since it would also merge two different people who happen to share
 name tokens). Refreshing a tracker's metadata row after the initial link - it's fetched once when

@@ -19,7 +19,7 @@ none exists in that markup. The filter declares a select option with two adult-m
 clause that positively excludes adult-flagged posts; Included sends the mature cookie with no
 exclusion clause (a mixed, unblurred-at-the-source result set); Only sends both the cookie and a
 clause that inverts the exclusion to adult-only. This is the query-gate stamping pattern
-(<doc:AdultContent> rung 3): the source can't tell per item, so every stub in a gate-open search
+(<doc:aletheia/AdultContent> rung 3): the source can't tell per item, so every stub in a gate-open search
 inherits the query's own gate state, and it's an honest read in the Only case and a deliberately
 conservative one in the Included case (some titles blur that aren't actually adult, which is the
 accepted cost of not being able to tell them apart).

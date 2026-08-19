@@ -108,7 +108,7 @@ available speedup with no new machinery, and it was confirmed there will never b
 you"/library-wide scoring path - recommendations are always something asked for right now, never
 precomputed - which removed the argument that would have justified a GPU implementation's
 complexity (a device, a queue, a shader, a buffer lifecycle, a second implementation of the same
-arithmetic to keep in permanent agreement with the CPU one). See <doc:Metal> for the full research,
+arithmetic to keep in permanent agreement with the CPU one). See <doc:aletheia/Metal> for the full research,
 kept as a written standard in case a genuine GPU-shaped need appears later.
 
 ## Deferred, none blocking the port

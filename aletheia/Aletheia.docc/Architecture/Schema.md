@@ -83,7 +83,7 @@ extension FooRecord {                                   // associations in their
   a new one.
 - Raw SQL is confined to migrations, view definitions, and the FTS5 view; everything else goes
   through the query interface.
-- Metric queries go flat against base tables rather than through a view. See <doc:Metrics>.
+- Metric queries go flat against base tables rather than through a view. See <doc:aletheia/Metrics>.
 
 ## History tables carry no foreign keys
 

@@ -23,7 +23,7 @@ surface on Home.
 communities was essentially zero, and the surrounding culture is actively wary of them (guilt
 discourse around other apps' reading challenges, streak-anxiety criticism of language-learning
 apps). What's wanted instead is a passive record - a heatmap with current/longest as retrospective
-facts beside it, never a countdown with penalties. This matches <doc:Design>'s positive-framing
+facts beside it, never a countdown with penalties. This matches <doc:aletheia/Design>'s positive-framing
 rule directly.
 
 ## Why the event log had to come before any UI
@@ -35,7 +35,7 @@ touches no date at all, opening a series stamps a read date without any reading 
 sibling-row propagation writes one date across multiple rows. A day-bucketed event log is what
 counts/heatmap/streaks actually need.
 
-The event log's own schema and rationale live in <doc:ActivityHistory> and <doc:Schema> (the
+The event log's own schema and rationale live in <doc:aletheia/ActivityHistory> and <doc:aletheia/Schema> (the
 no-foreign-key exception). What this research settled that isn't restated there: both event
 grains (per-completion and per-session) had to land together rather than staged, because neither
 can be backfilled - a week without the log running is a week of history that never existed, and
@@ -51,7 +51,7 @@ bypass for no consumer.
 ## The Reading section redesign
 
 Home originally shipped a three-tile stat strip (a chapter count, time read, current streak) as
-one tap target into a stats screen. A six-lens review panel (<doc:FeedbackIteration>) rejected it
+one tap target into a stats screen. A six-lens review panel (<doc:aletheia/FeedbackIteration>) rejected it
 on first pass, and three of its complaints were independently confirmed against the code rather
 than taken on faith: a scope control that visually applied to all three tiles but only actually
 filtered two of the three queries; a `.combine`-then-`.accessibilityLabel` sequence that silently
@@ -60,7 +60,7 @@ any of the three numbers; and an uncapped wall-clock time figure that kept count
 reader sat open and unused.
 
 The replacement: **the section header is the navigation, not the tiles.** A single 44pt tappable
-header with a trailing glass-circle icon (the one sanctioned exception in <doc:LiquidGlass> to
+header with a trailing glass-circle icon (the one sanctioned exception in <doc:aletheia/LiquidGlass> to
 "inline controls stay flat," since here the glass surface *is* the entire affordance) replaces
 three separately-styled tiles sharing one invisible tap target - which a full panel agreed was an
 affordance lie: the visual grouping promised three destinations and delivered one. The body
@@ -105,7 +105,7 @@ further away" - until those exist its purpose is narrowly to get an overlong lis
 updates-arrival-fact schema question (does a chapter need its own `addedDate`, separate from the
 source-stated `publishedDate`, to distinguish "just discovered by an existing source" from "newly
 attached source's whole back catalogue") is resolved by whatever `chapter.addedDate` currently
-does in the schema - check <doc:Schema> and the current `ChapterRecord` rather than assuming this
+does in the schema - check <doc:aletheia/Schema> and the current `ChapterRecord` rather than assuming this
 page's proposal is what shipped.
 
 The Activity tab's live-operations area ("Now" section, download queue) follows the same shape

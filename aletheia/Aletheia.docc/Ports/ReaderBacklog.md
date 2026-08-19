@@ -55,7 +55,7 @@ nothing has ever written one, so that branch has never run.
 **Remembering page sizes.** Reopening a chapter re-estimates every page height from scratch rather
 than recalling what was measured last time. Tied to double-page spreads below - a spread has to be
 known wide *before* layout, so if dimensions are never persisted, spread detection needs them from
-somewhere else at open time. See <doc:PageDimensions> for the tier ladder this would plug into.
+somewhere else at open time. See <doc:aletheia/PageDimensions> for the tier ladder this would plug into.
 
 **Reading history.** Nowhere to review what you've read this week from inside the reader itself
 (distinct from the reading-event log that now exists elsewhere in the app - this item is about a

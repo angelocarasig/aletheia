@@ -133,7 +133,7 @@ through to an ordinary search.
 
 ## Adult content
 
-Full doctrine: <doc:AdultContent>. What a new source must implement:
+Full doctrine: <doc:aletheia/AdultContent>. What a new source must implement:
 
 - **Mark option sensitivity.** Any filter option that can pull adult or suggestive content into
   results is declared `.adult`/`.suggestive`. This drives the gate - `allowsAdult(for:)` is one

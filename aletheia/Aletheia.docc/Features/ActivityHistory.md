@@ -11,7 +11,7 @@ the series or chapter that produced the record still exists in a resolvable stat
 foreign key), `seriesTitle`, `pagesRead`, `chaptersRead`, `startedDate`, `endedDate` (never null),
 `localDayKey`.
 
-Both tables are the schema's stated exception to the foreign-key convention (see <doc:Schema>) -
+Both tables are the schema's stated exception to the foreign-key convention (see <doc:aletheia/Schema>) -
 history must survive the launch purge and series merges, so joins back to `series` are
 best-effort and the snapshot columns are what keep a row readable when the join fails. A series id
 isn't even stable long-term: a merge or attach hard-deletes the losing row, and the reading events

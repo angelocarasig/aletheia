@@ -134,7 +134,7 @@ correct or absent.
 
 Persisting a probed or measured dimension so an offline reopen never re-estimates, and a chapter's
 full height map survives a relaunch, is proposed but not implemented - it would be a new migration
-(see <doc:Schema>), keyed by chapter and page index plus quality/variant (never by the bare URL
+(see <doc:aletheia/Schema>), keyed by chapter and page index plus quality/variant (never by the bare URL
 when URLs are signed and expiring), and needs flagging before it's built. Double-page spread
 detection depends on this - a spread has to be known wide before layout, not after; see
-<doc:ReaderBacklog>.
+<doc:aletheia/ReaderBacklog>.

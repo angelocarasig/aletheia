@@ -36,7 +36,7 @@ each chip's count is scoped to what the current filters already show, not a glob
   chip silently changes a reader's other active filters - a worse surprise than the one that would
   fix. The actual problem in v2 wasn't scope, it was invisibility (one undifferentiated dot for any
   combination of active filters); the fix is a visible, removable chip row for active filters,
-  matching the same conclusion reached independently for source search (see <doc:SourceSearch>).
+  matching the same conclusion reached independently for source search (see <doc:aletheia/SourceSearch>).
 - **Reading status is a filter and a sort field, not the primary grouping.** No shelves - the grid
   stays flat, and status (reading/completed/paused/dropped/planning, a reader-facing state with no
   v2 counterpart at all) sits alongside tags and sources in the filter panel rather than splitting
@@ -45,7 +45,7 @@ each chip's count is scoped to what the current filters already show, not a glob
   ambient-data badges (weather, stock prices, dates) prohibits it. It doesn't apply here: those
   examples are all ambient facts that exist whether or not you act on them, where an unread count
   is the opposite - it counts items awaiting you and goes to zero once you deal with them, the same
-  semantic Apple's own Mail app badges red. See <doc:Design>'s Cards, grids, and artwork section.
+  semantic Apple's own Mail app badges red. See <doc:aletheia/Design>'s Cards, grids, and artwork section.
 - **No grid density control.** `gridColumns` is read by every grid and written by nothing yet - not
   worth a control until there's a settings surface it belongs in.
 
@@ -58,10 +58,10 @@ each chip's count is scoped to what the current filters already show, not a glob
 - **Indexes for the common library query shape.** The library screen filters on library membership
   and then sorts by one of several dates on every keystroke, and nothing currently covers that
   access pattern specifically; a compound index was recommended but is a migration, not a code
-  change, and needs flagging before it's added (see <doc:Schema>).
+  change, and needs flagging before it's added (see <doc:aletheia/Schema>).
 - **Cards, grids, and artwork rules** (no glass/tint on cards, `ConcentricRectangle` for nested
   artwork, `.tappable` over `NavigationLink`, `screenMargin` gutter, five load states with a real
   error branch) are the target Library should match against the rest of the app - see
-  <doc:Design>'s Cards section for the current statement of those rules, since Library was
+  <doc:aletheia/Design>'s Cards section for the current statement of those rules, since Library was
   historically the outlier on several of them (a 12pt gutter instead of the app-wide 16, no error
   state, `NavigationLink` instead of `.tappable`).

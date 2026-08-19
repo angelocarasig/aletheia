@@ -1,7 +1,7 @@
 # High-Cardinality Filters
 
 > Note: The UI thresholds this research produced (search field past 15 options, search-only mode
-> past 100, render cap 60) already shipped and are stated in <doc:Design>'s "Search and filter
+> past 100, render cap 60) already shipped and are stated in <doc:aletheia/Design>'s "Search and filter
 > surfaces" section - this page doesn't restate them. The runtime-fetch contract this page
 > originally argued for was **not** taken; verified current: `SourceFilter.Option` still has no
 > `group` or `frequency` field, so that part of the proposal remains an open gap, not a decision

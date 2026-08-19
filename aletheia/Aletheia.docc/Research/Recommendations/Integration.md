@@ -11,7 +11,7 @@ behind the shape it took.
 A recommender trained off-device normally can't be reached from a library like this one - its
 items are catalogue ids, a local series knows source slugs, and the only bridge would be a tracker
 link, which this app's own tracker-metadata rules already forbid seeding automatically from a
-third party's cross-reference (see <doc:Trackers>). Most of a library would be permanently
+third party's cross-reference (see <doc:aletheia/Trackers>). Most of a library would be permanently
 unreachable under that constraint.
 
 The v01 bundle sidesteps this by resolving on names instead, and the app happens to hold exactly
@@ -43,7 +43,7 @@ flat weight, which the bundle's own specification explicitly permits.
 
 The larger issue isn't any single field - it's that the local tag pool is known-stale.
 `series_tag`/`series_author` are written once at series creation and never touched by a later
-refresh (see <doc:TrackerMetadata>), so a series' tags reflect whichever source happened to create
+refresh (see <doc:aletheia/TrackerMetadata>), so a series' tags reflect whichever source happened to create
 it and are never corrected. That substrate is what an unresolved (projected) seed runs on, and it
 was already a live gap independent of recommendations; it becomes load-bearing the moment
 tag-based-only recommendations are in play.
@@ -63,7 +63,7 @@ own name; it ships as ``RegisterAxis``, which collides with nothing.
 
 `Classification` is four values in this app but not the same four values the bundle uses. This
 app's classification deliberately collapses erotica and pornographic into one `Explicit` tier (see
-<doc:AdultContent>), so mapping a local classification onto the bundle's four-rung ladder is lossy
+<doc:aletheia/AdultContent>), so mapping a local classification onto the bundle's four-rung ladder is lossy
 in one direction and a real choice in the other - `Explicit` maps to the bundle's most permissive
 matching rung (pornographic) rather than silently excluding erotica results from an Explicit
 reader. The recommendation ceiling itself is derived from the app's existing adult gate rather than
@@ -72,7 +72,7 @@ preference (how it's shown) as the only two mechanisms and deliberately doesn't 
 
 ## Where it surfaces
 
-Home is explicitly ruled out (see <doc:HomeScreen>) - every commercial app that promoted
+Home is explicitly ruled out (see <doc:aletheia/HomeScreen>) - every commercial app that promoted
 recommendations above a reader's own resume drew documented backlash, and that finding held under
 review. Details is the natural fit instead: the engine is seed-shaped (it answers "given this one
 title"), and Details is the one screen where the reader has already supplied that seed just by
@@ -85,7 +85,7 @@ needs a schedule.
 ## Switchable models
 
 The pattern for swapping recommendation models already exists in this app and isn't a package -
-it's the same shape as the source-plugin framework (<doc:SourceProtocols>): a `Sendable` protocol,
+it's the same shape as the source-plugin framework (<doc:aletheia/SourceProtocols>): a `Sendable` protocol,
 a static descriptor carrying identity and capability, concrete implementations owned by
 composition, and opt-in refinement protocols cast at the call site rather than baked into the base
 contract. A future model that can additionally encode raw text isn't a parameter on the existing
@@ -99,5 +99,5 @@ That stops being true the moment any of these get built: caching a resolved cata
 series (only the catalogue id is safe to persist - row indices aren't stable across a bundle
 rebuild), remembering a reader's correction when the resolver picks the wrong series (likely for
 roughly the 9.5% ceiling above), or adding tag provenance/weight columns to `series_tag` (already
-independently worth doing, per <doc:TrackerMetadata>). Any of those is a flagged schema change
-under the standard rule (<doc:Schema>).
+independently worth doing, per <doc:aletheia/TrackerMetadata>). Any of those is a flagged schema change
+under the standard rule (<doc:aletheia/Schema>).

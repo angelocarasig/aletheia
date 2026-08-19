@@ -27,7 +27,7 @@ One vocabulary, four meanings, no substitutions:
   a preview-in-place picker (tap zones, covers) stays open.
 - **Chrome tells the truth.** An instant-apply sheet closes with Close, never "Done" - "Done" only
   where a staged commit exists, paired with Cancel. The glyph beside it is a separate question
-  (see the Sheets rules in <doc:Design>): `xmark`, except on a full-height sheet with its own
+  (see the Sheets rules in <doc:aletheia/Design>): `xmark`, except on a full-height sheet with its own
   backdrop artwork, which takes `chevron.down`.
 - **Automatic is a first-class option**, not a side effect of clearing something. A preference
   picker leads with an "Automatic" row that shows what automatic currently resolves to (the title

@@ -5,7 +5,7 @@ scrapes, mixing lanes across its four contract calls. No unguarded health-check 
 HTML route is large, the API 403s without a credential), so `robots.txt` serves as the ping target
 instead.
 
-See <doc:BuildingASource> for the lane vocabulary this page assumes.
+See <doc:aletheia/BuildingASource> for the lane vocabulary this page assumes.
 
 ## Auth
 

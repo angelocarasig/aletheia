@@ -34,7 +34,7 @@ inside the payload itself as an informational field, never used for compatibilit
 
 Reading a version newer than this build understands fails closed - no partial or best-effort
 decode. The same "an opt-in must always have a working else" discipline that governs source
-capabilities (<doc:SourceProtocols>) applies here: there's no working else for a payload shape
+capabilities (<doc:aletheia/SourceProtocols>) applies here: there's no working else for a payload shape
 this build has never seen.
 
 ## Message shape
@@ -73,7 +73,7 @@ still carrying the same chapter list later, so title, url, language, scanlator, 
 progress all round-trip. Only local-only fields (id, origin id, a downloaded file's path) stay
 out. `TrackerLink` carries the full `SeriesTrackerRecord` snapshot rather than just enough to
 identify the link - that row is deliberately denormalized so it renders fully with zero network
-access when the reader is signed out (see <doc:Trackers>), and restoring only identity fields
+access when the reader is signed out (see <doc:aletheia/Trackers>), and restoring only identity fields
 would bring back a link that shows blank until the next sync.
 
 Covers, synopsis, classification, and publication stay out of the payload entirely - those come
@@ -89,7 +89,7 @@ permanent identity, never reused or retyped, only ever added to, and a dropped f
 reserved rather than reassigned. An old payload keeps decoding correctly against a newer schema
 under this discipline alone. **Semantic-level** is an explicit version bump plus a decode-and-adapt
 path, for anything wire compatibility can't absorb - a field's meaning changing, a value moving
-between messages. The same append-only rule that governs the live database schema (<doc:Schema>)
+between messages. The same append-only rule that governs the live database schema (<doc:aletheia/Schema>)
 applies here: a shipped version's decode path is never edited once it's shipped, a new version
 gets a new adapter, and the envelope's `version` field selects which adapter runs.
 
@@ -106,6 +106,6 @@ instant and break both library sort-by-added and the Home new-chapters feed, whi
 chapter's published date being after the series' added date. Tracker links write directly as a
 `SeriesTrackerRecord` insert rather than through a live link call, since that call requires the
 device already being signed in - "linked but not signed in" is already a first-class rendered
-state (<doc:Trackers>), so restore lands there directly instead of forcing a login. Tags and
+state (<doc:aletheia/Trackers>), so restore lands there directly instead of forcing a login. Tags and
 authors resolve by `findOrCreate`; collections need their own case-insensitive lookup-then-create,
 since `CollectionRecord` carries no uniqueness constraint anywhere else in the codebase.

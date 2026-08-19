@@ -2,7 +2,7 @@
 
 > Note: The hard rules this research produced (pop-up button for sort, no glass in the content
 > layer, active-filter must carry a shape channel not just colour, hide a control with nothing to
-> choose) are already promoted into <doc:Design>'s "Section controls" section - read that first.
+> choose) are already promoted into <doc:aletheia/Design>'s "Section controls" section - read that first.
 > This page keeps the reasoning and ecosystem evidence behind those rules, plus findings that
 > never got promoted. The specific screen this was audited against (Details' Chapters header) has
 > since changed shape and no longer matches either the "before" or "after" described below in

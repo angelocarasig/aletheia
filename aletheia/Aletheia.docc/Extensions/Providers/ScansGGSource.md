@@ -13,7 +13,7 @@ recently-updated feed) live on separate request shapes that ignore text and filt
 Binding either to a `SortSelection` would silently discard whatever the user typed, so this source
 declares a single honest sort option ("Recently Added") and ships the rankings as
 `SourcePreset` shelves instead, reached through `SearchQuery.route` rather than through sort (see
-<doc:BuildingASource>'s "ranked shelves are not sorts"). The route string is a small source-owned
+<doc:aletheia/BuildingASource>'s "ranked shelves are not sorts"). The route string is a small source-owned
 enum encoded as plain text (`"latest"`, `"popular:daily"`) - `search()` switches on it before
 building any request.
 
@@ -33,7 +33,7 @@ reads as unknown, not automatically safe.
 
 The exclusion mechanism (`excluded_tags`, a JSON array of tag ids) reaches the browse endpoint and
 the popular shelves, so a shut gate sends the hard-adult tag ids there and gets back a clean,
-still-full result window - "shut means exclude, not omit" (<doc:AdultContent>) held exactly.
+still-full result window - "shut means exclude, not omit" (<doc:aletheia/AdultContent>) held exactly.
 **It does not reach the recently-updated/chapters route at all.** That shelf is over-fetched (a
 larger page than the shelf actually displays) and hard-adult-tagged rows are dropped client-side
 before trimming to the display count - the only shelf in this source that needs that treatment,

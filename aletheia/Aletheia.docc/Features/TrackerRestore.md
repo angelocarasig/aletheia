@@ -31,7 +31,7 @@ Already Linked pill, which is correct but not free - nothing skips the pull itse
 ## Where a tracker's list comes from
 
 `BulkListingTracker` is an opt-in protocol (the same shape as `AuthenticatingSource`/
-`RevalidatingSource` on the source side, see <doc:SourceProtocols>) rather than a new required
+`RevalidatingSource` on the source side, see <doc:aletheia/SourceProtocols>) rather than a new required
 method on `TrackerService`:
 
 ```swift
@@ -99,7 +99,7 @@ Settings -> Data & Storage -> Backup & Restore -> Import -> Restore from Tracker
 sheet rather than a push - restore is a self-contained process with its own setup step and queue,
 and closing it from the queue two levels deep should end the sheet rather than pop back through
 setup first. Backup & Restore also carries an Export section for library export; see
-<doc:LibraryBackup>.
+<doc:aletheia/LibraryBackup>.
 
 ## Not built
 
