@@ -1,8 +1,9 @@
 # NHentai
 
 `nhentai.net`. API lane - the v2 JSON API covers search, detail, tags, and pages in two
-unauthenticated calls; no scrape, no renderer. Adult-only (`descriptor.adultOnly = true`, see
-<doc:AdultContent>).
+unauthenticated calls; no scrape, no renderer. Adult-only: `descriptor.adultOnly = true`.
+
+See <doc:AdultContent> for what that flag means for the gate and presentation.
 
 ## Search and gallery codes
 

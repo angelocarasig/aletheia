@@ -1,9 +1,11 @@
 # MangaBaka
 
-The third tracker, alongside AniList and MyAnimeList (see <doc:Trackers>). MangaBaka is an
-aggregator - one entry carries the AniList, MyAnimeList, Kitsu, MangaUpdates, Anime-Planet,
-Shikimori, and ANN ids for the same work - and its metadata is the best-shaped supplier of the
-three, but its auth path differs from the other two.
+The third tracker, alongside AniList and MyAnimeList. MangaBaka is an aggregator - one entry
+carries the AniList, MyAnimeList, Kitsu, MangaUpdates, Anime-Planet, Shikimori, and ANN ids for the
+same work - and its metadata is the best-shaped supplier of the three, but its auth path differs
+from the other two.
+
+See <doc:Trackers> for the shared sync engine and schema this tracker plugs into.
 
 ## Auth: a pasted token, not a redirect
 

@@ -41,7 +41,7 @@ removed, with no UI, purely as a debugging aid if a removal is ever disputed. No
 
 ## What consumes it
 
-``ActivityStatsViewModel`` reads both tables to drive Reading Activity's charts and heatmap.
+``StatsViewModel`` reads both tables to drive Reading Activity's charts and heatmap.
 ``ReaderViewModel`` is the writer - it records a `reading_event` on chapter completion and closes
 out a `reading_session` on the reader's own lifecycle boundaries (open, background, close).
 `HistoryScreen` exists in the project but is still a placeholder (`Text("History")`) - nothing in

@@ -1,9 +1,11 @@
 # Reader Port
 
 Tracking the port of alethia-v2's reader engine into `Reader/` (engine) and `Screens/Reader/`
-(host). Reference repo: `/Users/admin/Repositories/alethia-v2/apps/ios`. Durable findings that
-came out of this port graduated into <doc:ReaderGeometry> and <doc:LiquidGlass> - read those for
-the compensation rules and glass mechanics rather than this file.
+(host). Reference repo: `/Users/admin/Repositories/alethia-v2/apps/ios`.
+
+Durable findings that came out of this port graduated into <doc:ReaderGeometry> and
+<doc:LiquidGlass> - read those for the compensation rules and glass mechanics rather than this
+file.
 
 ## What v2 actually was
 

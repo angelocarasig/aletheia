@@ -1,9 +1,11 @@
 # MangaBall
 
 `mangaball.net`. An aggregator of aggregators - two form-encoded JSON endpoints plus two HTML
-scrapes, mixing lanes across its four contract calls (see <doc:BuildingASource>). No unguarded
-health-check route exists (every HTML route is large, the API 403s without a credential), so
-`robots.txt` serves as the ping target instead.
+scrapes, mixing lanes across its four contract calls. No unguarded health-check route exists (every
+HTML route is large, the API 403s without a credential), so `robots.txt` serves as the ping target
+instead.
+
+See <doc:BuildingASource> for the lane vocabulary this page assumes.
 
 ## Auth
 

@@ -7,7 +7,7 @@ Flat, minimal, offline-first. The screen renders from the database; the network 
 the database. Content is colourful (covers), so chrome stays monochromatic and accents are
 rationed to state that varies.
 
-Every rule below assumes iOS 26 - see <doc:aletheia>. Liquid Glass, `.sensoryFeedback`, symbol
+Every rule below assumes iOS 26 - see <doc:Aletheia>. Liquid Glass, `.sensoryFeedback`, symbol
 effects, and `WebPage` are the baseline, not an upgrade path.
 
 Before iterating on a surface that's built but "looks off," run the six-lens review panel rather

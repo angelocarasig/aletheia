@@ -1,7 +1,9 @@
 # Metrics
 
-How a stat/aggregate query is written against SQLite in this app - referenced from <doc:Schema>'s
-rule that metric queries go flat against base tables rather than through a view.
+How a stat/aggregate query is written against SQLite in this app.
+
+This is the reference behind <doc:Schema>'s rule that metric queries go flat against base tables
+rather than through a view.
 
 ## Views are macro expansion, and this app's views are aggregation fences
 

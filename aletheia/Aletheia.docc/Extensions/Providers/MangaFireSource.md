@@ -1,8 +1,10 @@
 # MangaFire
 
-`mangafire.to`. API lane (<doc:BuildingASource>) - a signed JSON API, `/api/*`, no HTML scrape and
-no renderer. `MangaFireSigner` reimplements the site's request-signing scheme natively; there is no
+`mangafire.to`. API lane - a signed JSON API, `/api/*`, no HTML scrape and no renderer.
+`MangaFireSigner` reimplements the site's request-signing scheme natively; there is no
 `WebRenderer` dependency anywhere in this source.
+
+See <doc:BuildingASource> for the lane vocabulary this page assumes.
 
 Everything below is perishable by nature (a third party's endpoints, signing scheme, and site
 behavior) - the code is truth when it disagrees with this page.

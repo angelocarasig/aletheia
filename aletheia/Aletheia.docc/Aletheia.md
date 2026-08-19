@@ -1,4 +1,8 @@
-# ``aletheia``
+# Aletheia
+
+@Metadata {
+    @TechnologyRoot
+}
 
 An offline-first iOS reader for series, manhwa, and manhua - source-agnostic, built on GRDB.
 
@@ -9,7 +13,7 @@ than a fallback path (Liquid Glass, `WebPage`, `.sensoryFeedback`, symbol effect
 There's no earlier-OS branch to maintain.
 
 Code is organized by type - database, network, reader, screens, and so on. Callers reach
-persistence through ``DatabaseClient`` directly.
+persistence through ``aletheia/DatabaseClient`` directly.
 
 ## Topics
 
@@ -24,36 +28,20 @@ persistence through ``DatabaseClient`` directly.
 
 ### Persistence
 
-- ``DatabaseClient``
-- ``DatabaseRecord``
-- ``ViewRecord``
-- ``UniqueRecord``
+- ``aletheia/DatabaseClient``
+- ``aletheia/DatabaseRecord``
+- ``aletheia/ViewRecord``
+- ``aletheia/UniqueRecord``
+
+### Code Reference
+
+- ``aletheia``
 
 ### Source Framework
 
 - <doc:BuildingASource>
 - <doc:SourceProtocols>
 - <doc:SourceAuth>
-
-### Features
-
-- <doc:Details>
-- <doc:Errors>
-- <doc:LoadingTransitions>
-- <doc:SelectionLanguage>
-- <doc:AdultContent>
-- <doc:ReaderGeometry>
-- <doc:PageDimensions>
-- <doc:TrackerRestore>
-- <doc:LibraryBackup>
-- <doc:Trackers>
-- <doc:TrackerMetadata>
-- <doc:TrackerMangaBaka>
-- <doc:BackgroundActivity>
-- <doc:ActivityHistory>
-- <doc:Metrics>
-- <doc:HomeScreen>
-- <doc:ReleasePrediction>
 
 ### Providers
 
@@ -64,6 +52,38 @@ persistence through ``DatabaseClient`` directly.
 - <doc:ToonilySource>
 - <doc:MangaBallSource>
 
+### Details Screen
+
+- <doc:Details>
+- <doc:AdultContent>
+- <doc:Errors>
+- <doc:LoadingTransitions>
+- <doc:SelectionLanguage>
+
+### Tracking
+
+- <doc:Trackers>
+- <doc:TrackerMetadata>
+- <doc:TrackerMangaBaka>
+- <doc:TrackerRestore>
+
+### Reader Engine
+
+- <doc:ReaderGeometry>
+- <doc:PageDimensions>
+
+### Background & Data
+
+- <doc:BackgroundActivity>
+- <doc:ActivityHistory>
+- <doc:Metrics>
+- <doc:LibraryBackup>
+
+### Home
+
+- <doc:HomeScreen>
+- <doc:ReleasePrediction>
+
 ### Ports
 
 Kept for future debugging reference, not current-state documentation - see each page's own status.
@@ -72,19 +92,25 @@ Kept for future debugging reference, not current-state documentation - see each 
 - <doc:ReaderBacklog>
 - <doc:Library>
 
-### Research
+### Research: Search & Filters
 
-Proposals, findings-only research, and partially-implemented ideas - not current-state reference.
-Each page states its own status.
+Proposals and findings-only research, not current-state reference - each page states its own
+status.
 
 - <doc:SectionControls>
 - <doc:SourceSearch>
 - <doc:HighCardinalityFilters>
-- <doc:Deeplinks>
-- <doc:OfflineAvailability>
+
+### Research: Storage & Sync
+
 - <doc:ChapterStorage>
 - <doc:ChapterComments>
 - <doc:DatabaseWrites>
+- <doc:OfflineAvailability>
+
+### Research: Other
+
+- <doc:Deeplinks>
 - <doc:Metal>
 
 ### Recommendations

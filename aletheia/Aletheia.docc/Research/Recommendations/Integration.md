@@ -1,8 +1,10 @@
 # Fitting the Recommender to This App
 
-What the app has that the v01 engine (<doc:V01Artifact>) needs, what it lacks, and how the two
-were reconciled. The infrastructure and Details-screen surface this describes are built - see
-<doc:PortPlan> for the as-shipped record; this page is the reasoning behind the shape it took.
+What the app has that the v01 engine needs, what it lacks, and how the two were reconciled.
+
+The infrastructure and Details-screen surface this describes are built - see <doc:V01Artifact> for
+the model bundle itself and <doc:PortPlan> for the as-shipped record; this page is the reasoning
+behind the shape it took.
 
 ## The identity problem turned out smaller than expected
 

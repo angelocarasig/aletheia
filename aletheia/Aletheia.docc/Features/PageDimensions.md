@@ -2,8 +2,9 @@
 
 How the app learns the pixel dimensions of chapter page images, and what the reader does with
 them. Only continuous (`.infinite`) layout consumes measured sizes today - paged modes size every
-cell to the viewport instead. See <doc:ReaderGeometry> for how a resize compensates once a real
-size lands.
+cell to the viewport instead.
+
+See <doc:ReaderGeometry> for how a resize compensates once a real size lands.
 
 ## The contract
 

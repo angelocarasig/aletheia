@@ -2,7 +2,7 @@
 
 How a source declares it can do something the base contract doesn't require.
 
-``Network/Sources/Contract`` holds the base contract; ``Network/Sources/Protocols`` holds the
+`Network/Sources/Contract` holds the base contract; `Network/Sources/Protocols` holds the
 opt-ins.
 
 ## The rule

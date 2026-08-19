@@ -1,9 +1,10 @@
 # The v01 Model Bundle
 
 What ships in `Resources/Models/v01/` (gitignored - a fresh clone has no model, and the app
-compiles and runs fine with the directory empty; see <doc:PortPlan>), and the defects verification
-found in it. This describes the frozen v01 artifact itself, not the Swift port - see
-``ModelBundle``, ``Scorer``, and <doc:PortPlan> for what's actually built and shipped.
+compiles and runs fine with the directory empty), and the defects verification found in it. This
+describes the frozen v01 artifact itself, not the Swift port.
+
+See ``ModelBundle``, ``Scorer``, and <doc:PortPlan> for what's actually built and shipped.
 
 ## What it is
 

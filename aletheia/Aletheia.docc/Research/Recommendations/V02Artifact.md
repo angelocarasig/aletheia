@@ -1,8 +1,10 @@
 # v02: What Changes, and Why
 
-A research plan for improving on the v01 recommender (<doc:V01Artifact>, <doc:PortPlan>). **Not
-built in the app** - a labelling tool exists on the training-machine side; nothing here has an app
-counterpart yet, and v01 keeps running throughout regardless of what happens here.
+A research plan for improving on the v01 recommender. **Not built in the app** - a labelling tool
+exists on the training-machine side; nothing here has an app counterpart yet, and v01 keeps running
+throughout regardless of what happens here.
+
+See <doc:V01Artifact> for what v01 actually is and <doc:PortPlan> for how it shipped.
 
 ## The core framing
 

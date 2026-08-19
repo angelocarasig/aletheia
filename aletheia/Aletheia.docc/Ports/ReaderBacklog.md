@@ -1,7 +1,8 @@
 # Reader Backlog
 
-What's still missing, dead, or deferred in the reader port. Companion to <doc:Reader>, which holds
-the architecture; this file holds the punch list.
+What's still missing, dead, or deferred in the reader port.
+
+Companion to <doc:Reader>, which holds the architecture; this file holds the punch list.
 
 ## Resolved since this list was last true
 
