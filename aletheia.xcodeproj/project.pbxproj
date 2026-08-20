@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		84935BA7303736E3005BAF9D /* RecommendationModels.appex in Embed ExtensionKit Extensions */ = {isa = PBXBuildFile; fileRef = 84935B9F303736E2005BAF9D /* RecommendationModels.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		84F9DC03300B5AC200679291 /* GRDB in Frameworks */ = {isa = PBXBuildFile; productRef = 84F9DC02300B5AC200679291 /* GRDB */; };
 		CA0DC030000000000000BB01 /* Tagged in Frameworks */ = {isa = PBXBuildFile; productRef = CA0DC020000000000000BB02 /* Tagged */; };
 		CA0DC031000000000000BB04 /* SwiftSoup in Frameworks */ = {isa = PBXBuildFile; productRef = CA0DC021000000000000BB05 /* SwiftSoup */; };
@@ -14,11 +15,43 @@
 		CA0DC033000000000000BB12 /* SwiftProtobuf in Frameworks */ = {isa = PBXBuildFile; productRef = CA0DC023000000000000BB11 /* SwiftProtobuf */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXContainerItemProxy section */
+		84935BA5303736E3005BAF9D /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 84F9DBEB300B56F500679291 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 84935B9E303736E2005BAF9D;
+			remoteInfo = RecommendationModels;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		84935BA8303736E3005BAF9D /* Embed ExtensionKit Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "$(EXTENSIONS_FOLDER_PATH)";
+			dstSubfolderSpec = 16;
+			files = (
+				84935BA7303736E3005BAF9D /* RecommendationModels.appex in Embed ExtensionKit Extensions */,
+			);
+			name = "Embed ExtensionKit Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
+		84935B9F303736E2005BAF9D /* RecommendationModels.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.extensionkit-extension"; includeInIndex = 0; path = RecommendationModels.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		84F9DBF3300B56F500679291 /* aletheia.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = aletheia.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		84935BAC303736E3005BAF9D /* Exceptions for "RecommendationModels" folder in "RecommendationModels" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 84935B9E303736E2005BAF9D /* RecommendationModels */;
+		};
 		84F9DD8E3021AAD900679291 /* Exceptions for "aletheia" folder in "aletheia" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
@@ -30,6 +63,14 @@
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
+		84935BA0303736E2005BAF9D /* RecommendationModels */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				84935BAC303736E3005BAF9D /* Exceptions for "RecommendationModels" folder in "RecommendationModels" target */,
+			);
+			path = RecommendationModels;
+			sourceTree = "<group>";
+		};
 		84F9DBF5300B56F500679291 /* aletheia */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
@@ -41,6 +82,13 @@
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		84935B9C303736E2005BAF9D /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		84F9DBF0300B56F500679291 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -60,6 +108,7 @@
 			isa = PBXGroup;
 			children = (
 				84F9DBF5300B56F500679291 /* aletheia */,
+				84935BA0303736E2005BAF9D /* RecommendationModels */,
 				84F9DBF4300B56F500679291 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -68,6 +117,7 @@
 			isa = PBXGroup;
 			children = (
 				84F9DBF3300B56F500679291 /* aletheia.app */,
+				84935B9F303736E2005BAF9D /* RecommendationModels.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -75,6 +125,28 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		84935B9E303736E2005BAF9D /* RecommendationModels */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 84935BAB303736E3005BAF9D /* Build configuration list for PBXNativeTarget "RecommendationModels" */;
+			buildPhases = (
+				84935B9B303736E2005BAF9D /* Sources */,
+				84935B9C303736E2005BAF9D /* Frameworks */,
+				84935B9D303736E2005BAF9D /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				84935BA0303736E2005BAF9D /* RecommendationModels */,
+			);
+			name = RecommendationModels;
+			packageProductDependencies = (
+			);
+			productName = RecommendationModels;
+			productReference = 84935B9F303736E2005BAF9D /* RecommendationModels.appex */;
+			productType = "com.apple.product-type.extensionkit-extension";
+		};
 		84F9DBF2300B56F500679291 /* aletheia */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 84F9DBFE300B56F500679291 /* Build configuration list for PBXNativeTarget "aletheia" */;
@@ -82,10 +154,12 @@
 				84F9DBEF300B56F500679291 /* Sources */,
 				84F9DBF0300B56F500679291 /* Frameworks */,
 				84F9DBF1300B56F500679291 /* Resources */,
+				84935BA8303736E3005BAF9D /* Embed ExtensionKit Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				84935BA6303736E3005BAF9D /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				84F9DBF5300B56F500679291 /* aletheia */,
@@ -112,6 +186,9 @@
 				LastSwiftUpdateCheck = 2630;
 				LastUpgradeCheck = 2630;
 				TargetAttributes = {
+					84935B9E303736E2005BAF9D = {
+						CreatedOnToolsVersion = 26.3;
+					};
 					84F9DBF2300B56F500679291 = {
 						CreatedOnToolsVersion = 26.3;
 					};
@@ -139,11 +216,19 @@
 			projectRoot = "";
 			targets = (
 				84F9DBF2300B56F500679291 /* aletheia */,
+				84935B9E303736E2005BAF9D /* RecommendationModels */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		84935B9D303736E2005BAF9D /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		84F9DBF1300B56F500679291 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -154,6 +239,13 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		84935B9B303736E2005BAF9D /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		84F9DBEF300B56F500679291 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -163,7 +255,73 @@
 		};
 /* End PBXSourcesBuildPhase section */
 
+/* Begin PBXTargetDependency section */
+		84935BA6303736E3005BAF9D /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 84935B9E303736E2005BAF9D /* RecommendationModels */;
+			targetProxy = 84935BA5303736E3005BAF9D /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
 /* Begin XCBuildConfiguration section */
+		84935BA9303736E3005BAF9D /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = RecommendationModels/RecommendationModels.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = V2NAC76HWU;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = RecommendationModels/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = RecommendationModels;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = moe.aletheia.RecommendationModels;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		84935BAA303736E3005BAF9D /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = RecommendationModels/RecommendationModels.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = V2NAC76HWU;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = RecommendationModels/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = RecommendationModels;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = moe.aletheia.RecommendationModels;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 		84F9DBFC300B56F500679291 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -368,6 +526,15 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		84935BAB303736E3005BAF9D /* Build configuration list for PBXNativeTarget "RecommendationModels" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				84935BA9303736E3005BAF9D /* Debug */,
+				84935BAA303736E3005BAF9D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		84F9DBEE300B56F500679291 /* Build configuration list for PBXProject "aletheia" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

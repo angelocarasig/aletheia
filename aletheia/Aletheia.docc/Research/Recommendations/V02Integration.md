@@ -84,18 +84,115 @@ Checked directly: this app has no existing Core ML, Vision, or Accelerate/vDSP u
 built for v01 - and everything the rails half of Orihime needs - is a memory-mapped file read, the same
 loader shape throughout. The compute path is a genuinely different category of work:
 
-- **Core ML inference**, for the text and cover encoders and the appeal student. Models ship precompiled
-  (`.mlmodelc`) specifically so the compile cost is paid once at export, not on a reader's first open - the
-  same "pay it at launch, not on first interaction" principle v01's own page-warming step already follows.
-  Compute-unit assignment is decided per model (see <doc:V02Artifact>), not left to the default.
+- **Core ML inference**, for the text and cover encoders and the appeal student. **Reversed from the earlier
+  plan**: models ship as source `.mlpackage`/`.mlmodel`, not precompiled `.mlmodelc`. The original ask to the
+  pipeline side was precompiled specifically so the compile cost lands once at export, not on a reader's
+  first open - matching v01's own "pay it at launch, not on first interaction" page-warming principle. That
+  still would have been the better cost profile, but it means every pack revision needs a Mac-side compile
+  step on the pipeline's end (`xcrun coremlcompiler`, verified working, but a real hop requiring a Mac and a
+  manual file round-trip) before the app can use anything. Compiling on-device with `MLModel.compileModel(at:)`
+  - the documented API for exactly this case, content that wasn't present at the app's own build time - trades
+  a known one-time cost for a much simpler pipeline: no Mac hop, ship the `.mlpackage`s as downloaded,
+  compile once after the pack finishes downloading, persist the result so it isn't paid again. The real
+  cost this reintroduces: that one-time compile happens on a random reader's device instead of a known
+  machine ahead of time, so a device/OS-specific compile failure surfaces in production instead of before
+  release, and it can't be checked with a parity run before shipping the way a precompiled model could.
+  Compute-unit assignment is still decided per model (see <doc:V02Artifact>), not left to the default.
 - **Accelerate/BLAS**, for the full-catalogue scoring scan - deliberately not a Core ML operation, since
   batching many seeds at once (the case that would justify Metal) is unnecessary once results are cached
   per series.
-- **Background Assets**, for pack delivery - no entitlement, no extension target exists yet. This is real,
-  unstarted work independent of everything else here.
+- **Background Assets**, for pack delivery - verified end to end on a real device (see below). No longer
+  unstarted, but still a genuinely new category of infrastructure for this app.
 
 Deployment target is iOS 26.0/26.2 (confirmed from the project file), which is generous headroom for Core
 ML conversion options - no constraint from the OS floor.
+
+## Pack readiness after a Background Assets download
+
+A pack finishing its Background Assets download isn't the same as a pack being usable - three steps happen
+in between, all app-side, none of them optional:
+
+1. **Unzip.** `ba-package` delivers a pack as a single `.aar` archive (verified directly - `xcrun ba-package
+   package` produces one `.aar` file per pack, confirmed on a real build of both the Orihime and Protostar
+   packs). The archive has to be extracted before anything inside it - rails, vectors, models - is
+   readable.
+2. **Compile the models.** `MLModel.compileModel(at:)` against each `.mlpackage`/`.mlmodel` the unzipped
+   pack contains (three per Orihime-shaped pack: text encoder, cover encoder, appeal student), per the
+   reversal above. This is the one genuinely slow step in the sequence and the reason it can't happen lazily
+   on a reader's first "More Like This" open - it needs to run once, right after unzip, with its own
+   progress state the picker can show.
+3. **Mark the pack active/ready.** Only after both of the above succeed - a pack that's downloaded but not
+   yet unzipped-and-compiled isn't a selectable option in the picker yet, it's still "installing."
+
+This sequence is a property of *every* pack going forward, not just Orihime - whatever ships after it
+inherits the same three steps, since the reversal above means on-device compilation is now the standing
+approach, not a one-off exception.
+
+## Background Assets, verified end to end
+
+**Shipped and working, not just designed.** A real extension target (`RecommendationModels`, Self-Hosted +
+Managed) downloaded a real pack (Protostar, the v01-equivalent) from a locally-hosted manifest onto a real
+device, and the app read a file back out of it - `AssetPackManager.shared.contents(at:searchingInAssetPackWithID:)`
+against `manifest.json` inside the downloaded pack. Every fact below came from an actual runtime error, not
+a doc read.
+
+**The extension itself needs close to no code.** Xcode's own "New Target" wizard has a template for this
+(Background Download Extension → Self-Hosted, Managed) - not something hand-built against raw `.pbxproj`
+edits. The generated `@main struct DownloaderExtension: ManagedDownloaderExtension` conforms with its one
+optional hook (`shouldDownload`) left at the default `return true`, because that hook only filters
+essential/prefetch packs the system would auto-download - every pack this app ships is `onDemand`, which
+the system never auto-downloads regardless of what this method returns. Confirmed: this file needed zero
+changes from what the wizard generated.
+
+**Four `Info.plist` keys are required on the main app** (not the extension), each one only discovered by
+hitting the actual validation error it produces when missing:
+
+- `BAManifestURL` (String) - and it **must** be `https://`. No exception for `127.0.0.1`/localhost the way
+  ordinary App Transport Security grants one - Background Assets enforces this at its own layer
+  ("`BUG IN CLIENT OF BackgroundAssets: The 'BAManifestURL' must be a link to an 'https://' URL.`"). Plain
+  HTTP against localhost, which works fine for ordinary networking, does not work here.
+- `BAAppGroupID` (String) - the app group identifier, as a plain string, separate from just having the
+  App Group *entitlement* present. Missing it isn't a soft validation warning, it's a hard crash the first
+  time app code touches `AssetPackManager.shared`
+  (`AssetPackManager.swift:226: Fatal error: ... lacks a string value for the key "BAAppGroupID"`).
+- `BAInitialDownloadRestrictions` → `BADownloadDomainAllowList` (Array) - the manifest's host has to appear
+  here or the request is rejected.
+- `BAInitialDownloadRestrictions` → `BADownloadAllowance` and `BAEssentialDownloadAllowance` (Integers) -
+  **both** required even though this app has zero essential packs; `BAEssentialDownloadAllowance` can
+  honestly be `0`, but its absence still throws
+  (`BUG IN CLIENT OF BackgroundAssets: The app must contain a number with a key named
+  'BAEssentialDownloadAllowance'...`).
+
+**A pack's own directory structure is preserved inside it, not flattened.** `ba-package package`'s manifest
+selects source content via a `fileSelectors` directory entry (e.g. `{"directory":
+"protostar-1-0-0-2026.08"}`) - and that directory name survives as a literal subfolder inside the resulting
+pack. Reading a file back out needs the full path exactly as it was selected
+(`protostar-1-0-0-2026.08/manifest.json`), not the bare filename - a bare `manifest.json` 404s
+("`No file was found at "manifest.json"`"). The `.aar` itself is an opaque, proprietary archive format -
+neither `unzip` nor `tar` can open it to check this directly, so this was confirmed by fixing the path and
+re-testing, not by inspecting the file. Matches the header doc's own description of the shared namespace as
+containing "subdirectories and asset files" from each pack, not a flattened file list.
+
+**Real device vs. simulator isn't one clean line.** Calling `AssetPackManager` directly from app code
+(`assetPack(withID:)`, `ensureLocalAvailability(of:)`) is what actually exercised every validation error
+above, regardless of which target was running. What specifically needs a real, physical device:
+`backgroundassets-debug`'s device list (`--list-devices`) only ever surfaced a real paired iPhone, never the
+simulator, so the install/update-event *trigger* simulation this tool provides is real-device-only. And
+critically, testing against genuine network reachability needs a real device for a reason that has nothing
+to do with Background Assets itself: `127.0.0.1` means "this same machine" - on the simulator that's the
+Mac, correctly reaching a locally-hosted manifest; on a real device it's the phone itself, which will never
+reach anything. A local manifest server for real-device testing has to be bound to the Mac's actual LAN IP,
+not loopback.
+
+**Local self-hosted testing recipe, worth reusing for Orihime later:** `ba-package download-manifest
+create` (already covered in <doc:V02Artifact>) generates the real manifest; Python's `http.server` needs a
+small `ssl.SSLContext` wrapper to serve it over HTTPS at all (no built-in TLS support); `mkcert` issues a
+cert covering both `127.0.0.1` and the Mac's LAN IP in one file, trusted automatically on the Mac once
+`mkcert -install` runs. The one commonly-missed step for a **real device**: AirDropping the CA root and
+installing it as a configuration profile (Settings → General → VPN & Device Management) is necessary but
+not sufficient - trust has to be separately enabled on a completely different screen (Settings → General →
+About → Certificate Trust Settings), which most walkthroughs don't call out as a distinct step from
+installing the profile itself.
 
 ## Where it surfaces
 

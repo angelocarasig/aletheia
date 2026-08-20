@@ -15,6 +15,21 @@
 	<array>
 		<string>processing</string>
 	</array>
+	<key>BAAppGroupID</key>
+	<string>group.moe.aletheia</string>
+	<key>BAManifestURL</key>
+	<string>https://192.168.0.245:8787/download-manifest.json</string>
+	<key>BAInitialDownloadRestrictions</key>
+	<dict>
+		<key>BADownloadDomainAllowList</key>
+		<array>
+			<string>192.168.0.245</string>
+		</array>
+		<key>BADownloadAllowance</key>
+		<integer>500000000</integer>
+		<key>BAEssentialDownloadAllowance</key>
+		<integer>0</integer>
+	</dict>
 	<key>UTExportedTypeDeclarations</key>
 	<array>
 		<dict>
