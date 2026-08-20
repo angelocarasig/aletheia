@@ -1,5 +1,5 @@
 //
-//  Compositor+SeriesRecommendations.swift
+//  Compositor+Recommendations.swift
 //  aletheia
 //
 //  Created by Angelo Carasig on 20/8/2026
@@ -10,7 +10,7 @@ import GRDB
 import Tagged
 
 extension Compositor {
-    final class SeriesRecommendations: Sendable {
+    final class Recommendations: Sendable {
         private let database: DatabaseClient
 
         init(database: DatabaseClient) {
