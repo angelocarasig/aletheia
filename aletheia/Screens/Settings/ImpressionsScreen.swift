@@ -35,7 +35,7 @@ struct ImpressionsScreen: View {
             .padding(.vertical, dimensions.spacing.space16)
         }
         .scrollEdgeEffectStyle(.soft, for: .bottom)
-        .navigationTitle("Recommendations")
+        .navigationTitle("Analytics")
         .navigationBarTitleDisplayMode(.inline)
         .task { await model.load(database) }
         .refreshable { await model.load(database) }

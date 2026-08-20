@@ -194,6 +194,23 @@ not sufficient - trust has to be separately enabled on a completely different sc
 About → Certificate Trust Settings), which most walkthroughs don't call out as a distinct step from
 installing the profile itself.
 
+**The picker's model list is static, not pulled live from the manifest - now built, not just decided.**
+`RecommendationModelOption.all` is one entry per `RecommenderService` this app actually ships an adapter
+for (today: Protostar alone), not a mirror of `AssetPackManager.shared.allAssetPacks`. Two reasons, both
+concrete now that the picker exists: a pack the app has no loader for is not a usable option no matter how
+it's listed, and the manifest format itself (`{id, downloadPolicy, downloadSize, host, url, version}`)
+carries no display name or description to show a reader anyway - a "dynamic" list would still need a
+static app-side lookup for presentable text, which defeats the point of being dynamic. The working
+reference implementation (`Screens/Settings/RecommendationsViewModel.swift`) is the real API surface a
+picker needs: `status(ofAssetPackWithID:)` for the current state, `statusUpdates(forAssetPackWithID:)` for
+live progress (a long-running per-pack watcher, not a one-shot poll), `ensureLocalAvailability(of:)` to
+trigger a download, `remove(assetPackWithID:)` for the delete button. Verified on a real device end to end
+through the actual Settings UI, not just the Bootstrap probe.
+
+**The Bootstrap.swift DEBUG probe has now met its own stated removal condition.** Its comment says "delete
+once the Settings picker replaces it" - that picker now exists and was what verified the download/remove
+flow above, so the probe is redundant scaffolding at this point, not yet removed.
+
 ## Where it surfaces
 
 Unchanged from v01: Details' "Similar Titles" rail is still the surface, still per-open rather than

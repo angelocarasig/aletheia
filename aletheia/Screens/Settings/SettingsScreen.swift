@@ -16,11 +16,7 @@ struct SettingsScreen: View {
     @State private var showingMetadataRefresh = false
     @State private var showingMigrations = false
     @State private var showingLogs = false
-    @State private var showingImpressions = false
-
-    private enum Layout {
-        static let glyphWidth: CGFloat = 28
-    }
+    @State private var showingRecommendations = false
 
     var body: some View {
         ScrollView {
@@ -28,20 +24,20 @@ struct SettingsScreen: View {
                 VStack(alignment: .leading, spacing: dimensions.spacing.space12) {
                     SectionHeader("Reading")
 
-                    Card(
-                        "Tracking",
+                    SettingsCard(
+                        title: "Tracking",
                         systemImage: "arrow.trianglehead.2.clockwise.rotate.90",
                         detail: connected ?? "Not connected"
                     ) { showingTracking = true }
 
-                    Card(
-                        "Library Updates",
+                    SettingsCard(
+                        title: "Library Updates",
                         systemImage: "arrow.clockwise",
                         detail: "When new chapters are checked for"
                     ) { showingRefresh = true }
 
-                    Card(
-                        "Metadata Updates",
+                    SettingsCard(
+                        title: "Metadata Updates",
                         systemImage: "text.append",
                         detail: "How often series details are refreshed"
                     ) { showingMetadataRefresh = true }
@@ -50,14 +46,14 @@ struct SettingsScreen: View {
                 VStack(alignment: .leading, spacing: dimensions.spacing.space12) {
                     SectionHeader("Data & Storage")
 
-                    Card(
-                        "Recommendations",
+                    SettingsCard(
+                        title: "Recommendations",
                         systemImage: "sparkle.magnifyingglass",
-                        detail: "What the model showed, and what came of it"
-                    ) { showingImpressions = true }
+                        detail: "Which model to use, and what came of it"
+                    ) { showingRecommendations = true }
 
-                    Card(
-                        "Migrations",
+                    SettingsCard(
+                        title: "Migrations",
                         systemImage: "externaldrive.badge.timemachine",
                         detail: "Move series in, out, or between sources"
                     ) { showingMigrations = true }
@@ -67,8 +63,8 @@ struct SettingsScreen: View {
                     SectionHeader("Diagnostics")
 
                     // shipped rather than DEBUG-gated - the crash worth reading has no Xcode attached
-                    Card(
-                        "Logs",
+                    SettingsCard(
+                        title: "Logs",
                         systemImage: "text.alignleft",
                         detail: "What the app recorded, including last launch"
                     ) { showingLogs = true }
@@ -87,51 +83,8 @@ struct SettingsScreen: View {
         }
         .navigationDestination(isPresented: $showingMigrations) { MigrationsScreen() }
         .navigationDestination(isPresented: $showingLogs) { LogScreen() }
-        .navigationDestination(isPresented: $showingImpressions) { ImpressionsScreen() }
+        .navigationDestination(isPresented: $showingRecommendations) { RecommendationsScreen() }
         .task { compositor.trackers.hydrate() }
-    }
-
-    private func Card(
-        _ title: String,
-        systemImage: String,
-        detail: String,
-        action: @escaping () -> Void
-    ) -> some View {
-        HStack(spacing: dimensions.spacing.space12) {
-            Image(systemName: systemImage)
-                .font(.title3)
-                .foregroundStyle(.secondary)
-                .frame(width: Layout.glyphWidth)
-
-            VStack(alignment: .leading, spacing: dimensions.spacing.space4) {
-                Text(title)
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
-
-                // contentTransition, not .transition - the string changes in place, no
-                // view is inserted or removed for a .transition to fire on
-                Text(detail)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .contentTransition(.opacity)
-                    .animation(.settle, value: detail)
-            }
-
-            Spacer(minLength: 0)
-
-            Image(systemName: "chevron.right")
-                .font(.caption)
-                .foregroundStyle(.tertiary)
-        }
-        .padding(dimensions.spacing.space12)
-        .frame(minHeight: dimensions.touchTarget)
-        .glassEffect(
-            .regular.interactive(),
-            in: .rect(cornerRadius: dimensions.radius.radius12, style: .continuous)
-        )
-        .contentShape(.rect)
-        .tappable(action: action)
     }
 
     private var connected: String? {
