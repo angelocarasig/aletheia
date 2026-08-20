@@ -7,9 +7,6 @@
 
 import SwiftUI
 
-// the settings-list navigation row - extracted once RecommendationsScreen
-// needed the exact same row shape as SettingsScreen, rather than a second
-// copy of the same styling
 struct SettingsCard: View {
     let title: String
     let systemImage: String

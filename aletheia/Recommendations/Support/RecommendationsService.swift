@@ -7,18 +7,12 @@
 
 import Foundation
 
-// the language-pack switch. Compositor holds exactly one of these instead of
-// a bare V01Recommender - the concrete adapter behind it changes on the next
-// launch after the reader picks a different downloaded pack in Settings
-//
-// two ids, deliberately not one: selectedPackId is the reader's choice,
-// written the moment a pack is downloaded or picked. loadedPackId is
-// whichever pack this process actually built a scorer for, decided once at
-// init and never changed mid-session - a live swap would mean paging in a
-// new 116 MB model on whatever screen happens to be open when the reader
-// taps, and iOS gives no clean way to page it back out again either. when
-// the two disagree, the reader picked something this process hasn't loaded
-// yet, and pendingRestartUpdates is how the root of the app finds out
+// selectedPackId and loadedPackId are deliberately two ids, not one:
+// selectedPackId is the reader's persisted choice, loadedPackId is whichever
+// pack this process actually built a scorer for at launch, never changed
+// mid-session - a live swap would page in a new 116 MB model on whatever
+// screen happens to be open when the reader taps, and iOS has no clean way
+// to page one back out again
 actor RecommendationsService: RecommenderService {
     private var current: Recommender?
     private(set) var loadedPackId: String?
@@ -61,8 +55,6 @@ actor RecommendationsService: RecommenderService {
             payload, ceiling: ceiling, formats: formats, limit: limit)
     }
 
-    // bookkeeping only - the pack this reader picked becomes what the app
-    // uses once it next launches, not before. see the type's doc comment
     func select(_ option: RecommendationModelOption) {
         guard selectedPackId != option.packId else { return }
         selectedPackId = option.packId
@@ -84,8 +76,8 @@ actor RecommendationsService: RecommenderService {
         selectedPackId != nil && selectedPackId != loadedPackId
     }
 
-    // one live value, not a one-shot fetch - a select() can happen on any
-    // screen, but only the root of the app shows the restart prompt
+    // select() can happen on any screen; only the root of the app consumes
+    // this to show the restart prompt
     var pendingRestartUpdates: AsyncStream<Bool> {
         AsyncStream { continuation in
             self.continuation = continuation

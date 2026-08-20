@@ -22,14 +22,12 @@ final class RecommendationsViewModel {
 
     private(set) var states: [String: ModelState] = [:]
     // the reader's choice - not necessarily what this process is actually
-    // scoring with yet. see RecommendationsService's doc comment
+    // scoring with yet
     private(set) var selectedPackId: String?
 
     @ObservationIgnored private var watchers: [String: Task<Void, Never>] = [:]
     @ObservationIgnored private var service: RecommendationsService?
 
-    // idempotent - the screen's .task fires this on every appearance, same as
-    // SearchViewModel.configure
     func configure(service: RecommendationsService) {
         self.service = service
         guard selectedPackId == nil else { return }
@@ -96,9 +94,6 @@ final class RecommendationsViewModel {
         }
     }
 
-    // downloading a pack is also choosing it - with one shipped option that's
-    // the only sane default, and with several it's still the least surprising
-    // one: nobody downloads a language pack to leave the old one active
     func download(_ option: RecommendationModelOption) {
         Task {
             do {
@@ -113,7 +108,6 @@ final class RecommendationsViewModel {
         }
     }
 
-    // switching to an already-downloaded pack that isn't the active one
     func select(_ option: RecommendationModelOption) {
         Task { await activate(option) }
     }
