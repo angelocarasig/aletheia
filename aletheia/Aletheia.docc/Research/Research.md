@@ -18,6 +18,8 @@ claim, since these drift.
 - <doc:ChapterComments>
 - <doc:DatabaseWrites>
 - <doc:OfflineAvailability>
+- <doc:TrackerCandidates>
+- <doc:TrackerUXGaps>
 
 ### Other
 

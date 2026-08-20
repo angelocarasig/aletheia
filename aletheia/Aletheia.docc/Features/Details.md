@@ -180,6 +180,16 @@ the reason and when it was last tried, read straight from `fetchError`/`fetchAtt
 survives the app being killed and clears itself the next time that source answers. No separate run
 log is kept on either side.
 
+A separate "Refresh Metadata" action does the same kind of check on demand, scoped to one series -
+every source plus every linked tracker, no chapter fetch. Its own pill, its own state, independent
+of the chapter-refresh pill so the two never share or clobber each other. See
+<doc:aletheia/BackgroundActivity> for the scheduled, whole-library version of this same check.
+
+**Chapter ranking order: language, then origin priority, then scanlator priority, then a
+deterministic id tiebreak.** Language deliberately outranks origin - a source is a preference, a
+language you can't read is a wall. The preferred source's copy in a language you don't read loses
+to a lower-priority source's copy in a language you do.
+
 **Language priorities are seeded, never inferred.** `create()` and every `fetchChapters` write
 call the seeding routine (insert-or-ignore, English > Japanese > Chinese > Korean), so all rows
 exist for every series and the ranking view's language tier never depends on a row being absent.

@@ -2,7 +2,9 @@
 
 Two operations run in the background and report live progress: chapter downloads and library
 refresh. Both live under `Composition/` as `@Observable` classes on `Compositor` -
-``Compositor/Downloads`` and ``Compositor/Refresh`` - built on the same shape.
+``Compositor/Downloads`` and ``Compositor/Refresh`` - built on the same shape. A third,
+``Compositor/Metadata``, runs on a much slower schedule and deliberately has no live surface at
+all - see its own section below.
 
 ## The rules
 
@@ -111,6 +113,24 @@ deliberately *last tried* rather than *failing since*, since one column can't ho
 first-seen date. Recovery leaves no trace, deliberately - there's no browsable history of past
 failures, only whether one is true right now. The run itself continues past individual failures;
 one dead source doesn't stop a library-wide walk.
+
+## Metadata refresh
+
+A third background operation, but a different shape from the two above: it re-checks a series'
+synopsis, classification, publication, and covers - every source plus every linked tracker, no
+chapter fetch - and it never runs inside a `BGContinuedProcessingTask` or shows a live row
+anywhere. It's pure background maintenance: a `BGProcessingTaskRequest` on its own interval
+preference (weekly/biweekly/monthly, off by default, configured from its own settings screen), or
+triggered on demand from Details for one series at a time (its own pill there, independent of the
+chapter-refresh pill).
+
+The scheduled walk runs oldest-checked-first (`MIN(metadata.fetchedDate)` per series, nulls
+first) rather than always starting from the same place, since the OS can cut a `BGProcessingTask`
+off at any point and a truncated run has to be cumulative. Three skip preferences (completed,
+unread, not-started) can narrow it. A dead tracker account fails only that account's row, not the
+whole run, through the same retry wrapper every other tracker call already uses. Same silence
+rule as refresh/downloads: a notification only fires if the run finished while the app wasn't
+open.
 
 ## Progress granularity
 

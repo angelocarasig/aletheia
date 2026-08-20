@@ -341,6 +341,11 @@ extension MangaDexSource {
         let attributes = chapter.attributes
 
         guard attributes.externalUrl == nil else { return nil }
+        // drop rather than default - mislabeling an unmapped language as english
+        // displays it wrong instead of just omitting it
+        guard let language = attributes.translatedLanguage.flatMap(LanguageCode.init) else {
+            return nil
+        }
 
         let scanlator = chapter.relationships
             .first { $0.type == "scanlation_group" }?
@@ -350,8 +355,7 @@ extension MangaDexSource {
             slug: chapter.id,
             title: attributes.title ?? "",
             number: attributes.chapter.flatMap(Double.init) ?? 0,
-            // an unparseable language downgrades to english rather than dropping the chapter
-            language: attributes.translatedLanguage.flatMap(LanguageCode.init) ?? .english,
+            language: language,
             scanlator: scanlator ?? "Unknown",
             url: URL(string: "https://mangadex.org/chapter/\(chapter.id)")!,
             publishedDate: date(from: attributes.publishAt)

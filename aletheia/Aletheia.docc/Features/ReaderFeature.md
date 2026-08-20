@@ -5,6 +5,10 @@ from.
 
 ## Topics
 
+### Contract
+
+- ``ReaderChapter``
+
 ### Geometry
 
 - <doc:ReaderGeometry>
