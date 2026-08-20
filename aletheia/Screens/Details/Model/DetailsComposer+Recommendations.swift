@@ -29,17 +29,17 @@ extension DetailsComposer {
         @ObservationIgnored private var running: Task<Void, Never>?
         @ObservationIgnored private let recommender: Recommender
         @ObservationIgnored private let impressions: Compositor.Impressions
-        @ObservationIgnored private let seriesRecommendations: Compositor.SeriesRecommendations
+        @ObservationIgnored private let recommendationsCache: Compositor.Recommendations
         @ObservationIgnored private var seriesId: SeriesRecord.ID?
 
         init(
             recommender: Recommender,
             impressions: Compositor.Impressions,
-            seriesRecommendations: Compositor.SeriesRecommendations
+            recommendationsCache: Compositor.Recommendations
         ) {
             self.recommender = recommender
             self.impressions = impressions
-            self.seriesRecommendations = seriesRecommendations
+            self.recommendationsCache = recommendationsCache
         }
 
         struct ImpressionContext: Equatable {
@@ -78,11 +78,11 @@ extension DetailsComposer {
         private func load(_ payload: Payload) {
             running?.cancel()
             phase = .pending
-            running = Task { [recommender, impressions, seriesRecommendations, seriesId] in
+            running = Task { [recommender, impressions, recommendationsCache, seriesId] in
                 guard let seriesId else { return }
                 let descriptor = await recommender.descriptor
 
-                if let cached = await seriesRecommendations.fetch(
+                if let cached = await recommendationsCache.fetch(
                     seriesId: seriesId, packId: descriptor.slug),
                     cached.fingerprint == payload.fingerprint,
                     let decoded = try? JSONDecoder().decode(
@@ -124,7 +124,7 @@ extension DetailsComposer {
                     // the cache is what stamps resolution identity now - a
                     // background write, not on the critical path to rendering
                     if let encoded = try? JSONEncoder().encode(set.results) {
-                        await seriesRecommendations.save(
+                        await recommendationsCache.save(
                             seriesId: seriesId,
                             packId: descriptor.slug,
                             catalogId: set.seedCatalogId.map { Int64($0.rawValue) },

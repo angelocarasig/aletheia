@@ -17,8 +17,9 @@ struct Compositor: Sendable {
     let trackers: Trackers
     let metadata: Metadata
     let recommender: Recommender
+    let recommendationsService: RecommendationsService
     let impressions: Impressions
-    let seriesRecommendations: SeriesRecommendations
+    let recommendations: Recommendations
     let requester: AuthRequester
     let presenter: AuthPresenter
     // a caller that constructs its own NetworkService gets its own HostGate too,
@@ -70,9 +71,11 @@ struct Compositor: Sendable {
             database: database, registry: registry, refresher: self.refresh, trackers: self.trackers
         )
 
-        self.recommender = V01Recommender()
+        let recommendationsService = RecommendationsService(options: RecommendationModelOption.all)
+        self.recommendationsService = recommendationsService
+        self.recommender = recommendationsService
         self.impressions = Impressions(database: database)
-        self.seriesRecommendations = SeriesRecommendations(database: database)
+        self.recommendations = Recommendations(database: database)
 
         self.db = Persistence(database: database, registry: registry, downloads: self.downloads)
     }

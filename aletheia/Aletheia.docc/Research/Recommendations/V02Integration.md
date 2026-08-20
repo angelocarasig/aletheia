@@ -57,7 +57,7 @@ and a naive "check catalogId, then check a cache table, then compute" call-site 
 independently-invalidated stores that need to agree with each other - exactly the kind of hidden dependency
 that drifts silently.
 
-The fix: **one table is now the single source of truth.** `recommendation_cache` holds, per
+The fix: **one table is now the single source of truth.** `series_recommendation` holds, per
 `(seriesId, packId)`: a fingerprint of the local inputs that produced the result (title pool, synopsis,
 tags, cover, year, format), the resolved catalogue id if resolution landed (`NULL` if it didn't - a normal,
 common shape, not an error state), and the computed rail itself. A `Details` open does exactly one lookup.
@@ -207,9 +207,54 @@ live progress (a long-running per-pack watcher, not a one-shot poll), `ensureLoc
 trigger a download, `remove(assetPackWithID:)` for the delete button. Verified on a real device end to end
 through the actual Settings UI, not just the Bootstrap probe.
 
-**The Bootstrap.swift DEBUG probe has now met its own stated removal condition.** Its comment says "delete
-once the Settings picker replaces it" - that picker now exists and was what verified the download/remove
-flow above, so the probe is redundant scaffolding at this point, not yet removed.
+**The Bootstrap.swift DEBUG probe has been removed.** Its comment said "delete once the Settings picker
+replaces it" - that picker now exists and was what verified the download/remove flow above, so it was
+redundant scaffolding pointing at the same hardcoded pack id the real feature also depends on.
+
+**Two real bugs found only by running the shipped picker, not by reading any doc.** Downloading Protostar
+through Settings and opening a `Details` screen surfaced both:
+
+- `ModelBundle.load` read only `Bundle.main` - the same shape it always had, from when v01 shipped bundled
+  inside the app. That bundle is empty in every build now (`Resources/Models` is gitignored and deleted),
+  so recommendations were silently broken from the moment the bundled model was removed until this was
+  found - nothing wired the Background Assets download to the thing that actually reads model files.
+  Fixed by giving `ModelBundle.load(from:)` a `Source` (`.appBundle`, dev/preview only, vs. `.assetPack(id:root:)`),
+  reading through `AssetPackManager.shared.contents(at:searchingInAssetPackWithID:options:.mappedIfSafe)`
+  for the real path - the same `.mappedIfSafe` behavior as the bundle path, so construction stays nearly
+  free either way.
+- `TagVocabulary.init` had its own, separate `Bundle.main.url(forResource:)` call for `tagvocab.json` -
+  a second load site that fixing `ModelBundle` alone didn't touch, caught by the very next error in the
+  log (`malformed(file: "tagvocab.json", reason: "not in the bundle")`) once the first bug's fix let
+  everything else load. `tagvocab.json` isn't declared in either manifest's `files` dict (it's a flat
+  dictionary, not a typed array), so it never entered `ModelBundle`'s normal per-name loop - it needed its
+  own explicit read, now folded into `ModelBundle.load` and handed to `TagVocabulary` as `bundle.tagVocabularyData`.
+
+**The model switch is restart-required, not live - a second, deliberate reversal.** The first working
+version swapped the active model mid-session: `switchActive(to:)` built a new adapter, warmed it, and
+replaced the running one, no relaunch needed. Reconsidered once traced against a concrete flow (a fresh
+install picking a pack for the first time) and simplified to the actual "game language pack" shape the
+original request described - those normally take effect on next launch, not live. The app has no clean way
+to page a 116 MB model back out of memory once loaded, and a live swap risked warming a new one on whatever
+screen happened to be open when the reader tapped. `Compositor.recommendationsService`
+(`RecommendationsService`, renamed from an earlier `RecommenderRouter`) now tracks two ids instead of one:
+`selectedPackId` (the reader's persisted choice, written the instant a pack is downloaded or picked) and
+`loadedPackId` (whichever pack this process actually built a scorer for, decided once at cold start and
+never changed mid-session). `select()` is pure bookkeeping now - persist the choice, nothing else - and
+when the two ids disagree, a root-level alert (`Main.swift`, driven by `pendingRestartUpdates`, an
+`AsyncStream` matching the same reactive shape used elsewhere in this app) tells the reader a restart is
+needed. iOS gives an app no way to relaunch itself, so both alert buttons just dismiss - the copy tells the
+reader what to do, nothing here automates it. Until that restart happens, recommendations keep working off
+whichever pack was already loaded (nothing, on a fresh install) - the existing graceful "an addition to a
+screen, never load-bearing" degrade, unchanged.
+
+**`RecommenderRouter.init` no longer guesses an active pack.** The first version defaulted to
+`options.first?.packId` when nothing was persisted, so a fresh install showed Protostar as "Active" before
+it was ever downloaded - found by tracing the exact fresh-install flow, not by a report. Fixed by dropping
+the fallback entirely: no persisted `UserDefaults` selection means no active model at all, so
+`isDownloaded`/`isActive` read false together and Settings correctly offers Download.
+
+**Compositor.SeriesRecommendations was renamed to Compositor.Recommendations**, matching `DetailsComposer.Recommendations`'s
+naming on the presentation side - purely cosmetic, no behavior change.
 
 ## Where it surfaces
 

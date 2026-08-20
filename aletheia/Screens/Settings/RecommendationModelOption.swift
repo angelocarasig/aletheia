@@ -15,6 +15,10 @@ struct RecommendationModelOption: Identifiable, Sendable {
     let packId: String
     let name: String
     let subtitle: String
+    // the fileSelectors directory ba-package bakes into the .aar - preserved
+    // as a literal subfolder inside the pack, not flattened, so every file
+    // read against this pack is rooted here
+    let assetRoot: String
 
     var id: String { packId }
 
@@ -22,7 +26,8 @@ struct RecommendationModelOption: Identifiable, Sendable {
         RecommendationModelOption(
             packId: "protostar-1-0-0",
             name: "Protostar",
-            subtitle: "The current recommendation model"
+            subtitle: "The current recommendation model",
+            assetRoot: "protostar-1-0-0-2026.08"
         )
     ]
 }

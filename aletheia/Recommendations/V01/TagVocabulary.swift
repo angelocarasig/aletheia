@@ -66,13 +66,9 @@ struct TagVocabulary: Sendable {
     }
 
     init(bundle: ModelBundle) throws {
-        guard let url = Foundation.Bundle.main.url(forResource: "tagvocab", withExtension: "json")
-        else {
-            throw RecommenderError.malformed(file: "tagvocab.json", reason: "not in the bundle")
-        }
         let doc: Document
         do {
-            doc = try JSONDecoder().decode(Document.self, from: try Data(contentsOf: url))
+            doc = try JSONDecoder().decode(Document.self, from: bundle.tagVocabularyData)
         } catch {
             throw RecommenderError.malformed(
                 file: "tagvocab.json",

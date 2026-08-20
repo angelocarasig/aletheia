@@ -144,7 +144,7 @@
             let log = { (m: String) in AppLog.shared.log(m, category: "recommender") }
             do {
                 let t0 = Date()
-                let bundle = try ModelBundle.load()
+                let bundle = try ModelBundle.load(from: .appBundle())
                 let mapped = Date().timeIntervalSince(t0)
                 let n = bundle.titleCount
 

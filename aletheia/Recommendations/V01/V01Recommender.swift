@@ -32,6 +32,11 @@ actor V01Recommender: RecommenderService {
 
     private var loaded: Loaded?
     private var failure: RecommenderError?
+    private let source: ModelBundle.Source
+
+    init(source: ModelBundle.Source) {
+        self.source = source
+    }
 
     var descriptor: RecommenderDescriptor {
         get async {
@@ -185,7 +190,7 @@ actor V01Recommender: RecommenderService {
         if let loaded { return loaded }
         if let failure { throw failure }
         do {
-            let bundle = try ModelBundle.load()
+            let bundle = try ModelBundle.load(from: source)
             let scorer = try Scorer(bundle: bundle)
             let ids = try bundle.array("ids.bin", "catalogId", of: Int32.self)
             let ascending = ids.withUnsafeBufferPointer { values -> Bool in

@@ -9,6 +9,7 @@ import SwiftUI
 
 struct RecommendationsScreen: View {
     @State private var vm = RecommendationsViewModel()
+    @Environment(\.compositor) private var compositor
     @Environment(\.dimensions) private var dimensions
 
     @State private var showingAnalytics = false
@@ -21,7 +22,10 @@ struct RecommendationsScreen: View {
 
                     ForEach(RecommendationModelOption.all) { option in
                         ModelRow(option)
-                            .task { vm.watch(option) }
+                            .task {
+                                vm.configure(service: compositor.recommendationsService)
+                                vm.watch(option)
+                            }
                     }
                 }
 
@@ -115,6 +119,29 @@ struct RecommendationsScreen: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Remove \(option.name)")
+        } else if vm.isDownloaded(option) {
+            HStack(spacing: dimensions.spacing.space12) {
+                Button("Use") {
+                    vm.select(option)
+                }
+                .font(.caption)
+                .fontWeight(.medium)
+                .foregroundStyle(Palette.Tone.brand.text)
+                .padding(.horizontal, dimensions.spacing.space12)
+                .padding(.vertical, dimensions.spacing.space8)
+                .background(Palette.Tone.brand.subtle, in: .capsule)
+                .buttonStyle(.plain)
+
+                Button {
+                    vm.remove(option)
+                } label: {
+                    Image(systemName: "trash")
+                        .font(.caption)
+                        .foregroundStyle(.danger)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Remove \(option.name)")
+            }
         } else {
             Button("Download") {
                 vm.download(option)

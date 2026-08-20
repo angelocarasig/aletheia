@@ -44,6 +44,7 @@ struct AletheiaApp: App {
     @State private var bootstrap = Bootstrap()
     @State private var router = Router()
     @State private var retaps: [AppTab: Int] = [:]
+    @State private var recommenderRestartPending = false
 
     // a plain selection binding never reports taps on the already-active tab,
     // so the setter counts them and screens reset off their tab's counter
@@ -66,6 +67,23 @@ struct AletheiaApp: App {
                         .environment(\.database, compositor.database)
                         .environment(\.router, router)
                         .authChallenge(from: compositor.presenter)
+                        .task {
+                            for await pending in await compositor.recommendationsService
+                                .pendingRestartUpdates
+                            {
+                                recommenderRestartPending = pending
+                            }
+                        }
+                        .alert(
+                            "Recommendation Model Updated", isPresented: $recommenderRestartPending
+                        ) {
+                            Button("Later", role: .cancel) {}
+                            Button("Restart Now") {}
+                        } message: {
+                            Text(
+                                "Your picks for Similar Titles are about to change. Restart \(Constants.App.name) to start using it."
+                            )
+                        }
                 } else {
                     BootstrapScreen(phase: bootstrap.phase) {
                         Task { await bootstrap.run() }

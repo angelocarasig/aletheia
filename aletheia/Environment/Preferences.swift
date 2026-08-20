@@ -100,6 +100,11 @@ enum Preferences {
         // stamped by BackupExportScreen once a backup is handed to the file
         // exporter, not when the reader merely opens the screen
         static let libraryBackupExportedDate = "backup.lastExport"
+
+        // absent means "no choice made yet" - RecommendationsService starts
+        // with no active model rather than guessing one, so a fresh install
+        // never shows a pack as active before it's actually downloaded
+        static let recommenderPackId = "recommender.packId"
     }
 
     enum Default {

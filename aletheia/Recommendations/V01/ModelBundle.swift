@@ -5,7 +5,9 @@
 //  Created by Angelo Carasig on 14/8/26
 //
 
+import BackgroundAssets
 import Foundation
+import System
 
 // the bytes, and nothing about recommending. it decodes both manifests, refuses a
 // version it does not know, memory-maps every file and hands out typed views at
@@ -21,20 +23,34 @@ struct ModelBundle: Sendable {
 
     let manifest: ModelManifest
     let metadata: MetadataManifest?
+    // tagvocab.json is a flat dictionary, not a typed array - TagVocabulary
+    // decodes it itself, so this is handed over raw rather than through the
+    // array()/blob() accessors below
+    let tagVocabularyData: Data
 
     private let mapped: [String: Data]
 
     var titleCount: Int { manifest.titleCount }
 
-    // the bundle namespace is flat: resources land at the app root whatever
-    // directory they sat in under Resources/, which step 1 confirmed by shipping
-    // fixtures/hash.json as hash.json. so files are resolved by name alone
-    static func load(in bundle: Foundation.Bundle = .main) throws -> ModelBundle {
-        guard let manifestURL = url(for: "manifest.json", in: bundle) else {
+    // where a bundle's files come from. .appBundle is dev/preview convenience
+    // only - shipped builds source from a downloaded pack, never Bundle.main,
+    // since Resources/Models is gitignored and empty on every machine but the
+    // one that built the fixture
+    enum Source: Sendable {
+        case appBundle(Foundation.Bundle = .main)
+        // root is the fileSelectors directory ba-package bakes into the .aar -
+        // preserved as a literal subfolder, not flattened
+        case assetPack(id: String, root: String)
+    }
+
+    // the namespace under a source is flat: files are resolved by name alone,
+    // relative to the bundle root or the pack's fileSelectors directory
+    static func load(from source: Source) throws -> ModelBundle {
+        guard let manifestData = try read("manifest.json", from: source) else {
             throw RecommenderError.unavailable
         }
 
-        let manifest: ModelManifest = try decode(manifestURL, as: ModelManifest.self)
+        let manifest: ModelManifest = try decode(manifestData, file: "manifest.json")
         guard manifest.formatVersion == supportedFormatVersion else {
             throw RecommenderError.unsupportedFormat(
                 found: manifest.formatVersion,
@@ -46,8 +62,8 @@ struct ModelBundle: Sendable {
         // not optional, though: its arrays are positional against this row order
         // and a mismatched titleCount means every field describes the wrong series
         var metadata: MetadataManifest?
-        if let metadataURL = url(for: "metadata.json", in: bundle) {
-            let pack: MetadataManifest = try decode(metadataURL, as: MetadataManifest.self)
+        if let metadataData = try read("metadata.json", from: source) {
+            let pack: MetadataManifest = try decode(metadataData, file: "metadata.json")
             guard pack.metadataVersion == supportedMetadataVersion else {
                 throw RecommenderError.unsupportedFormat(
                     found: pack.metadataVersion,
@@ -72,10 +88,9 @@ struct ModelBundle: Sendable {
 
         var mapped: [String: Data] = [:]
         for name in names {
-            guard let fileURL = url(for: name, in: bundle) else {
+            guard let data = try read(name, from: source) else {
                 throw RecommenderError.malformed(file: name, reason: "not in the bundle")
             }
-            let data = try Data(contentsOf: fileURL, options: .mappedIfSafe)
             // size rather than sha256, and only where a size was stated
             if let expected = specs[name]?.fileBytes, data.count != expected {
                 throw RecommenderError.truncated(
@@ -86,7 +101,38 @@ struct ModelBundle: Sendable {
             mapped[name] = data
         }
 
-        return ModelBundle(manifest: manifest, metadata: metadata, mapped: mapped)
+        // not declared in either manifest's files dict - it is TagVocabulary's
+        // own file, not a typed array, so it never enters names/mapped above
+        guard let tagVocabularyData = try read("tagvocab.json", from: source) else {
+            throw RecommenderError.malformed(file: "tagvocab.json", reason: "missing")
+        }
+
+        return ModelBundle(
+            manifest: manifest, metadata: metadata,
+            tagVocabularyData: tagVocabularyData, mapped: mapped)
+    }
+
+    // mapped, not loaded - both an app-bundle resource and an asset-pack file
+    // support .mappedIfSafe, so construction stays nearly free either way.
+    // nil means "not present" (a fresh checkout's empty bundle, or a pack that
+    // hasn't downloaded yet) rather than a hard failure - only load() above
+    // knows whether the caller is asking for the required manifest or an
+    // optional display pack
+    private static func read(_ file: String, from source: Source) throws -> Data? {
+        switch source {
+        case .appBundle(let bundle):
+            guard let fileURL = url(for: file, in: bundle) else { return nil }
+            return try Data(contentsOf: fileURL, options: .mappedIfSafe)
+        case .assetPack(let id, let root):
+            do {
+                return try AssetPackManager.shared.contents(
+                    at: FilePath("\(root)/\(file)"),
+                    searchingInAssetPackWithID: id,
+                    options: .mappedIfSafe)
+            } catch {
+                return nil
+            }
+        }
     }
 
     // a typed view of one named array - the guard below is what stops a uint16
@@ -139,13 +185,11 @@ struct ModelBundle: Sendable {
         return bundle.url(forResource: name, withExtension: ext)
     }
 
-    private static func decode<T: Decodable>(_ url: URL, as type: T.Type) throws -> T {
+    private static func decode<T: Decodable>(_ data: Data, file: String) throws -> T {
         do {
-            return try JSONDecoder().decode(T.self, from: try Data(contentsOf: url))
+            return try JSONDecoder().decode(T.self, from: data)
         } catch {
-            throw RecommenderError.malformed(
-                file: url.lastPathComponent,
-                reason: String(describing: error))
+            throw RecommenderError.malformed(file: file, reason: String(describing: error))
         }
     }
 }

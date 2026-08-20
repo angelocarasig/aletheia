@@ -62,7 +62,7 @@ extension Compositor {
         // rail draws twenty cards and this is one query
         //
         // only series with a resolved series_recommendation row are here.
-        // Compositor.SeriesRecommendations.save is what writes resolution
+        // Compositor.Recommendations.save is what writes resolution
         // identity in the normal recommend flow; a backup-restored series sets
         // inLibrary directly (LibraryBackupRestorer) and is not counted here
         // until its next Details open resolves the seed

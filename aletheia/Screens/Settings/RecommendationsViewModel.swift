@@ -21,11 +21,27 @@ final class RecommendationsViewModel {
     }
 
     private(set) var states: [String: ModelState] = [:]
+    // the reader's choice - not necessarily what this process is actually
+    // scoring with yet. see RecommendationsService's doc comment
+    private(set) var selectedPackId: String?
 
     @ObservationIgnored private var watchers: [String: Task<Void, Never>] = [:]
+    @ObservationIgnored private var service: RecommendationsService?
+
+    // idempotent - the screen's .task fires this on every appearance, same as
+    // SearchViewModel.configure
+    func configure(service: RecommendationsService) {
+        self.service = service
+        guard selectedPackId == nil else { return }
+        Task { selectedPackId = await service.selectedPackId }
+    }
+
+    func isDownloaded(_ option: RecommendationModelOption) -> Bool {
+        states[option.packId]?.status.contains(.downloaded) ?? false
+    }
 
     func isActive(_ option: RecommendationModelOption) -> Bool {
-        states[option.packId]?.status.contains(.downloaded) ?? false
+        option.packId == selectedPackId
     }
 
     func isDownloading(_ option: RecommendationModelOption) -> Bool {
@@ -75,20 +91,31 @@ final class RecommendationsViewModel {
         case .failed(_, let error):
             states[packId, default: ModelState()].progress = nil
             states[packId, default: ModelState()].errorMessage = error.localizedDescription
+        @unknown default:
+            break
         }
     }
 
+    // downloading a pack is also choosing it - with one shipped option that's
+    // the only sane default, and with several it's still the least surprising
+    // one: nobody downloads a language pack to leave the old one active
     func download(_ option: RecommendationModelOption) {
         Task {
             do {
                 let pack = try await AssetPackManager.shared.assetPack(withID: option.packId)
                 try await AssetPackManager.shared.ensureLocalAvailability(of: pack)
                 states[option.packId, default: ModelState()].status = .downloaded
+                await activate(option)
             } catch {
                 states[option.packId, default: ModelState()].errorMessage =
                     error.localizedDescription
             }
         }
+    }
+
+    // switching to an already-downloaded pack that isn't the active one
+    func select(_ option: RecommendationModelOption) {
+        Task { await activate(option) }
     }
 
     func remove(_ option: RecommendationModelOption) {
@@ -97,10 +124,18 @@ final class RecommendationsViewModel {
                 try await AssetPackManager.shared.remove(assetPackWithID: option.packId)
                 states[option.packId, default: ModelState()].status = []
                 states[option.packId, default: ModelState()].errorMessage = nil
+                await service?.deselect(option.packId)
+                if selectedPackId == option.packId { selectedPackId = nil }
             } catch {
                 states[option.packId, default: ModelState()].errorMessage =
                     error.localizedDescription
             }
         }
+    }
+
+    private func activate(_ option: RecommendationModelOption) async {
+        guard let service else { return }
+        await service.select(option)
+        selectedPackId = option.packId
     }
 }

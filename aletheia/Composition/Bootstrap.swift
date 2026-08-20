@@ -5,10 +5,8 @@
 //  Created by Angelo Carasig on 6/8/2026.
 //
 
-import BackgroundAssets
 import Observation
 import SwiftUI
-import System
 
 @MainActor
 @Observable
@@ -106,38 +104,6 @@ final class Bootstrap {
                 #if DEBUG
                     await Task.detached { ModelBundle.probe() }.value
                     await ModelBundle.probe(compositor.recommender)
-
-                    // temporary - proves the Background Assets pipeline end to end
-                    // before any real UI exists. delete once the Settings picker
-                    // replaces it
-                    do {
-                        let pack = try await AssetPackManager.shared.assetPack(
-                            withID: "protostar-1-0-0")
-                        AppLog.shared.log(
-                            "asset pack probe - requesting protostar-1-0-0 (\(pack.downloadSize) bytes)",
-                            category: "backgroundAssets")
-                        try await AssetPackManager.shared.ensureLocalAvailability(of: pack)
-                        AppLog.shared.log(
-                            "asset pack probe - protostar-1-0-0 is now locally available",
-                            category: "backgroundAssets")
-
-                        // "locally available" only proves the manager thinks the
-                        // download finished - this proves the .aar actually unpacked
-                        // into real, readable files
-                        // the fileSelectors directory ("protostar-1-0-0-2026.08") is
-                        // preserved as a literal subfolder inside the pack, not
-                        // flattened - a bare "manifest.json" 404s
-                        let manifest = try AssetPackManager.shared.contents(
-                            at: FilePath("protostar-1-0-0-2026.08/manifest.json"),
-                            searchingInAssetPackWithID: "protostar-1-0-0")
-                        AppLog.shared.log(
-                            "asset pack probe - read manifest.json (\(manifest.count) bytes) from protostar-1-0-0",
-                            category: "backgroundAssets")
-                    } catch {
-                        AppLog.shared.log(
-                            "asset pack probe FAILED - \(error)",
-                            level: .error, category: "backgroundAssets")
-                    }
                 #endif
             }
         } catch {
