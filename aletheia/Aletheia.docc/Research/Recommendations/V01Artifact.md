@@ -110,3 +110,23 @@ hashed path - a sized variant is derivable exactly (a fixed CDN prefix plus urls
 raw URL, padding stripped) rather than needing to be stored per size. And the catalogue's ids are
 the same ids a linked tracker service already uses for this catalogue - see <doc:Integration> for
 what that makes possible.
+
+## A trimmed variant, for reuse beyond v01
+
+`export/v01-metadata` (116 MB) is the display half of this bundle exported alone, with its own manifest
+declaring exactly the files present - no scoring binaries (`tags.bin`, `aliases.bin`, `embeddings.bin`,
+`embed_mean.bin`, `has_embed.bin`), no scoring-only constants, `titleCount` and every checksum otherwise
+intact. It exists because <doc:V02Artifact> deliberately ships no display metadata of its own and reuses
+this pack instead of duplicating it - and because ``ModelBundle/load(in:)`` refuses to start if a manifest
+declares a file that isn't in the bundle, so simply deleting the scoring binaries out from under the
+original manifest would break the metadata half too. Trimming had to happen upstream, in the export, not
+downstream in the loader - see <doc:PortPlan> for why the loader's fail-fast behaviour is deliberate and
+wasn't relaxed to work around this instead.
+
+**Verified, not assumed, that this pack and Orihime's rails agree on the same catalogue.** Same
+3,331,670,016-byte sqlite behind both, id sets equal in both directions (302,894 = 302,894), and of the
+147,855 distinct ids Orihime's rails ever recommend, zero are missing a row here. That holds today because
+neither side has re-ingested since the comparison was made - it isn't guaranteed to hold across a future
+monthly rebuild unless both packs are cut from the same dump together. `manifest.json`'s
+`corpus.catalogue_sha256` field is what lets a loader check this explicitly going forward, rather than
+trusting it silently the way this first verification had to.

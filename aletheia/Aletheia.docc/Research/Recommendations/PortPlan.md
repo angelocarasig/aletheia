@@ -111,6 +111,28 @@ complexity (a device, a queue, a shader, a buffer lifecycle, a second implementa
 arithmetic to keep in permanent agreement with the CPU one). See <doc:aletheia/Metal> for the full research,
 kept as a written standard in case a genuine GPU-shaped need appears later.
 
+## The loader's fail-fast, exercised for real
+
+``ModelBundle/load(in:)`` refuses to start if a manifest declares a file that isn't in the bundle - a
+deliberate choice, meant to catch a broken or mismatched deploy rather than let it through as a warning.
+It wasn't written with any particular future case in mind, but it became load-bearing sooner than expected:
+reusing this pack's metadata half without its (large) scoring binaries, for <doc:V02Artifact>, needed a
+manifest trimmed to declare only what's actually present - see <doc:V01Artifact> for the trimmed export
+itself. The alternative, a loader that tolerates a declared-but-missing file, was considered and rejected -
+weakening the fail-fast to solve one packaging problem would also stop it from catching a genuinely broken
+bundle, which is a worse trade than fixing the export upstream instead.
+
+## A resolver built for a defect that hadn't been fixed yet
+
+``AliasIndex/tally(for:)`` scans every candidate in an equal-hash run and votes across a whole title pool,
+even though the shipped v01 table can only ever return one candidate per name - the comment above the
+function says so, citing the known upstream defect directly. That branch sat dormant through v01's entire
+life: nothing in the fixture set or the live bundle ever had a real collision to exercise it. It got
+exercised for the first time by <doc:V02Artifact>'s alias table, which deliberately preserves collisions
+instead of collapsing them (60,585 keys naming more than one series, up to 190 for a franchise name) - and
+the existing voting logic handled it correctly with no changes needed, because it was written against what
+the specification always said should happen, not against what the shipped v01 bundle happened to allow.
+
 ## Deferred, none blocking the port
 
 The alias-table collapse (fix is a training-machine rebuild, not a client change); the

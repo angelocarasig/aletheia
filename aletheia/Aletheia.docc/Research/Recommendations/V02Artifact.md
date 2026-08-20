@@ -1,139 +1,149 @@
-# v02: What Changes, and Why
+# v02: Orihime
 
-A research plan for improving on the v01 recommender. **Not built in the app** - a labelling tool
-exists on the training-machine side; nothing here has an app counterpart yet, and v01 keeps running
-throughout regardless of what happens here.
+What v02 actually became. **Not built in the app yet** - this describes the pack as designed and under
+construction on the training-machine side (codename Heuresis/Orihime), verified against this app's actual
+code during integration review, not shipped. v01 keeps running throughout regardless of what happens
+here. See <doc:V01Artifact> for what v01 is and <doc:PortPlan> for how it shipped; see <doc:V02Integration>
+for the product and infrastructure decisions this pack drives on the app side.
 
-See <doc:V01Artifact> for what v01 actually is and <doc:PortPlan> for how it shipped.
+## What it is
 
-## The core framing
+A successor to the v01 catalogue-similarity engine, same ~303K-title catalogue, a richer blend, and a
+capability v01 never had: a full-quality answer for a title that doesn't resolve, not just a degraded one.
 
-**v02 is not meant to be a better recommender. It's meant to be a better experiment.** The v01
-scoring engine compresses a large catalogue into three interpretable similarity blocks, and that
-part doesn't need to change. What's weak is everything around it: a small number of preference
-labels from one person across a handful of queries, evaluated with a metric that's already been
-replaced twice.
+The blend adds four blocks to v01's three (tags 0.8, synopsis 0.2, era 0.2): title (0.2, shared rare
+words), format (0.1, always on), cover (0.4, **provisional**), appeal (0.2, **provisional**), plus a
+popularity prior (0.1) added after the blend and z-scored. Score is `Σ(gate × weight × z) / Σ(gate ×
+weight)` - weights are relative, not absolute, so tags at 0.8 is still roughly half the pull on a fully-gated
+pair even with four more blocks in the mix. Rail length grew from v01's k=20 to k=60. The two provisional
+weights (cover, appeal) are hand-set guesses a Labeller grading run is meant to judge before they're
+trusted - exactly the sliders a future preference-fitting pass would tune, see the closing note below.
 
-Two independent research passes converged on the same idea from different angles: treat preference
-capture as a small adaptive experiment, and treat the existing recommender as a feature generator
-for that experiment, not as the thing being replaced. With one user, a fixed feature space, and
-only a handful of tunable parameters, better experimental design matters far more here than a more
-sophisticated model.
+## Two modes, not one degraded and one full
 
-## What's ruled out, and why
+v01 has a resolved path (exact) and a projected path (tag-only, a deliberately reduced fallback for
+whatever didn't resolve). Orihime keeps the resolved path - a precomputed rail lookup, `rails/rows.npy` +
+`rails/scores.npy`, answers already computed on the training machine - but replaces the projected path
+entirely. An unresolved seed now runs the **same full blend** live, on the phone, from the series' own
+local data (title, synopsis, tags, cover, year, format) instead of a cheaper substitute. Resolved is the
+fast tier; unresolved is the general one computing the identical recipe, not a fallback.
 
-Reinforcement learning - the actual problem is inferring a static preference function from sparse
-observations, which is supervised preference learning, not RL; RL needs today's action to change
-tomorrow's state, and this doesn't have that. Contextual bandits - formally applicable but needs
-exploration traffic a personal offline app doesn't generate (one cheap idea from bandit theory is
-still worth stealing, see below). LambdaMART and neural learning-to-rank - correct tools for
-problems with far more independent observations than a few hundred correlated labels from one
-person; at this size they'd memorise rather than generalise. Embedding retraining - out of scope by
-construction, the embedding matrix is frozen and shipped. Per-tag personalised weights - too many
-free parameters against too few labels, though the tag hierarchy offers a shrinkage path once a
-simpler model has saturated. Manufacturing labels from cross-source agreement - agreement between
-sources says something about metadata reliability, nothing about user preference, and conflating
-the two is the one hard rule everything else here respects.
+## The compute path
 
-## Why the label count isn't the real bottleneck
+Three models run on-device for an unresolved seed:
 
-The labels collected so far aren't independent observations - many judgements against one seed are
-correlated through that seed's intent, so the unit of generalisation is a query, not a judgement,
-which makes the effective sample size far smaller than the raw label count suggests. And absolute
-ratings are the wrong instrument for a ranking problem in the first place: a relative comparison
-("which of these two is closer to what I want from this seed") maps directly onto the thing being
-optimised, where an absolute rating has to be converted into relative information after the fact.
-A three-level "ok" rating in particular collapses several different meanings into one label and
-should stop being treated as a ranking signal.
+- **Text** - `intfloat/multilingual-e5-small`, Core ML, encodes synopsis and title to 384-d. Needs the
+  `"query: "` prefix e5 requires, mean-centring (the mean vector ships in the pack), and a **fixed 512
+  sequence length** - a dynamic shape falls off the Neural Engine onto CPU silently, which is why this is a
+  conversion-time requirement, not a runtime one.
+- **Cover** - MobileCLIP-S0, Apple's own Core ML checkpoint (chosen for exactly this reason), 512-d encoded
+  then projected to 128-d.
+- **Appeal** - a small classic-ML "student" (linear/logistic parts + gradient-boosted trees, ~7 MB),
+  trained to imitate an LLM teacher's appeal questionnaire (tone, premise, romance shape, 56 trope flags, 9
+  sliders) from exactly the inputs an unresolved series has. Produces the same 80-number appeal vector a
+  catalogue title gets. The teacher/student split matters for the gate: candidate side is 1.0 for a
+  teacher-scored title, 0.5 for a student-scored or tags-only one, 0 if absent; seed side is 0 whenever a
+  local series has no appeal vector to offer, and the blend **renormalises over the remaining blocks**
+  rather than leaving a hole - the same degradation path a thin catalogue title already takes.
 
-## The two-stage idea
+Compute-unit assignment, decided per model rather than left to `.all`: text and cover encoders run
+`.cpuAndNeuralEngine` (both are ANE-shaped workloads, and excluding GPU keeps it free for the UI); the
+student trees run `.cpuOnly` (an ensemble this small gains nothing from ANE/GPU and more would only add
+scheduling overhead). The final step - scoring the virtual seed against every catalogue vector,
+~300K × (384+128+80) - is not a Core ML operation at all: plain Accelerate/BLAS on CPU, because batching
+many seeds at once (the case that would justify Metal) is unnecessary once results are cached, see
+<doc:V02Integration>. Budget: encode ~50-150ms, student ~ms, full-catalogue scan ~100-300ms warm - a
+prediction from file shapes and access patterns, not yet a measurement (see Deferred, below).
 
-The most useful structural idea, and what makes per-source metadata usable at all: treat the
-corpus (millions of weak per-source observations about representation reliability) and the human
-(a much smaller number of strong observations about actual preference) as two different learning
-problems that must not be mixed. The corpus teaches how much to trust a given representation; the
-human teaches what "similar" means to this particular reader. A source's tags are a noisy, partial
-observation of the same underlying title rather than a second independent dataset - which reframes
-"does this source's tag data help" into a per-source, per-tag precision/recall question answerable
-with no user labelling at all.
+A seed with no synopsis **and** no cover doesn't get a shelf at all - refuse rather than rank on nothing,
+the same discipline v01's own divide-by-zero guard already follows.
 
-This is currently blocked in this app specifically: `series_tag` carries no provenance column, so
-there's no way to trace which source contributed which tag, which is what the precision/recall
-question needs. Unblocking it needs a schema change (see <doc:aletheia/Schema>) adding a metadata reference
-to `series_tag`, mirroring how `title` already carries one.
+## What ships
 
-## The personal model, kept deliberately small
+```
+orihime-2-0-0-2026.08/
+├── manifest.json
+├── rails/            seed_rows.npy, rows.npy, scores.npy - the precomputed answers
+├── models/            text-e5-small.mlmodelc, text-tokenizer.model,
+│                       cover-mobileclip-s0.mlmodelc, student-trees.mlmodelc,
+│                       student-linear.npy, student-layout.json
+├── params/            text-mean.npy, cover-projection.npy, appeal-idf.npy, blend.json
+├── vectors/            synopsis.npy, cover.npy, appeal.npy, appeal_gate.npy,
+│                       tags/ (vocabulary.json, row_offsets.npy, tag_ids.npy, tag_weights.npy)
+├── titles.npy, year.npy, rating.npy, type.npy, register.npy, popularity.npy, excluded.npy
+├── relations/          source_row.npy, related_row.npy, relation_kind.npy
+├── aliases/            keys.txt, rows.npy, fixtures.json
+└── fixtures/            text-encoder.json, cover-encoder/, student.json, virtual-seed-rails.json
+```
 
-The current score is already almost a statistical model - a weighted sum of the three blocks. The
-plan is to replace the hand-swept weights with a small regularized fit over pairwise comparisons
-(a Bradley-Terry model), penalized toward the current hand-tuned weights rather than fit
-unconstrained - safer at this sample size, and interpretable. A handful of interaction terms and a
-slow, strongly-priored fit of the existing taper/decay parameters are worth having early; nothing
-more flexible than that until the small model has actually saturated. One idea borrowed from bandit
-theory without adopting the whole framework: a small exploration quota, sending most
-recommendations from the current best model and a minority chosen because the model is genuinely
-uncertain about them.
+One pack, one download, rails and compute shipped together - not a base tier plus an optional add-on. All
+arrays flat little-endian, mmap-friendly, same loader architecture as v01. Rough size: ~480 MB (fp16) or
+~295 MB (int8, pending a quality check - see Deferred) for the compute pieces, on top of the ~105 MB rails
+table. Models ship precompiled (`.mlmodelc`, not raw `.mlpackage`) so the compile cost is paid once at
+export time, not on whichever reader opens the feature first.
 
-## Implicit signals: log everything, trust little
+## Gaps found and fixed during integration
 
-Explicit comparisons and ratings are the strongest signal; a completion or a re-read is real but
-ambiguous evidence (a reader can finish a series for characters they like while the recommendation
-premise is nothing like what they'd want elsewhere); a search without an open is closer to noise.
-Never fold these into one blended reward number - that produces a number that looks principled and
-isn't. Keep separate evidence channels and let explicit labels calibrate how much each one is
-worth. Log impressions, not just interactions, since a recommendation can only be tapped if it was
-shown, and position affects taps independently of quality - the fix is visibility into what was
-shown and ignored, not a ranking-time correction.
+None of these were assumed correct - each was checked against this app's actual code before being
+accepted, and two were genuinely missing until this review surfaced them.
 
-## The evaluation rebuild
+- **Alias collisions, preserved rather than collapsed.** v01's defect (<doc:V01Artifact>) was one row per
+  name-hash with no way to disambiguate a collision. Orihime's alias table doesn't dedupe at all -
+  1,172,114 entries over ~1.09M distinct keys, 60,585 keys naming more than one series (up to 190 for a
+  franchise name), duplicates left adjacent for a caller to scan. The app's own `AliasIndex.tally()`
+  already votes across a whole title pool instead of taking the first match - built for exactly this fix
+  before v01's table ever had a real collision to exercise it.
+- **Normalisation mismatch, caught before it shipped.** An early build of the alias table used NFKC, which
+  keeps diacritics; the app's resolver (and v01's own spec) uses NFKD with combining marks stripped, which
+  doesn't. Silently different match rates on any accented name. Corrected to match exactly, verified with a
+  77-case fixture set (crafted edge cases plus 60 real sampled titles), regenerated every pack build from
+  the same function that builds the keys rather than a hand-maintained spec.
+- **Id width confirmed, not assumed.** `CatalogID` is `Int32` in the Swift port; the pack's `titles.npy` is
+  declared `int64` on disk. Checked: the catalogue's max id today is 599,817, nowhere near Int32's ceiling.
+  Kept as `Int32`; anything above range is now a validation error rather than a silent trap.
+- **Content filtering moved from build-time-only to query-time.** `rating.npy` (four-tier, matches
+  `ContentCeiling` exactly) and `type.npy` (matches `CatalogFormat`) were added so a reader's content
+  settings filter correctly per query, rather than relying solely on the single ceiling the rails were
+  computed under (`suggestive`/comics-only, recorded in the manifest as `rails_ceiling` - stricter reader
+  settings still filter down fine; a looser one can't surface anything the rails never considered).
+- **Metadata-snapshot alignment, verified with numbers.** Confirmed the catalogue behind Orihime and the
+  catalogue behind v01's metadata pack are byte-identical - same sqlite hash, id sets equal in both
+  directions, 0 of 147,855 recommendable ids missing metadata today. `manifest.json`'s
+  `corpus.catalogue_sha256` is what lets the app enforce this going forward instead of assuming it holds
+  after the next monthly rebuild.
+- **A trimmed metadata export, for a loader that fails on purpose.** `ModelBundle.load` refuses to start if
+  any file its manifest declares is missing from the bundle - deliberate, not a bug. Reusing v01's display
+  data without its (large) scoring binaries needed a manifest that only declares what's actually present.
+  See <doc:PortPlan> for the fix.
+- **Tag vocabulary was missing entirely, and blocked the tag block for the compute path.**
+  `vectors/tags/tag_ids.npy` referenced a numeric tag space with no name-to-id dictionary anywhere in the
+  pack, so a local series' free-text tags had no way to map into it. Added
+  `vectors/tags/vocabulary.json` (2,560 entries). Mapping is normalised exact-name matching only, same
+  normalisation discipline as aliases - no fuzzy matching in this version. Common genre/theme tags, which
+  carry most of the block's signal, match this way; source-specific or obscure tags simply don't
+  contribute. Whether that's sufficient is something the quality ablation measures, not something assumed
+  going in. (Unlike v01's `tagvocab.json`, there's no ancestor-hierarchy decay here - Orihime's tag block is
+  flat weighted overlap, so that machinery has no equivalent to port.)
+- **Year/era data was missing entirely for the compute path.** The rails table never needed it - era was
+  already baked into a resolved seed's precomputed score - but an unresolved seed scored live does. Added
+  `year.npy` (`int16`, `-32768` sentinel for unknown; the era block's gate goes to 0 when absent, same
+  renormalisation the appeal block relies on).
 
-The most important piece, because two earlier metrics have already failed here. Four separate
-label sets are needed: a training set that changes as labelling continues; a small development set
-fixed early for model-selection decisions; a gold set fixed forever and never trained on, used only
-for regression testing; and the unresolved (projected-seed) case judged entirely separately from
-the other three. The gold set is what makes a coverage-confound result (a metric that looks
-perfect because it was only ever evaluated on a tiny, cherry-picked slice of results) structurally
-impossible.
+## Deferred, none blocking the current build order
 
-Splits and resampling both need to happen by query, never by individual label, since labels from
-one seed share that seed's intent and randomly mixing them leaks information across the split.
-Coverage (how much of a result set was actually judged) has to be reported as a first-class metric
-next to any accuracy number, not a footnote, or a high accuracy score next to almost nothing judged
-reads as far more meaningful than it is.
+Cold-load and steady-state numbers for the compute path are a prediction from file shapes, not a
+measurement - owed once the Swift loader exists, held to the same standard v01's own numbers were (tens of
+milliseconds, verified on-device, not assumed). Whether int8 quantisation of the vector files visibly
+reshuffles a rail is an open question the quality-ablation step (recompute known titles as if unmatched,
+compare against their real rails) is specifically designed to answer before it's decided either way.
 
-## What's actually been found so far
+## Where the earlier preference-learning research fits now
 
-A handful of concrete negative results, worth carrying even though the broader plan is still
-mostly unbuilt:
-
-- **No fixed weighting of the three blocks predicts this reader's choices on held-out data.** An
-  exhaustive grid search over the block weights found an in-sample optimum that collapses to
-  below-chance accuracy once evaluated on held-out queries - the signature of fitting noise, not a
-  real pattern. The current preference-model phase can't proceed on the data collected so far.
-- **An LLM judge doesn't work as a substitute for the reader's own labels.** Several independent
-  model instances judged the same pairs the reader had already judged, blind and with sides
-  randomised: agreement with the reader was moderate, but agreement with *each other* was much
-  higher - a self-consistent judge that's only moderately aligned with the actual target is aimed
-  at a slightly wrong thing, and that bias wouldn't be visible from any validation that draws on
-  the same source. The judge only agreed with the reader where agreement was cheap (on pairs that
-  weren't actually informative); on the genuinely informative disagreement cases it did
-  noticeably worse. It's still useful for pre-screening obviously-dead candidates and suggesting
-  candidate reason codes, just not as ground truth.
-- **Every label collected so far tests refinement, not retrieval.** All of them compared candidates
-  drawn from deep inside the model's own shortlist, so none of them actually tests whether the
-  shortlist is better than an arbitrary mediocre result - a separate sampling strategy pairing a
-  shortlist candidate against a mid-ranked one was added specifically to close this gap.
-- **Repeatability of the reader's own labels is what everything else has to be interpreted
-  against.** Re-asking previously-answered comparisons after a delay, with the pairing re-flipped
-  so the same *side* isn't just being re-picked, measures how much of the reader's own judgement is
-  noise - and that number decides whether a low held-out accuracy means the model is bad or means
-  the target itself is close to as good as it can get.
-
-## Open questions
-
-Where preference labelling should actually happen (a separate research tool, or inside the app
-itself, which has the reader's real library and context but a smaller iteration loop). Whether an
-impression log belongs in the app's own database or stays a research-only artifact - either way
-it's a flagged schema change. What entity-resolution precision floor the source-reliability
-statistics need before they're trustworthy. And whether the v01 alias-collapse defect gets fixed
-before any of this - every representation experiment inherits that ceiling until it does.
+The Bradley-Terry weight-fitting idea and evaluation rebuild (previously this page's whole subject) aren't
+dead, they're deferred. Orihime's own cover (0.4) and appeal (0.2) weights are explicitly marked
+provisional - hand-set guesses a Labeller run is meant to judge, which is precisely the problem that
+research was aimed at. The difference is sequencing: that work needs real labelled data to fit against, and
+Orihime's own build sequence (a Labeller grading pass, an ablation measuring unmatched-mode quality) is
+what starts generating it. Properly fitting the provisional weights from reader judgment, rather than
+hand-tuning them, is the natural next step once that data exists - not a separate track running in
+parallel.

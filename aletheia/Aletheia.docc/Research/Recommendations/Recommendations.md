@@ -14,3 +14,4 @@ for the next version.
 ### Research
 
 - <doc:V02Artifact>
+- <doc:V02Integration>
