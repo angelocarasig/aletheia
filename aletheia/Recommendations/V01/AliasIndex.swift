@@ -50,7 +50,7 @@ struct AliasIndex: Sendable {
     func candidates(for name: String) -> [Int] {
         let key = Normalise.key(name)
         guard !key.isEmpty else { return [] }
-        return candidates(hash: FNV1a.hash(key))
+        return candidates(hash: StableHash.hash(key))
     }
 
     func candidates(hash: UInt64) -> [Int] {

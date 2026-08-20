@@ -219,7 +219,8 @@
                 // lowercased() would give "straße" and every alias lookup would miss
                 let folded = Normalise.key("Straße")
                 expect(folded == "strasse", "casefold on device gave \(folded)")
-                expect(FNV1a.hash("strasse") == 2_708_255_948_388_058_996, "fnv1a64 on device")
+                expect(
+                    StableHash.hash("strasse") == 2_708_255_948_388_058_996, "fnv1a64 on device")
 
                 // step 4: resolve a sample of catalogue titles by their own primary
                 // name. the ceiling is a property of the shipped table rather than of
