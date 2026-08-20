@@ -38,9 +38,11 @@ extension SourceService {
             credential.apply(to: &request)
         }
 
+        let outgoing = request
+
         do {
             let response = try await withDeadline(Constants.Network.pingTimeout) {
-                try await network.send(request).1
+                try await network.send(outgoing).1
             }
             let elapsed = clock.now - start
 
