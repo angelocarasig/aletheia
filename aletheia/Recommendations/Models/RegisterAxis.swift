@@ -14,7 +14,7 @@ import Foundation
 //
 // not called Orientation: that name already means reading direction in this app,
 // and the two have nothing to do with each other
-enum RegisterAxis: Int, Sendable, CaseIterable {
+enum RegisterAxis: Int, Sendable, Codable, CaseIterable {
     case general = 0
     case boysLove = 1
     case girlsLove = 2
@@ -23,7 +23,7 @@ enum RegisterAxis: Int, Sendable, CaseIterable {
 // the model's own format vocabulary. it has no equivalent on a SeriesRecord -
 // nothing in this app stores a format - so it exists here rather than in
 // Models/Enums, which is for things the database knows about
-enum CatalogFormat: Int, Sendable, CaseIterable {
+enum CatalogFormat: Int, Sendable, Codable, CaseIterable {
     case manga = 0
     case manhwa = 1
     case manhua = 2

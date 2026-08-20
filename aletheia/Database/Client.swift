@@ -49,6 +49,7 @@ final class DatabaseClient: Sendable {
         ReadingEventRecord.self,
         ReadingSessionRecord.self,
         RecommendationImpressionRecord.self,
+        SeriesRecommendationRecord.self,
     ]
 
     // views created after tables; view deps precede dependents

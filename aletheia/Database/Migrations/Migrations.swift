@@ -38,6 +38,7 @@ enum Migrations {
         registerV1_0_0(with: &migrator, records: records, views: views)
         registerV1_0_1(with: &migrator, records: records, views: views)
         registerV1_0_2(with: &migrator)
+        registerV1_0_3(with: &migrator)
     }
 
     // MARK: - v1.0.0: initial schema (all tables + views). CLOSED - do not edit
@@ -110,6 +111,76 @@ enum Migrations {
                         WHERE o.seriesId = series.id
                     )
                     """)
+        }
+    }
+
+    // MARK: - v1.0.3: series_recommendation, drop series.catalogId. CLOSED - do not edit
+
+    // catalogId moves to series_recommendation, alongside the rail it was computed
+    // for, so resolution identity and a computed result are never two things a
+    // caller has to check separately. table/column names are spelled out
+    // literally - same rule as v1.0.2 - this migration is frozen to what series
+    // looked like at v1.0.3, and must not silently track a later rename
+    //
+    // foreign keys deferred: series_tracker, recommendation_impression and (once
+    // this migration finishes) series_recommendation all reference series, and the
+    // DROP TABLE step below would fail against every one of their rows otherwise
+    private static func registerV1_0_3(
+        with migrator: inout DatabaseMigrator
+    ) {
+        let name = DatabaseVersion(1, 0, 3).createMigrationName(
+            description: "series_recommendation")
+        migrator.registerMigration(name, foreignKeyChecks: .deferred) { db in
+            try db.execute(
+                sql: """
+                    CREATE TABLE series_new (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        preferredTitleId INTEGER REFERENCES title(id) ON DELETE SET NULL,
+                        preferredCoverId INTEGER REFERENCES cover(id) ON DELETE SET NULL,
+                        preferredSynopsisId INTEGER REFERENCES metadata(id) ON DELETE SET NULL,
+                        preferredClassificationId INTEGER REFERENCES metadata(id) ON DELETE SET NULL,
+                        preferredPublicationId INTEGER REFERENCES metadata(id) ON DELETE SET NULL,
+                        inLibrary BOOLEAN NOT NULL DEFAULT 0,
+                        status TEXT NOT NULL DEFAULT 'planning',
+                        addedDate DATETIME NOT NULL,
+                        updatedDate DATETIME NOT NULL,
+                        lastFetchedDate DATETIME NOT NULL,
+                        lastReadDate DATETIME NOT NULL,
+                        orientation TEXT NOT NULL,
+                        showAllChapters BOOLEAN NOT NULL DEFAULT 0,
+                        showHalfChapters BOOLEAN NOT NULL DEFAULT 1
+                    )
+                    """)
+
+            try db.execute(
+                sql: """
+                    INSERT INTO series_new (
+                        id, preferredTitleId, preferredCoverId, preferredSynopsisId,
+                        preferredClassificationId, preferredPublicationId, inLibrary, status,
+                        addedDate, updatedDate, lastFetchedDate, lastReadDate, orientation,
+                        showAllChapters, showHalfChapters
+                    )
+                    SELECT
+                        id, preferredTitleId, preferredCoverId, preferredSynopsisId,
+                        preferredClassificationId, preferredPublicationId, inLibrary, status,
+                        addedDate, updatedDate, lastFetchedDate, lastReadDate, orientation,
+                        showAllChapters, showHalfChapters
+                    FROM series
+                    """)
+
+            try db.execute(sql: "DROP TABLE series")
+            try db.execute(sql: "ALTER TABLE series_new RENAME TO series")
+
+            try db.create(index: "idx_series_inLibrary", on: "series", columns: ["inLibrary"])
+            try db.create(
+                index: "idx_series_addedDate_id", on: "series", columns: ["addedDate", "id"])
+            try db.create(
+                index: "idx_series_updatedDate_id", on: "series", columns: ["updatedDate", "id"])
+            try db.create(
+                index: "idx_series_lastReadDate_id", on: "series", columns: ["lastReadDate", "id"])
+
+            try SeriesRecommendationRecord.createTable(db: db)
+            try SeriesRecommendationRecord.createIndexes(db: db)
         }
     }
 }

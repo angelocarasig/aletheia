@@ -17,7 +17,7 @@ enum CatalogSeries {}
 // what the engine hands back. deliberately carries no SeriesRecord and no cover
 // from our database: a recommendation is usually a series the reader does not
 // own, so it has to be renderable from the catalogue alone
-struct Recommendation: Sendable, Identifiable, Hashable {
+struct Recommendation: Sendable, Identifiable, Hashable, Codable {
     let catalogId: CatalogID
     // an index into this bundle, and only this bundle. row order is not stable
     // across catalogue snapshots, so this must never be persisted - catalogId is
@@ -49,7 +49,7 @@ struct Recommendation: Sendable, Identifiable, Hashable {
 
     var id: CatalogID { catalogId }
 
-    struct Blocks: Sendable, Hashable {
+    struct Blocks: Sendable, Hashable, Codable {
         let tag: Float
         let embedding: Float
         let era: Float

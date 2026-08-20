@@ -18,6 +18,7 @@ struct Compositor: Sendable {
     let metadata: Metadata
     let recommender: Recommender
     let impressions: Impressions
+    let seriesRecommendations: SeriesRecommendations
     let requester: AuthRequester
     let presenter: AuthPresenter
     // a caller that constructs its own NetworkService gets its own HostGate too,
@@ -71,6 +72,7 @@ struct Compositor: Sendable {
 
         self.recommender = V01Recommender()
         self.impressions = Impressions(database: database)
+        self.seriesRecommendations = SeriesRecommendations(database: database)
 
         self.db = Persistence(database: database, registry: registry, downloads: self.downloads)
     }

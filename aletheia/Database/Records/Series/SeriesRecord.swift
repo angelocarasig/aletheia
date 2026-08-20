@@ -35,12 +35,6 @@ struct SeriesRecord: Codable, Hashable, DatabaseRecord {
     var showAllChapters: Bool = false
     var showHalfChapters: Bool = true
 
-    // null means "no answer yet", never "not in the catalogue" - a resolution is
-    // a 25us alias lookup, so rechecking is free, and the catalogue is versioned:
-    // a title absent from v01 may exist in the next bundle, and a permanent
-    // negative here would never be revisited
-    var catalogId: Int64?
-
     init() {}
 }
 
@@ -60,7 +54,6 @@ extension SeriesRecord {
         static let preferredClassificationId = Column(CodingKeys.preferredClassificationId)
         static let preferredPublicationId = Column(CodingKeys.preferredPublicationId)
 
-        static let catalogId = Column(CodingKeys.catalogId)
         static let inLibrary = Column(CodingKeys.inLibrary)
         static let status = Column(CodingKeys.status)
         static let addedDate = Column(CodingKeys.addedDate)
@@ -106,14 +99,10 @@ extension SeriesRecord {
             t.column(Columns.showAllChapters.name, .boolean).notNull().defaults(to: false)
             // swift default is true - keep column default aligned
             t.column(Columns.showHalfChapters.name, .boolean).notNull().defaults(to: true)
-            t.column(Columns.catalogId.name, .integer)
         }
     }
 
     static func createIndexes(db: Database) throws {
-        try db.create(
-            index: "idx_series_catalogId", on: databaseTableName, columns: [Columns.catalogId.name],
-            ifNotExists: true)
         try db.create(
             index: "idx_series_inLibrary", on: databaseTableName, columns: [Columns.inLibrary.name],
             ifNotExists: true)

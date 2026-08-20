@@ -69,6 +69,7 @@ final class DetailsComposer {
         trackers: Compositor.Trackers,
         recommender: Recommender,
         impressions: Compositor.Impressions,
+        seriesRecommendations: Compositor.SeriesRecommendations,
         database: DatabaseClient
     ) {
         self.entry = entry
@@ -95,7 +96,11 @@ final class DetailsComposer {
             registry: registry,
             trackers: trackers
         )
-        recommendations = Recommendations(recommender: recommender, impressions: impressions)
+        recommendations = Recommendations(
+            recommender: recommender,
+            impressions: impressions,
+            seriesRecommendations: seriesRecommendations
+        )
         cadence = Cadence()
     }
 

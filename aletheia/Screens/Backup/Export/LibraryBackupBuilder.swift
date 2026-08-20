@@ -185,9 +185,6 @@ enum LibraryBackupBuilder {
             entry.orientation = row.orientation.rawValue
             entry.showAllChapters = row.showAllChapters
             entry.showHalfChapters = row.showHalfChapters
-            if let catalogId = row.catalogId {
-                entry.catalogID = catalogId
-            }
 
             entry.origins = (originsBySeriesId[seriesId] ?? []).compactMap { origin in
                 guard let originId = origin.id,

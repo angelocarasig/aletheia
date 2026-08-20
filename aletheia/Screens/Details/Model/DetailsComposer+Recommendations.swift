@@ -29,11 +29,17 @@ extension DetailsComposer {
         @ObservationIgnored private var running: Task<Void, Never>?
         @ObservationIgnored private let recommender: Recommender
         @ObservationIgnored private let impressions: Compositor.Impressions
+        @ObservationIgnored private let seriesRecommendations: Compositor.SeriesRecommendations
         @ObservationIgnored private var seriesId: SeriesRecord.ID?
 
-        init(recommender: Recommender, impressions: Compositor.Impressions) {
+        init(
+            recommender: Recommender,
+            impressions: Compositor.Impressions,
+            seriesRecommendations: Compositor.SeriesRecommendations
+        ) {
             self.recommender = recommender
             self.impressions = impressions
+            self.seriesRecommendations = seriesRecommendations
         }
 
         struct ImpressionContext: Equatable {
@@ -72,7 +78,22 @@ extension DetailsComposer {
         private func load(_ payload: Payload) {
             running?.cancel()
             phase = .pending
-            running = Task { [recommender, impressions, seriesId] in
+            running = Task { [recommender, impressions, seriesRecommendations, seriesId] in
+                guard let seriesId else { return }
+                let descriptor = await recommender.descriptor
+
+                if let cached = await seriesRecommendations.fetch(
+                    seriesId: seriesId, packId: descriptor.slug),
+                    cached.fingerprint == payload.fingerprint,
+                    let decoded = try? JSONDecoder().decode(
+                        [Recommendation].self, from: cached.rail)
+                {
+                    guard !Task.isCancelled else { return }
+                    results = decoded
+                    phase = decoded.isEmpty ? .empty : .content
+                    return
+                }
+
                 do {
                     let set = try await recommender.recommend(
                         payload,
@@ -86,26 +107,30 @@ extension DetailsComposer {
                     // arrives never changes visibility again, so it would never
                     // be recorded. that would silently drop exactly the
                     // above-the-fold cards, the opposite of what this exists to fix
-                    var next: ImpressionContext?
-                    if let seriesId {
-                        let descriptor = await recommender.descriptor
-                        let owned = await impressions.owned()
-                        guard !Task.isCancelled else { return }
-                        next = ImpressionContext(
-                            batchId: Compositor.Impressions.batch(),
-                            series: seriesId,
-                            seedCatalogId: set.seedCatalogId,
-                            modelVersion: "\(descriptor.slug)/format\(descriptor.formatVersion)",
-                            owned: owned)
-                        // previously discarded - keeping it is what lets a
-                        // recommendation shown today join a series added next week
-                        impressions.stamp(catalogId: set.seedCatalogId, for: seriesId)
-                    }
+                    let owned = await impressions.owned()
+                    guard !Task.isCancelled else { return }
+                    let next = ImpressionContext(
+                        batchId: Compositor.Impressions.batch(),
+                        series: seriesId,
+                        seedCatalogId: set.seedCatalogId,
+                        modelVersion: "\(descriptor.slug)/format\(descriptor.formatVersion)",
+                        owned: owned)
 
                     seed = set.seed
                     context = next
                     results = set.results
                     phase = set.results.isEmpty ? .empty : .content
+
+                    // the cache is what stamps resolution identity now - a
+                    // background write, not on the critical path to rendering
+                    if let encoded = try? JSONEncoder().encode(set.results) {
+                        await seriesRecommendations.save(
+                            seriesId: seriesId,
+                            packId: descriptor.slug,
+                            catalogId: set.seedCatalogId.map { Int64($0.rawValue) },
+                            fingerprint: payload.fingerprint,
+                            rail: encoded)
+                    }
                 } catch {
                     guard !Task.isCancelled else { return }
                     // no retry - a build with no model is the ordinary case on a

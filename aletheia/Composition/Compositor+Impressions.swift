@@ -57,33 +57,27 @@ extension Compositor {
             Task { await writer.tapped(catalogId: Int64(catalogId.rawValue), batchId: batchId) }
         }
 
-        // the seed's catalogue row, kept so a recommendation shown today can be
-        // joined to a series added next week. the write's own WHERE clause
-        // (below) makes an unchanged value a no-op UPDATE rather than skipping
-        // the call
-        func stamp(catalogId: CatalogID?, for series: SeriesRecord.ID) {
-            guard let catalogId else { return }
-            Task { await writer.stamp(catalogId: Int64(catalogId.rawValue), for: series) }
-        }
-
         // which catalogue rows the reader already owns, so an impression can say
         // whether it was suggesting something new. read once per result set - a
         // rail draws twenty cards and this is one query
         //
-        // only stamped series are here. Details is what stamps catalogId in the
-        // normal add flow; a backup-restored series sets inLibrary directly
-        // (LibraryBackupRestorer) and is not counted here until its next
-        // Details open resolves the seed
+        // only series with a resolved series_recommendation row are here.
+        // Compositor.SeriesRecommendations.save is what writes resolution
+        // identity in the normal recommend flow; a backup-restored series sets
+        // inLibrary directly (LibraryBackupRestorer) and is not counted here
+        // until its next Details open resolves the seed
         func owned() async -> Set<CatalogID> {
             do {
                 return try await database.reader.read { db in
                     let ids = try Int64.fetchAll(
                         db,
                         sql: """
-                            SELECT \(SeriesRecord.Columns.catalogId.name)
-                            FROM \(SeriesRecord.databaseTableName)
-                            WHERE \(SeriesRecord.Columns.inLibrary.name) = 1
-                              AND \(SeriesRecord.Columns.catalogId.name) IS NOT NULL
+                            SELECT rc.\(SeriesRecommendationRecord.Columns.catalogId.name)
+                            FROM \(SeriesRecommendationRecord.databaseTableName) rc
+                            JOIN \(SeriesRecord.databaseTableName) s
+                              ON s.\(SeriesRecord.Columns.id.name) = rc.\(SeriesRecommendationRecord.Columns.seriesId.name)
+                            WHERE s.\(SeriesRecord.Columns.inLibrary.name) = 1
+                              AND rc.\(SeriesRecommendationRecord.Columns.catalogId.name) IS NOT NULL
                             """)
                     return Set(ids.map { CatalogID(rawValue: Int32($0)) })
                 }
@@ -187,28 +181,5 @@ extension Compositor.Impressions {
             }
         }
 
-        func stamp(catalogId: Int64, for series: SeriesRecord.ID) async {
-            do {
-                try await database.writer.write { db in
-                    try db.execute(
-                        sql: """
-                            UPDATE \(SeriesRecord.databaseTableName)
-                            SET \(SeriesRecord.Columns.catalogId.name) = ?
-                            WHERE \(SeriesRecord.Columns.id.name) = ?
-                              AND (\(SeriesRecord.Columns.catalogId.name) IS NULL
-                                   OR \(SeriesRecord.Columns.catalogId.name) <> ?)
-                            """, arguments: [catalogId, series.rawValue, catalogId])
-                    if db.changesCount > 0 {
-                        AppLog.shared.log(
-                            "stamped series \(series.rawValue) as catalog \(catalogId)",
-                            category: "impressions")
-                    }
-                }
-            } catch {
-                AppLog.shared.log(
-                    "catalogId not stamped - \(error)",
-                    level: .error, category: "impressions")
-            }
-        }
     }
 }

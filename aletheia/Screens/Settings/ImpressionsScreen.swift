@@ -220,17 +220,19 @@ extension ImpressionsScreen {
                             FROM \(table)
                             """)
 
-                    // a tap that later appears in the library. the join is on
-                    // series.catalogId, which is the whole reason that column
-                    // exists - without it this row could not be written
+                    // a tap that later appears in the library. resolution
+                    // identity lives on series_recommendation now, not series -
+                    // the join goes through it
                     let converted =
                         try Int.fetchOne(
                             db,
                             sql: """
                                 SELECT count(DISTINCT i.catalogId)
                                 FROM \(table) i
+                                JOIN \(SeriesRecommendationRecord.databaseTableName) rc
+                                  ON rc.\(SeriesRecommendationRecord.Columns.catalogId.name) = i.catalogId
                                 JOIN \(SeriesRecord.databaseTableName) s
-                                  ON s.\(SeriesRecord.Columns.catalogId.name) = i.catalogId
+                                  ON s.\(SeriesRecord.Columns.id.name) = rc.\(SeriesRecommendationRecord.Columns.seriesId.name)
                                  AND s.\(SeriesRecord.Columns.inLibrary.name) = 1
                                 WHERE i.tappedDate IS NOT NULL
                                 """) ?? 0
