@@ -13,8 +13,35 @@ extension Compositor {
     final class Recommendations: Sendable {
         private let database: DatabaseClient
 
+        // a cache entry this old is stale regardless of fingerprint - a
+        // scorer/blend change alone (same seed, same pack, better answer)
+        // never touches the fingerprint, so without this an entry could
+        // otherwise serve the same answer forever
+        private static let ttl: TimeInterval = 3 * 24 * 60 * 60
+
         init(database: DatabaseClient) {
             self.database = database
+        }
+
+        // startup job, same shape as assets.sweep()/downloads.sweep()
+        func sweep() {
+            guard !Constants.App.isPreview else { return }
+            Task { [database] in
+                let threshold = Date.now.addingTimeInterval(-Self.ttl)
+                do {
+                    let removed = try await database.writer.write { db in
+                        try SeriesRecommendationRecord
+                            .filter(SeriesRecommendationRecord.Columns.computedDate < threshold)
+                            .deleteAll(db)
+                    }
+                    AppLog.shared.log(
+                        "swept \(removed) stale recommendation(s)", category: "recommendations")
+                } catch {
+                    AppLog.shared.log(
+                        "recommendation sweep FAILED - \(error)", level: .error,
+                        category: "recommendations")
+                }
+            }
         }
 
         // the one lookup a caller ever needs - a miss (nil) means "compute it",

@@ -68,6 +68,7 @@ final class Bootstrap {
             // must run after db.clean() - its cascade is what orphans the files being swept
             compositor.assets.sweep()
             compositor.downloads.sweep()
+            compositor.recommendations.sweep()
 
             // must complete before launch ends - a system-started BGTask launch has
             // no screen to register from later
@@ -104,11 +105,6 @@ final class Bootstrap {
                 #if DEBUG
                     await Task.detached { ModelBundle.probe() }.value
                     await ModelBundle.probe(compositor.recommender)
-                    if let orihimeBundle = try? await OrihimeBundle.ensureDownloadedBundle() {
-                        await OrihimeBundle.probe(bundle: orihimeBundle)
-                        await OrihimeTextEncoder.probe(bundle: orihimeBundle)
-                        await OrihimeCoverEncoder.probe(bundle: orihimeBundle)
-                    }
                 #endif
             }
         } catch {
