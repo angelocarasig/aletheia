@@ -26,8 +26,12 @@ struct OrihimeRails: Sendable {
     private let type: MappedArray<UInt8>
     private let register: MappedArray<UInt8>
     private let excluded: MappedArray<UInt8>
+    private let year: MappedArray<Int16>
     private let formatByIndex: [Int: CatalogFormat]
     private let k: Int
+
+    // -32768, per V02Artifact.md - a year of "unknown" rather than a missing row
+    private static let yearUnknown: Int16 = -32768
 
     init(bundle: OrihimeBundle) throws {
         titles = try bundle.array("titles.npy", of: Int64.self)
@@ -38,6 +42,7 @@ struct OrihimeRails: Sendable {
         type = try bundle.array("type.npy", of: UInt8.self)
         register = try bundle.array("register.npy", of: UInt8.self)
         excluded = try bundle.array("excluded.npy", of: UInt8.self)
+        year = try bundle.array("year.npy", of: Int16.self)
         k = bundle.manifest.counts.k
 
         // type.npy's index into manifest.typeCodes does not match CatalogFormat's
@@ -107,5 +112,17 @@ struct OrihimeRails: Sendable {
                     score: Float(scores[seed * k + i])))
         }
         return results
+    }
+
+    // presentation accessors, for a row already known to be a candidate (or the
+    // seed itself) - not filters, just the same per-row arrays candidates() reads
+    func format(forRow row: Int) -> CatalogFormat? { formatByIndex[Int(type[row])] }
+    func register(forRow row: Int) -> RegisterAxis { RegisterAxis(rawValue: Int(register[row])) ?? .general }
+    func classification(forRow row: Int) -> Classification {
+        ContentCeiling(rawValue: Int(rating[row]))?.classification ?? .Unknown
+    }
+    func year(forRow row: Int) -> Int? {
+        let value = year[row]
+        return value == Self.yearUnknown ? nil : Int(value)
     }
 }
