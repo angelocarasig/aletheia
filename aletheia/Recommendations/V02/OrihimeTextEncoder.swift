@@ -49,7 +49,12 @@ actor OrihimeTextEncoder {
             // rather than array(_:of:)/blob(_:)
             let tokenizerURL = try bundle.modelURL(
                 "models/text-tokenizer/sentencepiece.bpe.model")
-            tokenizer = try SentencepieceTokenizer(modelPath: tokenizerURL.path)
+            // tokenOffset: 0 - raw piece ids. XLM-R's real id layout (per
+            // tokenizer.json's added_tokens) isn't a uniform shift: <s>=0,
+            // <pad>=1, </s>=2, <unk>=3, regular pieces start at 4. the
+            // library's uniform tokenOffset can't express that remap, so
+            // it's done by hand in xlmRobertaId(fromRaw:) below
+            tokenizer = try SentencepieceTokenizer(modelPath: tokenizerURL.path, tokenOffset: 0)
         } catch let error as RecommenderError {
             failure = error
             throw error
@@ -78,6 +83,25 @@ actor OrihimeTextEncoder {
         return (0..<embedding.count).map { Float(truncating: embedding[$0]) }
     }
 
+    // real ids per models/text-tokenizer/tokenizer.json's added_tokens,
+    // confirmed directly against the pack, not swift-sentencepiece's
+    // generic tokenOffset scheme (which doesn't match this layout)
+    private static let bosId = 0
+    private static let padId = 1
+    private static let eosId = 2
+    private static let unkId = 3
+
+    // raw sentencepiece ids (bos=1, eos=2, unk=0 internally) get remapped
+    // to XLM-R's real ids; every other piece just shifts by 1 to make room
+    private func xlmRobertaId(fromRaw raw: Int) -> Int {
+        switch raw {
+        case 0: return Self.unkId
+        case 1: return Self.bosId
+        case 2: return Self.eosId
+        default: return raw + 1
+        }
+    }
+
     // XLM-RoBERTa's own convention - <s> tokens </s> - which encode() does
     // not add on its own; it hands back raw sentencepiece ids only. "query: "
     // is the prefix e5 requires, confirmed via params/blend.json's
@@ -85,15 +109,16 @@ actor OrihimeTextEncoder {
     private func tokenize(
         _ text: String, with tokenizer: SentencepieceTokenizer
     ) throws -> (MLMultiArray, MLMultiArray) {
-        let pieces = try tokenizer.encode("query: " + text)
+        let rawPieces = try tokenizer.encode("query: " + text)
+        let pieces = rawPieces.map(xlmRobertaId(fromRaw:))
         let budget = Self.sequenceLength - 2
         let truncated = pieces.count > budget ? Array(pieces.prefix(budget)) : pieces
 
-        var ids = [tokenizer.bosTokenId] + truncated + [tokenizer.eosTokenId]
+        var ids = [Self.bosId] + truncated + [Self.eosId]
         var mask = [Int](repeating: 1, count: ids.count)
         let padCount = Self.sequenceLength - ids.count
         if padCount > 0 {
-            ids.append(contentsOf: repeatElement(tokenizer.padTokenId, count: padCount))
+            ids.append(contentsOf: repeatElement(Self.padId, count: padCount))
             mask.append(contentsOf: repeatElement(0, count: padCount))
         }
 

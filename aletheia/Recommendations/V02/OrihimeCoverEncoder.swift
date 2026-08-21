@@ -8,6 +8,7 @@
 import CoreML
 import CoreGraphics
 import Foundation
+import Vision
 
 // MobileCLIP-S0, run only for an unresolved seed's own cover - a resolved
 // seed's cover contribution already lives precomputed in the rails table.
@@ -63,7 +64,14 @@ actor OrihimeCoverEncoder {
     // access to
     func encode(_ image: CGImage) throws -> [Float] {
         guard let model, let constraint else { throw RecommenderError.unavailable }
-        let feature = try MLFeatureValue(cgImage: image, constraint: constraint, options: nil)
+        // MobileCLIP (like every CLIP family model) trains on resize-shorter-
+        // side-then-center-crop, not stretch-to-fit - the omitted-options
+        // default isn't documented by Apple, so this is spelled out rather
+        // than left implicit
+        let options: [MLFeatureValue.ImageOption: Any] = [
+            .cropAndScale: VNImageCropAndScaleOption.centerCrop.rawValue
+        ]
+        let feature = try MLFeatureValue(cgImage: image, constraint: constraint, options: options)
         let input = try MLDictionaryFeatureProvider(dictionary: ["image": feature])
         let output = try model.prediction(from: input)
         guard let embedding = output.featureValue(for: "final_emb_1")?.multiArrayValue else {
