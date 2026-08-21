@@ -116,6 +116,7 @@ struct OrihimeRails: Sendable {
 
     // presentation accessors, for a row already known to be a candidate (or the
     // seed itself) - not filters, just the same per-row arrays candidates() reads
+    func catalogId(forRow row: Int) -> Int64 { titles[row] }
     func format(forRow row: Int) -> CatalogFormat? { formatByIndex[Int(type[row])] }
     func register(forRow row: Int) -> RegisterAxis { RegisterAxis(rawValue: Int(register[row])) ?? .general }
     func classification(forRow row: Int) -> Classification {
