@@ -7,6 +7,14 @@
 
 import Foundation
 
+// which concrete RecommenderService a pack's files load through - the join
+// RecommendationsService needs to build the right adapter for whichever
+// packId the reader picks, since two packs never share one loader
+enum RecommendationAdapter: Sendable {
+    case v01
+    case orihime
+}
+
 // one entry per RecommenderService this app actually ships an adapter for -
 // not a mirror of whatever a manifest happens to list. a pack the app can't
 // read is not a pickable option, so the list is fixed here rather than
@@ -19,6 +27,7 @@ struct RecommendationModelOption: Identifiable, Sendable {
     // as a literal subfolder inside the pack, not flattened, so every file
     // read against this pack is rooted here
     let assetRoot: String
+    let adapter: RecommendationAdapter
 
     var id: String { packId }
 
@@ -27,17 +36,15 @@ struct RecommendationModelOption: Identifiable, Sendable {
             packId: "protostar-1-0-0",
             name: "Protostar",
             subtitle: "The current recommendation model",
-            assetRoot: "protostar-1-0-0-2026.08"
+            assetRoot: "protostar-1-0-0-2026.08",
+            adapter: .v01
         ),
-        // temporary exception to the rule above - no OrihimeRecommender exists yet
-        // (v02 phase 2b). here early only so Download/Remove give dev-side control
-        // over the pack while iterating on pack rebuilds; selecting it as active
-        // degrades gracefully to no results, same as any other unavailable model
         RecommendationModelOption(
             packId: "orihime-2-0-0",
             name: "Orihime",
-            subtitle: "Not wired to a recommender yet - for pack testing only",
-            assetRoot: "orihime-2-0-0-2026.08"
+            subtitle: "A richer blend - resolved titles only for now",
+            assetRoot: "orihime-2-0-0-2026.08",
+            adapter: .orihime
         ),
     ]
 }

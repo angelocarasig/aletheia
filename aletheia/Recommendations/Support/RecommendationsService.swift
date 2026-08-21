@@ -26,8 +26,17 @@ actor RecommendationsService: RecommenderService {
         selectedPackId = selected
         guard let option = options.first(where: { $0.packId == selected }) else { return }
         loadedPackId = option.packId
-        current = V01Recommender(
-            source: .assetPack(id: option.packId, root: option.assetRoot))
+        current = Self.build(option)
+    }
+
+    private static func build(_ option: RecommendationModelOption) -> Recommender {
+        switch option.adapter {
+        case .v01:
+            return V01Recommender(source: .assetPack(id: option.packId, root: option.assetRoot))
+        case .orihime:
+            return OrihimeRecommender(
+                source: .assetPack(id: option.packId, root: option.assetRoot))
+        }
     }
 
     var descriptor: RecommenderDescriptor {
