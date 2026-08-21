@@ -82,7 +82,11 @@
 
         // step 7: the whole thing through the protocol, as a caller would use it.
         // proves the wiring, the metadata join and both resolution tiers - the parts
-        // no fixture covers because they only exist on this side
+        // no fixture covers because they only exist on this side. "Chainsaw Man" is
+        // just a title guaranteed to resolve in either pack's alias table, not
+        // anything the log needs to name back - the log stays generic even though
+        // the input doesn't, since recommender is `any Recommender` here (whichever
+        // pack is active), not necessarily this file's own ModelBundle
         static func probe(_ recommender: Recommender) async {
             let log = { (m: String) in AppLog.shared.log(m, category: "recommender") }
             let descriptor = await recommender.descriptor
@@ -102,21 +106,19 @@
                     ceiling: .suggestive, formats: CatalogFormat.comics, limit: 5)
                 let took = Date().timeIntervalSince(started)
 
-                guard case .resolved(let row, let matched, let votes) = set.seed else {
+                guard case .resolved(let row, _, let votes) = set.seed else {
                     log("  seed resolved unexpectedly: \(set.seed)")
                     return
                 }
                 log(
                     String(
-                        format: "  resolved \"%@\" to row %d (%d vote) in %.0fms, wTagEff %.2f",
-                        matched, row, votes, took * 1000, set.wTagEff))
+                        format: "  resolved probe seed to row %d (%d vote) in %.0fms, wTagEff %.2f",
+                        row, votes, took * 1000, set.wTagEff))
                 for r in set.results.prefix(3) {
                     log(
-                        "    \(r.title) [\(r.catalogId.rawValue)] "
+                        "    [\(r.catalogId.rawValue)] "
                             + String(format: "score %.2f conf %.2f", r.score, r.confidence)
                             + " - \(r.format) \(r.publication) \(r.year.map(String.init) ?? "?")"
-                            + " - \(r.authors.first ?? "no author")"
-                            + " - \(r.tags.prefix(3).joined(separator: "/"))"
                             + " - cover \(r.cover == nil ? "none" : "yes")"
                             + " - synopsis \(r.synopsis?.count ?? 0) chars")
                 }
@@ -129,8 +131,7 @@
                 if case .projected(let encoded, let dropped) = projected.seed {
                     log(
                         "  projected - \(encoded) columns encoded, \(dropped) tags dropped, "
-                            + "\(projected.results.count) results, top: "
-                            + (projected.results.first?.title ?? "none"))
+                            + "\(projected.results.count) results")
                 } else {
                     log("  projected path did not project: \(projected.seed)")
                 }
