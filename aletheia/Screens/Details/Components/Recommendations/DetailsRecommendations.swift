@@ -9,7 +9,7 @@ import SwiftUI
 import Tagged
 
 struct DetailsRecommendations: View {
-    let phase: LoadPhase
+    let phase: RecommendationsPhase
     let results: [Recommendation]
     let onOpen: (Recommendation) -> Void
     var context: DetailsComposer.Recommendations.ImpressionContext? = nil
@@ -71,12 +71,27 @@ struct DetailsRecommendations: View {
                         }
                     }
                     .transition(.opacity)
-                case .empty, .failed:
-                    Text("Nothing similar found for this title.")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .padding(.vertical, dimensions.spacing.space8)
-                        .transition(.opacity)
+                case .empty:
+                    ContentUnavailableView(
+                        "No Similar Titles",
+                        systemImage: "sparkle.magnifyingglass",
+                        description: Text("Nothing else in the catalogue matched closely enough.")
+                    )
+                    .transition(.opacity)
+                case .noModel:
+                    ContentUnavailableView(
+                        "No Recommendation Model",
+                        systemImage: "sparkles",
+                        description: Text("Download a model in Settings to see titles like this one.")
+                    )
+                    .transition(.opacity)
+                case .failed:
+                    ContentUnavailableView(
+                        "Couldn't Load Recommendations",
+                        systemImage: "exclamationmark.triangle",
+                        description: Text("Something went wrong reading the recommendation data.")
+                    )
+                    .transition(.opacity)
                 }
             }
             .animation(.settle, value: phase)
@@ -118,5 +133,57 @@ extension Recommendation {
     // by it, the tap hands back the Recommendation itself
     fileprivate var stub: SeriesStub {
         SeriesStub(slug: String(catalogId.rawValue), title: title, cover: cover)
+    }
+}
+
+// MARK: - Previews
+
+#Preview {
+    @Previewable @State var phase: RecommendationsPhase = .content
+
+    NavigationStack {
+        ScrollView {
+            DetailsRecommendations(
+                phase: phase,
+                results: phase == .content ? .previewSample : [],
+                onOpen: { _ in }
+            )
+            .padding()
+        }
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Picker("Phase", selection: $phase) {
+                    Text("Pending").tag(RecommendationsPhase.pending)
+                    Text("Content").tag(RecommendationsPhase.content)
+                    Text("Empty").tag(RecommendationsPhase.empty)
+                    Text("No Model").tag(RecommendationsPhase.noModel)
+                    Text("Failed").tag(RecommendationsPhase.failed)
+                }
+            }
+        }
+    }
+}
+
+extension [Recommendation] {
+    fileprivate static var previewSample: [Recommendation] {
+        (0..<6).map { i in
+            Recommendation(
+                catalogId: CatalogID(rawValue: Int32(1000 + i)),
+                row: i,
+                title: "Sample Title \(i + 1)",
+                authors: ["Author Name"],
+                artists: ["Artist Name"],
+                cover: nil,
+                synopsis: "A short preview synopsis for sample title \(i + 1).",
+                tags: ["Action", "Fantasy"],
+                classification: .Safe,
+                publication: .Ongoing,
+                year: 2020 + i,
+                format: .manga,
+                register: .general,
+                score: Float(3.4 - Double(i) * 0.2),
+                confidence: 0,
+                blocks: .init(tag: 0, embedding: 0, era: 0))
+        }
     }
 }

@@ -9,11 +9,24 @@ import Foundation
 import Observation
 import Tagged
 
+// richer than LoadPhase (shared across every loading surface in the app) -
+// noModel and empty read as different things to a reader: one says "go
+// download a model," the other says "the model looked and found nothing."
+// collapsing them loses exactly the distinction that makes either message
+// worth showing
+enum RecommendationsPhase: Hashable {
+    case pending
+    case content
+    case empty
+    case noModel
+    case failed
+}
+
 extension DetailsComposer {
     @MainActor
     @Observable
     final class Recommendations: DetailsApplying {
-        private(set) var phase: LoadPhase = .pending
+        private(set) var phase: RecommendationsPhase = .pending
         private(set) var results: [Recommendation] = []
 
         // kept though nothing renders it yet - the difference between "the
@@ -133,10 +146,16 @@ extension DetailsComposer {
                     }
                 } catch {
                     guard !Task.isCancelled else { return }
-                    // no retry - a build with no model is the ordinary case on a
-                    // fresh checkout, and none of these clear by trying again
+                    // no retry - neither clears by trying again. unavailable is
+                    // the ordinary case on a fresh checkout or before a reader
+                    // has picked a model; anything else is real data corruption,
+                    // which is what actually earns .failed over .empty
                     results = []
-                    phase = .empty
+                    if case RecommenderError.unavailable = error {
+                        phase = .noModel
+                    } else {
+                        phase = .failed
+                    }
                     AppLog.shared.log(
                         "recommendations unavailable - \(error)",
                         category: "recommender")
