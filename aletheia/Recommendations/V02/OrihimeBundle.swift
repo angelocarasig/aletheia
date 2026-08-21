@@ -22,6 +22,7 @@ extension Int16: NumpyScalar { static var numpyDtype: String { "i2" } }
 extension Int32: NumpyScalar { static var numpyDtype: String { "i4" } }
 extension Int64: NumpyScalar { static var numpyDtype: String { "i8" } }
 extension UInt8: NumpyScalar { static var numpyDtype: String { "u1" } }
+extension UInt32: NumpyScalar { static var numpyDtype: String { "u4" } }
 extension Float: NumpyScalar { static var numpyDtype: String { "f4" } }
 extension Float16: NumpyScalar { static var numpyDtype: String { "f2" } }
 
@@ -29,6 +30,10 @@ struct OrihimeBundle: Sendable {
     static let supportedPackSchema = 2
 
     let manifest: OrihimeManifest
+    // nil means this build's pack predates the display/ addition, or the
+    // reader hasn't downloaded a pack new enough to carry it - the same
+    // "a build without it still scores" shape v01's own metadata pack follows
+    let display: OrihimeDisplayManifest?
     private let mapped: [String: Data]
 
     enum Source: Sendable {
@@ -88,7 +93,27 @@ struct OrihimeBundle: Sendable {
             }
         }
 
-        return OrihimeBundle(manifest: manifest, mapped: mapped)
+        // everything left with no shape - a blob (titles.blob, covers.blob, ...) or
+        // display/metadata.json itself. not npy, so size is the only check available
+        let npzNames = Set(npzMembers.keys)
+        for (name, spec) in manifest.files where spec.shape == nil && !npzNames.contains(name) {
+            guard let data = try read(name, from: source) else {
+                throw RecommenderError.malformed(file: name, reason: "not in the pack")
+            }
+            guard data.count == spec.bytes else {
+                throw RecommenderError.truncated(file: name, expected: spec.bytes, found: data.count)
+            }
+            mapped[name] = data
+        }
+
+        var display: OrihimeDisplayManifest?
+        if let data = mapped["display/metadata.json"] {
+            let displayDecoder = JSONDecoder()
+            displayDecoder.keyDecodingStrategy = .convertFromSnakeCase
+            display = try? displayDecoder.decode(OrihimeDisplayManifest.self, from: data)
+        }
+
+        return OrihimeBundle(manifest: manifest, display: display, mapped: mapped)
     }
 
     func array<Element: NumpyScalar>(
@@ -113,6 +138,13 @@ struct OrihimeBundle: Sendable {
         }
         let count = header.shape.reduce(1, *)
         return MappedArray(data: data, offset: header.dataOffset, count: count)
+    }
+
+    func blob(_ file: String) throws -> Data {
+        guard let data = mapped[file] else {
+            throw RecommenderError.malformed(file: file, reason: "not mapped")
+        }
+        return data
     }
 
     private static func validate(_ name: String, data: Data, spec: OrihimeManifest.FileSpec) throws {
