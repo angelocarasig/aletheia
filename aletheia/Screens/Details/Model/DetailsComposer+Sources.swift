@@ -53,6 +53,7 @@ extension DetailsComposer {
                     id: row.id,
                     name: row.sourceName ?? row.sourceSlug ?? "Unknown Source",
                     slug: row.slug,
+                    sourceSlug: row.sourceSlug,
                     host: row.sourceBaseURL?.host() ?? row.sourceSlug ?? "",
                     url: URL(string: row.url),
                     icon: row.sourceSlug.flatMap { registry.source(slug: $0) }?.descriptor.icon,
@@ -250,6 +251,10 @@ extension DetailsComposer.Sources {
         let id: Int64
         let name: String
         let slug: String
+        // the machine identifier a source is looked up by, distinct from
+        // `name`'s display text - resetSeries() needs this to find the
+        // installed Source again, which a display string isn't guaranteed to be
+        let sourceSlug: String?
         let host: String
         let url: URL?
         let icon: ImageResource?

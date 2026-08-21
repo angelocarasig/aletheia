@@ -36,6 +36,7 @@ struct DetailsScreen: View {
     @State private var markCommitted: UUID?
     @State private var showingDisambiguation = false
     @State private var inspecting: Recommendation?
+    @State private var showingResetConfirmation = false
     // written here, read only inside the backdrop - reading it in this body
     // would re-evaluate the whole chapter list on every scroll step
     @State private var scroll = DetailsScroll()
@@ -128,10 +129,9 @@ struct DetailsScreen: View {
         .onChange(of: composer?.identity.isAmbiguous ?? false) { _, needs in
             showingDisambiguation = needs
         }
-        .confirmationDialog(
+        .alert(
             "Remove \(removing?.name ?? "this source")?",
-            isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } }),
-            titleVisibility: .visible
+            isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } })
         ) {
             Button("Remove Source", role: .destructive) {
                 guard let id = removing?.id else { return }
@@ -142,6 +142,19 @@ struct DetailsScreen: View {
         } message: {
             Text(
                 "Its chapters are removed with it. Your reading progress on chapters from other sources is kept."
+            )
+        }
+        .alert(
+            "Reset Series?",
+            isPresented: $showingResetConfirmation
+        ) {
+            Button("Reset Series", role: .destructive) {
+                Task { await composer?.resetSeries() }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(
+                "This deletes reading history, progress, and downloads for this series, then re-adds it fresh from its primary source. Additional linked sources aren't kept. This can't be undone."
             )
         }
         .alert(
@@ -532,7 +545,8 @@ struct DetailsScreen: View {
             catchUp: { progress in Task { await composer.catchUp(to: progress) } },
             mark: { read, numbers in requestMark(composer, read: read, numbers: numbers) },
             read: { chapter in open(chapter, in: composer) },
-            inspect: { inspecting = $0 }
+            inspect: { inspecting = $0 },
+            confirmReset: { showingResetConfirmation = true }
         )
     }
 

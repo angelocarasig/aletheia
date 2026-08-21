@@ -323,6 +323,7 @@ private struct SourcesPreview: View {
             id: 1,
             name: "MangaFire",
             slug: "one-piece.abc123",
+            sourceSlug: "mangafire",
             host: "mangafire.to",
             url: URL(string: "https://mangafire.to/manga/one-piece.abc123"),
             icon: nil,
@@ -340,6 +341,7 @@ private struct SourcesPreview: View {
             id: 2,
             name: "WeebCentral",
             slug: "01J76XY",
+            sourceSlug: "weebcentral",
             host: "weebcentral.com",
             url: URL(string: "https://weebcentral.com/series/01J76XY"),
             icon: nil,
@@ -367,21 +369,25 @@ private struct SourcesPreview: View {
         DetailsSources(
             origins: [
                 .init(
-                    id: 1, name: "MangaFire", slug: "one-piece", host: "mangafire.to", url: nil,
+                    id: 1, name: "MangaFire", slug: "one-piece", sourceSlug: "mangafire",
+                    host: "mangafire.to", url: nil,
                     icon: nil, priority: 0, chapterCount: 1102, fetchedDate: .now,
                     availability: .disabled, failureReason: nil, failedDate: nil),
                 .init(
-                    id: 2, name: "WeebCentral", slug: "01J76XY", host: "weebcentral.com", url: nil,
+                    id: 2, name: "WeebCentral", slug: "01J76XY", sourceSlug: "weebcentral",
+                    host: "weebcentral.com", url: nil,
                     icon: nil, priority: 1, chapterCount: 1098, fetchedDate: nil,
                     availability: .disconnected, failureReason: nil, failedDate: nil),
                 .init(
-                    id: 3, name: "Atsumaru", slug: "op", host: "atsu.moe", url: nil, icon: nil,
+                    id: 3, name: "Atsumaru", slug: "op", sourceSlug: "atsumaru", host: "atsu.moe",
+                    url: nil, icon: nil,
                     priority: 2, chapterCount: 0, fetchedDate: nil, availability: .missing,
                     failureReason: nil, failedDate: nil),
                 // disabled overrides failing - Origin.failing requires
                 // availability == .available, so this row shows no trouble line
                 .init(
-                    id: 4, name: "MangaDex", slug: "uuid", host: "mangadex.org", url: nil,
+                    id: 4, name: "MangaDex", slug: "uuid", sourceSlug: "mangadex",
+                    host: "mangadex.org", url: nil,
                     icon: nil, priority: 3, chapterCount: 900, fetchedDate: nil,
                     availability: .disabled, failureReason: "Check your connection and try again.",
                     failedDate: .now),

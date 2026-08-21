@@ -25,6 +25,7 @@ struct DetailsActions: View {
     var onMerge: () -> Void
     var onDownloadUnread: () -> Void = {}
     var onDeleteDownloads: () -> Void = {}
+    var onResetSeries: () -> Void = {}
 
     @Environment(\.dimensions) private var dimensions
 
@@ -189,6 +190,13 @@ struct DetailsActions: View {
             Button(role: .destructive, action: onDeleteDownloads) {
                 Label("Delete Downloads", systemImage: "trash")
             }
+
+            Divider()
+
+            Button(role: .destructive, action: onResetSeries) {
+                Label("Reset Series", systemImage: "arrow.counterclockwise")
+            }
+            .disabled(!inLibrary)
 
             Divider()
 

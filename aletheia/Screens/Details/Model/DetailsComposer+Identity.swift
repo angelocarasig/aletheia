@@ -186,7 +186,15 @@ extension DetailsComposer {
         identity.dismiss()
 
         guard let held else {
-            await store(into: id)
+            guard let opener, let stub else {
+                failure = Failure(
+                    title: "Source Unavailable",
+                    message: "No installed source can open this series.",
+                    isRetryable: false
+                )
+                return
+            }
+            await store(into: id, opener: opener, stub: stub)
             return
         }
 

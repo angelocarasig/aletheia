@@ -192,14 +192,6 @@ extension DetailsComposer {
     }
 
     func settle() async {
-        if let held {
-            observe(held)
-        } else {
-            await store(into: nil)
-        }
-    }
-
-    func store(into existing: SeriesRecord.ID?) async {
         guard let opener, let stub else {
             failure = Failure(
                 title: "Source Unavailable",
@@ -209,6 +201,18 @@ extension DetailsComposer {
             return
         }
 
+        if let held {
+            observe(held)
+        } else {
+            await store(into: nil, opener: opener, stub: stub)
+        }
+    }
+
+    // opener/stub are explicit, not self.opener/self.stub - resetSeries()
+    // calls this for an already-in-library series (entry is .library, so
+    // those computed properties are nil), reusing the same write path a
+    // fresh-from-search add already takes
+    func store(into existing: SeriesRecord.ID?, opener: Source, stub: SeriesStub) async {
         do {
             let detail = try await opener.details(seriesSlug: stub.slug)
             let sourceSlug = opener.descriptor.slug
@@ -270,6 +274,41 @@ extension DetailsComposer {
         } catch {
             failure = Failure(error, fallback: "Couldn't Load Series")
         }
+    }
+
+    // troubleshooting, not an everyday action: deletes this series' row -
+    // cascading reading history, progress, downloads, and cached
+    // recommendations away with it - then re-adds it fresh from its primary
+    // source, the same write path a from-search add already takes. entry is
+    // .library here, so self.opener/self.stub are nil (source-only) -
+    // rebuilt from the series' own current data instead. any source beyond
+    // the primary is not recreated; the confirmation alert says so
+    func resetSeries() async {
+        guard let id = seriesId else { return }
+        guard let origin = sources.origins.first, let sourceSlug = origin.sourceSlug,
+            let opener = registry.source(slug: sourceSlug)
+        else {
+            failure = Failure(
+                title: "Source Unavailable",
+                message: "No installed source can open this series.",
+                isRetryable: false
+            )
+            return
+        }
+        let stub = SeriesStub(slug: origin.slug, title: series.title, cover: series.cover)
+
+        do {
+            try await database.writer.write { db in
+                _ = try SeriesRecord.deleteOne(db, key: id.rawValue)
+            }
+        } catch {
+            failure = Failure(error, fallback: "Couldn't Reset Series")
+            return
+        }
+
+        seriesId = nil
+        held = nil
+        await store(into: nil, opener: opener, stub: stub)
     }
 }
 

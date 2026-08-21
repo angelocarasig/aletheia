@@ -58,6 +58,7 @@ extension DetailsContent {
         var mark: (Bool, [Double]) -> Void
         var read: (DetailsComposer.Chapters.Row) -> Void
         var inspect: (Recommendation) -> Void
+        var confirmReset: () -> Void
     }
 }
 
@@ -120,7 +121,8 @@ private struct ActionsSection: View {
                     onDeleteDownloads: {
                         guard let id = composer.seriesId else { return }
                         compositor.downloads.delete(for: id)
-                    }
+                    },
+                    onResetSeries: actions.confirmReset
                 )
             }
 
