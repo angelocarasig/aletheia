@@ -53,11 +53,10 @@ struct TrackingScreen: View {
         } message: {
             Text(failure?.message ?? "")
         }
-        .confirmationDialog(
+        .alert(
             "Disconnect \(disconnecting?.name ?? "")?",
             isPresented: Binding(
-                get: { disconnecting != nil }, set: { if !$0 { disconnecting = nil } }),
-            titleVisibility: .visible
+                get: { disconnecting != nil }, set: { if !$0 { disconnecting = nil } })
         ) {
             Button("Disconnect", role: .destructive) {
                 guard let tracker = disconnecting else { return }

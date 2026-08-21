@@ -321,6 +321,7 @@ haptics toggle.
 | a member that comes and goes inside a fixed row | fixed with a zero state, or not in the row |
 | a status word with no subject ("Failures," "Problems") | name what happened and to what: "3 sources couldn't update" plus retry |
 | a destructive control sitting in a repeating list row | ambient position plus destruction is the trap regardless of glyph - keep destruction behind a confirmation or a context menu, not a bare tap in a scrollable list |
+| `confirmationDialog` for a plain destructive yes/no | `alert` - reserve `confirmationDialog` for picking among several related actions anchored to what was tapped, not a single confirm/cancel choice |
 | a "completed" glyph that's still editable treated as inert | a state with something left to change is a resting state, not a fact - only a genuinely terminal state (the only remaining action is undo) should go inert |
 
 ## Reach for these before building new
