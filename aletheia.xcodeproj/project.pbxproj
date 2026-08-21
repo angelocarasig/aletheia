@@ -13,6 +13,7 @@
 		CA0DC031000000000000BB04 /* SwiftSoup in Frameworks */ = {isa = PBXBuildFile; productRef = CA0DC021000000000000BB05 /* SwiftSoup */; };
 		CA0DC032000000000000BB09 /* Kingfisher in Frameworks */ = {isa = PBXBuildFile; productRef = CA0DC022000000000000BB08 /* Kingfisher */; };
 		CA0DC033000000000000BB12 /* SwiftProtobuf in Frameworks */ = {isa = PBXBuildFile; productRef = CA0DC023000000000000BB11 /* SwiftProtobuf */; };
+		CA0DC034000000000000BB15 /* SentencepieceTokenizer in Frameworks */ = {isa = PBXBuildFile; productRef = CA0DC024000000000000BB14 /* SentencepieceTokenizer */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -98,6 +99,7 @@
 				CA0DC031000000000000BB04 /* SwiftSoup in Frameworks */,
 				CA0DC032000000000000BB09 /* Kingfisher in Frameworks */,
 				CA0DC033000000000000BB12 /* SwiftProtobuf in Frameworks */,
+				CA0DC034000000000000BB15 /* SentencepieceTokenizer in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -171,6 +173,7 @@
 				CA0DC021000000000000BB05 /* SwiftSoup */,
 				CA0DC022000000000000BB08 /* Kingfisher */,
 				CA0DC023000000000000BB11 /* SwiftProtobuf */,
+				CA0DC024000000000000BB14 /* SentencepieceTokenizer */,
 			);
 			productName = aletheia;
 			productReference = 84F9DBF3300B56F500679291 /* aletheia.app */;
@@ -209,6 +212,7 @@
 				CA0DC011000000000000BB06 /* XCRemoteSwiftPackageReference "SwiftSoup" */,
 				CA0DC012000000000000BB07 /* XCRemoteSwiftPackageReference "Kingfisher" */,
 				CA0DC013000000000000BB10 /* XCRemoteSwiftPackageReference "swift-protobuf" */,
+				CA0DC014000000000000BB13 /* XCRemoteSwiftPackageReference "swift-sentencepiece" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 84F9DBF4300B56F500679291 /* Products */;
@@ -596,6 +600,14 @@
 				minimumVersion = 1.20.0;
 			};
 		};
+		CA0DC014000000000000BB13 /* XCRemoteSwiftPackageReference "swift-sentencepiece" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/jkrukowski/swift-sentencepiece.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.0.6;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -623,6 +635,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = CA0DC013000000000000BB10 /* XCRemoteSwiftPackageReference "swift-protobuf" */;
 			productName = SwiftProtobuf;
+		};
+		CA0DC024000000000000BB14 /* SentencepieceTokenizer */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = CA0DC014000000000000BB13 /* XCRemoteSwiftPackageReference "swift-sentencepiece" */;
+			productName = SentencepieceTokenizer;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
