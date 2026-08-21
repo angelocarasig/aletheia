@@ -99,7 +99,8 @@ final class DetailsComposer {
         recommendations = Recommendations(
             recommender: recommender,
             impressions: impressions,
-            recommendationsCache: recommendationsCache
+            recommendationsCache: recommendationsCache,
+            assets: assets
         )
         cadence = Cadence()
     }

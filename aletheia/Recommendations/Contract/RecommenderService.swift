@@ -22,6 +22,23 @@ struct Payload: Sendable, Equatable {
     // present when the reader has linked this series to MangaBaka, whose remote
     // id IS the catalogue id. an exact hit that skips name resolution entirely
     var catalogId: CatalogID?
+
+    // below: only used by a recommender with a live-compute path (v01 has
+    // none, so these sit unread there) - an unresolved title with no rail to
+    // fall back on, scored from what this pool actually has
+    var synopsis: String = ""
+    // the earliest chapter's publishedDate, not the title's real first-
+    // publication year - a scanlation release date, not a launch date. no
+    // schema carries a real one, so this is the closest proxy already sitting
+    // in the database rather than a new field
+    var year: Int?
+    // the already-downloaded local cover, never fetched here - a recommender
+    // reads from disk if present and drops the block otherwise, it does not
+    // reach out to the network on a screen this is only an addition to
+    var cover: URL?
+    // series format (manga/manhwa/manhua/...): no source in this app reports
+    // it today, so there is nowhere to source this from - TBD, left absent
+    // until that data exists rather than guessed at
 }
 
 extension Payload {
@@ -34,6 +51,9 @@ extension Payload {
         var input = titles.joined(separator: "\u{1}")
         input += "\u{0}" + tags.joined(separator: "\u{1}")
         input += "\u{0}" + (catalogId.map { String($0.rawValue) } ?? "")
+        input += "\u{0}" + synopsis
+        input += "\u{0}" + (year.map(String.init) ?? "")
+        input += "\u{0}" + (cover?.absoluteString ?? "")
 
         let digest = SHA256.hash(data: Data(input.utf8))
         return digest.map { String(format: "%02x", $0) }.joined()

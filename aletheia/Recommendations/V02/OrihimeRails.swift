@@ -126,4 +126,57 @@ struct OrihimeRails: Sendable {
         let value = year[row]
         return value == Self.yearUnknown ? nil : Int(value)
     }
+
+    var titleCount: Int { titles.count }
+
+    // the live-compute path's candidate set: eligible format+rating, same
+    // register as the seed, not excluded - candidates_for_virtual()'s own
+    // filters (blend.py), minus relations and self, which only apply to a
+    // seed that has a row of its own (excludeSelfAndRelated below is that case)
+    func candidateMask(ceiling: ContentCeiling, formats: Set<CatalogFormat>, register seedRegister: RegisterAxis)
+        -> [Bool]
+    {
+        var mask = [Bool](repeating: false, count: titleCount)
+        rating.withUnsafeBufferPointer { ratings in
+            type.withUnsafeBufferPointer { types in
+                register.withUnsafeBufferPointer { registers in
+                    excluded.withUnsafeBufferPointer { excludedFlags in
+                        for row in 0..<titleCount {
+                            guard excludedFlags[row] == 0 else { continue }
+                            guard ratings[row] <= UInt8(ceiling.rawValue) else { continue }
+                            guard registers[row] == UInt8(seedRegister.rawValue) else { continue }
+                            guard let format = formatByIndex[Int(types[row])], formats.contains(format)
+                            else { continue }
+                            mask[row] = true
+                        }
+                    }
+                }
+            }
+        }
+        return mask
+    }
+
+    // the same eligibility filters, plus the seed's own row and everything
+    // related to it (sequels, spin-offs, ...) - candidates_for()'s own
+    // filters (blend.py) for a seed that IS a catalogue row, resolved but
+    // with no precomputed rail
+    func candidateMask(
+        forSeedRow seedRow: Int, ceiling: ContentCeiling, formats: Set<CatalogFormat>,
+        relatedRows: [Int]
+    ) -> [Bool] {
+        var mask = candidateMask(ceiling: ceiling, formats: formats, register: register(forRow: seedRow))
+        mask[seedRow] = false
+        for row in relatedRows where row < mask.count {
+            mask[row] = false
+        }
+        return mask
+    }
+
+    // for a block that needs every row's year at once (era's similarity
+    // pass) rather than one lookup per candidate
+    func withYears<R>(_ body: (UnsafeBufferPointer<Int16>) -> R) -> R {
+        year.withUnsafeBufferPointer(body)
+    }
+
+    static var yearUnknownRaw: Int16 { yearUnknown }
 }

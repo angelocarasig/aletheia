@@ -43,16 +43,19 @@ extension DetailsComposer {
         @ObservationIgnored private let recommender: Recommender
         @ObservationIgnored private let impressions: Compositor.Impressions
         @ObservationIgnored private let recommendationsCache: Compositor.Recommendations
+        @ObservationIgnored private let assets: Compositor.Assets
         @ObservationIgnored private var seriesId: SeriesRecord.ID?
 
         init(
             recommender: Recommender,
             impressions: Compositor.Impressions,
-            recommendationsCache: Compositor.Recommendations
+            recommendationsCache: Compositor.Recommendations,
+            assets: Compositor.Assets
         ) {
             self.recommender = recommender
             self.impressions = impressions
             self.recommendationsCache = recommendationsCache
+            self.assets = assets
         }
 
         struct ImpressionContext: Equatable {
@@ -81,6 +84,17 @@ extension DetailsComposer {
                 next.catalogId = CatalogID(rawValue: Int32(linked.remoteId))
             }
 
+            // below: only a live-compute recommender reads these (v01 has no
+            // such path) - free of any new schema or scraping, taken from
+            // data this screen already loaded for its own display
+            next.synopsis = stored.entry.synopsis ?? ""
+            // the earliest chapter's release date, not the title's real
+            // first-publication year - see Payload's own doc comment
+            if let earliest = stored.chapters.map(\.publishedDate).min() {
+                next.year = Calendar.current.component(.year, from: earliest)
+            }
+            next.cover = assets.local(for: stored.entry.path)
+
             // the observation fires on every progress tick while reading; this
             // query is 53ms, so the guard is what stops it running per page turn
             guard next != payload else { return }
@@ -91,6 +105,7 @@ extension DetailsComposer {
         private func load(_ payload: Payload) {
             running?.cancel()
             phase = .pending
+            let startedAt = Date.now
             running = Task { [recommender, impressions, recommendationsCache, seriesId] in
                 guard let seriesId else { return }
                 let descriptor = await recommender.descriptor
@@ -113,7 +128,16 @@ extension DetailsComposer {
                         ceiling: Self.ceiling,
                         formats: CatalogFormat.comics,
                         limit: Self.limit)
-                    guard !Task.isCancelled else { return }
+                    guard !Task.isCancelled else {
+                        // a slow live-compute query outlived a payload change
+                        // (e.g. chapters landing mid-fetch) and got superseded
+                        // before it could render - a real cost, worth knowing
+                        // about if it happens often
+                        AppLog.shared.log(
+                            "recommendations query cancelled mid-flight - series \(seriesId.rawValue), \(String(format: "%.2f", Date.now.timeIntervalSince(startedAt)))s in",
+                            category: "recommender")
+                        return
+                    }
 
                     // context must finish building before results is set, and both
                     // set together - a card already on screen by the time context
