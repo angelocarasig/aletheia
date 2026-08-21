@@ -72,7 +72,8 @@ struct NHentaiSource: AuthenticatingSource {
             challengeURL: descriptor.baseURL,
             userAgent: nil,
             maneuver: "Complete the check if one appears. This window closes automatically.",
-            interactive: true
+            interactive: true,
+            pinChallengeURL: true
         )
     }
 }

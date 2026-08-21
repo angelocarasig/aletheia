@@ -72,6 +72,16 @@ Turnstile the reader has to complete, and only an interactive capture sheet can 
 cost is a brief auto-dismissing sheet flash on ordinary captures too (first use, or an occasional
 clearance refresh), traded for not going dark the moment the tenant escalates.
 
+`pinChallengeURL: true` is the other deliberate difference, and the reason this source needs it is
+the mirror image of why `AuthSpecification.targeting(_:)` exists at all: that retargeting was built
+for a source whose root is an SPA shell, so the endpoint actually being challenged has to be loaded
+instead of root. nhentai's API is the opposite - it answers every request unauthenticated, 200,
+plain JSON, with nothing for Cloudflare to challenge - only the site root ever serves the interstitial
+(confirmed live: root 403s with `cf-mitigated: challenge`, the API 200s with no such header). Without
+the pin, a capture triggered by an ordinary API call would retarget to that API URL, load a page
+Cloudflare never gates, and poll to the 60s timeout having never seen a widget, a sheet, or a
+challenge document - failing every time regardless of network conditions.
+
 The site's own root HTML is Cloudflare-gated for non-JS clients and 403s a plain request even when
 the API itself answers fine unauthenticated - this source overrides its health-check URL to the
 API root rather than the site root, so a healthy API doesn't read as a down source.

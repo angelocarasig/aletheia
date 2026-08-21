@@ -21,13 +21,20 @@ struct AuthSpecification: Sendable {
     let maneuver: String
     let interactive: Bool
 
+    // true for a host whose real traffic is never itself what's gated - nhentai's
+    // api answers unauthenticated every time, only the site root ever shows
+    // cloudflare's challenge, so retargeting to the requested api url would load a
+    // plain json response with no challenge to solve and poll to a timeout
+    var pinChallengeURL: Bool = false
+
     // a clearance is issued against the request that was refused, not a site root -
     // mangafire's root is an spa shell, so loading it instead of the actually
     // challenged endpoint (/api/titles) left the interstitial retrying to timeout.
     // challengeURL stays the fallback for a refresh with no request behind it
-    // (a proactive expiry, or the sources screen)
+    // (a proactive expiry, or the sources screen), and pinChallengeURL opts a
+    // source out entirely when its own endpoints are never what's challenged
     func targeting(_ url: URL?) -> AuthSpecification {
-        guard let url, url.host() == challengeURL.host() else { return self }
+        guard !pinChallengeURL, let url, url.host() == challengeURL.host() else { return self }
 
         return AuthSpecification(
             requirements: requirements,
