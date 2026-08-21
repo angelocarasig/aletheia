@@ -71,6 +71,39 @@
                         "orihime bundle self-check FAILED - \(problems.joined(separator: ", "))",
                         level: .error, category: "orihime")
                 }
+
+                let rails = try OrihimeRails(bundle: bundle)
+
+                // titles.npy[0] is catalogId 1 (confirmed directly against the
+                // pack) - round-trip it back through row(forCatalogId:) as a
+                // self-consistency check, since no golden fixture exists for
+                // the resolved path to assert against instead
+                let firstId = titles[0]
+                let found = rails.row(forCatalogId: firstId)
+                log("row(forCatalogId: \(firstId)) -> \(found.map(String.init) ?? "nil") (expected 0)")
+
+                if let seededCandidates = rails.candidates(
+                    forRow: 0, ceiling: .pornographic, formats: Set(CatalogFormat.allCases), limit: 5)
+                {
+                    log(
+                        "row 0 has a rail - top \(seededCandidates.count): "
+                            + seededCandidates.map {
+                                "catalogId \($0.catalogId) score \(String(format: "%.3f", $0.score))"
+                            }
+                            .joined(separator: ", "))
+                } else {
+                    log("row 0 unexpectedly has no rail (expected one - it's seed_rows[0])")
+                }
+
+                // find a row genuinely absent from seed_rows to prove the miss
+                // path returns nil rather than crashing or returning garbage
+                if let missingRow = (0..<10000).first(where: {
+                    rails.candidates(
+                        forRow: $0, ceiling: .pornographic, formats: Set(CatalogFormat.allCases),
+                        limit: 1) == nil
+                }) {
+                    log("row \(missingRow) confirmed has no rail - candidates(forRow:) returned nil correctly")
+                }
             } catch {
                 AppLog.shared.log(
                     "orihime probe FAILED - \(error)", level: .error, category: "orihime")
