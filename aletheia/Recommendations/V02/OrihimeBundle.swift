@@ -37,6 +37,15 @@ struct OrihimeBundle: Sendable {
     private let mapped: [String: Data]
     private let source: Source
 
+    // "app-bundle" for the dev-only source, since a compiled-model cache
+    // still needs some stable key to write under either way
+    var packId: String {
+        switch source {
+        case .appBundle: "app-bundle"
+        case .assetPack(let id, _): id
+        }
+    }
+
     enum Source: Sendable {
         case appBundle(Foundation.Bundle = .main)
         case assetPack(id: String, root: String)
