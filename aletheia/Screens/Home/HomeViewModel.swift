@@ -157,6 +157,7 @@ final class HomeViewModel {
         let lastReadDate: Date
         let addedDate: Date
         let adult: Bool
+        let publication: Publication?
 
         init(_ entry: EntryView) {
             seriesId = entry.seriesId
@@ -167,12 +168,26 @@ final class HomeViewModel {
             lastReadDate = entry.lastReadDate
             addedDate = entry.addedDate
             adult = entry.classification == .Explicit
+            publication = entry.publication
         }
     }
 
     fileprivate struct ContinueRow: Equatable, Sendable {
         let entry: EntryRow
         let target: ContinueTarget
+        var rich: RichDetail?
+    }
+
+    fileprivate struct RichDetail: Equatable, Sendable {
+        let authors: String?
+        let totalChapters: Int
+        let lastReadNumber: Double?
+
+        init(_ view: RichfulEntryView) {
+            authors = view.authors.flatMap { $0.isEmpty ? nil : $0 }
+            totalChapters = view.totalChapterCount
+            lastReadNumber = view.lastReadChapterNumber
+        }
     }
 
     nonisolated private static func stored(
@@ -292,7 +307,21 @@ final class HomeViewModel {
             guard page.count == Rule.continueBatch else { break }
         }
 
-        return Array(rows.prefix(Rule.continueLimit))
+        let rail = Array(rows.prefix(Rule.continueLimit))
+        guard !rail.isEmpty else { return [] }
+
+        let ids = rail.map(\.entry.seriesId)
+        let rich =
+            try RichfulEntryView
+            .filter(ids.contains(RichfulEntryView.Columns.seriesId))
+            .fetchAll(db)
+            .reduce(into: [Int64: RichDetail]()) { $0[$1.seriesId] = RichDetail($1) }
+
+        return rail.map { row in
+            var row = row
+            row.rich = rich[row.entry.seriesId]
+            return row
+        }
     }
 
     // three mutually exclusive states per library series, split on the rail's
@@ -445,7 +474,11 @@ extension HomeViewModel {
                     unreadCount: $0.entry.unreadCount,
                     lastReadDate: $0.entry.lastReadDate,
                     target: $0.target,
-                    adult: $0.entry.adult
+                    adult: $0.entry.adult,
+                    authors: $0.rich?.authors,
+                    publication: $0.entry.publication,
+                    totalChapters: $0.rich?.totalChapters ?? 0,
+                    lastReadNumber: $0.rich?.lastReadNumber
                 )
             }
             recentlyAdded = stored.addedRows.map {
@@ -471,6 +504,10 @@ extension HomeViewModel {
         let lastReadDate: Date
         let target: ContinueTarget
         let adult: Bool
+        var authors: String?
+        var publication: Publication?
+        var totalChapters: Int = 0
+        var lastReadNumber: Double?
     }
 
     struct UpdateEntry: Identifiable, Hashable {

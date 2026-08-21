@@ -36,9 +36,12 @@ struct HomeScreen: View {
     }
 
     private enum Layout {
-        static let addedWidth: CGFloat = 116
+        static let addedColumns = 3
         static let skeletonUpdates = 3
-        static let heroSpan = 8
+        static let skeletonDots: CGFloat = 44
+        static let skeletonDot: CGFloat = 6
+        static let skeletonDotsRow: CGFloat = 32
+        static let contentOffset: CGFloat = -20
         static let emptyFillOpacity = 0.05
     }
 
@@ -51,6 +54,10 @@ struct HomeScreen: View {
         return snapshot.continueReading.contains(where: \.adult)
             || snapshot.updates.contains(where: \.adult)
             || snapshot.recentlyAdded.contains(where: \.adult)
+    }
+
+    private var hasHero: Bool {
+        phase == .content && !(vm?.continueReading.isEmpty ?? true)
     }
 
     private var phase: LoadPhase {
@@ -93,7 +100,7 @@ struct HomeScreen: View {
             }
             .animation(.settle, value: phase)
             .navigationTitle("Home")
-            .toolbarTitleDisplayMode(.large)
+            .toolbarTitleDisplayMode(.inlineLarge)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Image(systemName: "person.crop.circle")
@@ -152,110 +159,77 @@ extension HomeScreen {
     fileprivate func Content(_ vm: HomeViewModel) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: dimensions.spacing.space24) {
-                let failing = vm.failingSources
-                if failing > 0 {
-                    FailingBanner(failing)
-                }
-
-                let unsynced = vm.failingTrackers
-                if unsynced > 0 {
-                    StalledBanner(unsynced)
-                }
-
-                let added = vm.recentlyAdded
-                let settled = !added.isEmpty
-
                 let continueReading = vm.continueReading
                 if !continueReading.isEmpty {
-                    ContinueSection(vm, entries: continueReading)
-                } else if settled {
-                    ContinueEmpty
-                }
-
-                let updates = vm.updates
-                if !updates.isEmpty {
-                    UpdatesSection(updates)
-                } else if settled {
-                    UpdatesEmpty
-                }
-
-                if !added.isEmpty {
-                    AddedSection(entries: added)
-                }
-
-                let stalled = vm.stalled
-                if !stalled.isEmpty {
-                    ShelfSection(
-                        title: "Pick Back Up",
-                        entries: stalled,
-                        detail: Self.position,
-                        accessory: { _ in nil }
-                    )
-                }
-
-                let waiting = vm.waiting
-                if !waiting.isEmpty {
-                    ShelfSection(
-                        title: "Waiting For You",
-                        entries: waiting,
-                        detail: Self.next,
-                        accessory: { Text("\($0.unreadCount)") }
-                    )
-                }
-            }
-            .padding(.vertical, dimensions.spacing.space16)
-        }
-        .scrollIndicators(.hidden)
-    }
-
-    fileprivate func ContinueSection(_ vm: HomeViewModel, entries: [HomeViewModel.ContinueEntry])
-        -> some View
-    {
-        VStack(alignment: .leading, spacing: dimensions.spacing.space12) {
-            SectionHeader("Continue Reading")
-                .padding(.horizontal, dimensions.screenMargin)
-
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: dimensions.spacing.space12) {
-                    ForEach(entries) { entry in
-                        ContinueCard(
-                            title: entry.title,
-                            cover: entry.cover,
-                            unreadCount: entry.unreadCount,
-                            target: entry.target,
-                            obscured: obscured && entry.adult
-                        )
-                        .containerRelativeFrame(
-                            .horizontal,
-                            count: Layout.heroSpan,
-                            span: Layout.heroSpan - 1,
-                            spacing: dimensions.spacing.space12
-                        )
-                        .contentShape(.rect)
-                        .tappable {
+                    HeroCarousel(
+                        entries: continueReading,
+                        obscured: obscured,
+                        onContinue: { entry in
                             reading = ReadingTarget(
                                 seriesId: entry.id, chapterId: entry.target.chapterId)
+                        },
+                        onDetails: { entry in
+                            path.append(SeriesEntry.library(entry.id))
                         }
-                        .contextMenu {
-                            Button {
-                                path.append(SeriesEntry.library(entry.id))
-                            } label: {
-                                Label("View Series", systemImage: "book")
-                            }
+                    )
+                }
 
-                            Button {
-                                vm.dismiss(entry.id)
-                            } label: {
-                                Label("Hide from Continue Reading", systemImage: "eye.slash")
-                            }
-                        }
+                Group {
+                    let failing = vm.failingSources
+                    if failing > 0 {
+                        FailingBanner(failing)
+                    }
+
+                    let unsynced = vm.failingTrackers
+                    if unsynced > 0 {
+                        StalledBanner(unsynced)
+                    }
+
+                    let added = vm.recentlyAdded
+                    let settled = !added.isEmpty
+
+                    if continueReading.isEmpty, settled {
+                        ContinueEmpty
+                    }
+
+                    let updates = vm.updates
+                    if !updates.isEmpty {
+                        UpdatesSection(updates)
+                    } else if settled {
+                        UpdatesEmpty
+                    }
+
+                    if !added.isEmpty {
+                        AddedSection(entries: added)
+                    }
+
+                    let stalled = vm.stalled
+                    if !stalled.isEmpty {
+                        ShelfSection(
+                            title: "Pick Back Up",
+                            entries: stalled,
+                            detail: Self.position,
+                            accessory: { _ in nil }
+                        )
+                    }
+
+                    let waiting = vm.waiting
+                    if !waiting.isEmpty {
+                        ShelfSection(
+                            title: "Waiting For You",
+                            entries: waiting,
+                            detail: Self.next,
+                            accessory: { Text("\($0.unreadCount)") }
+                        )
                     }
                 }
-                .scrollTargetLayout()
-                .padding(.horizontal, dimensions.screenMargin)
+                .offset(y: hasHero ? Layout.contentOffset : 0)
             }
-            .scrollTargetBehavior(.viewAligned)
+            .padding(.bottom, dimensions.spacing.space16)
+            .padding(.top, hasHero ? 0 : dimensions.spacing.space16)
         }
+        .scrollIndicators(.hidden)
+        .ignoresSafeArea(.container, edges: hasHero ? .top : [])
     }
 
     fileprivate var ContinueEmpty: some View {
@@ -412,15 +386,20 @@ extension HomeScreen {
                                 addedDate: entry.addedDate,
                                 obscured: obscured && entry.adult
                             )
-                            .frame(width: Layout.addedWidth)
+                            .containerRelativeFrame(
+                                .horizontal,
+                                count: Layout.addedColumns,
+                                span: 1,
+                                spacing: dimensions.spacing.space12
+                            )
                             .contentShape(.rect)
                         }
                         .buttonStyle(.plain)
                     }
                 }
                 .scrollTargetLayout()
-                .padding(.horizontal, dimensions.screenMargin)
             }
+            .padding(.horizontal, dimensions.screenMargin)
             .scrollTargetBehavior(.viewAligned)
         }
     }
@@ -457,30 +436,17 @@ extension HomeScreen {
     fileprivate var Skeleton: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: dimensions.spacing.space24) {
-                VStack(alignment: .leading, spacing: dimensions.spacing.space12) {
-                    SectionHeader("Continue Reading")
+                VStack(spacing: 0) {
+                    RoundedRectangle(cornerRadius: dimensions.radius.radius20, style: .continuous)
+                        .fill(.primary.opacity(Layout.emptyFillOpacity))
+                        .frame(height: HeroCard.panelHeight)
+                        .padding(.vertical, dimensions.spacing.space16)
 
-                    // containerRelativeFrame needs a scroll container ancestor to
-                    // measure against, or it resolves to an infinite width
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: dimensions.spacing.space12) {
-                            ForEach(0..<2, id: \.self) { _ in
-                                ContinueCard(
-                                    title: "",
-                                    cover: nil,
-                                    unreadCount: 0,
-                                    target: .start(chapterId: .init(rawValue: 0), number: 0)
-                                )
-                                .containerRelativeFrame(
-                                    .horizontal,
-                                    count: Layout.heroSpan,
-                                    span: Layout.heroSpan - 1,
-                                    spacing: dimensions.spacing.space12
-                                )
-                            }
-                        }
-                    }
-                    .scrollDisabled(true)
+                    Capsule()
+                        .fill(.primary.opacity(Layout.emptyFillOpacity))
+                        .frame(width: Layout.skeletonDots, height: Layout.skeletonDot)
+                        .frame(height: Layout.skeletonDotsRow)
+                        .offset(y: Layout.contentOffset)
                 }
 
                 VStack(alignment: .leading, spacing: dimensions.spacing.space12) {
@@ -522,27 +488,41 @@ extension HomeScreen {
             titles[index % titles.count]
         }
 
+        static let cover = URL(
+            string: "https://mangadex.org/covers"
+                + "/e9d69f82-4c53-44ce-a94b-32303d172227"
+                + "/6fc27968-9405-443d-9e2c-a094c06324cd.jpg.512.jpg"
+        )
+
+        static func read(_ index: Int) -> Double {
+            Double(20 + index * 13)
+        }
+
         static func target(_ index: Int) -> ContinueTarget {
             let id = ChapterRecord.ID(rawValue: Int64(index + 1))
             if index.isMultiple(of: 2) {
-                return .resume(chapterId: id, number: Double(40 + index), progress: 0.45)
+                return .resume(chapterId: id, number: read(index), progress: 0.45)
             } else {
-                return .start(chapterId: id, number: Double(12 + index))
+                return .start(chapterId: id, number: read(index) + 1)
             }
         }
 
         static func continuing(_ count: Int) -> [HomeViewModel.ContinueEntry] {
             (0..<count).map { index in
                 let id = SeriesRecord.ID(rawValue: Int64(index + 1))
-                let read: Date = .now.addingTimeInterval(TimeInterval(-index * 3_600))
+                let lastRead: Date = .now.addingTimeInterval(TimeInterval(-index * 3_600))
                 return HomeViewModel.ContinueEntry(
                     id: id,
                     title: title(index),
-                    cover: nil,
+                    cover: cover,
                     unreadCount: index * 3,
-                    lastReadDate: read,
+                    lastReadDate: lastRead,
                     target: target(index),
-                    adult: index.isMultiple(of: 4)
+                    adult: index.isMultiple(of: 4),
+                    authors: index == 2 ? nil : "Yuna Seo, Haneul Park, Jiwoo Lim",
+                    publication: [.Ongoing, .Hiatus, .Completed][index % 3],
+                    totalChapters: 60 + index * 40,
+                    lastReadNumber: read(index)
                 )
             }
         }
