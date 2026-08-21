@@ -101,8 +101,10 @@ struct HomeScreen: View {
                         .accessibilityLabel("Settings")
                 }
 
-                ToolbarItem(placement: .topBarTrailing) {
-                    if hasExplicit {
+                if hasExplicit {
+                    ToolbarSpacer(.fixed, placement: .topBarTrailing)
+
+                    ToolbarItem(placement: .topBarTrailing) {
                         BlurToggle(
                             isOn: !obscured,
                             label: "Adult content",
