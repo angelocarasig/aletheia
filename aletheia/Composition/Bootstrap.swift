@@ -104,6 +104,7 @@ final class Bootstrap {
                 #if DEBUG
                     await Task.detached { ModelBundle.probe() }.value
                     await ModelBundle.probe(compositor.recommender)
+                    await OrihimeBundle.probe()
                 #endif
             }
         } catch {
