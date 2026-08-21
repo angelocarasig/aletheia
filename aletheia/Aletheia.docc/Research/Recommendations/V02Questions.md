@@ -4,6 +4,11 @@ Everything below comes from directly inspecting the real `orihime-2-0-0-2026.08`
 `.npy` shapes/dtypes, `manifest.json`, `params/blend.json`) - not from `V02Artifact.md`'s prose, which
 turned out to disagree with the real pack in several places. Numbered by how much they block Swift work.
 
+**Status:** most of the blocking questions (3, 4, 6) got answered directly rather than by reply - by
+reading the training side's own Python source (`~/Repositories/heuresis`) and the real `.mlpackage`/pack
+files during implementation. Each is marked below. 1, 2, and 5 are still genuinely open; 7 and 8 were
+always informational.
+
 ## 1. Which student inference path is real?
 
 `models/student/` has **14 separate `.mlmodel` files**: `student-premise`, `student-protagonist`,
@@ -28,6 +33,9 @@ popularity, tag_count`) with a scaler mean/scale.
 
 ## 2. `appeal.npy` breaks the manifest's own dtype claim
 
+**Not yet answered - not yet needed either.** Appeal is still Phase 4, unbuilt (see `V02Artifact.md`
+Deferred), so nothing app-side reads `appeal.npy` yet, regardless of how this resolves.
+
 `manifest.json`'s top-level `vectors_dtype` says `"int8 with per-file *-scale.npy"`. That's true for
 `vectors/cover.npy` and `vectors/synopsis.npy` (both `i1` with matching `*-scale.npy` files), but
 `vectors/appeal.npy` is actually `f2` (float16), shape `(302894, 80)`, and there's no
@@ -37,6 +45,14 @@ Intentional (appeal genuinely ships fp16, the manifest note just doesn't apply t
 an int8-plus-scale version missing and expected?
 
 ## 3. The real scoring algorithm isn't what the doc describes
+
+**Answered, by reading the source directly.** The full algorithm - candidate filter, per-block soft-fill,
+z-score over the candidate set, weighted blend, popularity prior - was ported line-by-line from
+`heuresis/blocks/{virtual,base,tags,text,cover,era,format}.py` and `heuresis/blend/blend.py`, not from a
+written-out spec. No pool-of-200 step exists in the real algorithm for a virtual/live-compute seed - that
+turned out to be `explain()`'s own diagnostic-pool parameter (the top-N shown for a breakdown UI, not a
+pre-filter that runs before scoring), not part of the scoring math itself. See `V02Artifact.md`'s "The
+compute path" for what actually shipped.
 
 `params/blend.json`'s `scoring` section describes a candidate **pool** (top-200 by raw blended
 similarity, before z-scoring) and a **soft-fill** rule ("candidates without evidence for a block get
@@ -49,6 +65,10 @@ blend - the way `V01Artifact.md`/`PortPlan.md` documented v01's `Scorer.swift` p
 biggest gap between the doc and what actually needs implementing.
 
 ## 4. Is the Core ML text encoder's input shape actually fixed?
+
+**Answered.** Confirmed fixed (not flexible) directly against the real `.mlpackage`'s own input spec via
+`coremltools`, not inferred from the tokenizer config. `OrihimeTextEncoder` tokenizes/pads to exactly 512
+every time.
 
 `V02Artifact.md` says text-e5-small needs "a fixed 512 sequence length" for Core ML/ANE reasons.
 `text-tokenizer/tokenizer_config.json` confirms `model_max_length: 512`, but that's the tokenizer's
@@ -65,6 +85,10 @@ something the app needs. Can this be stripped from the next build, or is it actu
 something?
 
 ## 6. `manifest.json` isn't shape/offset-typed like v01's
+
+**Answered, by building against it as-is.** `pack_schema: 2`'s shape/dtype-from-each-`.npy`'s-own-header
+approach is what shipped (`NumpyHeader.parse`) - no request went back to change the manifest convention,
+this was workable and simple enough on its own that it wasn't worth asking for v01's convention instead.
 
 v01's `manifest.json` declares per-array `offset`/`count`/`dtype` so `ModelBundle` can slice mmap'd
 files directly. Orihime's `files` dict (264 entries) is only `{bytes, sha256}` per file - shape/dtype

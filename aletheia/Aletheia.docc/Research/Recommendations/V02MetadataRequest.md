@@ -59,8 +59,10 @@ either way.
   (or a note that it's guaranteed to already match, if it's produced in the same build step) would avoid
   a repeat of the alignment work v01's metadata pack needed.
 
-## Status, not blocking anything urgent
+## Status
 
-Not blocking Phase 2's actual rail-lookup and scoring logic, which needs no display data - that part is
-proceeding now regardless. This only blocks the step after it: mapping a filtered rail candidate to
-something a reader can actually see on screen.
+**Fulfilled.** The pack now ships its own `display/` (titles, covers, synopsis, authors/artists, status,
+each keyed by the same row order as the rest of the pack, plus `display/metadata.json`'s own version
+number), read by `OrihimeDisplay`/`OrihimeDisplayManifest`. A build without it still scores - `display` is
+optional on the Swift side, same graceful-absence shape the rest of this pack follows - but every pack
+built since this request has carried it.

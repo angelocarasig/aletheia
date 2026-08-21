@@ -1,9 +1,11 @@
 # Fitting Orihime to This App
 
 What changes about how the app carries a recommendation model, now that there's more than one worth
-carrying. Describes product and infrastructure decisions only - see <doc:V02Artifact> for the pack itself.
-**Not built.** Everything here is a design, verified against the app's actual code during review, not
-shipped code.
+carrying. Describes product and infrastructure decisions only - see <doc:V02Artifact> for the pack itself
+and the live-compute scoring path. Most of what's below is now built and verified on a real device, not
+just a design - each section says so explicitly where it's still a plan rather than shipped code (the
+model picker's live-swap reversal, Background Assets delivery, and the caching design below all landed;
+the Labeller grading gate that decides whether Orihime is offered as more than an experiment has not).
 
 ## From one bundled model to a picker of downloadable ones
 
@@ -75,8 +77,31 @@ against the new table instead of a flat scan - not a hot path, the extra join co
 
 A seed that resolves to nothing scoreable (no synopsis and no cover) still gets a cache row - an empty
 rail, cached the same as any other result, so the app doesn't re-attempt a doomed computation on every
-open. This is a schema change (new table, one column removed elsewhere) and needs a proper append-only
-migration per the project's migration convention, not an edit to an existing one.
+open. This is a schema change (new table, one column removed elsewhere) and needed a proper append-only
+migration per the project's migration convention, not an edit to an existing one. **Built and shipped**:
+`Compositor.Recommendations`, `series_recommendation`.
+
+**A fingerprint alone can't catch every kind of staleness, so there's now a TTL on top of it.**
+Fingerprinting only invalidates when the *local inputs* change (title, synopsis, tags, cover, year,
+format) - it has no way to know the on-device scoring code changed underneath an unchanged seed. That gap
+was real, not theoretical: it produced a stretch of live debugging where a rebuilt app kept serving a
+pre-fix "0 results" answer for the same series, because nothing about that series' own data had changed to
+bust the cache. `Compositor.Recommendations.sweep()` deletes any row older than a flat 3-day TTL, run at
+launch alongside `assets.sweep()`/`downloads.sweep()` (`Bootstrap.swift`). It's a blunt instrument on
+purpose - versioning the cache key by scorer/blend logic would catch this precisely, but that's real
+ongoing bookkeeping for a staleness class that mostly only bites mid-development, not something production
+readers need paid for constantly. Logs `swept N stale recommendation(s)` on every run, including zero, the
+same convention `assets`/`downloads` sweeps already use.
+
+**Resetting a single series when the cache (or anything else about it) is stuck.** The Details screen's
+overflow menu has a destructive **Reset Series** action, gated behind a confirmation alert, for exactly
+this class of problem without needing a full reinstall: it deletes the `SeriesRecord` row outright - the
+schema's own foreign-key cascades take reading history, downloads, and the cached recommendation row with
+it - then re-adds the series fresh from its primary source, the same write path a from-search add already
+uses (`DetailsComposer.resetSeries()`, `store(into:opener:stub:)`). The new row gets a new id, so it's a
+guaranteed cache miss regardless of TTL. One real limitation, named in the confirmation copy: only the
+*primary* source survives the round trip - a series linked to more than one source loses the others, since
+nothing captures more than the primary origin's slug before the delete.
 
 ## New infrastructure categories, not extensions of existing ones
 
