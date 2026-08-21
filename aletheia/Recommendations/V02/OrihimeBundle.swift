@@ -35,6 +35,7 @@ struct OrihimeBundle: Sendable {
     // "a build without it still scores" shape v01's own metadata pack follows
     let display: OrihimeDisplayManifest?
     private let mapped: [String: Data]
+    private let source: Source
 
     enum Source: Sendable {
         case appBundle(Foundation.Bundle = .main)
@@ -113,7 +114,27 @@ struct OrihimeBundle: Sendable {
             display = try? displayDecoder.decode(OrihimeDisplayManifest.self, from: data)
         }
 
-        return OrihimeBundle(manifest: manifest, display: display, mapped: mapped)
+        return OrihimeBundle(manifest: manifest, display: display, mapped: mapped, source: source)
+    }
+
+    // a real filesystem URL, for the one thing Data-based reads can't serve:
+    // MLModel.compileModel(at:) operates on the filesystem, not bytes, and a
+    // .mlpackage is a directory (a "package"), not a single file - contents(at:)
+    // has no way to hand back a directory at all
+    func modelURL(_ file: String) throws -> URL {
+        switch source {
+        case .appBundle(let bundle):
+            guard let url = bundle.url(forResource: file, withExtension: nil) else {
+                throw RecommenderError.malformed(file: file, reason: "not in the bundle")
+            }
+            return url
+        case .assetPack(let id, let root):
+            do {
+                return try AssetPackManager.shared.url(for: FilePath("\(root)/\(file)"))
+            } catch {
+                throw RecommenderError.malformed(file: file, reason: String(describing: error))
+            }
+        }
     }
 
     func array<Element: NumpyScalar>(
