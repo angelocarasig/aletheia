@@ -28,6 +28,16 @@ struct RecommendationModelOption: Identifiable, Sendable {
             name: "Protostar",
             subtitle: "The current recommendation model",
             assetRoot: "protostar-1-0-0-2026.08"
-        )
+        ),
+        // temporary exception to the rule above - no OrihimeRecommender exists yet
+        // (v02 phase 2b). here early only so Download/Remove give dev-side control
+        // over the pack while iterating on pack rebuilds; selecting it as active
+        // degrades gracefully to no results, same as any other unavailable model
+        RecommendationModelOption(
+            packId: "orihime-2-0-0",
+            name: "Orihime",
+            subtitle: "Not wired to a recommender yet - for pack testing only",
+            assetRoot: "orihime-2-0-0-2026.08"
+        ),
     ]
 }

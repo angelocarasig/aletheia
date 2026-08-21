@@ -18,10 +18,6 @@ struct DetailsRecommendationSheet: View {
     private enum Layout {
         static let coverWidth: CGFloat = 120
         static let coverAspect: CGFloat = 11 / 16
-        static let meterHeight: CGFloat = 6
-        static let meterLabelWidth: CGFloat = 52
-        static let meterValueWidth: CGFloat = 40
-        static let trackOpacity: Double = 0.1
     }
 
     var body: some View {
@@ -130,60 +126,15 @@ struct DetailsRecommendationSheet: View {
         }
     }
 
-    // era is shown as its own meter but deliberately excluded from the
-    // confidence figure above it - a shared publication year was reading as
-    // a content match when it was folded in
+    // states its own scope - a z-score against this one seed means nothing
+    // next to another recommendation's
     private var match: some View {
-        VStack(alignment: .leading, spacing: dimensions.spacing.space12) {
-            SectionHeader(title: "Match") {
-                Badge(text: result.confidence.percent, tone: .neutral, size: .compact)
-            }
-
-            VStack(alignment: .leading, spacing: dimensions.spacing.space8) {
-                Meter(label: "Tags", value: result.blocks.tag)
-                Meter(label: "Story", value: result.blocks.embedding)
-                Meter(label: "Era", value: result.blocks.era)
-            }
-
-            // states its own scope - a z-score against this one seed means
-            // nothing next to another recommendation's
-            Text(
-                "Ranked \(result.score.formatted(.number.precision(.fractionLength(2)))) above average for this title."
-            )
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .fixedSize(horizontal: false, vertical: true)
-        }
-    }
-
-    private func Meter(label: String, value: Float) -> some View {
-        let fraction = Double(min(max(value, 0), 1))
-
-        return HStack(spacing: dimensions.spacing.space12) {
-            Text(label)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .frame(width: Layout.meterLabelWidth, alignment: .leading)
-
-            Capsule()
-                .fill(.primary.opacity(Layout.trackOpacity))
-                .frame(height: Layout.meterHeight)
-                .overlay(alignment: .leading) {
-                    GeometryReader { proxy in
-                        Capsule()
-                            .fill(.brand)
-                            .frame(width: proxy.size.width * fraction)
-                    }
-                }
-
-            Text(value.percent)
-                .font(.caption.monospacedDigit())
-                .foregroundStyle(.secondary)
-                .frame(width: Layout.meterValueWidth, alignment: .trailing)
-        }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(label)
-        .accessibilityValue(value.percent)
+        Text(
+            "Ranked \(result.score.formatted(.number.precision(.fractionLength(2)))) above average for this title."
+        )
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
     }
 
     private func synopsis(_ text: String) -> some View {
@@ -194,12 +145,6 @@ struct DetailsRecommendationSheet: View {
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
-    }
-}
-
-extension Float {
-    var percent: String {
-        Double(min(max(self, 0), 1)).formatted(.percent.precision(.fractionLength(0)))
     }
 }
 

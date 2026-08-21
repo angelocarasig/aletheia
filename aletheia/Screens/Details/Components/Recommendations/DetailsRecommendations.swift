@@ -83,16 +83,11 @@ struct DetailsRecommendations: View {
         }
     }
 
-    // the score is deliberately not on the artwork with the confidence badge -
     // it is a z-score against this one seed, not comparable across cards, and
     // placing it like a badge would read as a rank
     private func Card(result: Recommendation) -> some View {
         VStack(alignment: .leading, spacing: dimensions.spacing.space4) {
             SourceCard(stub: result.stub)
-                .overlay(alignment: .topTrailing) {
-                    Badge(text: result.confidence.percent, tone: .neutral, size: .compact)
-                        .padding(dimensions.spacing.space8)
-                }
 
             Text("z \(result.score.formatted(.number.precision(.fractionLength(2))))")
                 .font(.caption2.monospacedDigit())
