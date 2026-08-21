@@ -1066,6 +1066,14 @@ extension OriginRefresher {
             )
         }
 
+        for name in detail.authors {
+            try AuthorRecord.attach(name, to: origin.seriesId, in: db)
+        }
+
+        for name in detail.tags {
+            try TagRecord.attach(name, to: origin.seriesId, in: db)
+        }
+
         return changed
     }
 

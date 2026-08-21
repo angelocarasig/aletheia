@@ -67,3 +67,18 @@ extension AuthorRecord {
         AuthorRecord.filter(Columns.name == instance.name)
     }
 }
+
+extension AuthorRecord {
+    // every writer joins through here, so none of them records where the author came from
+    @discardableResult
+    static func attach(_ name: String, to series: SeriesRecord.ID, in db: Database) throws
+        -> AuthorRecord.ID?
+    {
+        let author = try findOrCreate(AuthorRecord(id: nil, name: name), in: db)
+        guard let authorId = author.id else { return nil }
+
+        var link = SeriesAuthorRecord(id: nil, seriesId: series, authorId: authorId)
+        try link.insert(db, onConflict: .ignore)
+        return authorId
+    }
+}

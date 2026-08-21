@@ -308,8 +308,22 @@ extension AtsumaruSource {
             covers: [Self.poster(document.poster), Self.poster(document.posterMedium)]
                 .compactMap { $0 },
             tags: document.tags ?? [],
-            authors: document.authors ?? []
+            authors: await authors(for: document, seriesSlug: seriesSlug)
         )
+    }
+
+    // the search index's authors field goes stale for a chunk of the catalogue -
+    // empty even for well-known titles - while manga/page (already queried again
+    // in chapters() for scanlator names) carries it correctly. only paid when the
+    // index already came back empty, and failure here degrades to no authors
+    // rather than failing the whole details() call over non-critical metadata
+    private func authors(for document: Detail, seriesSlug: String) async -> [String] {
+        if let authors = document.authors, !authors.isEmpty { return authors }
+
+        let page: MangaPage? = try? await fetch(
+            Self.api("manga/page", [.init(name: "id", value: seriesSlug)])
+        )
+        return page?.mangaPage.authors?.map(\.name) ?? []
     }
 
     private static func classification(_ document: Detail) -> Classification {
@@ -625,10 +639,16 @@ extension AtsumaruSource {
 
         struct Page: Decodable, Sendable {
             let scanlators: [Scanlator]
+            let authors: [Author]?
         }
 
         struct Scanlator: Decodable, Sendable {
             let id: String
+            let name: String
+        }
+
+        // role (Author/Artist) is dropped - the app's author model is flat
+        struct Author: Decodable, Sendable {
             let name: String
         }
     }

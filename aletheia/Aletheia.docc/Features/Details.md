@@ -88,6 +88,13 @@ authors, tags, and seeds language priority, then the observation picks it up. Ch
 deliberately not in that transaction - they land in a second write so the screen can render as
 soon as metadata exists.
 
+`Compositor.Refresh`'s metadata write (the "refresh metadata" action, `Compositor+Refresh.swift`)
+is a separate write path from this one - it re-runs `source.details()` against an existing series
+rather than creating one. It writes the same field set (synopsis, classification, publication,
+titles, covers, authors, tags) through the same per-item `AuthorRecord.attach` /
+`TagRecord.attach` statics this create path uses, so a stale or empty author/tag list is
+repairable the same way a bad cover pool is - by refreshing, not by re-adding the series.
+
 The duplicate guard checks both `detail.slug` and the stub's original slug, since the details
 response's canonical slug can differ from the slug the stub was opened with.
 

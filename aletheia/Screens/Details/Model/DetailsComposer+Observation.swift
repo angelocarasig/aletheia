@@ -545,10 +545,7 @@ extension DetailsComposer {
         }
 
         for name in detail.authors {
-            let author = try AuthorRecord.findOrCreate(AuthorRecord(id: nil, name: name), in: db)
-            guard let authorId = author.id else { continue }
-            var link = SeriesAuthorRecord(id: nil, seriesId: seriesId, authorId: authorId)
-            try link.insert(db, onConflict: .ignore)
+            try AuthorRecord.attach(name, to: seriesId, in: db)
         }
 
         for name in detail.tags {

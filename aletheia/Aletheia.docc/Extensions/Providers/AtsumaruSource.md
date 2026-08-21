@@ -33,11 +33,16 @@ returned window, not the novel-filtered count, since the shelf pages itself inde
 ## Details, chapters, content
 
 Details resolves from the same search index, filtered to one id, rather than the site's own
-two-call detail flow - cheaper, and the index document already carries everything `SeriesDetail`
-needs. The chapter listing names each chapter's scanlation group only by id; the group's display
-name comes from a separate call, so a full chapter entry needs both in flight together. Content
-returns exact page dimensions in the same response as the page URLs - no probing needed, the same
-free-dimensions shape as MangaFire's own API.
+two-call detail flow - cheaper, and the index document carries almost everything `SeriesDetail`
+needs, including the authoritative `mbContentRating` classification that lives nowhere else. The
+one field the index goes stale on is `authors` - empty for a real chunk of the catalogue, even
+well-known titles, while `manga/page` (queried again in `chapters()` for scanlator names) always
+has it correctly. `details()` only pays that second call when the index's own `authors` came back
+empty, and a failure on that fallback degrades to no authors rather than failing the whole details
+fetch over non-critical metadata. The chapter listing names each chapter's scanlation group only by
+id; the group's display name comes from a separate call, so a full chapter entry needs both in
+flight together. Content returns exact page dimensions in the same response as the page URLs - no
+probing needed, the same free-dimensions shape as MangaFire's own API.
 
 Cover paths need normalizing before use: the search index and the shelf endpoints spell the same
 file two different ways (one with a leading `/static/` segment, one without), so both are reduced
