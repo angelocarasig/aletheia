@@ -94,6 +94,13 @@ struct RecommendationsScreen: View {
                     .lineLimit(2)
             }
         }
+        // branch selector and animation key are the same values - a proxy
+        // bool derived from them would go dead the moment its own source
+        // changed without it (see aletheia/Aletheia.docc/Features/LoadingTransitions.md)
+        .animation(.settle, value: state.progress)
+        .animation(.settle, value: state.status)
+        .animation(.settle, value: state.errorMessage)
+        .animation(.settle, value: vm.selectedPackId)
         .padding(dimensions.spacing.space12)
         .frame(minHeight: dimensions.touchTarget)
         .glassEffect(
