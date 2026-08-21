@@ -104,7 +104,11 @@ final class Bootstrap {
                 #if DEBUG
                     await Task.detached { ModelBundle.probe() }.value
                     await ModelBundle.probe(compositor.recommender)
-                    await OrihimeBundle.probe()
+                    if let orihimeBundle = try? await OrihimeBundle.ensureDownloadedBundle() {
+                        await OrihimeBundle.probe(bundle: orihimeBundle)
+                        await OrihimeTextEncoder.probe(bundle: orihimeBundle)
+                        await OrihimeCoverEncoder.probe(bundle: orihimeBundle)
+                    }
                 #endif
             }
         } catch {

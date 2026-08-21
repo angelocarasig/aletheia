@@ -13,23 +13,29 @@
     // adapter or picker entry exists. delete once phase 2's OrihimeRecommender and its own
     // wiring through Compositor supersede this
     extension OrihimeBundle {
-        static func probe() async {
+        // shared by every probe in this DEBUG group, so a real-device run
+        // downloads the pack once rather than once per probe
+        static func ensureDownloadedBundle() async throws -> OrihimeBundle {
+            let log = { (m: String) in AppLog.shared.log(m, category: "orihime") }
+            // assetPack(withID:) can answer from a manifest the device cached before
+            // this pack existed on the server - forcing a refresh first is what
+            // checkForUpdates exists for, per BAAssetPackManager's own header doc
+            _ = try await AssetPackManager.shared.checkForUpdates()
+
+            let pack = try await AssetPackManager.shared.assetPack(withID: "orihime-2-0-0")
+            log("orihime probe - requesting orihime-2-0-0 (\(pack.downloadSize) bytes)")
+            try await AssetPackManager.shared.ensureLocalAvailability(of: pack)
+            log("orihime probe - orihime-2-0-0 is now locally available")
+
+            let bundle = try OrihimeBundle.load(
+                from: .assetPack(id: "orihime-2-0-0", root: "orihime-2-0-0-2026.08"))
+            log("pack schema \(bundle.manifest.packSchema), built \(bundle.manifest.builtAt)")
+            return bundle
+        }
+
+        static func probe(bundle: OrihimeBundle) async {
             let log = { (m: String) in AppLog.shared.log(m, category: "orihime") }
             do {
-                // assetPack(withID:) can answer from a manifest the device cached before
-                // this pack existed on the server - forcing a refresh first is what
-                // checkForUpdates exists for, per BAAssetPackManager's own header doc
-                _ = try await AssetPackManager.shared.checkForUpdates()
-
-                let pack = try await AssetPackManager.shared.assetPack(withID: "orihime-2-0-0")
-                log("orihime probe - requesting orihime-2-0-0 (\(pack.downloadSize) bytes)")
-                try await AssetPackManager.shared.ensureLocalAvailability(of: pack)
-                log("orihime probe - orihime-2-0-0 is now locally available")
-
-                let bundle = try OrihimeBundle.load(
-                    from: .assetPack(id: "orihime-2-0-0", root: "orihime-2-0-0-2026.08"))
-                log("pack schema \(bundle.manifest.packSchema), built \(bundle.manifest.builtAt)")
-
                 let seeds = bundle.manifest.counts.seeds
                 let k = bundle.manifest.counts.k
                 let titleCount = bundle.manifest.corpus.titles
