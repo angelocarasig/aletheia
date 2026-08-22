@@ -151,7 +151,7 @@ extension DetailsComposer {
         enum Match: Equatable {
             case searching
             case found(TrackerCandidate)
-            case unmatched
+            case unmatched(count: Int)
         }
 
         private(set) var matches: [Tracker: Match] = [:]
@@ -216,7 +216,9 @@ extension DetailsComposer {
             // and the reader decides it
             if exact.count > 1 { exact.removeAll(where: \.isNovel) }
 
-            guard exact.count == 1, let only = exact.first else { return .unmatched }
+            guard exact.count == 1, let only = exact.first else {
+                return .unmatched(count: outcome.results.count)
+            }
             return .found(only)
         }
 

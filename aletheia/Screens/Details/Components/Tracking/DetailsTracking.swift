@@ -337,8 +337,11 @@ struct DetailsTracking: View {
                 case .found(let candidate):
                     Text(facts(for: candidate))
 
+                case .unmatched(let count) where count > 0:
+                    Text("^[\(count) possible match](inflect: true)")
+
                 case .unmatched:
-                    Text("No exact match")
+                    Text("No matches found")
                 }
             } else {
                 Text("Not linked")
