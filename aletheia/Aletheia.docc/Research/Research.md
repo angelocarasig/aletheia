@@ -21,6 +21,16 @@ claim, since these drift.
 - <doc:TrackerCandidates>
 - <doc:TrackerUXGaps>
 
+### Ecosystem
+
+Feature scans of other readers - one page per app, each a table of that app's features against
+what we have.
+
+- <doc:Aidoku>
+- <doc:Suwatte>
+- <doc:Mihon>
+- <doc:Kotatsu>
+
 ### Other
 
 - <doc:Deeplinks>
