@@ -176,93 +176,91 @@ struct ReaderScreen: View {
 extension ReaderScreen {
     @ViewBuilder
     fileprivate func Reading(_ vm: ReaderViewModel, _ engine: ReaderEngine) -> some View {
-        GeometryReader { proxy in
-            ZStack {
-                // opacity rather than a branch, for both of these. a
-                // UIViewControllerRepresentable inside an if/else is a different
-                // view tree per state, and switching branches would tear the
-                // collection view down and lose the reader's place
-                ReaderSurface(engine: engine)
-                    .ignoresSafeArea()
-                    .grayscale(engine.configuration.grayscale ? 1 : 0)
-                    .overlay {
-                        // difference against white is an inversion, and unlike
-                        // .colorInvert() it has a strength, so it can be dialled off
-                        Color.white
-                            .blendMode(.difference)
-                            .opacity(engine.configuration.inverted ? 1 : 0)
-                            .ignoresSafeArea()
-                            .allowsHitTesting(false)
-                    }
-                    .overlay {
-                        let warmth = engine.configuration.warmth
-                        let tone =
-                            warmth < 0
-                            ? ReaderConfiguration.Defaults.coolTone
-                            : ReaderConfiguration.Defaults.warmthTone
+        ZStack {
+            // opacity rather than a branch, for both of these. a
+            // UIViewControllerRepresentable inside an if/else is a different
+            // view tree per state, and switching branches would tear the
+            // collection view down and lose the reader's place
+            ReaderSurface(engine: engine)
+                .ignoresSafeArea()
+                .grayscale(engine.configuration.grayscale ? 1 : 0)
+                .overlay {
+                    // difference against white is an inversion, and unlike
+                    // .colorInvert() it has a strength, so it can be dialled off
+                    Color.white
+                        .blendMode(.difference)
+                        .opacity(engine.configuration.inverted ? 1 : 0)
+                        .ignoresSafeArea()
+                        .allowsHitTesting(false)
+                }
+                .overlay {
+                    let warmth = engine.configuration.warmth
+                    let tone =
+                        warmth < 0
+                        ? ReaderConfiguration.Defaults.coolTone
+                        : ReaderConfiguration.Defaults.warmthTone
 
-                        Color(red: tone.red, green: tone.green, blue: tone.blue)
-                            .blendMode(.multiply)
-                            .opacity(abs(warmth))
-                            .ignoresSafeArea()
-                            .allowsHitTesting(false)
-                    }
-
-                if engine.configuration.dim > 0 {
-                    Color.black
-                        .opacity(engine.configuration.dim)
+                    Color(red: tone.red, green: tone.green, blue: tone.blue)
+                        .blendMode(.multiply)
+                        .opacity(abs(warmth))
                         .ignoresSafeArea()
                         .allowsHitTesting(false)
                 }
 
-                if vm.isFlashingTapZones {
-                    ReaderTapZoneMap(layout: vm.tapZone, reversed: vm.tapZonesReversed)
-                        .ignoresSafeArea()
-                        .transition(.opacity)
-                }
+            if engine.configuration.dim > 0 {
+                Color.black
+                    .opacity(engine.configuration.dim)
+                    .ignoresSafeArea()
+                    .allowsHitTesting(false)
+            }
 
-                if engine.isAutoScrolling, engine.configuration.mode.isPaged {
-                    ReaderCountdown(progress: engine.autoAdvanceProgress)
-                        .transition(.opacity)
-                }
-
-                if let error = engine.error {
-                    Failed(error, engine: engine)
-                }
-
-                if vm.isOverlayVisible {
-                    ReaderOverlay(
-                        engine: engine,
-                        sourceIcon: vm.sourceIcon(for: engine.current?.id),
-                        onPreviousChapter: { Task { await engine.previousChapter() } },
-                        onNextChapter: { Task { await engine.nextChapter() } },
-                        onSeek: { engine.goToPage($0) },
-                        // the reading direction is half of what the zones mean,
-                        // so changing it changes them and that has to be shown
-                        onModeChange: { mode in
-                            vm.setMode(mode)
-                            vm.flashTapZones()
-                        },
-                        onFilters: { showingFilters = true },
-                        onSpeedChange: { vm.setAutoScrollSpeed($0) },
-                        onIntervalChange: { vm.setAutoAdvanceInterval($0) },
-                        onChapters: { showingChapters = true },
-                        onSources: { showingSources = true },
-                        onSettings: { showingSettings = true },
-                        onTapZones: { vm.isShowingTapZones = true },
-                        onDismiss: { dismiss() }
-                    )
+            if vm.isFlashingTapZones {
+                ReaderTapZoneMap(layout: vm.tapZone, reversed: vm.tapZonesReversed)
+                    .ignoresSafeArea()
                     .transition(.opacity)
-                }
+            }
 
+            if engine.isAutoScrolling, engine.configuration.mode.isPaged {
+                ReaderCountdown(progress: engine.autoAdvanceProgress)
+                    .transition(.opacity)
             }
-            // taps arrive from UIKit in window space and are handled the moment
-            // they land - keeping this frame in step is all the conversion needs
-            .onGeometryChange(for: CGRect.self) { proxy in
-                proxy.frame(in: .global)
-            } action: { frame in
-                vm.surfaceFrame = frame
+
+            if let error = engine.error {
+                Failed(error, engine: engine)
             }
+
+            if vm.isOverlayVisible {
+                ReaderOverlay(
+                    engine: engine,
+                    sourceIcon: vm.sourceIcon(for: engine.current?.id),
+                    onPreviousChapter: { Task { await engine.previousChapter() } },
+                    onNextChapter: { Task { await engine.nextChapter() } },
+                    onSeek: { engine.goToPage($0) },
+                    // the reading direction is half of what the zones mean,
+                    // so changing it changes them and that has to be shown
+                    onModeChange: { mode in
+                        vm.setMode(mode)
+                        vm.flashTapZones()
+                    },
+                    onFilters: { showingFilters = true },
+                    onSpeedChange: { vm.setAutoScrollSpeed($0) },
+                    onIntervalChange: { vm.setAutoAdvanceInterval($0) },
+                    onChapters: { showingChapters = true },
+                    onSources: { showingSources = true },
+                    onSettings: { showingSettings = true },
+                    onTapZones: { vm.isShowingTapZones = true },
+                    onDismiss: { dismiss() }
+                )
+                .transition(.opacity)
+            }
+
+        }
+        // taps arrive from UIKit in window space and are handled the moment
+        // they land - keeping this frame in step is all the conversion needs
+        .onGeometryChange(for: CGRect.self) { proxy in
+            proxy.frame(in: .global)
+        } action: { frame in
+            vm.surfaceFrame = frame
         }
     }
 
