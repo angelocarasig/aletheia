@@ -35,7 +35,7 @@ struct LanguageOrder: View {
         NavigationStack {
             Content
                 .navigationTitle("Language Priority")
-                .navigationSubtitle("Checked before source priority")
+                .navigationSubtitle("Top language wins a chapter available in more than one")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .topBarLeading) {

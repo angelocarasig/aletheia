@@ -37,6 +37,12 @@ struct DetailsScreen: View {
     @State private var showingDisambiguation = false
     @State private var inspecting: Recommendation?
     @State private var showingResetConfirmation = false
+    // counts, not bools - both alerts need "how many" for their title, and nil
+    // doubles as "not showing" the same way marking/removing already do
+    @State private var downloadingUnread: Int?
+    @State private var downloadingAll: Int?
+    @State private var deletingDownloads: Int?
+    @State private var showingNoDownloads = false
     // written here, read only inside the backdrop - reading it in this body
     // would re-evaluate the whole chapter list on every scroll step
     @State private var scroll = DetailsScroll()
@@ -183,6 +189,49 @@ struct DetailsScreen: View {
             }
         }
         .sensoryFeedback(.impact(weight: .heavy), trigger: markCommitted)
+        .alert(
+            downloadUnreadTitle,
+            isPresented: Binding(
+                get: { downloadingUnread != nil }, set: { if !$0 { downloadingUnread = nil } })
+        ) {
+            Button("Download Unread") {
+                downloadingUnread = nil
+                guard let id = composer?.seriesId else { return }
+                compositor.downloads.enqueue(unreadFor: id)
+            }
+            Button("Cancel", role: .cancel) { downloadingUnread = nil }
+        }
+        .alert(
+            downloadAllTitle,
+            isPresented: Binding(
+                get: { downloadingAll != nil }, set: { if !$0 { downloadingAll = nil } })
+        ) {
+            Button("Download All") {
+                downloadingAll = nil
+                guard let id = composer?.seriesId else { return }
+                compositor.downloads.enqueue(allFor: id)
+            }
+            Button("Cancel", role: .cancel) { downloadingAll = nil }
+        }
+        .alert(
+            deleteDownloadsTitle,
+            isPresented: Binding(
+                get: { deletingDownloads != nil }, set: { if !$0 { deletingDownloads = nil } })
+        ) {
+            Button("Delete Downloads", role: .destructive) {
+                deletingDownloads = nil
+                guard let id = composer?.seriesId else { return }
+                compositor.downloads.delete(for: id)
+            }
+            Button("Cancel", role: .cancel) { deletingDownloads = nil }
+        } message: {
+            Text("This can't be undone.")
+        }
+        .alert("Nothing to Delete", isPresented: $showingNoDownloads) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("No chapters are downloaded for this series.")
+        }
         .sheet(isPresented: $showingCollections) {
             if let composer {
                 let library = composer.library
@@ -546,7 +595,10 @@ struct DetailsScreen: View {
             mark: { read, numbers in requestMark(composer, read: read, numbers: numbers) },
             read: { chapter in open(chapter, in: composer) },
             inspect: { inspecting = $0 },
-            confirmReset: { showingResetConfirmation = true }
+            confirmReset: { showingResetConfirmation = true },
+            confirmDownloadUnread: { requestDownloadUnread(composer) },
+            confirmDownloadAll: { requestDownloadAll(composer) },
+            confirmDeleteDownloads: { requestDeleteDownloads(composer) }
         )
     }
 
@@ -613,5 +665,45 @@ struct DetailsScreen: View {
         marking = nil
         markCommitted = request.id
         Task { await composer?.chapters.mark(read: request.read, numbers: request.numbers) }
+    }
+
+    private var downloadUnreadTitle: String {
+        let count = downloadingUnread ?? 0
+        return "Download \(count) unread \(count == 1 ? "chapter" : "chapters")?"
+    }
+
+    private var downloadAllTitle: String {
+        let count = downloadingAll ?? 0
+        return "Download \(count) \(count == 1 ? "chapter" : "chapters")?"
+    }
+
+    private var deleteDownloadsTitle: String {
+        let count = deletingDownloads ?? 0
+        return "Delete \(count) downloaded \(count == 1 ? "chapter" : "chapters")?"
+    }
+
+    // nothing to confirm when there's nothing to act on - same reasoning as
+    // requestMark skipping straight to the write for a single chapter
+    private func requestDownloadUnread(_ composer: DetailsComposer) {
+        let count = composer.chapters.chapters.filter { !$0.finished && !$0.downloaded }.count
+        guard count > 0 else { return }
+        downloadingUnread = count
+    }
+
+    // every chapter not yet downloaded, regardless of read state - the
+    // distinction from requestDownloadUnread above
+    private func requestDownloadAll(_ composer: DetailsComposer) {
+        let count = composer.chapters.chapters.filter { !$0.downloaded }.count
+        guard count > 0 else { return }
+        downloadingAll = count
+    }
+
+    private func requestDeleteDownloads(_ composer: DetailsComposer) {
+        let count = composer.chapters.chapters.filter(\.downloaded).count
+        guard count > 0 else {
+            showingNoDownloads = true
+            return
+        }
+        deletingDownloads = count
     }
 }

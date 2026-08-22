@@ -59,6 +59,9 @@ extension DetailsContent {
         var read: (DetailsComposer.Chapters.Row) -> Void
         var inspect: (Recommendation) -> Void
         var confirmReset: () -> Void
+        var confirmDownloadUnread: () -> Void
+        var confirmDownloadAll: () -> Void
+        var confirmDeleteDownloads: () -> Void
     }
 }
 
@@ -82,8 +85,6 @@ private struct HeaderSection: View {
 private struct ActionsSection: View {
     let composer: DetailsComposer
     let actions: DetailsContent.Actions
-
-    @Environment(\.compositor) private var compositor
 
     var body: some View {
         let library = composer.library
@@ -109,19 +110,8 @@ private struct ActionsSection: View {
                     onManageCollections: actions.openCollections,
                     onRefreshChapters: { Task { await composer.refreshChapters() } },
                     onRefreshMetadata: { Task { await composer.refreshMetadata() } },
-                    onMarkAll: { read in
-                        actions.mark(read, composer.chapters.chapters.map(\.number))
-                    },
                     onEditDetails: actions.openEdit,
                     onMerge: actions.openMerge,
-                    onDownloadUnread: {
-                        guard let id = composer.seriesId else { return }
-                        compositor.downloads.enqueue(unreadFor: id)
-                    },
-                    onDeleteDownloads: {
-                        guard let id = composer.seriesId else { return }
-                        compositor.downloads.delete(for: id)
-                    },
                     onResetSeries: actions.confirmReset
                 )
             }
@@ -244,6 +234,7 @@ private struct ChaptersSection: View {
                 cadence: composer.cadence,
                 hasFetched: composer.series.chaptersFetchedDate != nil,
                 sourceCount: composer.sources.origins.count,
+                canRefresh: composer.refresh.canStart,
                 showAllChapters: chapters.showAll,
                 showHalfChapters: chapters.showHalf,
                 onShowAllChapters: { on in Task { await chapters.show(all: on) } },
@@ -251,6 +242,9 @@ private struct ChaptersSection: View {
                 onSources: actions.openSourceOrder,
                 onScanlators: actions.openScanlatorOrder,
                 onLanguages: actions.openLanguageOrder,
+                onDownloadUnread: actions.confirmDownloadUnread,
+                onDownloadAll: actions.confirmDownloadAll,
+                onDeleteDownloads: actions.confirmDeleteDownloads,
                 onMark: actions.mark,
                 downloads: compositor.downloads,
                 onDownload: { id in

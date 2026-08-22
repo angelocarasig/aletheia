@@ -15,6 +15,7 @@ struct DetailsChapters: View {
     var cadence: DetailsComposer.Cadence?
     var hasFetched: Bool = true
     var sourceCount: Int = 0
+    var canRefresh: Bool = true
     var showAllChapters: Bool = false
     var showHalfChapters: Bool = true
     var onShowAllChapters: (Bool) -> Void
@@ -22,6 +23,9 @@ struct DetailsChapters: View {
     var onSources: () -> Void
     var onScanlators: () -> Void
     var onLanguages: () -> Void
+    var onDownloadUnread: () -> Void = {}
+    var onDownloadAll: () -> Void = {}
+    var onDeleteDownloads: () -> Void = {}
     var onMark: (_ read: Bool, _ numbers: [Double]) -> Void
     var downloads: Compositor.Downloads?
     var onDownload: (_ id: Int64) -> Void = { _ in }
@@ -33,6 +37,7 @@ struct DetailsChapters: View {
 
     @State private var sort: Sort = .numberDescending
     @State private var isExpanded = false
+    @State private var hideRead = false
 
     private enum Sort: Hashable {
         case numberDescending
@@ -110,12 +115,22 @@ struct DetailsChapters: View {
         .animation(.settle, value: phase)
     }
 
+    // hide-read applies here, once, so sorting/counting/rendering/"has more"
+    // all agree on what "the chapter list" currently means - nothing else
+    // reads raw `chapters` for anything the reader actually sees. bulk
+    // mark-all actions are the deliberate exception (see RowMenu) - "Unread
+    // All" has to reach chapters hide-read just hid, or it stops being "all"
+    private var visible: [Chapter] {
+        guard hideRead else { return chapters }
+        return chapters.filter { !$0.finished }
+    }
+
     private var sorted: [Chapter] {
         switch sort {
-        case .numberDescending: chapters.sorted { $0.number > $1.number }
-        case .numberAscending: chapters.sorted { $0.number < $1.number }
-        case .dateNewest: chapters.sorted { $0.publishedDate > $1.publishedDate }
-        case .dateOldest: chapters.sorted { $0.publishedDate < $1.publishedDate }
+        case .numberDescending: visible.sorted { $0.number > $1.number }
+        case .numberAscending: visible.sorted { $0.number < $1.number }
+        case .dateNewest: visible.sorted { $0.publishedDate > $1.publishedDate }
+        case .dateOldest: visible.sorted { $0.publishedDate < $1.publishedDate }
         }
     }
 
@@ -125,7 +140,7 @@ struct DetailsChapters: View {
     }
 
     private var hasMore: Bool {
-        chapters.count > Layout.collapsedLimit
+        visible.count > Layout.collapsedLimit
     }
 
     private var isPending: Bool {
@@ -140,7 +155,7 @@ struct DetailsChapters: View {
 extension DetailsChapters {
     private var Header: some View {
         VStack(alignment: .leading, spacing: dimensions.spacing.space8) {
-            SectionHeader(title: "Chapters") { Visibility }
+            SectionHeader("Chapters")
 
             if let cadence {
                 DetailsCadence(
@@ -159,6 +174,8 @@ extension DetailsChapters {
 
                 Spacer(minLength: 0)
 
+                Visibility
+
                 Filters
             }
         }
@@ -174,12 +191,18 @@ extension DetailsChapters {
                 Label("Show Half", systemImage: "circle.lefthalf.filled")
             }
             .disabled(showAllChapters)
+
+            Toggle(isOn: $hideRead) {
+                Label("Hide Read", systemImage: "checkmark.circle")
+            }
         } label: {
-            Icon("ellipsis")
-                .contentShape(.rect)
+            Icon("square.stack.3d.up")
+                .chipBackground(Layout.fillOpacity)
+                .contentShape(.capsule)
         }
         .menuStyle(.button)
         .buttonStyle(.plain)
+        .accessibilityLabel("Chapter visibility")
     }
 
     private var allChapters: Binding<Bool> {
@@ -194,33 +217,59 @@ extension DetailsChapters {
     }
 
     private var Filters: some View {
-        HStack(spacing: dimensions.spacing.space8) {
-            Filter(
-                "plus.square.dashed",
-                "Change source priority",
-                enabled: sourceCount > 1,
-                action: onSources
-            )
+        Menu {
+            Section("Priority") {
+                Button(action: onLanguages) {
+                    Label("Languages", systemImage: "translate")
+                }
 
-            Filter("person.2", "Filter by scanlator", action: onScanlators)
+                Button(action: onSources) {
+                    Label("Sources", systemImage: "plus.square.dashed")
+                }
+                .disabled(sourceCount <= 1)
 
-            Filter("translate", "Filter by language", action: onLanguages)
+                Button(action: onScanlators) {
+                    Label("Scanlators", systemImage: "person.2")
+                }
+            }
+
+            Section("Downloads") {
+                Button(action: onDownloadAll) {
+                    Label("Download All", systemImage: "arrow.down.circle.fill")
+                }
+                .disabled(!canRefresh)
+
+                Button(action: onDownloadUnread) {
+                    Label("Download Unread", systemImage: "arrow.down.circle")
+                }
+                .disabled(!canRefresh)
+
+                Button(role: .destructive, action: onDeleteDownloads) {
+                    Label("Delete Downloads", systemImage: "trash")
+                }
+            }
+
+            Section("Progress") {
+                Button {
+                    onMark(true, chapters.map(\.number))
+                } label: {
+                    Label("Mark All as Read", systemImage: "checkmark.circle.fill")
+                }
+
+                Button {
+                    onMark(false, chapters.map(\.number))
+                } label: {
+                    Label("Mark All as Unread", systemImage: "x.circle.fill")
+                }
+            }
+        } label: {
+            Icon("gearshape")
+                .chipBackground(Layout.fillOpacity)
+                .contentShape(.capsule)
         }
-    }
-
-    private func Filter(
-        _ name: String,
-        _ label: String,
-        enabled: Bool = true,
-        action: @escaping () -> Void
-    ) -> some View {
-        Icon(name)
-            .chipBackground(Layout.fillOpacity)
-            .contentShape(.capsule)
-            .tappable(action: action)
-            .disabled(!enabled)
-            .opacity(enabled ? 1 : Layout.disabledOpacity)
-            .accessibilityLabel(label)
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .accessibilityLabel("Chapter settings")
     }
 
     // a Menu row has one image slot rendered trailing, so the checkmark takes
@@ -248,7 +297,7 @@ extension DetailsChapters {
             if isPending {
                 Text("Loading chapters")
             } else {
-                Text("^[\(chapters.count) chapter](inflect: true)")
+                Text("^[\(visible.count) chapter](inflect: true)")
             }
         }
         .font(.subheadline)
@@ -306,6 +355,13 @@ extension DetailsChapters {
             // never reaches .failed here - it renders as empty instead
             case .empty, .failed:
                 EmptyState
+                    .transition(.opacity)
+
+            // reachable only via hide-read hiding every last chapter - phase
+            // itself still says .content, since the series genuinely has
+            // chapters, just none currently shown
+            case .content where visible.isEmpty:
+                AllRead
                     .transition(.opacity)
 
             case .content:
@@ -384,11 +440,23 @@ extension DetailsChapters {
         .frame(height: Layout.emptyStateHeight)
     }
 
+    // distinct from EmptyState on purpose - "no chapters" and "hide read hid
+    // all of them" are different facts, and the fix for one (refresh) does
+    // nothing for the other
+    private var AllRead: some View {
+        ContentUnavailableView(
+            "All Caught Up",
+            systemImage: "checkmark.circle",
+            description: Text("Every chapter is marked read. Turn off Hide Read to see them.")
+        )
+        .frame(height: Layout.emptyStateHeight)
+    }
+
     private var ExpandToggle: some View {
         HStack(spacing: dimensions.spacing.space8) {
             Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
                 .contentTransition(.symbolEffect(.replace))
-            Text(isExpanded ? "Show Less" : "Show All \(chapters.count) Chapters")
+            Text(isExpanded ? "Show Less" : "Show All \(visible.count) Chapters")
         }
         .font(.subheadline)
         .foregroundStyle(.brand)

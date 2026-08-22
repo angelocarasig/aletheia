@@ -20,11 +20,8 @@ struct DetailsActions: View {
     var onManageCollections: () -> Void
     var onRefreshChapters: () -> Void
     var onRefreshMetadata: () -> Void
-    var onMarkAll: (Bool) -> Void
     var onEditDetails: () -> Void
     var onMerge: () -> Void
-    var onDownloadUnread: () -> Void = {}
-    var onDeleteDownloads: () -> Void = {}
     var onResetSeries: () -> Void = {}
 
     @Environment(\.dimensions) private var dimensions
@@ -182,35 +179,10 @@ struct DetailsActions: View {
 
             Divider()
 
-            Button(action: onDownloadUnread) {
-                Label("Download Unread", systemImage: "arrow.down.circle")
-            }
-            .disabled(!canRefresh)
-
-            Button(role: .destructive, action: onDeleteDownloads) {
-                Label("Delete Downloads", systemImage: "trash")
-            }
-
-            Divider()
-
             Button(role: .destructive, action: onResetSeries) {
                 Label("Reset Series", systemImage: "arrow.counterclockwise")
             }
             .disabled(!inLibrary)
-
-            Divider()
-
-            Button {
-                onMarkAll(true)
-            } label: {
-                Label("Mark All as Read", systemImage: "checkmark.circle.fill")
-            }
-
-            Button {
-                onMarkAll(false)
-            } label: {
-                Label("Mark All as Unread", systemImage: "x.circle.fill")
-            }
         } label: {
             Image(systemName: "ellipsis")
                 .modifier(Square(tint: fill(true), label: label(true)))
@@ -324,7 +296,6 @@ private struct ActionsPreview: View {
                 onManageCollections: { joined = (joined ?? collectionCount) > 0 ? 0 : 3 },
                 onRefreshChapters: {},
                 onRefreshMetadata: {},
-                onMarkAll: { _ in },
                 onEditDetails: {},
                 onMerge: {}
             )

@@ -48,7 +48,7 @@ struct OriginOrder: View {
             // forced active - the drag handles show without a separate Edit button
             .environment(\.editMode, .constant(.active))
             .navigationTitle("Source Priority")
-            .navigationSubtitle("Top source supplies the title, cover and chapters")
+            .navigationSubtitle("Top source wins a chapter more than one carries")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
