@@ -88,6 +88,7 @@ struct ReaderScreen: View {
         .sheet(isPresented: $showingChapters) {
             if let vm, let engine = vm.engine {
                 ReaderChapterList(
+                    seriesTitle: vm.seriesTitle,
                     slots: vm.slots,
                     current: engine.current?.number,
                     isLoading: vm.isLoadingSlots,

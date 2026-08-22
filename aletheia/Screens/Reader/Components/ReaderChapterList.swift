@@ -12,6 +12,7 @@ import SwiftUI
 // iOS 26 makes a partial sheet Liquid Glass on its own and turns it opaque at
 // full height by design
 struct ReaderChapterList: View {
+    let seriesTitle: String
     let slots: [ChapterSlot]
     let current: Double?
     let isLoading: Bool
@@ -48,7 +49,7 @@ struct ReaderChapterList: View {
                 Content(proxy)
                     .overlay(alignment: .bottom) { JumpToCurrent(proxy) }
             }
-            .navigationTitle("Chapters")
+            .navigationTitle(seriesTitle)
             .navigationSubtitle(subtitle)
             .navigationBarTitleDisplayMode(.inline)
             // a navigation container paints an opaque layer of its own, which

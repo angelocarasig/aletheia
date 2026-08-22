@@ -54,7 +54,7 @@ final class ReaderViewModel {
 
     // history rows snapshot the title because seriesId is a soft reference -
     // the row must stay readable after a purge or merge
-    @ObservationIgnored private var seriesTitle = ""
+    @ObservationIgnored private(set) var seriesTitle = ""
 
     var explainingGap: ReaderSeparatorModel.Gap?
 
