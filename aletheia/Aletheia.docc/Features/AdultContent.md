@@ -136,14 +136,20 @@ stamps `adult`. Not persisted to the database - every consumer already holds a d
 ships and dies with the source. Not disabled by default; badged `18+` on its row rather than given
 a separate section.
 
-Global search is the one surface that fans out over every source with no filter UI of its own, so
-a tick can't be the gate there - `Preferences.Key.includeAdultSources` (default `false`,
-persisted) is the ask instead. An included source's results are then blurred by
-`blurAdultContent` like anything else. There's deliberately no way to ask for adult content from
-global search itself - go to the source and use its filters. An excluded source stays silent
-otherwise, which reads as broken search, so the control row carries an "N sources hidden" count.
-Hiding a source from search is a discovery decision, never a data one - a library series whose
-origin points at an excluded source must not lose its chapters because the preference flipped.
+Global search is the one surface that fans out over every source with no filter UI of its own, so a
+tick can't be the gate there - two layers stand in for it instead. `Preferences.Key.bypassAdultSources`
+(default `false`, toggled by the ten-tap gesture on the Sources tab) is the existence gate: while
+off, an `adultOnly` source doesn't appear anywhere - not listed, not searched, not counted as
+hidden. Once bypassed, each `adultOnly` source's own `SourceRecord.hideFromSearch` (tri-state
+unset/hidden/shown, set in Settings > Sources - see <doc:aletheia/CollectionSourcePrivacy>) decides
+whether *that* source actually participates; `unset` resolves to hidden for an adult source, so
+opting in is always explicit. There's no blur step in global search anymore - a source either
+searches or it doesn't. There's deliberately no way to ask for adult content from global search
+itself beyond that - go to the source and use its filters. A source hidden this way stays silent
+otherwise, which reads as broken search, so the control row carries an "N sources hidden" count of
+what's actually excluded. Hiding a source from search is a discovery decision, never a data one - a
+library series whose origin points at a hidden source must not lose its chapters because the
+setting flipped.
 
 ## Open
 

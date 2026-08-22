@@ -28,6 +28,7 @@ persistence through ``aletheia/DatabaseClient`` directly.
 - <doc:ReaderFeature>
 - <doc:BackgroundAndData>
 - <doc:Home>
+- <doc:CollectionSourcePrivacy>
 
 ### Exploratory
 

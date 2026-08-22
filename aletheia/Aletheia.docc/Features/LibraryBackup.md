@@ -48,6 +48,13 @@ message LibraryBackup {
   string exported_by_app_version = 1;
   int64 exported_date = 2;
   repeated SeriesEntry series = 3;
+  repeated CollectionSettings collection_settings = 4;
+
+  message CollectionSettings {
+    string name = 1;
+    bool hide_from_home = 2;
+    bool requires_face_id = 3;
+  }
 
   message SeriesEntry {
     string preferred_title = 1;
@@ -66,6 +73,13 @@ message LibraryBackup {
   }
 }
 ```
+
+`SeriesEntry.collections` stays name-only, membership never settings - `collection_settings` is a
+parallel list, one entry per collection actually referenced by an exported series, carrying its
+`hideFromHome`/`requiresFaceId` (see <doc:aletheia/CollectionSourcePrivacy>). Field 4 landed after
+field 11 already shipped, which is exactly the case the append-only discipline below exists for: an
+older backup simply has no `collection_settings` entries, decodes as an empty list, and restore
+falls back to both flags off - the same as a collection that never carried any.
 
 `OriginEntry` carries source slug, series slug, priority, and the full chapter list per origin.
 `ChapterEntry` carries the whole row, not just progress - a restore must not depend on the source
