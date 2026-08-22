@@ -8,15 +8,24 @@
 import SwiftUI
 import Tagged
 
+// mixing .navigationDestination(isPresented:) with .navigationDestination(for:)
+// on the same stack pushes the value-based destination underneath whichever
+// screen arrived via the isPresented one - routing every push through one
+// path avoids that entirely, since multiple for: destinations of different
+// types on a single path is the supported way to handle several routes
+private enum ActivityRoute: Hashable {
+    case failures
+    case downloads
+    case updates
+    case tracking
+}
+
 struct ActivityScreen: View {
     @Environment(\.compositor) private var compositor
     @Environment(\.dimensions) private var dimensions
 
     @State private var vm: ActivityViewModel?
-    @State private var showingFailures = false
-    @State private var showingDownloads = false
-    @State private var showingUpdates = false
-    @State private var showingTracking = false
+    @State private var path = NavigationPath()
 
     private enum Layout {
         static let fillOpacity = 0.05
@@ -39,7 +48,7 @@ struct ActivityScreen: View {
     }
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             ZStack {
                 switch phase {
                 case .content:
@@ -70,17 +79,13 @@ struct ActivityScreen: View {
             .navigationTitle("Activity")
             .toolbarTitleDisplayMode(.large)
             .navigationDestination(for: SeriesEntry.self) { DetailsScreen(entry: $0) }
-            .navigationDestination(isPresented: $showingFailures) {
-                FailuresScreen()
-            }
-            .navigationDestination(isPresented: $showingDownloads) {
-                DownloadQueueScreen(downloads: compositor.downloads)
-            }
-            .navigationDestination(isPresented: $showingUpdates) {
-                UpdatesScreen()
-            }
-            .navigationDestination(isPresented: $showingTracking) {
-                TrackingScreen()
+            .navigationDestination(for: ActivityRoute.self) { route in
+                switch route {
+                case .failures: FailuresScreen()
+                case .downloads: DownloadQueueScreen(downloads: compositor.downloads)
+                case .updates: UpdatesScreen()
+                case .tracking: TrackingScreen()
+                }
             }
             .task {
                 guard vm == nil else { return }
@@ -144,10 +149,10 @@ extension ActivityScreen {
                 signedOut: Tracker.allCases.filter(compositor.trackers.needingSignIn.contains)
             ),
             onCancelRefresh: { refresh.cancel() },
-            onOpenUpdates: { showingUpdates = true },
-            onOpenDownloads: { showingDownloads = true },
-            onOpenFailures: { showingFailures = true },
-            onOpenTracking: { showingTracking = true }
+            onOpenUpdates: { path.append(ActivityRoute.updates) },
+            onOpenDownloads: { path.append(ActivityRoute.downloads) },
+            onOpenFailures: { path.append(ActivityRoute.failures) },
+            onOpenTracking: { path.append(ActivityRoute.tracking) }
         )
         .animation(.settle, value: refresh.isRunning)
         .animation(.settle, value: queued > 0)

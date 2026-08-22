@@ -25,6 +25,7 @@ struct AssetStore: AssetStoring {
         try manager.createDirectory(at: asset.directory, withIntermediateDirectories: true)
 
         var written: URL?
+        var wroteAny = false
 
         let headers = asset.headers
 
@@ -50,15 +51,25 @@ struct AssetStore: AssetStoring {
             let destination = stem.appendingPathExtension(format)
             try data.write(to: destination, options: .atomic)
             written = destination
-
-            #if DEBUG
-                // absolute on purpose - this is the simulator container path, so it
-                // can be pasted straight into open(1) or the finder
-                log.log("stored \(destination.path(percentEncoded: false))", category: "assets")
-            #endif
+            wroteAny = true
 
             progress?(index + 1, asset.parts.count)
         }
+
+        #if DEBUG
+            // one line per asset, not per page - a chapter is dozens of pages in
+            // one call here, and a line per page drowned everything else out.
+            // absolute path on purpose - this is the simulator container path,
+            // so it can be pasted straight into open(1) or Finder
+            if wroteAny {
+                log.log(
+                    asset.collected
+                        ? "stored \(asset.parts.count) page(s) - \(asset.directory.path(percentEncoded: false))"
+                        : "stored \((written ?? asset.location).path(percentEncoded: false))",
+                    category: "assets"
+                )
+            }
+        #endif
 
         // collected asset -> named by directory; single -> by the file that
         // actually landed, extension included

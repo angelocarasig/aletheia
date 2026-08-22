@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import Tagged
 
 struct DownloadQueueScreen: View {
     let downloads: Compositor.Downloads
@@ -16,6 +17,8 @@ struct DownloadQueueScreen: View {
     private enum Layout {
         static let fillOpacity = 0.05
         static let tick: TimeInterval = 0.2
+        static let collapsedLimit = 5
+        static let barHeight: CGFloat = 8
     }
 
     var body: some View {
@@ -56,28 +59,32 @@ struct DownloadQueueScreen: View {
 // MARK: - Queue
 
 extension DownloadQueueScreen {
-    // collapsed to just the summary by default - storage-by-size below is the
-    // primary content of this screen now, the live queue is a secondary strip
     fileprivate var QueueSection: some View {
         VStack(spacing: dimensions.spacing.space8) {
             Summary
 
-            if expanded {
-                ForEach(downloads.order) { download in
-                    Row(download)
-                }
+            ForEach(visibleDownloads) { download in
+                Row(download)
             }
 
-            ExpandToggle
+            if downloads.order.count > Layout.collapsedLimit {
+                ExpandToggle
+            }
         }
     }
 
+    private var visibleDownloads: [Download] {
+        expanded ? downloads.order : Array(downloads.order.prefix(Layout.collapsedLimit))
+    }
+
     fileprivate var ExpandToggle: some View {
-        HStack(spacing: dimensions.spacing.space8) {
+        let remaining = downloads.order.count - Layout.collapsedLimit
+
+        return HStack(spacing: dimensions.spacing.space8) {
             Image(systemName: expanded ? "chevron.up" : "chevron.down")
                 .contentTransition(.symbolEffect(.replace))
 
-            Text(expanded ? "Hide" : "Show ^[\(downloads.order.count) Chapter](inflect: true)")
+            Text(expanded ? "Hide" : "Show ^[\(remaining) More Chapter](inflect: true)")
         }
         .font(.subheadline)
         .foregroundStyle(.brand)
@@ -101,17 +108,34 @@ extension DownloadQueueScreen {
     fileprivate var Summary: some View {
         let completed = downloads.completed
         let total = downloads.total
+        let fraction = total > 0 ? Double(completed) / Double(total) : 0
 
-        return VStack(alignment: .leading, spacing: dimensions.spacing.space4) {
-            Text("\(completed) of \(total)")
-                .font(.subheadline)
-                .fontWeight(.medium)
-                .monospacedDigit()
-                .contentTransition(.numericText(value: Double(completed)))
-                .animation(.snappy(duration: Layout.tick), value: completed)
+        return VStack(alignment: .leading, spacing: dimensions.spacing.space12) {
+            HStack(alignment: .firstTextBaseline, spacing: dimensions.spacing.space4) {
+                Text("\(completed)")
+                    .font(.title2)
+                    .fontWeight(.bold)
+                    .monospacedDigit()
+                    .contentTransition(.numericText(value: Double(completed)))
 
-            ProgressView(value: total > 0 ? Double(completed) / Double(total) : 0)
-                .tint(.brand)
+                Text("of \(total) chapters")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+            .animation(.snappy(duration: Layout.tick), value: completed)
+
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(.primary.opacity(Layout.fillOpacity))
+
+                    Capsule()
+                        .fill(.brand)
+                        .frame(width: geo.size.width * fraction)
+                }
+            }
+            .frame(height: Layout.barHeight)
+            .animation(.snappy, value: fraction)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(dimensions.spacing.space12)
@@ -137,15 +161,31 @@ extension DownloadQueueScreen {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
-            Button {
-                downloads.cancel(chapter: download.id)
-            } label: {
-                Image(systemName: "xmark")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+            HStack(spacing: dimensions.spacing.space12) {
+                if download.isFailed {
+                    Button {
+                        // resolves and re-admits - enqueue already treats an
+                        // id already in index as a retry, not a duplicate
+                        downloads.enqueue(chapter: download.id)
+                    } label: {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.caption)
+                            .foregroundStyle(.brand)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Retry download")
+                }
+
+                Button {
+                    downloads.cancel(chapter: download.id)
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Remove from queue")
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Remove from queue")
         }
         .padding(dimensions.spacing.space12)
         .background(
@@ -187,5 +227,36 @@ extension DownloadQueueScreen {
                 .foregroundStyle(.danger)
                 .lineLimit(2)
         }
+    }
+}
+
+// MARK: - Previews
+
+#Preview("In Progress") {
+    let downloading = Download(
+        id: ChapterRecord.ID(rawValue: 1), title: "Chapter 42", series: "Solo Leveling")
+    downloading.advance(12, of: 24)
+
+    let preparing = Download(
+        id: ChapterRecord.ID(rawValue: 2), title: "Chapter 88", series: "Omniscient Reader")
+    preparing.prepare()
+
+    let queuedA = Download(
+        id: ChapterRecord.ID(rawValue: 3), title: "Chapter 43", series: "Solo Leveling")
+    let queuedB = Download(
+        id: ChapterRecord.ID(rawValue: 4), title: "Chapter 210", series: "Berserk")
+
+    let failed = Download(
+        id: ChapterRecord.ID(rawValue: 5), title: "Chapter 5", series: "Vagabond")
+    failed.fail("Connection timed out.")
+
+    return NavigationStack {
+        DownloadQueueScreen(
+            downloads: .preview(
+                order: [downloading, preparing, queuedA, queuedB, failed],
+                completed: 2,
+                total: 7
+            )
+        )
     }
 }

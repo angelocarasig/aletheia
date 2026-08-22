@@ -179,6 +179,15 @@ extension Compositor {
             }
         }
 
+        func enqueue(allFor series: SeriesRecord.ID) {
+            Task { [weak self] in
+                guard let self else { return }
+                let ids = await self.all(for: series)
+                guard !ids.isEmpty else { return }
+                self.admit(await self.resolve(ids))
+            }
+        }
+
         private func admit(_ work: [Work]) {
             let fresh = work.filter { index[$0.id] == nil }
             let retried = work.filter { index[$0.id]?.isFailed == true }
@@ -420,6 +429,29 @@ extension Compositor {
     }
 }
 
+// MARK: - Preview
+
+#if DEBUG
+    extension Compositor.Downloads {
+        // stamps order/completed/total directly rather than going through
+        // enqueue() - enqueue resolves chapters against the database, which
+        // a preview has none of
+        static func preview(order: [Download], completed: Int, total: Int) -> Compositor.Downloads {
+            let database = DatabaseClient.preview
+            let model = Compositor.Downloads(
+                database: database,
+                registry: Compositor.Registry(sources: [], database: database),
+                store: AssetStore(network: NetworkService())
+            )
+            model.order = order
+            model.index = Dictionary(uniqueKeysWithValues: order.map { ($0.id, $0) })
+            model.completed = completed
+            model.total = total
+            return model
+        }
+    }
+#endif
+
 // MARK: - The work list
 
 extension Compositor.Downloads {
@@ -476,6 +508,12 @@ extension Compositor.Downloads {
         }) ?? []
     }
 
+    private func all(for series: SeriesRecord.ID) async -> [ChapterRecord.ID] {
+        (try? await database.reader.read { db in
+            try Self.all(for: series, in: db)
+        }) ?? []
+    }
+
     private func downloaded(for series: SeriesRecord.ID) async -> [ChapterRecord.ID] {
         (try? await database.reader.read { db in
             try Self.downloaded(for: series, in: db)
@@ -524,6 +562,26 @@ extension Compositor.Downloads {
               AND b.rank = 1
               AND b.isVisible = 1
               AND b.progress < 1
+              AND c.\(ChapterRecord.Columns.path.name) IS NULL
+            ORDER BY b.number ASC
+            """
+
+        return try Int64.fetchAll(db, sql: sql, arguments: [series.rawValue])
+            .map { ChapterRecord.ID(rawValue: $0) }
+    }
+
+    // same as unread(for:in:), minus the progress filter - every chapter not
+    // already on disk, not just the ones still unread
+    nonisolated private static func all(for series: SeriesRecord.ID, in db: Database) throws
+        -> [ChapterRecord.ID]
+    {
+        let sql = """
+            SELECT b.chapterId AS id
+            FROM \(BestChapterView.databaseTableName) b
+            JOIN \(ChapterRecord.databaseTableName) c ON c.id = b.chapterId
+            WHERE b.seriesId = ?
+              AND b.rank = 1
+              AND b.isVisible = 1
               AND c.\(ChapterRecord.Columns.path.name) IS NULL
             ORDER BY b.number ASC
             """
