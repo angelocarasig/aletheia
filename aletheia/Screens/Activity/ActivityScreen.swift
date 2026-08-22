@@ -138,7 +138,7 @@ extension ActivityScreen {
                             ? Double(downloads.completed) / Double(downloads.total)
                             : 0
                     )
-                    : .idle(stored: snapshot.downloadedChapters),
+                    : .idle(stored: snapshot.downloadedChapters, bytes: snapshot.downloadedBytes),
                 failing: snapshot.failingSources,
                 // keychain state, not a column - a sign-in changes this with no accompanying db write
                 signedOut: Tracker.allCases.filter(compositor.trackers.needingSignIn.contains)

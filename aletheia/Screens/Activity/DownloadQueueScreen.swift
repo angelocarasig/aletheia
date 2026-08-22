@@ -11,6 +11,7 @@ struct DownloadQueueScreen: View {
     let downloads: Compositor.Downloads
 
     @Environment(\.dimensions) private var dimensions
+    @State private var expanded = false
 
     private enum Layout {
         static let fillOpacity = 0.05
@@ -18,27 +19,23 @@ struct DownloadQueueScreen: View {
     }
 
     var body: some View {
-        Group {
-            if downloads.order.isEmpty {
-                ContentUnavailableView(
-                    "Queue Is Empty",
-                    systemImage: "arrow.down.circle",
-                    description: Text(
-                        "Chapters you download will appear here while they're being saved.")
-                )
-            } else {
-                ScrollView {
-                    VStack(spacing: dimensions.spacing.space8) {
-                        Summary
-
-                        ForEach(downloads.order) { download in
-                            Row(download)
-                        }
-                    }
-                    .padding(.horizontal, dimensions.spacing.space16)
-                    .padding(.bottom, dimensions.spacing.space24)
+        ScrollView {
+            VStack(alignment: .leading, spacing: dimensions.spacing.space24) {
+                if downloads.order.isEmpty {
+                    ContentUnavailableView(
+                        "Queue Is Empty",
+                        systemImage: "arrow.down.circle",
+                        description: Text(
+                            "Chapters you download will appear here while they're being saved.")
+                    )
+                } else {
+                    QueueSection
                 }
+
+                DownloadStorageSection()
             }
+            .padding(.horizontal, dimensions.spacing.space16)
+            .padding(.vertical, dimensions.spacing.space16)
         }
         .navigationTitle("Downloads")
         .navigationBarTitleDisplayMode(.inline)
@@ -52,6 +49,47 @@ struct DownloadQueueScreen: View {
             }
         }
         .animation(.settle, value: downloads.order.count)
+        .animation(.settle, value: expanded)
+    }
+}
+
+// MARK: - Queue
+
+extension DownloadQueueScreen {
+    // collapsed to just the summary by default - storage-by-size below is the
+    // primary content of this screen now, the live queue is a secondary strip
+    fileprivate var QueueSection: some View {
+        VStack(spacing: dimensions.spacing.space8) {
+            Summary
+
+            if expanded {
+                ForEach(downloads.order) { download in
+                    Row(download)
+                }
+            }
+
+            ExpandToggle
+        }
+    }
+
+    fileprivate var ExpandToggle: some View {
+        HStack(spacing: dimensions.spacing.space8) {
+            Image(systemName: expanded ? "chevron.up" : "chevron.down")
+                .contentTransition(.symbolEffect(.replace))
+
+            Text(expanded ? "Hide" : "Show ^[\(downloads.order.count) Chapter](inflect: true)")
+        }
+        .font(.subheadline)
+        .foregroundStyle(.brand)
+        .frame(maxWidth: .infinity)
+        .padding(dimensions.spacing.space12)
+        .background(
+            Palette.brand.opacity(Layout.fillOpacity),
+            in: .rect(cornerRadius: dimensions.radius.radius8)
+        )
+        .tappable {
+            withAnimation { expanded.toggle() }
+        }
     }
 }
 

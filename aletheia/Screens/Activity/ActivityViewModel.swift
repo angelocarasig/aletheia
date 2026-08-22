@@ -79,6 +79,11 @@ final class ActivityViewModel {
                     """
             ) ?? 0
 
+        // no bytes column to sum - nothing stamps one on download, and the
+        // downloads directory holds nothing but downloaded chapters, so a
+        // recursive walk of that one folder is the whole answer
+        let downloadedBytes = downloadedChapters > 0 ? Self.downloadsSize() : 0
+
         // fetchError clears the moment a source answers again, so this is currently-failing, not ever-failed
         let failingSources =
             try Int.fetchOne(
@@ -95,8 +100,34 @@ final class ActivityViewModel {
         return Snapshot(
             lastChecked: lastChecked,
             downloadedChapters: downloadedChapters,
+            downloadedBytes: downloadedBytes,
             failingSources: failingSources
         )
+    }
+
+    // allocated, not logical, size - matches what actually shows up against
+    // the volume's free space, same choice BackupExportScreen already makes
+    nonisolated private static func downloadsSize() -> Int64 {
+        let fileManager = FileManager.default
+        guard
+            let enumerator = fileManager.enumerator(
+                at: Constants.Paths.downloads,
+                includingPropertiesForKeys: [.fileAllocatedSizeKey, .isDirectoryKey],
+                options: [.skipsHiddenFiles]
+            )
+        else { return 0 }
+
+        var total: Int64 = 0
+        for case let url as URL in enumerator {
+            guard
+                let values = try? url.resourceValues(
+                    forKeys: [.fileAllocatedSizeKey, .isDirectoryKey]),
+                values.isDirectory != true
+            else { continue }
+
+            total += Int64(values.fileAllocatedSize ?? 0)
+        }
+        return total
     }
 
 }
@@ -107,6 +138,7 @@ extension ActivityViewModel {
     struct Snapshot: Equatable, Sendable {
         let lastChecked: Date?
         let downloadedChapters: Int
+        let downloadedBytes: Int64
         let failingSources: Int
     }
 

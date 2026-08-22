@@ -19,7 +19,7 @@ struct ActivityNowSection: View {
 
     struct Model: Equatable {
         var refresh: RefreshState = .idle(lastChecked: nil)
-        var downloads: DownloadState = .idle(stored: 0)
+        var downloads: DownloadState = .idle(stored: 0, bytes: 0)
         var failing: Int = 0
         var signedOut: [Tracker] = []
 
@@ -29,7 +29,7 @@ struct ActivityNowSection: View {
         }
 
         enum DownloadState: Equatable {
-            case idle(stored: Int)
+            case idle(stored: Int, bytes: Int64)
             case active(chapters: Int, progress: Double)
         }
     }
@@ -138,7 +138,7 @@ extension ActivityNowSection {
     @ViewBuilder
     fileprivate var DownloadsRow: some View {
         switch model.downloads {
-        case .idle(let stored):
+        case .idle(let stored, let bytes):
             Card {
                 Image(systemName: "arrow.down.circle")
                     .font(.caption)
@@ -150,7 +150,16 @@ extension ActivityNowSection {
                         .fontWeight(.medium)
 
                     if stored > 0 {
-                        Text("^[\(stored) chapter](inflect: true) in storage")
+                        // two literals kept as Text, not folded into one String
+                        // first - inflection markup ("^[n chapter](inflect:)")
+                        // only parses through Text's own LocalizedStringKey init,
+                        // a runtime String built ahead of Text renders it verbatim
+                        (bytes > 0
+                            ? Text("^[\(stored) chapter](inflect: true)")
+                                + Text(
+                                    " · \(ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file))"
+                                )
+                            : Text("^[\(stored) chapter](inflect: true) in storage"))
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     } else {
@@ -279,7 +288,7 @@ extension ActivityNowSection {
     ActivityNowSection(
         model: .init(
             refresh: .idle(lastChecked: .now.addingTimeInterval(-7200)),
-            downloads: .idle(stored: 12)
+            downloads: .idle(stored: 12, bytes: 340_000_000)
         )
     )
     .padding()
@@ -289,7 +298,7 @@ extension ActivityNowSection {
     ActivityNowSection(
         model: .init(
             refresh: .idle(lastChecked: .now.addingTimeInterval(-3600)),
-            downloads: .idle(stored: 12),
+            downloads: .idle(stored: 12, bytes: 340_000_000),
             signedOut: [.anilist]
         )
     )
@@ -300,7 +309,7 @@ extension ActivityNowSection {
     ActivityNowSection(
         model: .init(
             refresh: .idle(lastChecked: .now.addingTimeInterval(-3600)),
-            downloads: .idle(stored: 12),
+            downloads: .idle(stored: 12, bytes: 340_000_000),
             failing: 2,
             signedOut: [.anilist, .myAnimeList]
         )
@@ -312,7 +321,7 @@ extension ActivityNowSection {
     ActivityNowSection(
         model: .init(
             refresh: .idle(lastChecked: nil),
-            downloads: .idle(stored: 0)
+            downloads: .idle(stored: 0, bytes: 0)
         )
     )
     .padding()
@@ -323,7 +332,7 @@ extension ActivityNowSection {
         model: .init(
             refresh: .running(
                 scope: nil, seriesTitle: "Heavenly Solo Defender", completed: 12, total: 87),
-            downloads: .idle(stored: 12)
+            downloads: .idle(stored: 12, bytes: 340_000_000)
         )
     )
     .padding()
@@ -358,7 +367,7 @@ extension ActivityNowSection {
 #Preview("Live Flow") {
     @Previewable @State var model = ActivityNowSection.Model(
         refresh: .idle(lastChecked: .now.addingTimeInterval(-86_400)),
-        downloads: .idle(stored: 8)
+        downloads: .idle(stored: 8, bytes: 210_000_000)
     )
 
     VStack(spacing: 0) {
@@ -385,6 +394,6 @@ extension ActivityNowSection {
             model.downloads = .active(chapters: max(1, 4 - step / 12), progress: Double(step) / 40)
         }
         model.refresh = .idle(lastChecked: .now)
-        model.downloads = .idle(stored: 12)
+        model.downloads = .idle(stored: 12, bytes: 340_000_000)
     }
 }
