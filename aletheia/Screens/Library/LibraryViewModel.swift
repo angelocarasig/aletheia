@@ -32,8 +32,6 @@ final class LibraryViewModel {
     private(set) var isSaving = false
     private(set) var failure: Failure?
 
-    var selectedCollection: CollectionRecord.ID?
-
     var searchText = ""
 
     var sort: LibrarySort = Preferences.Default.librarySort {
@@ -84,14 +82,6 @@ final class LibraryViewModel {
 
     var isEmpty: Bool { entries.isEmpty }
 
-    var title: String {
-        guard let selectedCollection,
-            let collection = collections.first(where: { $0.id == selectedCollection })
-        else { return "Library" }
-
-        return collection.name
-    }
-
     var filter = LibraryFilter() {
         didSet {
             guard let data = try? JSONEncoder().encode(filter) else { return }
@@ -100,16 +90,11 @@ final class LibraryViewModel {
     }
 
     var isFiltered: Bool {
-        selectedCollection != nil || !searchText.isEmpty || filter.isActive
+        !searchText.isEmpty || filter.isActive
     }
 
     var filtered: [Entry] {
         var result = entries
-
-        if let selectedCollection {
-            let members = membership[selectedCollection] ?? []
-            result = result.filter { members.contains($0.id) }
-        }
 
         if let matches {
             result = result.filter { matches.contains($0.id) }
@@ -128,6 +113,35 @@ final class LibraryViewModel {
         }
 
         return sort.sort(result, ascending: ascending)
+    }
+
+    // every collection a matching entry belongs to gets its own section - a
+    // series in two collections is two rows, not deduplicated, since each
+    // section is its own view onto the library. an entry in none lands in
+    // Uncategorized instead of being dropped, so nothing is ever unreachable
+    // from the hopper. sliced from the already-sorted filtered list rather
+    // than re-sorted per section, since filtering preserves relative order
+    var sections: [Section] {
+        let base = filtered
+        guard !base.isEmpty else { return [] }
+
+        var result: [Section] = []
+
+        let uncategorized = base.filter { entry in
+            !membership.values.contains { $0.contains(entry.id) }
+        }
+        if !uncategorized.isEmpty {
+            result.append(Section(id: .uncategorized, name: "Uncategorized", entries: uncategorized))
+        }
+
+        for collection in collections {
+            let members = membership[collection.id] ?? []
+            let matched = base.filter { members.contains($0.id) }
+            guard !matched.isEmpty else { continue }
+            result.append(Section(id: .collection(collection.id), name: collection.name, entries: matched))
+        }
+
+        return result
     }
 
     // MARK: Loading
@@ -367,5 +381,16 @@ extension LibraryViewModel {
         let id: CollectionRecord.ID
         let name: String
         let count: Int
+    }
+
+    enum SectionID: Hashable {
+        case uncategorized
+        case collection(CollectionRecord.ID)
+    }
+
+    struct Section: Identifiable, Hashable {
+        let id: SectionID
+        let name: String
+        let entries: [Entry]
     }
 }

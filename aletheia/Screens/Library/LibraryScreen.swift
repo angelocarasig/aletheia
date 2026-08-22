@@ -23,8 +23,12 @@ struct LibraryScreen: View {
     @State private var showingCollectionForm = false
     @State private var showingSort = false
     @State private var showingFilters = false
-    @State private var collectionsExpanded = false
     @State private var actionsExpanded = false
+    // updated as each section's header appears on screen - the hopper's
+    // previous/next targets are computed off this, not a separate selection
+    @State private var activeSectionID: LibraryViewModel.SectionID?
+    @State private var confirmingLibraryRefresh = false
+    @State private var confirmingSectionRefresh: LibraryViewModel.Section?
 
     private enum Layout {
         static let placeholderCards = 12
@@ -39,84 +43,95 @@ struct LibraryScreen: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                // not lazy - a lazy stack would tear the grid -> no-matches swap out
-                // instead of transitioning it
-                VStack(spacing: dimensions.spacing.space16) {
-                    if let vm {
-                        Searchbar(
-                            searchText: Binding(
-                                get: { vm.searchText }, set: { vm.searchText = $0 }),
-                            placeholder: "Search Your Library",
-                            handoff: .init(
-                                tint: .brand,
-                                label: { "Search every source for \"\($0)\"" },
-                                onSelect: { text in log("handoff to sources - \(text)") }
+            ScrollViewReader { proxy in
+                ScrollView {
+                    // not lazy - a lazy stack would tear the grid -> no-matches swap out
+                    // instead of transitioning it
+                    VStack(spacing: dimensions.spacing.space16) {
+                        if let vm {
+                            Searchbar(
+                                searchText: Binding(
+                                    get: { vm.searchText }, set: { vm.searchText = $0 }),
+                                placeholder: "Search Your Library",
+                                handoff: .init(
+                                    tint: .brand,
+                                    label: { "Search every source for \"\($0)\"" },
+                                    onSelect: { text in log("handoff to sources - \(text)") }
+                                )
                             )
-                        )
-                        .padding(.horizontal, dimensions.screenMargin)
-                    }
+                            .padding(.horizontal, dimensions.screenMargin)
+                        }
 
-                    Content
-                }
-                .padding(.top, dimensions.spacing.space8)
-                .animation(.settle, value: phase)
-            }
-            // fire-and-forget - awaiting the full run would pin the pull spinner
-            // open for minutes; cards mark themselves as they're checked instead
-            .refreshable {
-                guard let vm else { return }
-                compositor.refresh.start(
-                    collection: vm.selectedCollection,
-                    named: vm.selectedCollection == nil ? nil : vm.title
-                )
-            }
-            // before .safeAreaBar so that bar draws above this overlay -
-            // reordering would make the clusters' own controls untappable
-            .overlay {
-                if collectionsExpanded || actionsExpanded {
-                    Dismisser
-                }
-            }
-            // safeAreaBar rather than overlay+padding - it registers as a control
-            // surface so the scroll edge effect reaches it, and reserves clearance
-            // for the last row
-            .safeAreaBar(edge: .bottom) {
-                ZStack(alignment: .bottom) {
-                    if let vm {
-                        LibraryCollections(
-                            collections: vm.collections,
-                            total: vm.entries.count,
-                            selected: selection(vm),
-                            onCreate: { showingCollectionForm = true },
-                            onRename: { _ in log("rename collection") },
-                            onDelete: { _ in log("delete collection") },
-                            expanded: $collectionsExpanded
-                        )
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                        Content
                     }
-
-                    LibraryActions(
-                        onSort: { showingSort = true },
-                        onFilter: { showingFilters = true },
-                        filtered: vm?.filter.isActive ?? false,
-                        expanded: $actionsExpanded
-                    )
-                    .frame(maxWidth: .infinity, alignment: .trailing)
+                    .padding(.top, dimensions.spacing.space8)
+                    .animation(.settle, value: phase)
                 }
-                .padding(.horizontal, dimensions.screenMargin)
-                .padding(.bottom, dimensions.spacing.space16)
-            }
-            .onChange(of: collectionsExpanded) { _, open in
-                guard open else { return }
-                withAnimation(.smooth) { actionsExpanded = false }
-            }
-            .onChange(of: actionsExpanded) { _, open in
-                guard open else { return }
-                withAnimation(.smooth) { collectionsExpanded = false }
-            }
-            .navigationTitle(vm?.title ?? "Library")
-            .navigationSubtitle(subtitle)
+                // the confirm gate, not the refresh itself - always whole-library
+                // since sections are no longer exclusive views, so there is no
+                // single collection left to scope a pull-to-refresh to
+                .refreshable {
+                    confirmingLibraryRefresh = true
+                }
+                .alert("Refresh Library?", isPresented: $confirmingLibraryRefresh) {
+                    Button("Refresh") { compositor.refresh.start() }
+                    Button("Cancel", role: .cancel) {}
+                } message: {
+                    Text("^[\(vm?.entries.count ?? 0) series](inflect: true) will be refreshed.")
+                }
+                .alert(
+                    "Refresh \(confirmingSectionRefresh?.name ?? "")?",
+                    isPresented: Binding(
+                        get: { confirmingSectionRefresh != nil },
+                        set: { if !$0 { confirmingSectionRefresh = nil } }
+                    ),
+                    presenting: confirmingSectionRefresh
+                ) { section in
+                    Button("Refresh") {
+                        compositor.refresh.start(
+                            series: Set(section.entries.map(\.id)), named: section.name)
+                    }
+                    Button("Cancel", role: .cancel) {}
+                } message: { section in
+                    Text("^[\(section.entries.count) series](inflect: true) in \(section.name) will be refreshed.")
+                }
+                // before .safeAreaBar so that bar draws above this overlay -
+                // reordering would make the actions cluster's own controls untappable
+                .overlay {
+                    if actionsExpanded {
+                        Dismisser
+                    }
+                }
+                // safeAreaBar rather than overlay+padding - it registers as a control
+                // surface so the scroll edge effect reaches it, and reserves clearance
+                // for the last row
+                .safeAreaBar(edge: .bottom) {
+                    ZStack(alignment: .bottom) {
+                        if let vm {
+                            LibraryCategoryHopper(
+                                sections: vm.sections,
+                                activeID: activeSectionID,
+                                onJump: { id in
+                                    withAnimation(.smooth) { proxy.scrollTo(id, anchor: .top) }
+                                },
+                                onCreate: { showingCollectionForm = true }
+                            )
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+
+                        LibraryActions(
+                            onSort: { showingSort = true },
+                            onFilter: { showingFilters = true },
+                            filtered: vm?.filter.isActive ?? false,
+                            expanded: $actionsExpanded
+                        )
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                    }
+                    .padding(.horizontal, dimensions.screenMargin)
+                    .padding(.bottom, dimensions.spacing.space16)
+                }
+                .navigationTitle("Library")
+                .navigationSubtitle(subtitle)
             .toolbarTitleDisplayMode(.large)
             .navigationDestination(for: SeriesEntry.self) { DetailsScreen(entry: $0) }
             // no settings entry point here - refresh cadence already lives in
@@ -182,6 +197,7 @@ struct LibraryScreen: View {
             .onChange(of: bypassAdult) {
                 Task { await vm?.load() }
             }
+            }
         }
     }
 
@@ -202,21 +218,11 @@ extension LibraryScreen {
             .contentShape(.rect)
             .gesture(
                 DragGesture(minimumDistance: 0).onChanged { _ in
-                    guard collectionsExpanded || actionsExpanded else { return }
-                    withAnimation(.smooth) {
-                        collectionsExpanded = false
-                        actionsExpanded = false
-                    }
+                    guard actionsExpanded else { return }
+                    withAnimation(.smooth) { actionsExpanded = false }
                 }
             )
             .accessibilityHidden(true)
-    }
-
-    fileprivate func selection(_ vm: LibraryViewModel) -> Binding<CollectionRecord.ID?> {
-        Binding(
-            get: { vm.selectedCollection },
-            set: { vm.selectedCollection = $0 }
-        )
     }
 
     // queued is read unconditionally even though it's only used when checking is
@@ -244,7 +250,7 @@ extension LibraryScreen {
             .failed
         } else if vm == nil || vm?.isLoading == true {
             .pending
-        } else if vm?.filtered.isEmpty == true {
+        } else if vm?.sections.isEmpty == true {
             .empty
         } else {
             .content
@@ -285,7 +291,6 @@ extension LibraryScreen {
             } actions: {
                 Button("Clear Filters") {
                     withAnimation(.smooth) {
-                        vm.selectedCollection = nil
                         vm.searchText = ""
                         vm.filter.clear()
                     }
@@ -312,26 +317,63 @@ extension LibraryScreen {
 
     @ViewBuilder
     fileprivate func Grid(_ vm: LibraryViewModel) -> some View {
-        let entries = vm.filtered
+        let sections = vm.sections
 
-        if !entries.isEmpty {
-            LazyVGrid(columns: columns, spacing: dimensions.spacing.space16) {
-                ForEach(entries) { entry in
-                    NavigationLink(value: SeriesEntry.library(entry.id)) {
-                        LibraryCard(
-                            title: entry.title,
-                            cover: entry.cover,
-                            unreadCount: entry.unreadCount,
-                            activity: activity(for: entry.id),
-                            obscured: obscured && entry.classification == .Explicit
-                        )
+        if !sections.isEmpty {
+            VStack(alignment: .leading, spacing: dimensions.spacing.space8) {
+                ForEach(sections) { section in
+                    VStack(alignment: .leading, spacing: dimensions.spacing.space8) {
+                        SectionHeader(section)
+
+                        LazyVGrid(columns: columns, spacing: dimensions.spacing.space16) {
+                            ForEach(section.entries) { entry in
+                                NavigationLink(value: SeriesEntry.library(entry.id)) {
+                                    LibraryCard(
+                                        title: entry.title,
+                                        cover: entry.cover,
+                                        unreadCount: entry.unreadCount,
+                                        activity: activity(for: entry.id),
+                                        obscured: obscured && entry.classification == .Explicit
+                                    )
+                                }
+                                .buttonStyle(.plain)
+                                .transition(.scale(scale: 0.9).combined(with: .opacity))
+                            }
+                        }
                     }
-                    .buttonStyle(.plain)
-                    .transition(.scale(scale: 0.9).combined(with: .opacity))
+                    // tagged on the whole section, not just the header text - the
+                    // hopper scrolls to this id with anchor: .top, so the id has to
+                    // sit at the section's actual top edge
+                    .id(section.id)
+                    // a coarse "which section is on screen" signal - fires as each
+                    // section's block enters the viewport while scrolling, which is
+                    // exactly what the hopper's previous/next needs to know
+                    .onAppear { activeSectionID = section.id }
                 }
             }
             .padding(.horizontal, dimensions.screenMargin)
         }
+    }
+
+    fileprivate func SectionHeader(_ section: LibraryViewModel.Section) -> some View {
+        HStack(spacing: dimensions.spacing.space12) {
+            Text(section.name)
+                .font(.headline)
+
+            Text("\(section.entries.count)")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
+
+            Spacer()
+
+            Image(systemName: "arrow.clockwise")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .tappable { confirmingSectionRefresh = section }
+        }
+        .padding(.top, dimensions.spacing.space12)
+        .padding(.bottom, dimensions.spacing.space4)
     }
 
     fileprivate func Failed(_ failure: Failure) -> some View {
@@ -359,4 +401,132 @@ extension LibraryScreen {
         .allowsHitTesting(false)
         .accessibilityHidden(true)
     }
+}
+
+// MARK: - Preview
+
+// standalone mock, not LibraryScreen itself - the real screen's .task pulls a
+// LibraryViewModel through @Environment(\.database)/(\.compositor), neither of
+// which a plain preview provides. Section/Entry are plain structs though, so
+// the sectioned-grid + header + hopper visuals can be mocked directly
+#Preview("Library - Sectioned") {
+    LibraryMockPreview()
+}
+
+private struct LibraryMockPreview: View {
+    @Environment(\.dimensions) private var dimensions
+    @State private var activeSectionID: LibraryViewModel.SectionID?
+    @State private var actionsExpanded = false
+
+    private var columns: [GridItem] {
+        Array(repeating: GridItem(.flexible(), spacing: dimensions.spacing.space12), count: 3)
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: dimensions.spacing.space8) {
+                        ForEach(Self.sections) { section in
+                            VStack(alignment: .leading, spacing: dimensions.spacing.space8) {
+                                HStack(spacing: dimensions.spacing.space12) {
+                                    Text(section.name)
+                                        .font(.headline)
+
+                                    Text("\(section.entries.count)")
+                                        .font(.subheadline)
+                                        .foregroundStyle(.secondary)
+                                        .monospacedDigit()
+
+                                    Spacer()
+
+                                    Image(systemName: "arrow.clockwise")
+                                        .font(.subheadline)
+                                        .foregroundStyle(.secondary)
+                                        .tappable {}
+                                }
+                                .padding(.top, dimensions.spacing.space12)
+        .padding(.bottom, dimensions.spacing.space4)
+
+                                LazyVGrid(columns: columns, spacing: dimensions.spacing.space16) {
+                                    ForEach(section.entries) { entry in
+                                        LibraryCard(
+                                            title: entry.title,
+                                            cover: entry.cover,
+                                            unreadCount: entry.unreadCount
+                                        )
+                                    }
+                                }
+                            }
+                            .id(section.id)
+                            .onAppear { activeSectionID = section.id }
+                        }
+                    }
+                    .padding(.horizontal, dimensions.screenMargin)
+                    .padding(.top, dimensions.spacing.space8)
+                }
+                .safeAreaBar(edge: .bottom) {
+                    ZStack(alignment: .bottom) {
+                        LibraryCategoryHopper(
+                            sections: Self.sections,
+                            activeID: activeSectionID,
+                            onJump: { id in
+                                withAnimation(.smooth) { proxy.scrollTo(id, anchor: .top) }
+                            },
+                            onCreate: {}
+                        )
+                        .frame(maxWidth: .infinity, alignment: .leading)
+
+                        LibraryActions(
+                            onSort: {}, onFilter: {}, filtered: false, expanded: $actionsExpanded
+                        )
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                    }
+                    .padding(.horizontal, dimensions.screenMargin)
+                    .padding(.bottom, dimensions.spacing.space16)
+                }
+                .navigationTitle("Library")
+            }
+        }
+    }
+
+    private static func entry(_ title: String, unread: Int = 0) -> LibraryViewModel.Entry {
+        LibraryViewModel.Entry(
+            id: SeriesRecord.ID(rawValue: .random(in: 1...999_999)),
+            title: title,
+            cover: nil,
+            unreadCount: unread,
+            status: .reading,
+            publication: .Ongoing,
+            classification: .Safe,
+            addedDate: .now,
+            updatedDate: .now,
+            lastReadDate: .now
+        )
+    }
+
+    private static let sections: [LibraryViewModel.Section] = [
+        Section(
+            id: .uncategorized, name: "Uncategorized",
+            entries: [
+                entry("A Villain Consumed by Desire", unread: 3),
+                entry("Serim's Golden Rule"),
+                entry("Mistress Kanan is Devilishly Easy", unread: 12),
+            ]),
+        Section(
+            id: .collection(CollectionRecord.ID(rawValue: 1)), name: "Favorites",
+            entries: [
+                entry("Solo Leveling", unread: 7),
+                entry("Omniscient Reader"),
+            ]),
+        Section(
+            id: .collection(CollectionRecord.ID(rawValue: 2)), name: "Completed",
+            entries: [
+                entry("The Beginning After the End"),
+                entry("Return of the Mount Hua Sect", unread: 1),
+                entry("Nano Machine"),
+            ]),
+    ]
+
+    private typealias Section = LibraryViewModel.Section
 }

@@ -33,7 +33,9 @@ enum Notifier {
         _ = try? await center.requestAuthorization(options: [.alert, .sound, .badge])
     }
 
-    static func refreshed(added: Int, series: Int, checked: Int, failures: Int) async {
+    static func refreshed(
+        added: Int, series: Int, checked: Int, failures: Int, skipped: Int
+    ) async {
         let content = UNMutableNotificationContent()
 
         if added > 0 {
@@ -50,6 +52,15 @@ enum Notifier {
                 ? "No new chapters in one series."
                 : "No new chapters in \(checked) series."
             // no sound - nothing arriving is not worth a noise
+        }
+
+        // fully excluded by a skip rule, not merely thinned an origin off of -
+        // see Compositor.Refresh.Skips
+        if skipped > 0 {
+            content.body +=
+                skipped == 1
+                ? " One series skipped."
+                : " \(skipped) series skipped."
         }
 
         if failures > 0 {

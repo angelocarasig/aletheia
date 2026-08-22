@@ -69,6 +69,7 @@ enum Preferences {
         static let refreshSkipCompleted = "refresh.skipCompleted"
         static let refreshSkipUnread = "refresh.skipUnread"
         static let refreshSkipNotStarted = "refresh.skipNotStarted"
+        static let refreshSkipRecentInterval = "refresh.skipRecentInterval"
 
         // not an interval - ios picks the moment for a processing task
         // regardless (idle and charging, usually overnight). the floor we
@@ -136,6 +137,7 @@ enum Preferences {
         static let refreshSkipCompleted = false
         static let refreshSkipUnread = false
         static let refreshSkipNotStarted = false
+        static let refreshSkipRecentInterval = SkipRecentInterval.off
 
         // manual only until asked otherwise - unattended network activity is
         // not a default to inherit

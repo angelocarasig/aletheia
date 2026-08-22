@@ -29,6 +29,9 @@ extension Compositor {
         private(set) var completed = 0
         private(set) var total = 0
         private(set) var failures = 0
+        // fully excluded, not per-origin - a series with one skipped origin and
+        // one checked origin still got refreshed, so it doesn't belong here
+        private(set) var skipped = 0
 
         private(set) var active: Set<Int64> = []
         private(set) var queued: Set<Int64> = []
@@ -156,8 +159,11 @@ extension Compositor {
 
         // MARK: The library walk
 
+        // series nil is the whole library; a non-nil (possibly empty) set scopes
+        // the walk to exactly those - the caller resolves what "this section" or
+        // "this collection" means before calling in, so this stays a plain id set
         func start(
-            collection: CollectionRecord.ID? = nil,
+            series: Set<SeriesRecord.ID>? = nil,
             named name: String? = nil,
             automatic: Bool = false
         ) {
@@ -185,6 +191,7 @@ extension Compositor {
             completed = 0
             total = 0
             failures = 0
+            skipped = 0
             added = 0
             touched = 0
 
@@ -192,7 +199,7 @@ extension Compositor {
             // refresh off the handler instead, so a submission that fails
             // device-specifically turns into a refresh that silently never runs
             run = Task { [weak self] in
-                await self?.walk(collection: collection, order: order)
+                await self?.walk(series: series, order: order)
 
                 // cancelling a Task does not skip the rest of this closure - the
                 // walk just returns early - so this check has to be explicit, or a
@@ -241,16 +248,19 @@ extension Compositor {
                 added: added,
                 series: touched,
                 checked: completed,
-                failures: failures
+                failures: failures,
+                skipped: skipped
             )
         }
 
-        private func walk(collection: CollectionRecord.ID?, order: Order) async {
+        private func walk(series: Set<SeriesRecord.ID>?, order: Order) async {
             let work: [Series]
             do {
-                work = try await database.reader.read { [registry] db in
-                    try Self.work(collection: collection, order: order, registry: registry, in: db)
+                let result = try await database.reader.read { [registry] db in
+                    try Self.work(series: series, order: order, registry: registry, in: db)
                 }
+                work = result.series
+                skipped = result.skipped
             } catch {
                 log.log(
                     "library refresh could not build its work list - \(error)", level: .error,
@@ -650,23 +660,30 @@ extension Compositor.Refresh {
     // walks the rows rather than using Dictionary(grouping:) - the order has to
     // survive the grouping, and a dictionary does not preserve one
     nonisolated fileprivate static func work(
-        collection: CollectionRecord.ID?,
+        series: Set<SeriesRecord.ID>?,
         order: Order,
         registry: Compositor.Registry,
         in db: Database
-    ) throws -> [Series] {
+    ) throws -> (series: [Series], skipped: Int) {
         let ordering = order.clause
-        let skips = Skips.stored.clauses
-        let scope =
-            collection == nil
-            ? ""
-            : """
-            AND EXISTS(
-                SELECT 1 FROM \(SeriesCollectionRecord.databaseTableName) sc
-                WHERE sc.\(SeriesCollectionRecord.Columns.seriesId.name) = e.\(EntryView.Columns.seriesId.name)
-                  AND sc.\(SeriesCollectionRecord.Columns.collectionId.name) = ?
-            )
-            """
+        let skips = Skips.stored
+
+        // an explicit, possibly-empty id list rather than a collection lookup -
+        // the caller (a section, a collection, "uncategorized") has already
+        // resolved membership by the time this runs, so the walk itself no
+        // longer needs to know what a collection is
+        let scope: String
+        let scopeArguments: StatementArguments
+        if let series, !series.isEmpty {
+            scope = """
+                AND e.\(EntryView.Columns.seriesId.name)
+                    IN (\(databaseQuestionMarks(count: series.count)))
+                """
+            scopeArguments = StatementArguments(series.map(\.rawValue))
+        } else {
+            scope = ""
+            scopeArguments = StatementArguments()
+        }
 
         let sql = """
             SELECT
@@ -684,16 +701,33 @@ extension Compositor.Refresh {
               AND src.\(SourceRecord.Columns.installed.name) = 1
               AND src.\(SourceRecord.Columns.disabled.name) = 0
               \(scope)
-              \(skips)
+              \(skips.clauses)
             ORDER BY \(ordering), e.\(EntryView.Columns.seriesId.name) ASC,
                      o.\(OriginRecord.Columns.priority.name) ASC, o.id ASC
             """
 
-        let rows = try Row.fetchAll(
-            db,
-            sql: sql,
-            arguments: collection.map { StatementArguments([$0.rawValue]) } ?? StatementArguments()
-        )
+        let rows = try Row.fetchAll(db, sql: sql, arguments: scopeArguments + skips.arguments)
+
+        // same scope, no skip clauses - the gap between this and the post-skip
+        // series count below is exactly the series the skip rules fully
+        // excluded, not just thinned an origin off of
+        let eligible =
+            try Int.fetchOne(
+                db,
+                sql: """
+                    SELECT COUNT(DISTINCT e.\(EntryView.Columns.seriesId.name))
+                    FROM \(EntryView.databaseTableName) e
+                    JOIN \(OriginRecord.databaseTableName) o
+                      ON o.\(OriginRecord.Columns.seriesId.name) = e.\(EntryView.Columns.seriesId.name)
+                    JOIN \(SourceRecord.databaseTableName) src
+                      ON src.id = o.\(OriginRecord.Columns.sourceId.name)
+                    WHERE e.\(EntryView.Columns.inLibrary.name) = 1
+                      AND src.\(SourceRecord.Columns.installed.name) = 1
+                      AND src.\(SourceRecord.Columns.disabled.name) = 0
+                      \(scope)
+                    """,
+                arguments: scopeArguments
+            ) ?? 0
 
         var series: [Series] = []
         var currentId: Int64?
@@ -723,7 +757,7 @@ extension Compositor.Refresh {
         }
         flush()
 
-        return series
+        return (series, max(0, eligible - series.count))
     }
 
     // an unwatched run goes least-recently-checked first, since it can be cut
@@ -756,13 +790,20 @@ extension Compositor.Refresh {
         var completed = false
         var unread = false
         var notStarted = false
+        var recentInterval = SkipRecentInterval.off
 
         static var stored: Skips {
             let defaults = UserDefaults.standard
+            let recent =
+                defaults.string(forKey: Preferences.Key.refreshSkipRecentInterval)
+                .flatMap(SkipRecentInterval.init(rawValue:))
+                ?? Preferences.Default.refreshSkipRecentInterval
+
             return Skips(
                 completed: defaults.bool(forKey: Preferences.Key.refreshSkipCompleted),
                 unread: defaults.bool(forKey: Preferences.Key.refreshSkipUnread),
-                notStarted: defaults.bool(forKey: Preferences.Key.refreshSkipNotStarted)
+                notStarted: defaults.bool(forKey: Preferences.Key.refreshSkipNotStarted),
+                recentInterval: recent
             )
         }
 
@@ -792,7 +833,20 @@ extension Compositor.Refresh {
                     "AND e.\(EntryView.Columns.lastReadDate.name) > '1970-01-01 00:00:00.000'")
             }
 
+            // per-origin, not per-series - chaptersFetchedDate lives on the
+            // origin row this query already walks one at a time, and a
+            // never-checked origin's sentinel (.distantPast) always sorts
+            // before the cutoff, so it's never skipped by this
+            if recentInterval.days != nil {
+                parts.append("AND o.\(OriginRecord.Columns.chaptersFetchedDate.name) < ?")
+            }
+
             return parts.joined(separator: "\n              ")
+        }
+
+        var arguments: StatementArguments {
+            guard let days = recentInterval.days else { return StatementArguments() }
+            return StatementArguments([Date.now.addingTimeInterval(-Double(days) * 86400)])
         }
     }
 

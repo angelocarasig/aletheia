@@ -21,6 +21,9 @@ struct RefreshSettingsScreen: View {
     @AppStorage(Preferences.Key.refreshSkipNotStarted)
     private var skipNotStarted = Preferences.Default.refreshSkipNotStarted
 
+    @AppStorage(Preferences.Key.refreshSkipRecentInterval)
+    private var skipRecentInterval = Preferences.Default.refreshSkipRecentInterval
+
     @Environment(\.compositor) private var compositor
     @Environment(\.scenePhase) private var scenePhase
 
@@ -69,6 +72,12 @@ struct RefreshSettingsScreen: View {
                 Toggle("Skip Finished Series", isOn: $skipCompleted)
                 Toggle("Skip Series With Unread Chapters", isOn: $skipUnread)
                 Toggle("Skip Series You Haven't Started", isOn: $skipNotStarted)
+
+                Picker("Skip Recently Refreshed", selection: $skipRecentInterval) {
+                    ForEach(SkipRecentInterval.allCases) { option in
+                        Text(option.label).tag(option)
+                    }
+                }
             } header: {
                 Text("What to Check")
             } footer: {
@@ -189,6 +198,12 @@ struct RefreshSettingsScreen: View {
         }
         if skipNotStarted {
             lines.append("Series you've never opened are skipped.")
+        }
+        // "^[...](inflect:)" only inflects through Text's LocalizedStringKey
+        // initializer - this footer is a plain String, so it's spelled out by hand
+        if let days = skipRecentInterval.days {
+            let unit = days == 1 ? "day" : "days"
+            lines.append("Series checked in the last \(days) \(unit) are skipped.")
         }
 
         return lines.isEmpty
