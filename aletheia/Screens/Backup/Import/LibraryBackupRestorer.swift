@@ -38,6 +38,12 @@ enum LibraryBackupRestorer {
             return summary
         }
 
+        let collectionSettingsByName = Dictionary(
+            uniqueKeysWithValues: backup.collectionSettings.map {
+                ($0.name.lowercased(), $0)
+            }
+        )
+
         for entry in backup.series {
             guard let primary = entry.origins.min(by: { $0.priority < $1.priority }) else {
                 continue
@@ -45,10 +51,12 @@ enum LibraryBackupRestorer {
 
             if let source = registry.source(slug: primary.sourceSlug) {
                 await attach(
-                    entry, primary, source: source, database: database, summary: &summary, log: log)
+                    entry, primary, source: source, collectionSettings: collectionSettingsByName,
+                    database: database, summary: &summary, log: log)
             } else {
                 await attachDisconnected(
-                    entry, primary, database: database, summary: &summary, log: log)
+                    entry, primary, collectionSettings: collectionSettingsByName,
+                    database: database, summary: &summary, log: log)
             }
         }
 
@@ -61,6 +69,7 @@ enum LibraryBackupRestorer {
         _ entry: LibraryBackup.SeriesEntry,
         _ primary: LibraryBackup.SeriesEntry.OriginEntry,
         source: Source,
+        collectionSettings: [String: LibraryBackup.CollectionSettings],
         database: DatabaseClient,
         summary: inout Summary,
         log: AppLog
@@ -100,7 +109,8 @@ enum LibraryBackupRestorer {
                 try seedChapters(primary.chapters, for: originId, in: db)
                 try attachTags(entry.tags, to: seriesId, in: db)
                 try attachAuthors(entry.authors, to: seriesId, in: db)
-                try attachCollections(entry.collections, to: seriesId, in: db)
+                try attachCollections(
+                    entry.collections, settings: collectionSettings, to: seriesId, in: db)
                 try writeTrackerLinks(entry.trackerLinks, to: seriesId, in: db)
                 try touchUpdatedDate(for: seriesId, in: db)
             }
@@ -122,6 +132,7 @@ enum LibraryBackupRestorer {
     private static func attachDisconnected(
         _ entry: LibraryBackup.SeriesEntry,
         _ primary: LibraryBackup.SeriesEntry.OriginEntry,
+        collectionSettings: [String: LibraryBackup.CollectionSettings],
         database: DatabaseClient,
         summary: inout Summary,
         log: AppLog
@@ -174,7 +185,8 @@ enum LibraryBackupRestorer {
                 try seedChapters(primary.chapters, for: originId, in: db)
                 try attachTags(entry.tags, to: seriesId, in: db)
                 try attachAuthors(entry.authors, to: seriesId, in: db)
-                try attachCollections(entry.collections, to: seriesId, in: db)
+                try attachCollections(
+                    entry.collections, settings: collectionSettings, to: seriesId, in: db)
                 try writeTrackerLinks(entry.trackerLinks, to: seriesId, in: db)
                 try touchUpdatedDate(for: seriesId, in: db)
             }
@@ -307,7 +319,8 @@ enum LibraryBackupRestorer {
     }
 
     private static func attachCollections(
-        _ names: [String], to seriesId: SeriesRecord.ID, in db: Database
+        _ names: [String], settings: [String: LibraryBackup.CollectionSettings],
+        to seriesId: SeriesRecord.ID, in db: Database
     ) throws {
         guard !names.isEmpty else { return }
 
@@ -319,13 +332,22 @@ enum LibraryBackupRestorer {
 
         for name in names {
             let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !trimmed.isEmpty else { continue }
+            // a reserved name reaching here means the backup predates this
+            // constraint or was hand-edited - dropped rather than inserted,
+            // since the db CHECK would reject the insert anyway
+            guard !trimmed.isEmpty, !CollectionRecord.isReserved(trimmed) else { continue }
 
             let collectionId: CollectionRecord.ID
             if let existing = byLowercasedName[trimmed.lowercased()] {
                 collectionId = existing
             } else {
+                // absent from an older backup's settings list decodes to a
+                // default CollectionSettings() - both flags false, same as
+                // this collection had never carried any
+                let matched = settings[trimmed.lowercased()]
                 var collection = CollectionRecord(id: nil, name: trimmed)
+                collection.hideFromHome = matched?.hideFromHome ?? false
+                collection.requiresFaceId = matched?.requiresFaceID ?? false
                 try collection.insert(db)
                 guard let id = collection.id else { continue }
                 collectionId = id

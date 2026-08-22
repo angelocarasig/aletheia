@@ -49,7 +49,9 @@ final class UpdatesViewModel {
             let observation =
                 ValueObservation
                 .tracking { db -> Fetched in
-                    let excluded = try AdultGate.excluded(slugs: adultSlugs, in: db)
+                    let excluded =
+                        try AdultGate.excluded(slugs: adultSlugs, in: db)
+                        .union(CollectionGate.hiddenFromHome(in: db))
                     let since =
                         Calendar.current.date(
                             byAdding: .day, value: -6, to: Calendar.current.startOfDay(for: .now))

@@ -4,6 +4,8 @@
 <dict>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>Save covers and pages to your photo library.</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>Unlock collections and sources you've protected with Face ID.</string>
 	<key>BGTaskSchedulerPermittedIdentifiers</key>
 	<array>
 		<string>moe.aletheia.refresh</string>

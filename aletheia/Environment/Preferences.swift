@@ -9,42 +9,11 @@ import Foundation
 
 // reader-scoped preferences live in ReaderSettings, which follows the same
 // idea behind typed accessors and a reader.* namespace
-// unset is not "blurred" - it is "no opinion yet": opening an adult-only
-// source is itself the request to see it, while a mixed search has no such
-// signal and covers by default. an explicit choice overrides both
-enum AdultBlur: String, CaseIterable {
-    case unset
-    case blurred
-    case shown
-
-    func blurs(adultSource: Bool) -> Bool {
-        switch self {
-        case .blurred: true
-        case .shown: false
-        case .unset: !adultSource
-        }
-    }
-
-    // once touched, the preference stops deferring to where it is being read
-    func toggled(adultSource: Bool) -> AdultBlur {
-        blurs(adultSource: adultSource) ? .shown : .blurred
-    }
-}
-
 enum Preferences {
     enum Key {
         // predates the namespacing convention; renaming the string would
         // silently reset the stored value, so the legacy key stays
         static let gridColumns = "gridColumns"
-
-        // one key per surface, not one app-wide answer - a reveal meant for a
-        // search session should not still be on tomorrow's library. the search
-        // key predates the split; renaming it would silently reset the value
-        static let blurAdultSearch = "content.blurAdult.state"
-        static let blurAdultLibrary = "content.blurAdult.library"
-        static let blurAdultHome = "content.blurAdult.home"
-
-        static let includeAdultSources = "search.includeAdultSources"
 
         static let recentSearches = "search.recent"
 
@@ -111,21 +80,9 @@ enum Preferences {
     enum Default {
         static let gridColumns = 3
 
-        // presentation only - never shapes a request. adult results reach a
-        // search because the reader ticked a filter option marked .adult;
-        // turning this off does not open that gate
-        static let blurAdultSearch = AdultBlur.unset
-        static let blurAdultLibrary = AdultBlur.unset
-        static let blurAdultHome = AdultBlur.unset
-
-        // retrieval, unlike blurAdult* above - global search has no filters,
-        // so this is the actual gate: off means an adultOnly source is not
-        // queried at all
-        static let includeAdultSources = false
-
-        // the gate above the gate: while false, adultOnly sources do not
-        // exist anywhere - not listed, not searched, not counted as hidden.
-        // toggled only by the ten-tap microinteraction on the Sources tab
+        // while false, adultOnly sources do not exist anywhere - not listed,
+        // not searched, not counted as hidden. toggled only by the ten-tap
+        // microinteraction on the Sources tab
         static let bypassAdultSources = false
 
         static let librarySort = LibrarySort.added

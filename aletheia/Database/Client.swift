@@ -48,6 +48,10 @@ final class DatabaseClient: Sendable {
         SeriesLanguagePriorityRecord.self,
         ReadingEventRecord.self,
         ReadingSessionRecord.self,
+        // panel_bookmark isn't registered in Migrations.swift yet (separate
+        // sidequest, not ready to ship) - left out here too, so a fresh
+        // install and an existing install agree on what tables exist
+        // PanelBookmarkRecord.self,
         RecommendationImpressionRecord.self,
         SeriesRecommendationRecord.self,
     ]

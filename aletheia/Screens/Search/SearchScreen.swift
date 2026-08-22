@@ -21,17 +21,14 @@ struct SearchScreen: View {
     @Environment(\.dimensions) private var dimensions
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var vm = SearchViewModel()
-    @AppStorage(Preferences.Key.includeAdultSources) private var includeAdult = Preferences.Default
-        .includeAdultSources
     @AppStorage(Preferences.Key.bypassAdultSources) private var bypassAdult = Preferences.Default
         .bypassAdultSources
-    @AppStorage(Preferences.Key.blurAdultSearch) private var blurAdult = Preferences.Default
-        .blurAdultSearch
     @State private var seriesRoute: SeriesRoute?
     @State private var gridRoute: GridRoute?
     @State private var gvm: SearchGridViewModel?
     @State private var observing = false
     @State private var showingRefine = false
+    @State private var showingSourceSettings = false
     // snapshotted rather than observed - the store is written while a search
     // is running, and the list is only on screen when one is not
     @State private var recents: [String] = []
@@ -147,37 +144,12 @@ struct SearchScreen: View {
         .scrollDismissesKeyboard(.immediately)
         .background(.canvas)
         .toolbar {
-            // both adult decisions live here now - the reveal used to sit in a
-            // content row below the field as a second control on the same subject
             ToolbarItem(placement: .topBarTrailing) {
-                if vm.active {
-                    BlurToggle(
-                        isOn: !obscured,
-                        label: "Adult content",
-                        action: { blurAdult = blurAdult.toggled(adultSource: false) }
-                    )
-                    .disabled(!hasAdultResults)
-                }
-            }
-
-            ToolbarSpacer(.fixed, placement: .topBarTrailing)
-
-            ToolbarItem(placement: .topBarTrailing) {
-                // absent entirely without the bypass: while adult sources do not
-                // exist, a toggle for them would be the hint that they do
-                if vm.active, bypassAdult {
-                    AdultToggle(
-                        isOn: includeAdult,
-                        on: "flame",
-                        off: "eye.slash.fill",
-                        label: "Adult sources",
-                        action: { includeAdult.toggle() }
-                    )
-                }
+                Image(systemName: "gearshape")
+                    .tappable { showingSourceSettings = true }
             }
         }
         .task(id: vm.active) { recents = RecentSearches.entries }
-        .task(id: includeAdult) { vm.includeAdult = includeAdult }
         .task(id: bypassAdult) { vm.bypassAdult = bypassAdult }
         .navigationDestination(item: $seriesRoute) { route in
             DetailsScreen(entry: .source(sourceSlug: route.sourceSlug, stub: route.stub))
@@ -187,6 +159,7 @@ struct SearchScreen: View {
                 SearchScreen(source: source, query: route.query)
             }
         }
+        .navigationDestination(isPresented: $showingSourceSettings) { SourceSettingsListScreen() }
     }
 
     private struct GlobalLifecycle: ViewModifier {
@@ -228,18 +201,6 @@ struct SearchScreen: View {
 
     // MARK: Adult sources
 
-    // global search spans every source, so there is no single answer to "did
-    // you ask for this" - unset covers
-    private var obscured: Bool { blurAdult.blurs(adultSource: false) }
-
-    // keyed on the results, not the preference, so flipping the toggle never
-    // makes the button that flipped it disappear
-    private var hasAdultResults: Bool {
-        vm.sections.contains { section in
-            section.stubs.contains { $0.adult }
-        }
-    }
-
     @ViewBuilder
     private var AdultControls: some View {
         if vm.active, vm.hiddenAdultCount > 0 {
@@ -251,29 +212,6 @@ struct SearchScreen: View {
                     .foregroundStyle(.muted)
             }
             .animation(.smooth(duration: 0.25), value: vm.hiddenAdultCount)
-        }
-    }
-
-    // one symbol used for both queried and visible once made "on" ambiguous -
-    // now a flame is whether adult sources are searched, an eye is whether
-    // results are covered
-    private struct AdultToggle: View {
-        let isOn: Bool
-        let on: String
-        let off: String
-        let label: String
-        let action: () -> Void
-
-        var body: some View {
-            Button(action: action) {
-                Image(systemName: isOn ? on : off)
-                    // danger when live, muted when not. green would read as
-                    // "correct", which is not a judgement this control makes
-                    .foregroundStyle(isOn ? AnyShapeStyle(.danger) : AnyShapeStyle(.muted))
-            }
-            .contentTransition(.symbolEffect(.replace))
-            .accessibilityLabel(label)
-            .accessibilityValue(isOn ? "On" : "Off")
         }
     }
 
@@ -326,21 +264,6 @@ struct SearchScreen: View {
         .background(.canvas)
         .navigationTitle(preset?.name ?? source.descriptor.name)
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                // gating this on "currently blurred" once removed the control
-                // that unblurs the moment it was used
-                if gvm.gateOpen {
-                    let adult = source.descriptor.adultOnly
-
-                    BlurToggle(
-                        isOn: !blurAdult.blurs(adultSource: adult),
-                        label: "Adult content",
-                        action: { blurAdult = blurAdult.toggled(adultSource: adult) }
-                    )
-                }
-            }
-        }
         .navigationDestination(item: $seriesRoute) { route in
             DetailsScreen(entry: .source(sourceSlug: route.sourceSlug, stub: route.stub))
         }
@@ -539,8 +462,7 @@ struct SearchScreen: View {
                     SourceCard(
                         stub: stub,
                         referer: section.source.descriptor.referer,
-                        match: vm.match(in: section.id, for: stub),
-                        obscured: obscured && stub.adult
+                        match: vm.match(in: section.id, for: stub)
                     )
                     .containerRelativeFrame(
                         .horizontal,

@@ -9,7 +9,10 @@ import SwiftUI
 
 struct SettingsCard: View {
     let title: String
-    let systemImage: String
+    var systemImage: String? = nil
+    // an installed source's own artwork, in place of an SF Symbol - takes
+    // priority over systemImage when both are somehow given
+    var icon: ImageResource? = nil
     let detail: String
     let action: () -> Void
 
@@ -21,9 +24,7 @@ struct SettingsCard: View {
 
     var body: some View {
         HStack(spacing: dimensions.spacing.space12) {
-            Image(systemName: systemImage)
-                .font(.title3)
-                .foregroundStyle(.secondary)
+            Glyph
                 .frame(width: Layout.glyphWidth)
 
             VStack(alignment: .leading, spacing: dimensions.spacing.space4) {
@@ -55,5 +56,19 @@ struct SettingsCard: View {
         )
         .contentShape(.rect)
         .tappable(action: action)
+    }
+
+    @ViewBuilder
+    private var Glyph: some View {
+        if let icon {
+            Image(icon)
+                .resizable()
+                .scaledToFit()
+                .clipShape(.rect(cornerRadius: dimensions.radius.radius4))
+        } else if let systemImage {
+            Image(systemName: systemImage)
+                .font(.title3)
+                .foregroundStyle(.secondary)
+        }
     }
 }

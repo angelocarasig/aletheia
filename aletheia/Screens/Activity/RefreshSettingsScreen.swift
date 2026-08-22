@@ -110,6 +110,7 @@ struct RefreshSettingsScreen: View {
             }
         #endif
         .navigationTitle("Library Updates")
+        .navigationSubtitle("When new chapters are checked for")
         .navigationBarTitleDisplayMode(.inline)
         // schedule() is called unconditionally - turning off must actively withdraw the pending request
         .onChange(of: automatic) { _, on in

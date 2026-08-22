@@ -44,6 +44,7 @@ struct TrackingScreen: View {
         }
         .scrollEdgeEffectStyle(.soft, for: .bottom)
         .navigationTitle("Tracking")
+        .navigationSubtitle(connected ?? "Not connected")
         .navigationBarTitleDisplayMode(.inline)
         .alert(
             failure?.title ?? "",
@@ -80,6 +81,15 @@ struct TrackingScreen: View {
             }
         }
         .task { compositor.trackers.hydrate() }
+    }
+
+    private var connected: String? {
+        let accounts = compositor.trackers.accounts.keys
+        guard !accounts.isEmpty else { return nil }
+        return Tracker.allCases
+            .filter { accounts.contains($0) }
+            .map(\.name)
+            .joined(separator: " · ")
     }
 
     // MARK: Row

@@ -17,6 +17,8 @@ struct SourceHomeScreen: View {
     @State private var searchPreset: SourcePreset?
     @State private var seriesRoute: SeriesStub?
     @State private var showingSearch = false
+    @State private var showingSettings = false
+    @State private var settingsVM: SourceSettingsViewModel?
 
     private var presets: [SourcePreset] {
         source.presets.filter { !$0.hidden }.sorted { $0.order < $1.order }
@@ -71,13 +73,23 @@ struct SourceHomeScreen: View {
             // without this spacer, search and settings share one glass capsule
             ToolbarSpacer(.fixed, placement: .topBarTrailing)
 
-            ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    AppLog.shared.log(
-                        "settings tapped for '\(source.descriptor.slug)'", category: "sources")
-                } label: {
-                    Image(systemName: "gearshape")
+            if record != nil {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        if settingsVM == nil {
+                            settingsVM = SourceSettingsViewModel(
+                                database: compositor.database, registry: compositor.registry)
+                        }
+                        showingSettings = true
+                    } label: {
+                        Image(systemName: "gearshape")
+                    }
                 }
+            }
+        }
+        .sheet(isPresented: $showingSettings) {
+            if let record, let settingsVM {
+                SourceSettingsSheet(vm: settingsVM, source: record)
             }
         }
         .task {

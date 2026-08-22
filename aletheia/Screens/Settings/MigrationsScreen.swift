@@ -101,6 +101,7 @@ struct MigrationsScreen: View {
         }
         .scrollEdgeEffectStyle(.soft, for: .bottom)
         .navigationTitle("Migrations")
+        .navigationSubtitle("Move series in, out, or between sources")
         .navigationBarTitleDisplayMode(.inline)
         .task { await refreshDisconnectedCheck() }
         .onChange(of: showingDisconnectedMigration) { _, showing in

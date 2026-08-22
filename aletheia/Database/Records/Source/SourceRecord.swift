@@ -26,6 +26,15 @@ struct SourceRecord: Codable, DatabaseRecord {
     var disabled: Bool = false
     var installed: Bool = true
 
+    // unset, not baked to .hidden at creation even for an adult source -
+    // hides(adultSource:) resolves that default at read time, so a later
+    // change to a source's own adultOnly flag still takes effect for a
+    // reader who never made an explicit choice
+    var hideFromSearch: SearchVisibility = .unset
+    // gates this source's own screen behind Face ID - session-scoped unlock
+    // state lives elsewhere, never persisted here
+    var requiresFaceId: Bool = false
+
     init(
         slug: String,
         name: String,
@@ -34,7 +43,9 @@ struct SourceRecord: Codable, DatabaseRecord {
         referer: URL,
         pinned: Bool = false,
         disabled: Bool = false,
-        installed: Bool = true
+        installed: Bool = true,
+        hideFromSearch: SearchVisibility = .unset,
+        requiresFaceId: Bool = false
     ) {
         self.id = nil
         self.slug = slug
@@ -45,6 +56,8 @@ struct SourceRecord: Codable, DatabaseRecord {
         self.pinned = pinned
         self.disabled = disabled
         self.installed = installed
+        self.hideFromSearch = hideFromSearch
+        self.requiresFaceId = requiresFaceId
     }
 }
 
@@ -78,6 +91,8 @@ extension SourceRecord {
         static let pinned = Column(CodingKeys.pinned)
         static let disabled = Column(CodingKeys.disabled)
         static let installed = Column(CodingKeys.installed)
+        static let hideFromSearch = Column(CodingKeys.hideFromSearch)
+        static let requiresFaceId = Column(CodingKeys.requiresFaceId)
     }
 
     static func createTable(db: Database) throws {
@@ -91,6 +106,9 @@ extension SourceRecord {
             t.column(Columns.pinned.name, .boolean).notNull().defaults(to: false)
             t.column(Columns.disabled.name, .boolean).notNull().defaults(to: false)
             t.column(Columns.installed.name, .boolean).notNull().defaults(to: true)
+            t.column(Columns.hideFromSearch.name, .text).notNull().defaults(
+                to: SearchVisibility.unset.rawValue)
+            t.column(Columns.requiresFaceId.name, .boolean).notNull().defaults(to: false)
         }
     }
 

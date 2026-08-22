@@ -20,9 +20,6 @@ struct UpdatesScreen: View {
     @State private var route: SeriesEntry?
     @State private var selectedDay: Date?
 
-    @AppStorage(Preferences.Key.blurAdultHome) private var blurAdult = Preferences.Default
-        .blurAdultHome
-
     init(vm: UpdatesViewModel? = nil) {
         _vm = State(initialValue: vm)
     }
@@ -32,8 +29,6 @@ struct UpdatesScreen: View {
         let chapterId: ChapterRecord.ID
         var id: ChapterRecord.ID { chapterId }
     }
-
-    private var obscured: Bool { blurAdult.blurs(adultSource: false) }
 
     private var phase: LoadPhase {
         if let vm {
@@ -138,8 +133,7 @@ extension UpdatesScreen {
                                     title: entry.title,
                                     cover: entry.cover,
                                     count: entry.count,
-                                    latest: entry.latest,
-                                    obscured: obscured && entry.adult
+                                    latest: entry.latest
                                 )
                                 .contentShape(.rect)
                                 .tappable {

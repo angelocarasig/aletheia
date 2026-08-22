@@ -153,15 +153,20 @@ enum LibraryBackupBuilder {
             try SeriesCollectionRecord
             .filter(seriesIds.contains(SeriesCollectionRecord.Columns.seriesId))
             .fetchAll(db)
-        let collectionNamesById = Dictionary(
+        let collectionsById = Dictionary(
             uniqueKeysWithValues: try CollectionRecord.fetchAll(db).compactMap { collection in
-                collection.id.map { ($0, collection.name) }
+                collection.id.map { ($0, collection) }
             }
         )
         let collectionNamesBySeriesId = Dictionary(
             grouping: seriesCollections,
             by: \.seriesId
-        ).mapValues { rows in rows.compactMap { collectionNamesById[$0.collectionId] } }
+        ).mapValues { rows in rows.compactMap { collectionsById[$0.collectionId]?.name } }
+
+        // settings for every collection actually referenced above, not every
+        // collection in the library - a collection with no exported member
+        // has nothing here for its settings to attach to on restore
+        let referencedCollectionIds = Set(seriesCollections.map(\.collectionId))
 
         let trackerLinks =
             try SeriesTrackerRecord
@@ -174,6 +179,14 @@ enum LibraryBackupBuilder {
         var backup = LibraryBackup()
         backup.exportedByAppVersion = Bundle.main.appVersion
         backup.exportedDate = Int64(Date.now.timeIntervalSince1970)
+        backup.collectionSettings = referencedCollectionIds.compactMap { id in
+            guard let collection = collectionsById[id] else { return nil }
+            var settings = LibraryBackup.CollectionSettings()
+            settings.name = collection.name
+            settings.hideFromHome = collection.hideFromHome
+            settings.requiresFaceID = collection.requiresFaceId
+            return settings
+        }
         backup.series = series.compactMap { row in
             guard let seriesId = row.id else { return nil }
 

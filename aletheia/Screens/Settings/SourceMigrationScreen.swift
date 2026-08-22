@@ -40,10 +40,7 @@ struct SourceMigrationScreen: View {
     }
 
     private var availableSources: [Source] {
-        let defaults = UserDefaults.standard
-        let unlocked =
-            defaults.bool(forKey: Preferences.Key.bypassAdultSources)
-            && defaults.bool(forKey: Preferences.Key.includeAdultSources)
+        let unlocked = UserDefaults.standard.bool(forKey: Preferences.Key.bypassAdultSources)
         return unlocked
             ? compositor.registry.sources
             : compositor.registry.sources.filter { !$0.descriptor.adultOnly }

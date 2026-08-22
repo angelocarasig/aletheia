@@ -86,6 +86,7 @@ struct MetadataRefreshSettingsScreen: View {
             }
         #endif
         .navigationTitle("Metadata Updates")
+        .navigationSubtitle("How often series details are refreshed")
         .navigationBarTitleDisplayMode(.inline)
         // AppStorage does not reschedule the BGTask on its own - must be told explicitly
         .onChange(of: interval) { _, _ in

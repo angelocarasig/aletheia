@@ -69,10 +69,7 @@ final class MigrationComposer<Entry: MigrationEntry> {
         self.precheckLabel = precheckLabel
         self.log = log
 
-        let defaults = UserDefaults.standard
-        let unlocked =
-            defaults.bool(forKey: Preferences.Key.bypassAdultSources)
-            && defaults.bool(forKey: Preferences.Key.includeAdultSources)
+        let unlocked = UserDefaults.standard.bool(forKey: Preferences.Key.bypassAdultSources)
         self.availableSources =
             unlocked ? registry.sources : registry.sources.filter { !$0.descriptor.adultOnly }
 

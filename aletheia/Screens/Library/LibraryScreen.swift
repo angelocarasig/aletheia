@@ -15,8 +15,6 @@ struct LibraryScreen: View {
 
     @AppStorage(Preferences.Key.gridColumns) private var gridColumns = Preferences.Default
         .gridColumns
-    @AppStorage(Preferences.Key.blurAdultLibrary) private var blurAdult = Preferences.Default
-        .blurAdultLibrary
     @AppStorage(Preferences.Key.bypassAdultSources) private var bypassAdult = Preferences.Default
         .bypassAdultSources
     @State private var vm: LibraryViewModel?
@@ -137,20 +135,6 @@ struct LibraryScreen: View {
             // no settings entry point here - refresh cadence already lives in
             // Settings, and a gear here was mistaken for it by test readers
             // before being removed
-            .toolbar {
-                // shown only when something could be covered - if this were keyed
-                // on `obscured` instead of the raw classification, toggling it
-                // would remove itself
-                ToolbarItem(placement: .topBarTrailing) {
-                    if hasExplicit {
-                        BlurToggle(
-                            isOn: !obscured,
-                            label: "Adult content",
-                            action: { blurAdult = blurAdult.toggled(adultSource: false) }
-                        )
-                    }
-                }
-            }
             .sheet(isPresented: $showingSort) {
                 if let vm {
                     LibrarySortSheet(
@@ -182,7 +166,8 @@ struct LibraryScreen: View {
                     ?? LibraryViewModel(
                         database: database,
                         assets: compositor.assets,
-                        registry: compositor.registry
+                        registry: compositor.registry,
+                        privacy: compositor.privacy
                     )
                 self.vm = vm
                 await vm.load()
@@ -307,13 +292,6 @@ extension LibraryScreen {
         }
     }
 
-    private var obscured: Bool { blurAdult.blurs(adultSource: false) }
-
-    // reads off the filtered set, not entries - otherwise the toggle could offer
-    // to reveal something already excluded by filters
-    private var hasExplicit: Bool {
-        vm?.filtered.contains { $0.classification == .Explicit } ?? false
-    }
 
     @ViewBuilder
     fileprivate func Grid(_ vm: LibraryViewModel) -> some View {
@@ -325,22 +303,29 @@ extension LibraryScreen {
                     VStack(alignment: .leading, spacing: dimensions.spacing.space8) {
                         SectionHeader(section)
 
-                        LazyVGrid(columns: columns, spacing: dimensions.spacing.space16) {
-                            ForEach(section.entries) { entry in
-                                NavigationLink(value: SeriesEntry.library(entry.id)) {
-                                    LibraryCard(
-                                        title: entry.title,
-                                        cover: entry.cover,
-                                        unreadCount: entry.unreadCount,
-                                        activity: activity(for: entry.id),
-                                        obscured: obscured && entry.classification == .Explicit
-                                    )
+                        if section.isLocked {
+                            LockedSection(section)
+                                .transition(.opacity)
+                        } else {
+                            LazyVGrid(columns: columns, spacing: dimensions.spacing.space16) {
+                                ForEach(section.entries) { entry in
+                                    NavigationLink(value: SeriesEntry.library(entry.id)) {
+                                        LibraryCard(
+                                            title: entry.title,
+                                            cover: entry.cover,
+                                            unreadCount: entry.unreadCount,
+                                            activity: activity(for: entry.id),
+                                            obscured: vm.blurredSeriesIds.contains(entry.id)
+                                        )
+                                    }
+                                    .buttonStyle(.plain)
+                                    .transition(.scale(scale: 0.9).combined(with: .opacity))
                                 }
-                                .buttonStyle(.plain)
-                                .transition(.scale(scale: 0.9).combined(with: .opacity))
                             }
+                            .transition(.opacity)
                         }
                     }
+                    .animation(.smooth(duration: 0.35), value: section.isLocked)
                     // tagged on the whole section, not just the header text - the
                     // hopper scrolls to this id with anchor: .top, so the id has to
                     // sit at the section's actual top edge
@@ -357,8 +342,13 @@ extension LibraryScreen {
 
     fileprivate func SectionHeader(_ section: LibraryViewModel.Section) -> some View {
         HStack(spacing: dimensions.spacing.space12) {
-            Text(section.name)
-                .font(.headline)
+            if section.isLocked {
+                GlitchText(text: section.name)
+                    .font(.headline)
+            } else {
+                Text(section.name)
+                    .font(.headline)
+            }
 
             Text("\(section.entries.count)")
                 .font(.subheadline)
@@ -367,13 +357,37 @@ extension LibraryScreen {
 
             Spacer()
 
-            Image(systemName: "arrow.clockwise")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .tappable { confirmingSectionRefresh = section }
+            if section.isLocked {
+                Image(systemName: "lock.fill")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            } else {
+                Image(systemName: "arrow.clockwise")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .tappable { confirmingSectionRefresh = section }
+            }
         }
         .padding(.top, dimensions.spacing.space12)
         .padding(.bottom, dimensions.spacing.space4)
+        .animation(.smooth(duration: 0.35), value: section.isLocked)
+    }
+
+    // entries stay in the section so this can still say how many are behind
+    // it - unlocking is session-only (Compositor.Privacy), so it resets on
+    // the next app launch regardless of how recently it was unlocked
+    fileprivate func LockedSection(_ section: LibraryViewModel.Section) -> some View {
+        ContentUnavailableView {
+            Label("Locked", systemImage: "faceid")
+        } description: {
+            Text("^[\(section.entries.count) series](inflect: true) behind Face ID.")
+        } actions: {
+            Button("Unlock") {
+                guard case .collection(let id) = section.id else { return }
+                Task { _ = await compositor.privacy.unlock(id) }
+            }
+            .buttonStyle(.borderedProminent)
+        }
     }
 
     fileprivate func Failed(_ failure: Failure) -> some View {
@@ -507,7 +521,7 @@ private struct LibraryMockPreview: View {
 
     private static let sections: [LibraryViewModel.Section] = [
         Section(
-            id: .uncategorized, name: "Uncategorized",
+            id: .uncategorized, name: "Uncategorised",
             entries: [
                 entry("A Villain Consumed by Desire", unread: 3),
                 entry("Serim's Golden Rule"),

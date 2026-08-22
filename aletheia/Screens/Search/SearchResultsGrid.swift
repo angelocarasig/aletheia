@@ -14,14 +14,7 @@ struct SearchResultsGrid: View {
     @Environment(\.dimensions) private var dimensions
     @AppStorage(Preferences.Key.gridColumns) private var gridColumns = Preferences.Default
         .gridColumns
-    @AppStorage(Preferences.Key.blurAdultSearch) private var blurAdult = Preferences.Default
-        .blurAdultSearch
     @State private var currentPage = 1
-
-    // an adultOnly source was opened on purpose, so unset shows rather than
-    // covers - the home screen for one already renders unblurred, and a grid
-    // that disagreed made the same source look like two different settings
-    private var obscured: Bool { blurAdult.blurs(adultSource: vm.isAdultSource) }
 
     private enum Layout {
         static let skeletonCount = 12
@@ -138,7 +131,6 @@ struct SearchResultsGrid: View {
                     page: page,
                     entries: items,
                     columnCount: gridColumns,
-                    obscured: obscured,
                     vm: vm,
                     onOpen: onOpen
                 )
@@ -194,15 +186,13 @@ private struct PageSection: View, Equatable {
     let page: Int
     let entries: [GridEntry]
     let columnCount: Int
-    let obscured: Bool
     let vm: SearchGridViewModel
     let onOpen: (SeriesStub) -> Void
 
     @Environment(\.dimensions) private var dimensions
 
     static func == (lhs: Self, rhs: Self) -> Bool {
-        lhs.page == rhs.page && lhs.columnCount == rhs.columnCount
-            && lhs.obscured == rhs.obscured && lhs.entries == rhs.entries
+        lhs.page == rhs.page && lhs.columnCount == rhs.columnCount && lhs.entries == rhs.entries
     }
 
     static func columns(_ count: Int, spacing: CGFloat) -> [GridItem] {
@@ -221,8 +211,7 @@ private struct PageSection: View, Equatable {
                     SourceCard(
                         stub: entry.stub,
                         referer: vm.referer,
-                        match: vm.match(for: entry.stub),
-                        obscured: obscured && entry.stub.adult
+                        match: vm.match(for: entry.stub)
                     )
                     .tappable { onOpen(entry.stub) }
                     .onAppear {

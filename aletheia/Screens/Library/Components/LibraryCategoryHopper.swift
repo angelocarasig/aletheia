@@ -98,8 +98,17 @@ extension LibraryCategoryHopper {
                         showingPicker = false
                     } label: {
                         HStack {
-                            Text(section.name)
-                                .foregroundStyle(.primary)
+                            if section.isLocked {
+                                GlitchText(text: section.name)
+                                    .foregroundStyle(.primary)
+
+                                Image(systemName: "lock.fill")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            } else {
+                                Text(section.name)
+                                    .foregroundStyle(.primary)
+                            }
 
                             Spacer()
 

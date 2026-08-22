@@ -17,6 +17,8 @@ struct SettingsScreen: View {
     @State private var showingMigrations = false
     @State private var showingLogs = false
     @State private var showingRecommendations = false
+    @State private var showingCollectionSettings = false
+    @State private var showingSourceSettings = false
 
     var body: some View {
         ScrollView {
@@ -41,6 +43,22 @@ struct SettingsScreen: View {
                         systemImage: "text.append",
                         detail: "How often series details are refreshed"
                     ) { showingMetadataRefresh = true }
+                }
+
+                VStack(alignment: .leading, spacing: dimensions.spacing.space12) {
+                    SectionHeader("Privacy")
+
+                    SettingsCard(
+                        title: "Collections",
+                        systemImage: "rectangle.stack.badge.person.crop",
+                        detail: "Hide from Home, or lock behind Face ID"
+                    ) { showingCollectionSettings = true }
+
+                    SettingsCard(
+                        title: "Sources",
+                        systemImage: "puzzlepiece.extension",
+                        detail: "Hide from search, or lock behind Face ID"
+                    ) { showingSourceSettings = true }
                 }
 
                 VStack(alignment: .leading, spacing: dimensions.spacing.space12) {
@@ -84,6 +102,10 @@ struct SettingsScreen: View {
         .navigationDestination(isPresented: $showingMigrations) { MigrationsScreen() }
         .navigationDestination(isPresented: $showingLogs) { LogScreen() }
         .navigationDestination(isPresented: $showingRecommendations) { RecommendationsScreen() }
+        .navigationDestination(isPresented: $showingCollectionSettings) {
+            CollectionSettingsListScreen()
+        }
+        .navigationDestination(isPresented: $showingSourceSettings) { SourceSettingsListScreen() }
         .task { compositor.trackers.hydrate() }
     }
 

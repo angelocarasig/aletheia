@@ -12,8 +12,6 @@ struct HomeScreen: View {
     @Environment(\.compositor) private var compositor
     @Environment(\.dimensions) private var dimensions
 
-    @AppStorage(Preferences.Key.blurAdultHome) private var blurAdult = Preferences.Default
-        .blurAdultHome
     @AppStorage(Preferences.Key.bypassAdultSources) private var bypassAdult = Preferences.Default
         .bypassAdultSources
 
@@ -43,17 +41,6 @@ struct HomeScreen: View {
         static let skeletonDotsRow: CGFloat = 32
         static let contentOffset: CGFloat = -20
         static let emptyFillOpacity = 0.05
-    }
-
-    private var obscured: Bool { blurAdult.blurs(adultSource: false) }
-
-    // keyed on entries, not `obscured` - keying on the blur state would make
-    // the toggle disappear the moment it's used
-    private var hasExplicit: Bool {
-        guard let snapshot = vm?.snapshot else { return false }
-        return snapshot.continueReading.contains(where: \.adult)
-            || snapshot.updates.contains(where: \.adult)
-            || snapshot.recentlyAdded.contains(where: \.adult)
     }
 
     private var hasHero: Bool {
@@ -107,18 +94,6 @@ struct HomeScreen: View {
                         .tappable { showingSettings = true }
                         .accessibilityLabel("Settings")
                 }
-
-                if hasExplicit {
-                    ToolbarSpacer(.fixed, placement: .topBarTrailing)
-
-                    ToolbarItem(placement: .topBarTrailing) {
-                        BlurToggle(
-                            isOn: !obscured,
-                            label: "Adult content",
-                            action: { blurAdult = blurAdult.toggled(adultSource: false) }
-                        )
-                    }
-                }
             }
             .navigationDestination(for: SeriesEntry.self) { DetailsScreen(entry: $0) }
             .navigationDestination(item: $reading) { target in
@@ -163,7 +138,6 @@ extension HomeScreen {
                 if !continueReading.isEmpty {
                     HeroCarousel(
                         entries: continueReading,
-                        obscured: obscured,
                         onContinue: { entry in
                             reading = ReadingTarget(
                                 seriesId: entry.id, chapterId: entry.target.chapterId)
@@ -276,8 +250,7 @@ extension HomeScreen {
                             title: entry.title,
                             cover: entry.cover,
                             count: entry.count,
-                            latest: entry.latest,
-                            obscured: obscured && entry.adult
+                            latest: entry.latest
                         )
                         .contentShape(.rect)
                         .tappable {
@@ -338,7 +311,7 @@ extension HomeScreen {
                         cover: entry.cover,
                         detail: detail(entry),
                         accessory: accessory(entry),
-                        obscured: obscured && entry.adult
+                        obscured: false
                     )
                     .tappable {
                         path.append(SeriesEntry.library(entry.id))
@@ -383,8 +356,7 @@ extension HomeScreen {
                                 title: entry.title,
                                 cover: entry.cover,
                                 unreadCount: entry.unreadCount,
-                                addedDate: entry.addedDate,
-                                obscured: obscured && entry.adult
+                                addedDate: entry.addedDate
                             )
                             .containerRelativeFrame(
                                 .horizontal,

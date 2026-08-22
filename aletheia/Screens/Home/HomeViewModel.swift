@@ -196,7 +196,9 @@ final class HomeViewModel {
         hidden: [Int64: Date],
         in db: Database
     ) throws -> Stored {
-        let excluded = try AdultGate.excluded(slugs: adultSlugs, in: db)
+        let excluded =
+            try AdultGate.excluded(slugs: adultSlugs, in: db)
+            .union(CollectionGate.hiddenFromHome(in: db))
 
         let library =
             EntryView

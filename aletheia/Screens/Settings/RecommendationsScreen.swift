@@ -44,6 +44,7 @@ struct RecommendationsScreen: View {
         }
         .scrollEdgeEffectStyle(.soft, for: .bottom)
         .navigationTitle("Recommendations")
+        .navigationSubtitle("Which model to use, and what came of it")
         .navigationBarTitleDisplayMode(.inline)
         .navigationDestination(isPresented: $showingAnalytics) { ImpressionsScreen() }
     }

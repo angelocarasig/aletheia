@@ -17,6 +17,7 @@ final class LibraryViewModel {
     private let database: DatabaseClient
     private let assets: Compositor.Assets
     private let registry: Compositor.Registry
+    private let privacy: Compositor.Privacy
 
     private(set) var entries: [Entry] = []
     private(set) var collections: [Collection] = []
@@ -54,10 +55,14 @@ final class LibraryViewModel {
     // two would show the whole library the moment a search failed
     private var matches: Set<SeriesRecord.ID>?
 
-    init(database: DatabaseClient, assets: Compositor.Assets, registry: Compositor.Registry) {
+    init(
+        database: DatabaseClient, assets: Compositor.Assets, registry: Compositor.Registry,
+        privacy: Compositor.Privacy
+    ) {
         self.database = database
         self.assets = assets
         self.registry = registry
+        self.privacy = privacy
 
         let defaults = UserDefaults.standard
 
@@ -118,7 +123,7 @@ final class LibraryViewModel {
     // every collection a matching entry belongs to gets its own section - a
     // series in two collections is two rows, not deduplicated, since each
     // section is its own view onto the library. an entry in none lands in
-    // Uncategorized instead of being dropped, so nothing is ever unreachable
+    // Uncategorised instead of being dropped, so nothing is ever unreachable
     // from the hopper. sliced from the already-sorted filtered list rather
     // than re-sorted per section, since filtering preserves relative order
     var sections: [Section] {
@@ -131,17 +136,34 @@ final class LibraryViewModel {
             !membership.values.contains { $0.contains(entry.id) }
         }
         if !uncategorized.isEmpty {
-            result.append(Section(id: .uncategorized, name: "Uncategorized", entries: uncategorized))
+            result.append(Section(id: .uncategorized, name: "Uncategorised", entries: uncategorized))
         }
 
         for collection in collections {
             let members = membership[collection.id] ?? []
             let matched = base.filter { members.contains($0.id) }
             guard !matched.isEmpty else { continue }
-            result.append(Section(id: .collection(collection.id), name: collection.name, entries: matched))
+            let locked = collection.requiresFaceId && !privacy.isUnlocked(collection.id)
+            result.append(
+                Section(
+                    id: .collection(collection.id), name: collection.name, entries: matched,
+                    isLocked: locked))
         }
 
         return result
+    }
+
+    // a series in any still-locked collection blurs wherever it's shown -
+    // that locked collection's own section never renders its entries (the
+    // gate takes over instead), so by construction this only ever shows up
+    // under a *different* section. clears once every locked collection the
+    // series belongs to has been unlocked this session, not on the first
+    var blurredSeriesIds: Set<SeriesRecord.ID> {
+        collections
+            .filter { $0.requiresFaceId && !privacy.isUnlocked($0.id) }
+            .reduce(into: Set<SeriesRecord.ID>()) { result, collection in
+                result.formUnion(membership[collection.id] ?? [])
+            }
     }
 
     // MARK: Loading
@@ -292,7 +314,8 @@ final class LibraryViewModel {
                 return Collection(
                     id: id,
                     name: record.name,
-                    count: membership[id]?.intersection(library).count ?? 0
+                    count: membership[id]?.intersection(library).count ?? 0,
+                    requiresFaceId: record.requiresFaceId
                 )
             }
         } catch {
@@ -381,6 +404,7 @@ extension LibraryViewModel {
         let id: CollectionRecord.ID
         let name: String
         let count: Int
+        let requiresFaceId: Bool
     }
 
     enum SectionID: Hashable {
@@ -392,5 +416,8 @@ extension LibraryViewModel {
         let id: SectionID
         let name: String
         let entries: [Entry]
+        // entries stay populated even when locked, so the gate can still
+        // report "N series" - the view chooses whether to render them
+        var isLocked: Bool = false
     }
 }

@@ -21,6 +21,20 @@ message LibraryBackup {
   int64 exported_date = 2;        // unix seconds
   repeated SeriesEntry series = 3;
 
+  // one entry per collection referenced by `series[].collections` below -
+  // SeriesEntry.collections stays name-only (membership), this carries the
+  // per-collection settings that live alongside it. absent from a backup
+  // made before these settings existed, which decodes as an empty list -
+  // restore then just leaves both flags at their normal false default,
+  // same as it always has
+  repeated CollectionSettings collection_settings = 4;
+
+  message CollectionSettings {
+    string name = 1;
+    bool hide_from_home = 2;
+    bool requires_face_id = 3;
+  }
+
   message SeriesEntry {
     string preferred_title = 1;
     string status = 2;              // Status.rawValue

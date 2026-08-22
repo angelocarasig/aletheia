@@ -39,6 +39,11 @@ enum Migrations {
         registerV1_0_1(with: &migrator, records: records, views: views)
         registerV1_0_2(with: &migrator)
         registerV1_0_3(with: &migrator)
+        registerV1_0_4(with: &migrator)
+        registerV1_1_0(with: &migrator)
+        // panel_bookmark is a separate sidequest, not ready to ship yet -
+        // registerV1_1_1 stays written but uncalled until it is
+        // registerV1_1_1(with: &migrator)
     }
 
     // MARK: - v1.0.0: initial schema (all tables + views). CLOSED - do not edit
@@ -181,6 +186,99 @@ enum Migrations {
 
             try SeriesRecommendationRecord.createTable(db: db)
             try SeriesRecommendationRecord.createIndexes(db: db)
+        }
+    }
+
+    // MARK: - v1.0.4: reserve "uncategorised"/"uncategorized" as collection names. CLOSED - do not edit
+
+    // the library's built-in pseudo-section ("uncategorised" - AU spelling, since
+    // the reservedNames Swift check now blocks both spellings) is unreadable if a
+    // real collection can also claim that name. SQLite cannot ALTER a CHECK
+    // constraint, so the table is rebuilt exactly like v1.0.3 rebuilt series.
+    //
+    // no data migration for a pre-existing conflicting name: nothing shipped with
+    // this constraint absent for long enough to have one on a real device
+    //
+    // table/column names spelled out literally, same reasoning as v1.0.2/v1.0.3 -
+    // frozen to what collection looked like at v1.0.4, not tracking a later rename
+    private static func registerV1_0_4(
+        with migrator: inout DatabaseMigrator
+    ) {
+        let name = DatabaseVersion(1, 0, 4).createMigrationName(
+            description: "reserve_uncategorised_collection_name")
+        migrator.registerMigration(name, foreignKeyChecks: .deferred) { db in
+            try db.execute(
+                sql: """
+                    CREATE TABLE collection_new (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        name TEXT NOT NULL COLLATE swiftLocalizedCaseInsensitiveCompare,
+                        description TEXT,
+                        createdDate DATETIME NOT NULL,
+                        updatedDate DATETIME NOT NULL,
+                        CHECK (TRIM(LOWER(name)) NOT IN (
+                            'all', 'library', 'uncategorised', 'uncategorized'
+                        ))
+                    )
+                    """)
+
+            try db.execute(
+                sql: """
+                    INSERT INTO collection_new (id, name, description, createdDate, updatedDate)
+                    SELECT id, name, description, createdDate, updatedDate FROM collection
+                    """)
+
+            try db.execute(sql: "DROP TABLE collection")
+            try db.execute(sql: "ALTER TABLE collection_new RENAME TO collection")
+
+            try db.create(index: "idx_collection_name", on: "collection", columns: ["name"])
+        }
+    }
+
+    // MARK: - v1.1.0: collection/source privacy settings. CLOSED - do not edit
+
+    // hideFromHome/requiresFaceId on collection, hideFromSearch/requiresFaceId
+    // on source - plain ADD COLUMN, no CHECK involved this time, so unlike
+    // v1.0.4 this needs no table rebuild. table/column names spelled out
+    // literally, same reasoning as every migration above - frozen to what
+    // collection/source looked like at v1.1.0, not tracking a later rename
+    private static func registerV1_1_0(
+        with migrator: inout DatabaseMigrator
+    ) {
+        let name = DatabaseVersion(1, 1, 0).createMigrationName(
+            description: "collection_source_privacy_settings")
+        migrator.registerMigration(name) { db in
+            try db.execute(
+                sql: """
+                    ALTER TABLE collection ADD COLUMN hideFromHome BOOLEAN NOT NULL DEFAULT 0
+                    """)
+            try db.execute(
+                sql: """
+                    ALTER TABLE collection ADD COLUMN requiresFaceId BOOLEAN NOT NULL DEFAULT 0
+                    """)
+            try db.execute(
+                sql: """
+                    ALTER TABLE source ADD COLUMN hideFromSearch TEXT NOT NULL DEFAULT 'unset'
+                    """)
+            try db.execute(
+                sql: """
+                    ALTER TABLE source ADD COLUMN requiresFaceId BOOLEAN NOT NULL DEFAULT 0
+                    """)
+        }
+    }
+
+    // MARK: - v1.1.1: panel_bookmark. CLOSED - do not edit
+
+    // a brand new table, not an alteration of an existing one - calls the
+    // record's own createTable/createIndexes directly rather than freezing
+    // literal SQL here, same as v1.0.3 did for SeriesRecommendationRecord.
+    // see PanelBookmarkRecord's own "Intent" comment for what this table is for
+    private static func registerV1_1_1(
+        with migrator: inout DatabaseMigrator
+    ) {
+        let name = DatabaseVersion(1, 1, 1).createMigrationName(description: "panel_bookmark")
+        migrator.registerMigration(name) { db in
+            try PanelBookmarkRecord.createTable(db: db)
+            try PanelBookmarkRecord.createIndexes(db: db)
         }
     }
 }

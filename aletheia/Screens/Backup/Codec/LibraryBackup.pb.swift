@@ -48,7 +48,31 @@ nonisolated struct LibraryBackup: Sendable {
 
   var series: [LibraryBackup.SeriesEntry] = []
 
+  /// one entry per collection referenced by `series[].collections` below -
+  /// SeriesEntry.collections stays name-only (membership), this carries the
+  /// per-collection settings that live alongside it. absent from a backup
+  /// made before these settings existed, which decodes as an empty list -
+  /// restore then just leaves both flags at their normal false default,
+  /// same as it always has
+  var collectionSettings: [LibraryBackup.CollectionSettings] = []
+
   var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  nonisolated struct CollectionSettings: Sendable {
+    // SwiftProtobuf.Message conformance is added in an extension below. See the
+    // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+    // methods supported on all messages.
+
+    var name: String = String()
+
+    var hideFromHome: Bool = false
+
+    var requiresFaceID: Bool = false
+
+    var unknownFields = SwiftProtobuf.UnknownStorage()
+
+    init() {}
+  }
 
   nonisolated struct SeriesEntry: Sendable {
     // SwiftProtobuf.Message conformance is added in an extension below. See the
@@ -249,7 +273,7 @@ nonisolated struct LibraryBackup: Sendable {
 
 nonisolated extension LibraryBackup: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   static let protoMessageName: String = "LibraryBackup"
-  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}exported_by_app_version\0\u{3}exported_date\0\u{1}series\0")
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}exported_by_app_version\0\u{3}exported_date\0\u{1}series\0\u{3}collection_settings\0")
 
   mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -260,6 +284,7 @@ nonisolated extension LibraryBackup: SwiftProtobuf.Message, SwiftProtobuf._Messa
       case 1: try { try decoder.decodeSingularStringField(value: &self.exportedByAppVersion) }()
       case 2: try { try decoder.decodeSingularInt64Field(value: &self.exportedDate) }()
       case 3: try { try decoder.decodeRepeatedMessageField(value: &self.series) }()
+      case 4: try { try decoder.decodeRepeatedMessageField(value: &self.collectionSettings) }()
       default: break
       }
     }
@@ -275,6 +300,9 @@ nonisolated extension LibraryBackup: SwiftProtobuf.Message, SwiftProtobuf._Messa
     if !self.series.isEmpty {
       try visitor.visitRepeatedMessageField(value: self.series, fieldNumber: 3)
     }
+    if !self.collectionSettings.isEmpty {
+      try visitor.visitRepeatedMessageField(value: self.collectionSettings, fieldNumber: 4)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -282,6 +310,47 @@ nonisolated extension LibraryBackup: SwiftProtobuf.Message, SwiftProtobuf._Messa
     if lhs.exportedByAppVersion != rhs.exportedByAppVersion {return false}
     if lhs.exportedDate != rhs.exportedDate {return false}
     if lhs.series != rhs.series {return false}
+    if lhs.collectionSettings != rhs.collectionSettings {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension LibraryBackup.CollectionSettings: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  static let protoMessageName: String = LibraryBackup.protoMessageName + ".CollectionSettings"
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}name\0\u{3}hide_from_home\0\u{3}requires_face_id\0")
+
+  mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.name) }()
+      case 2: try { try decoder.decodeSingularBoolField(value: &self.hideFromHome) }()
+      case 3: try { try decoder.decodeSingularBoolField(value: &self.requiresFaceID) }()
+      default: break
+      }
+    }
+  }
+
+  func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.name.isEmpty {
+      try visitor.visitSingularStringField(value: self.name, fieldNumber: 1)
+    }
+    if self.hideFromHome != false {
+      try visitor.visitSingularBoolField(value: self.hideFromHome, fieldNumber: 2)
+    }
+    if self.requiresFaceID != false {
+      try visitor.visitSingularBoolField(value: self.requiresFaceID, fieldNumber: 3)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  static func ==(lhs: LibraryBackup.CollectionSettings, rhs: LibraryBackup.CollectionSettings) -> Bool {
+    if lhs.name != rhs.name {return false}
+    if lhs.hideFromHome != rhs.hideFromHome {return false}
+    if lhs.requiresFaceID != rhs.requiresFaceID {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

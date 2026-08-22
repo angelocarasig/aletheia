@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import GRDB
 import Observation
 
 @MainActor
@@ -38,13 +39,6 @@ final class SearchViewModel {
 
     // MARK: Adult sources
 
-    var includeAdult = Preferences.Default.includeAdultSources {
-        didSet {
-            guard includeAdult != oldValue else { return }
-            scheduleSearch()
-        }
-    }
-
     // while false, adultOnly sources don't just get excluded - they don't exist
     var bypassAdult = Preferences.Default.bypassAdultSources {
         didSet {
@@ -56,11 +50,21 @@ final class SearchViewModel {
     // never filtered out of `sources` itself - correlators are built per source
     // at configure, and an excluded one simply never observes
     private var searchable: [Source] {
-        bypassAdult && includeAdult ? sources : sources.filter { !$0.descriptor.adultOnly }
+        let base = bypassAdult ? sources : sources.filter { !$0.descriptor.adultOnly }
+        return base.filter { !hiddenSlugs.contains($0.descriptor.slug) }
     }
 
+    // kept live by visibilityTask, not a one-time read at configure - see
+    // observeHiddenSlugs
+    @ObservationIgnored private var hiddenSlugs: Set<String> = []
+
+    // adult-only sources specifically, not every hidden source - a non-adult
+    // source hidden by choice doesn't belong in an "adult sources hidden" count
     var hiddenAdultCount: Int {
-        bypassAdult && !includeAdult ? sources.count { $0.descriptor.adultOnly } : 0
+        guard bypassAdult else { return 0 }
+        return sources.count {
+            $0.descriptor.adultOnly && hiddenSlugs.contains($0.descriptor.slug)
+        }
     }
     private(set) var active = false
     private(set) var submitted = ""
@@ -69,6 +73,7 @@ final class SearchViewModel {
     @ObservationIgnored private var sources: [Source] = []
     @ObservationIgnored private var correlators: [String: Correlator] = [:]
     @ObservationIgnored private var task: Task<Void, Never>?
+    @ObservationIgnored private var visibilityTask: Task<Void, Never>?
     @ObservationIgnored private var generation = 0
 
     private enum Timing {
@@ -93,6 +98,46 @@ final class SearchViewModel {
             uniqueKeysWithValues: sources.map {
                 ($0.descriptor.slug, Correlator(sourceSlug: $0.descriptor.slug, database: database))
             })
+
+        // live, not lifecycle-timed - a source flipped to "Show" in Settings
+        // must reappear the moment the change lands, not wait for this screen
+        // to re-appear, since pushing/popping a navigationDestination on the
+        // same stack never re-fires onAppear on the view underneath it
+        visibilityTask = Task { [weak self] in
+            guard let self else { return }
+            for await hidden in self.observeHiddenSlugs(sources: sources, database: database) {
+                guard !Task.isCancelled else { return }
+                guard hidden != self.hiddenSlugs else { continue }
+                self.hiddenSlugs = hidden
+                guard self.active else { continue }
+                self.run(self.submitted)
+            }
+        }
+    }
+
+    private func observeHiddenSlugs(sources: [Source], database: DatabaseClient)
+        -> AsyncStream<Set<String>>
+    {
+        let bySlug = Dictionary(uniqueKeysWithValues: sources.map { ($0.descriptor.slug, $0) })
+        let reader = database.reader
+
+        return AsyncStream { continuation in
+            let observation = ValueObservation.tracking { db in
+                try SourceRecord.fetchAll(db).compactMap { record -> String? in
+                    guard let source = bySlug[record.slug] else { return nil }
+                    let adult = source.descriptor.adultOnly
+                    return record.hideFromSearch.hides(adultSource: adult) ? record.slug : nil
+                }
+            }
+
+            let cancellable = observation.start(
+                in: reader,
+                onError: { _ in continuation.finish() },
+                onChange: { continuation.yield(Set($0)) }
+            )
+
+            continuation.onTermination = { _ in cancellable.cancel() }
+        }
     }
 
     func match(in sectionID: String, for stub: SeriesStub) -> SeriesMatch? {
@@ -114,6 +159,9 @@ final class SearchViewModel {
         }
     }
 
+    // visibilityTask deliberately outlives stop()/resume() - it must keep
+    // observing while a pushed screen (like source settings) sits on top,
+    // which is exactly when a hideFromSearch change happens
     func stop() {
         task?.cancel()
         correlators.values.forEach { $0.stop() }

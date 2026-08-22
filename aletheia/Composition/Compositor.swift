@@ -14,6 +14,7 @@ struct Compositor: Sendable {
     let assets: Assets
     let refresh: Refresh
     let downloads: Downloads
+    let privacy: Privacy
     let trackers: Trackers
     let metadata: Metadata
     let recommender: Recommender
@@ -58,6 +59,7 @@ struct Compositor: Sendable {
         let assets = Assets(database: database, registry: registry, network: network)
         self.assets = assets
         self.downloads = Downloads(database: database, registry: registry, store: assets.store)
+        self.privacy = Privacy()
 
         let trackerServices: [Tracker: any TrackerService] = [
             .anilist: AniListService(network: network),
