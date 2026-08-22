@@ -72,6 +72,36 @@ enum ReadingBuckets {
             sessions, into: starts, next: { calendar.date(byAdding: .hour, value: 1, to: $0) })
     }
 
+    // a single day's bucket, not one slice of daily(weekOf:) - the activity
+    // screen's session list needs just this one regardless of the chart's own
+    // scope, and building all seven of a week to keep one is wasted work
+    static func day(
+        _ sessions: [ReadingSessionEntry],
+        on day: Date,
+        calendar: Calendar = .current
+    ) -> Bucket? {
+        guard let dayStart = calendar.dateInterval(of: .day, for: day)?.start else { return nil }
+        return distribute(
+            sessions, into: [dayStart], next: { calendar.date(byAdding: .day, value: 1, to: $0) }
+        ).first
+    }
+
+    // the whole week folded into one bucket - week scope's session list shows
+    // every series read that week, not just whichever day's bar was tapped
+    static func week(
+        _ sessions: [ReadingSessionEntry],
+        weekOf day: Date,
+        calendar: Calendar = .current
+    ) -> Bucket? {
+        guard let weekStart = calendar.dateInterval(of: .weekOfYear, for: day)?.start else {
+            return nil
+        }
+        return distribute(
+            sessions, into: [weekStart],
+            next: { calendar.date(byAdding: .weekOfYear, value: 1, to: $0) }
+        ).first
+    }
+
     static func daily(
         _ sessions: [ReadingSessionEntry],
         weekOf day: Date,

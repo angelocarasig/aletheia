@@ -5,9 +5,7 @@
 //  Created by Angelo Carasig on 9/8/2026.
 //
 
-import Kingfisher
 import SwiftUI
-import Tagged
 
 struct ReadingActivitySection: View {
     @Environment(\.compositor) private var compositor
@@ -22,8 +20,6 @@ struct ReadingActivitySection: View {
     // this screen is itself presented with navigationDestination(isPresented:), so a value push
     // declared anywhere else in it would land beneath the presenting screen instead of above it
     @State private var route: SeriesEntry?
-    @State private var expanded = false
-    @State private var bySeries = false
     @State private var counted: Double = 0
     @State private var lifted = false
     @State private var rolled = false
@@ -38,12 +34,6 @@ struct ReadingActivitySection: View {
     private enum Layout {
         static let heatWeeks = 16
         static let fillOpacity = 0.05
-        static let groupingWidth: CGFloat = 140
-        // must match SessionRow's own cover size - the two rows swap through one slot
-        static let coverWidth: CGFloat = 58
-        static let coverHeight: CGFloat = 70
-        static let placeholderOpacity = 0.1
-        static let collapsedSessions = 5
         static let rollDuration: TimeInterval = 1.1
         static let rollLift: CGFloat = 1.05
         static let snapDuration: TimeInterval = 0.32
@@ -156,15 +146,13 @@ extension ReadingActivitySection {
             .onChange(of: anchor) { selected = nil }
 
             Group {
-                if let bucket = selectedBucket(snapshot) {
-                    BucketSessions(bucket, sessions: snapshot.recent)
-                        .transition(.replace(reduceMotion: reduceMotion))
-                } else if !snapshot.sessions.isEmpty {
-                    Sessions(snapshot.sessions)
+                if let bucket = activeBucket(snapshot) {
+                    BucketSessions(bucket, sessions: snapshot.recent, granularity: activeGranularity)
                         .transition(.replace(reduceMotion: reduceMotion))
                 }
             }
             .animation(.settle, value: selected)
+            .animation(.settle, value: anchor)
 
         }
     }
@@ -263,27 +251,39 @@ extension ReadingActivitySection {
         .scaleEffect(lifted ? Layout.rollLift : 1)
     }
 
-    fileprivate var granularity: Calendar.Component { scope == .day ? .hour : .day }
+    // the list's own granularity, independent of which day's bar got tapped -
+    // day scope with an hour selected narrows to that hour, day scope with
+    // nothing selected shows the whole day, week scope always shows the
+    // whole week regardless of which day within it anchor points to
+    fileprivate var activeGranularity: Calendar.Component {
+        switch scope {
+        case .day: selected != nil ? .hour : .day
+        case .week: .weekOfYear
+        }
+    }
 
-    fileprivate func selectedBucket(_ snapshot: StatsViewModel.Snapshot) -> ReadingBuckets.Bucket? {
-        guard let selected else { return nil }
-
-        let buckets =
-            scope == .day
-            ? ReadingBuckets.hourly(snapshot.recent, on: anchor)
-            : ReadingBuckets.daily(snapshot.recent, weekOf: anchor)
-
-        return buckets.first { $0.start == selected }
+    fileprivate func activeBucket(_ snapshot: StatsViewModel.Snapshot) -> ReadingBuckets.Bucket? {
+        switch scope {
+        case .day:
+            if let selected {
+                return ReadingBuckets.hourly(snapshot.recent, on: anchor)
+                    .first { $0.start == selected }
+            }
+            return ReadingBuckets.day(snapshot.recent, on: anchor)
+        case .week:
+            return ReadingBuckets.week(snapshot.recent, weekOf: anchor)
+        }
     }
 
     fileprivate func BucketSessions(
-        _ bucket: ReadingBuckets.Bucket, sessions: [ReadingSessionEntry]
+        _ bucket: ReadingBuckets.Bucket, sessions: [ReadingSessionEntry],
+        granularity: Calendar.Component
     ) -> some View {
         let rows = ReadingBuckets.sittings(sessions, in: bucket, of: granularity)
 
         return VStack(alignment: .leading, spacing: dimensions.spacing.space12) {
             VStack(alignment: .leading, spacing: dimensions.spacing.space4) {
-                SectionHeader(bucketTitle(bucket))
+                SectionHeader(bucketTitle(bucket, granularity: granularity))
                     .contentTransition(.opacity)
 
                 Amount(bucket.value(metric))
@@ -293,7 +293,7 @@ extension ReadingActivitySection {
             }
 
             if rows.isEmpty {
-                Text(scope == .day ? "No reading in this hour" : "No reading on this day")
+                Text(emptyMessage(for: granularity))
                     .font(.subheadline)
                     .foregroundStyle(.muted)
                     .frame(maxWidth: .infinity, alignment: .center)
@@ -306,11 +306,39 @@ extension ReadingActivitySection {
         }
     }
 
-    fileprivate func bucketTitle(_ bucket: ReadingBuckets.Bucket) -> String {
-        switch scope {
-        case .day:
-            bucket.start.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated).hour())
-        case .week: bucket.start.formatted(.dateTime.weekday(.wide).day().month(.abbreviated))
+    fileprivate func emptyMessage(for granularity: Calendar.Component) -> String {
+        switch granularity {
+        case .hour: "No reading in this hour"
+        case .weekOfYear: "No reading this week"
+        default: "No reading on this day"
+        }
+    }
+
+    fileprivate func bucketTitle(_ bucket: ReadingBuckets.Bucket, granularity: Calendar.Component)
+        -> String
+    {
+        let calendar = Calendar.current
+
+        switch granularity {
+        case .hour:
+            return bucket.start.formatted(
+                .dateTime.weekday(.abbreviated).day().month(.abbreviated).hour())
+
+        case .weekOfYear:
+            guard let interval = calendar.dateInterval(of: .weekOfYear, for: bucket.start) else {
+                return ""
+            }
+            if calendar.isDate(.now, equalTo: bucket.start, toGranularity: .weekOfYear) {
+                return "This Week"
+            }
+            let end = interval.end.addingTimeInterval(-1)
+            return
+                "\(interval.start.formatted(.dateTime.day().month(.abbreviated))) - \(end.formatted(.dateTime.day().month(.abbreviated)))"
+
+        default:
+            if calendar.isDateInToday(bucket.start) { return "Today" }
+            if calendar.isDateInYesterday(bucket.start) { return "Yesterday" }
+            return bucket.start.formatted(.dateTime.weekday(.wide).day().month(.abbreviated))
         }
     }
 
@@ -320,188 +348,6 @@ extension ReadingActivitySection {
         switch metric {
         case .pages: Text("^[\(count) page](inflect: true)")
         case .chapters: Text("^[\(count) chapter](inflect: true)")
-        }
-    }
-
-    fileprivate func Sessions(_ sessions: [ReadingSessionEntry]) -> some View {
-        VStack(alignment: .leading, spacing: dimensions.spacing.space12) {
-            SectionHeader(title: "Recent Reading") {
-                Grouping
-            }
-
-            if bySeries {
-                SeriesList(sessions)
-            } else {
-                DayList(sessions)
-            }
-        }
-        .animation(.settle, value: bySeries)
-    }
-
-    fileprivate var Grouping: some View {
-        Picker("Grouping", selection: $bySeries) {
-            Text("Days").tag(false)
-            Text("Series").tag(true)
-        }
-        .pickerStyle(.segmented)
-        .frame(width: Layout.groupingWidth)
-    }
-
-    fileprivate func DayList(_ sessions: [ReadingSessionEntry]) -> some View {
-        let visible = expanded ? sessions : Array(sessions.prefix(Layout.collapsedSessions))
-        let byDay = Dictionary(grouping: visible, by: \.localDayKey)
-
-        return VStack(alignment: .leading, spacing: dimensions.spacing.space12) {
-            ForEach(byDay.keys.sorted(by: >), id: \.self) { day in
-                VStack(alignment: .leading, spacing: dimensions.spacing.space8) {
-                    Text(ReadingFormat.dayLabel(for: day))
-                        .font(.caption)
-                        .fontWeight(.medium)
-                        .foregroundStyle(.secondary)
-
-                    ForEach(byDay[day] ?? []) { session in
-                        SessionRow(session: session) { route = $0 }
-                    }
-                }
-            }
-
-            if sessions.count > Layout.collapsedSessions {
-                ExpandToggle(sessions.count)
-            }
-        }
-    }
-
-    // folded from the already-loaded rows, not a second query - a session already carries its series
-    fileprivate func SeriesList(_ sessions: [ReadingSessionEntry]) -> some View {
-        let groups = Self.series(from: sessions)
-        let visible = expanded ? groups : Array(groups.prefix(Layout.collapsedSessions))
-
-        return VStack(alignment: .leading, spacing: dimensions.spacing.space8) {
-            ForEach(visible) { group in
-                SeriesRow(group)
-            }
-
-            if groups.count > Layout.collapsedSessions {
-                ExpandToggle(groups.count, noun: "Series")
-            }
-        }
-    }
-
-    fileprivate func SeriesRow(_ group: SeriesTotal) -> some View {
-        let row = HStack(spacing: dimensions.spacing.space12) {
-            Cover(group)
-
-            VStack(alignment: .leading, spacing: dimensions.spacing.space2) {
-                HStack(alignment: .firstTextBaseline, spacing: dimensions.spacing.space8) {
-                    Text(group.title)
-                        .font(.subheadline)
-                        .fontWeight(.semibold)
-                        .lineLimit(1)
-                        .foregroundStyle(group.alive ? .primary : .secondary)
-
-                    Spacer(minLength: 0)
-
-                    Text("^[\(group.sittings) sitting](inflect: true)")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .layoutPriority(1)
-                }
-
-                Text(summary(group))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-        }
-        .padding(dimensions.spacing.space12)
-        .background(
-            .primary.opacity(Layout.fillOpacity),
-            in: .rect(cornerRadius: dimensions.radius.radius12))
-
-        return Group {
-            if group.alive {
-                row
-                    .contentShape(.rect)
-                    .tappable { route = .library(SeriesRecord.ID(rawValue: group.seriesId)) }
-            } else {
-                row
-            }
-        }
-    }
-
-    fileprivate func Cover(_ group: SeriesTotal) -> some View {
-        let local = compositor.assets.local(for: group.path)
-
-        return Color.clear
-            .frame(width: Layout.coverWidth, height: Layout.coverHeight)
-            .overlay {
-                if let cover = local ?? group.cover {
-                    KFImage(cover)
-                        .resizable()
-                        .placeholder {
-                            Rectangle().fill(.primary.opacity(Layout.placeholderOpacity)).shimmer()
-                        }
-                        .fade(duration: 0.25)
-                        .scaledToFill()
-                } else {
-                    Rectangle()
-                        .fill(.primary.opacity(Layout.placeholderOpacity))
-                        .overlay {
-                            Image(systemName: "book.closed")
-                                .font(.caption2)
-                                .foregroundStyle(.tertiary)
-                        }
-                }
-            }
-            .clipped()
-            .clipShape(.rect(cornerRadius: dimensions.radius.radius8))
-    }
-
-    fileprivate func summary(_ group: SeriesTotal) -> String {
-        var parts: [String] = []
-        if group.chapters > 0 { parts.append("\(group.chapters) finished") }
-        if group.pages > 0 { parts.append("\(group.pages) pages") }
-        if group.seconds > 0 { parts.append(ReadingFormat.duration(group.seconds)) }
-        return parts.isEmpty ? "Read" : parts.joined(separator: " · ")
-    }
-
-    fileprivate static func series(from sessions: [ReadingSessionEntry]) -> [SeriesTotal] {
-        Dictionary(grouping: sessions, by: \.seriesId)
-            .compactMap { id, rows -> SeriesTotal? in
-                guard let newest = rows.max(by: { $0.endedDate < $1.endedDate }) else { return nil }
-                return SeriesTotal(
-                    seriesId: id,
-                    title: newest.seriesTitle,
-                    alive: newest.alive,
-                    cover: newest.cover,
-                    path: newest.path,
-                    chapters: rows.reduce(0) { $0 + $1.chaptersRead },
-                    pages: rows.reduce(0) { $0 + $1.pagesRead },
-                    seconds: rows.reduce(0) { $0 + $1.seconds },
-                    latest: newest.endedDate,
-                    sittings: rows.count
-                )
-            }
-            .sorted { $0.latest > $1.latest }
-    }
-
-    fileprivate func ExpandToggle(_ count: Int, noun: String = "Sessions") -> some View {
-        HStack(spacing: dimensions.spacing.space8) {
-            Image(systemName: expanded ? "chevron.up" : "chevron.down")
-                .contentTransition(.symbolEffect(.replace))
-
-            Text(expanded ? "Show Less" : "Show All \(count) \(noun)")
-        }
-        .font(.subheadline)
-        .foregroundStyle(.brand)
-        .frame(maxWidth: .infinity)
-        .padding(dimensions.spacing.space16)
-        .background(
-            Palette.brand.opacity(Layout.fillOpacity),
-            in: .rect(cornerRadius: dimensions.radius.radius8)
-        )
-        .tappable {
-            withAnimation { expanded.toggle() }
         }
     }
 
@@ -524,27 +370,6 @@ extension ReadingActivitySection {
                 offset += offset.isMultiple(of: 3) ? 1 : 2
             }
             return heat
-        }
-
-        static func sessions(_ count: Int) -> [ReadingSessionEntry] {
-            (0..<count).map { index in
-                let started: Date = .now.addingTimeInterval(TimeInterval(-index * 7_200))
-                // deliberately seconds long - regression case for "0m" rendering beside a full page count
-                let length = index == 0 ? 40 : 900 + index * 300
-                return ReadingSessionEntry(
-                    id: Int64(index + 1),
-                    seriesId: Int64(index + 1),
-                    seriesTitle: ["Berserk", "Vagabond", "Blade of the Waning Moon"][index % 3],
-                    pagesRead: 49 - index * 6,
-                    chaptersRead: index.isMultiple(of: 2) ? 1 : 0,
-                    startedDate: started,
-                    endedDate: started.addingTimeInterval(TimeInterval(length)),
-                    localDayKey: started.localDayKey,
-                    alive: true,
-                    cover: nil,
-                    path: nil
-                )
-            }
         }
 
         static func recent(days: Int) -> [ReadingSessionEntry] {
@@ -585,8 +410,7 @@ extension ReadingActivitySection {
             seconds: Int = 187_000,
             pages: Int = 9_640,
             currentRun: Int = 6,
-            longestRun: Int = 18,
-            sessions sessionCount: Int = 4
+            longestRun: Int = 18
         ) -> StatsViewModel.Snapshot {
             .init(
                 chaptersAllTime: chapters,
@@ -597,7 +421,6 @@ extension ReadingActivitySection {
                 heat: heat(days: heatDays),
                 heatChapters: heat(days: heatDays).mapValues { max(1, $0 / 18) },
                 heatStartKey: 0,
-                sessions: sessions(sessionCount),
                 recent: recent(days: min(heatDays, 13))
             )
         }
@@ -622,8 +445,7 @@ extension ReadingActivitySection {
                             seconds: 40,
                             pages: 49,
                             currentRun: 1,
-                            longestRun: 1,
-                            sessions: 1
+                            longestRun: 1
                         )
                     )
                 )
@@ -639,28 +461,13 @@ extension ReadingActivitySection {
                     vm: .preview(
                         snapshot: Mock.snapshot(
                             heatDays: 0, chapters: 0, seconds: 0, pages: 0, currentRun: 0,
-                            longestRun: 0, sessions: 0))
+                            longestRun: 0))
                 )
                 .padding(16)
             }
         }
     }
 #endif
-
-struct SeriesTotal: Identifiable {
-    let seriesId: Int64
-    let title: String
-    let alive: Bool
-    let cover: URL?
-    let path: String?
-    let chapters: Int
-    let pages: Int
-    let seconds: Int
-    let latest: Date
-    let sittings: Int
-
-    var id: Int64 { seriesId }
-}
 
 // MARK: - Counting text
 

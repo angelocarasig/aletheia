@@ -317,7 +317,7 @@ struct ReadingChart: View {
                     .clipShape(.rect(cornerRadius: Layout.radius))
                     .foregroundStyle(Palette.brand)
                     .opacity(
-                        selected == nil || selectedBucket?.id == bucket.id
+                        highlighted == nil || selectedBucket?.id == bucket.id
                             ? 1 : Layout.unselectedOpacity
                     )
                     .annotation(position: .top, overflowResolution: .init(x: .fit, y: .disabled)) {
@@ -430,23 +430,41 @@ struct ReadingChart: View {
         }
     }
 
+    // week scope has no "nothing highlighted" state - anchor always points to
+    // some day, and that day's bar is what's highlighted, tap or not. day
+    // scope keeps the old on/off behaviour: nothing is highlighted until an
+    // hour is tapped, and tapping it again clears it
+    private var highlighted: Date? {
+        switch scope {
+        case .day: selected
+        case .week: calendar.dateInterval(of: .day, for: anchor)?.start
+        }
+    }
+
     private var selectedBucket: ReadingBuckets.Bucket? {
-        guard let selected else { return nil }
-        return buckets.last { $0.start <= selected }
+        guard let highlighted else { return nil }
+        return buckets.last { $0.start <= highlighted }
     }
 
     // selectXValue reports wherever the finger landed, not a bucket boundary -
     // two taps on the same bar produce different near-identical dates, so
-    // comparing raw values would never toggle. snap to bucket.start first
+    // comparing raw values would never toggle. snap to bucket.start first.
+    // a week-scope tap moves anchor itself (the day being viewed), not a
+    // separate selection - the same "tap = jump to that day" rule the
+    // heatmap already follows
     private var selection: Binding<Date?> {
         Binding(
-            get: { selected },
+            get: { highlighted },
             set: { value in
                 guard let value, let bucket = buckets.last(where: { $0.start <= value }) else {
-                    selected = nil
+                    if scope == .day { selected = nil }
                     return
                 }
-                selected = bucket.start == selected ? nil : bucket.start
+
+                switch scope {
+                case .week: anchor = bucket.start
+                case .day: selected = bucket.start == selected ? nil : bucket.start
+                }
             }
         )
     }

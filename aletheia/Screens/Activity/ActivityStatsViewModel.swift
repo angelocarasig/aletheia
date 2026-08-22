@@ -22,7 +22,6 @@ final class StatsViewModel {
 
     private enum Rule {
         static let heatWeeks = 16
-        static let sessionLimit = 20
         static let chartDays = 16 * 7
         static let chartLimit = 500
     }
@@ -139,13 +138,6 @@ final class StatsViewModel {
             }
         )
 
-        let sessions = try ReadingSessionEntry.fetch(
-            sinceKey: 0,
-            excluded: [],
-            limit: Rule.sessionLimit,
-            in: db
-        )
-
         let chartKey =
             Calendar.current.date(
                 byAdding: .day, value: -(Rule.chartDays - 1), to: asOf
@@ -168,7 +160,6 @@ final class StatsViewModel {
             heat: heat,
             heatChapters: heatChapters,
             heatStartKey: heatKey,
-            sessions: sessions,
             recent: recent
         )
     }
@@ -193,11 +184,10 @@ extension StatsViewModel {
             case .chapters: heatChapters
             }
         }
-        let sessions: [ReadingSessionEntry]
         let recent: [ReadingSessionEntry]
 
         var isEmpty: Bool {
-            chaptersAllTime == 0 && secondsAllTime == 0 && sessions.isEmpty
+            chaptersAllTime == 0 && secondsAllTime == 0 && recent.isEmpty
         }
     }
 
