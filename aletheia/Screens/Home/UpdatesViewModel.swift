@@ -18,12 +18,19 @@ final class UpdatesViewModel {
     private let registry: Compositor.Registry
 
     private(set) var entries: [HomeViewModel.UpdateEntry]?
+    // raw publish dates, last 7 days - bucketed view-side via UpdateBuckets
+    private(set) var activity: [Date]?
     private(set) var failure: Failure?
 
     @ObservationIgnored private var stream: Task<Void, Never>?
 
     private enum Rule {
         static let limit = 200
+    }
+
+    private struct Fetched: Equatable {
+        let rows: [HomeViewModel.UpdateRow]
+        let activity: [Date]
     }
 
     init(database: DatabaseClient, assets: Compositor.Assets, registry: Compositor.Registry) {
@@ -41,16 +48,27 @@ final class UpdatesViewModel {
         stream = Task { [weak self, database] in
             let observation =
                 ValueObservation
-                .tracking { db in
+                .tracking { db -> Fetched in
                     let excluded = try AdultGate.excluded(slugs: adultSlugs, in: db)
-                    return try HomeViewModel.updating(excluded: excluded, limit: Rule.limit, in: db)
+                    let since =
+                        Calendar.current.date(
+                            byAdding: .day, value: -6, to: Calendar.current.startOfDay(for: .now))
+                        ?? .now
+
+                    return Fetched(
+                        rows: try HomeViewModel.updating(
+                            excluded: excluded, limit: Rule.limit, in: db),
+                        activity: try HomeViewModel.activity(
+                            excluded: excluded, since: since, in: db)
+                    )
                 }
                 .removeDuplicates()
 
             do {
-                for try await rows in observation.values(in: database.reader) {
+                for try await fetched in observation.values(in: database.reader) {
                     guard let self, !Task.isCancelled else { break }
-                    self.entries = rows.map { self.entry($0) }
+                    self.entries = fetched.rows.map { self.entry($0) }
+                    self.activity = fetched.activity
                     self.failure = nil
                 }
             } catch {
@@ -88,6 +106,7 @@ final class UpdatesViewModel {
     extension UpdatesViewModel {
         static func preview(
             entries: [HomeViewModel.UpdateEntry]? = nil,
+            activity: [Date]? = nil,
             failure: Failure? = nil
         ) -> UpdatesViewModel {
             let database = DatabaseClient.preview
@@ -99,6 +118,7 @@ final class UpdatesViewModel {
                 registry: registry
             )
             model.entries = entries
+            model.activity = activity
             model.failure = failure
             return model
         }

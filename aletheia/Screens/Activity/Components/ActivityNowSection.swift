@@ -68,7 +68,7 @@ extension ActivityNowSection {
                     .foregroundStyle(.secondary)
 
                 VStack(alignment: .leading, spacing: dimensions.spacing.space2) {
-                    Text("Library")
+                    Text("Updates")
                         .font(.subheadline)
                         .fontWeight(.medium)
 
@@ -92,13 +92,13 @@ extension ActivityNowSection {
             }
             .contentShape(.rect)
             .tappable { onOpenUpdates() }
-            .accessibilityLabel("Library updates")
+            .accessibilityLabel("Updates")
 
         case .running(let scope, let seriesTitle, let completed, let total):
             VStack(alignment: .leading, spacing: dimensions.spacing.space8) {
                 HStack(spacing: dimensions.spacing.space12) {
                     VStack(alignment: .leading, spacing: dimensions.spacing.space2) {
-                        Text(scope.map { "Updating \($0)" } ?? "Updating Library")
+                        Text(scope.map { "Updating \($0)" } ?? "Updating")
                             .font(.caption)
                             .foregroundStyle(.secondary)
 
@@ -150,15 +150,15 @@ extension ActivityNowSection {
                         .fontWeight(.medium)
 
                     if stored > 0 {
-                        // two literals kept as Text, not folded into one String
-                        // first - inflection markup ("^[n chapter](inflect:)")
-                        // only parses through Text's own LocalizedStringKey init,
-                        // a runtime String built ahead of Text renders it verbatim
+                        // both interpolations stay inside one Text literal -
+                        // inflection markup ("^[n chapter](inflect:)") only
+                        // parses through Text's own LocalizedStringKey init,
+                        // which a precomputed String bypasses, but a second
+                        // \() interpolation in the same literal doesn't
                         (bytes > 0
-                            ? Text("^[\(stored) chapter](inflect: true)")
-                                + Text(
-                                    " · \(ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file))"
-                                )
+                            ? Text(
+                                "^[\(stored) chapter](inflect: true) · \(ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file))"
+                            )
                             : Text("^[\(stored) chapter](inflect: true) in storage"))
                             .font(.caption)
                             .foregroundStyle(.secondary)

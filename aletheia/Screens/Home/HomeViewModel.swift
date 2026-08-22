@@ -271,6 +271,34 @@ final class HomeViewModel {
         }
     }
 
+    // raw publish timestamps, not pre-grouped by day in SQL - bucketing by
+    // local calendar day has to happen in Swift against Calendar.current, the
+    // same reasoning ReadingBuckets already applies to reading sessions
+    nonisolated static func activity(
+        excluded: Set<Int64>,
+        since: Date,
+        in db: Database
+    ) throws -> [Date] {
+        let exclusion =
+            excluded.isEmpty
+            ? "" : "AND bc.seriesId NOT IN (\(excluded.map(String.init).joined(separator: ",")))"
+
+        let sql = """
+            SELECT c.\(ChapterRecord.Columns.publishedDate.name) AS publishedDate
+            FROM \(BestChapterView.databaseTableName) bc
+            JOIN \(ChapterRecord.databaseTableName) c ON c.id = bc.chapterId
+            JOIN \(SeriesRecord.databaseTableName) s ON s.id = bc.seriesId
+            WHERE bc.rank = 1
+              AND (bc.showHalfChapters = 1 OR bc.number = CAST(bc.number AS INTEGER))
+              AND s.\(SeriesRecord.Columns.inLibrary.name) = 1
+              AND c.\(ChapterRecord.Columns.publishedDate.name) > s.\(SeriesRecord.Columns.addedDate.name)
+              AND c.\(ChapterRecord.Columns.publishedDate.name) >= ?
+              \(exclusion)
+            """
+
+        return try Date.fetchAll(db, sql: sql, arguments: [since])
+    }
+
     // hidden series and no-target (fully read) series can still shrink a page
     // below continueLimit after the SQL fetch, so this walks pages until the
     // rail is full or the window runs out, rather than trimming a single page
